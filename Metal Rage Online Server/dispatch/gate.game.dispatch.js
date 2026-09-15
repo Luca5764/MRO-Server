@@ -21,6 +21,7 @@ const GAME_WAIT_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const POST_GAME_WAIT_READY_HOST_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_INFO_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
+const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
 
 let nextRoomIndex = 1;
 
@@ -129,12 +130,39 @@ function sendReadyHostSn(client)
     // 실제 서버: IP:Port/MapName?team=0 형식으로 ClientTravel (real server: ClientTravel in IP:Port/MapName?team=0 format)
     // ip 필드에 "IP/MapName" 형식으로 전달 시도 (attempt to pass in "IP/MapName" format in the ip field)
     const ipWithMap = ip + '/' + mapName;
-    const [msg, respBody] = getExactMessageBuffer(0x00420115, 0x13);
+
+    // The body was a fixed 0x13, leaving 16 bytes for the string after the
+    // port and the zero byte, and the write was additionally capped at 0x10.
+    // "127.0.0.1/Map_PC01" is 18 characters, so what actually went out was
+    // "127.0.0.1/Map_PC" with no terminator: a map name that does not exist.
+    //
+    // Observed 2026-09-15: the client took that URL, began ClientTravel, and
+    // crashed tearing down the hangar level —
+    //   Actor not found: HangarPlayerController Store_01.HangarPlayerController
+    //   ULevel::DestroyActor <- DissociateViewports_BD <- UGameEngine::LoadMap
+    //     <- LocalMapURL <- UGameEngine::Browse <- ClientTravel
+    // which is LoadMap failing on a map that is not there.
+    //
+    // 'fit' sizes the body to hold the whole string. Whether the real packet
+    // was variable-length or a larger fixed field is not known; this is a
+    // probe. 'fixed_0x13' restores the old size if the client rejects it.
+    const urlBytes = Buffer.byteLength(ipWithMap, 'ascii');
+    const bodySize = READY_HOST_SN_URL_MODE === 'fit'
+        ? 0x03 + urlBytes + 1
+        : 0x13;
+
+    const [msg, respBody] = getExactMessageBuffer(0x00420115, bodySize);
     respBody.writeUInt16LE(port, 0x00);
     respBody.writeUInt8(0, 0x02);
-    respBody.write(ipWithMap + '\0', 0x03, Math.min(Buffer.byteLength(ipWithMap) + 1, 0x10), 'ascii');
+
+    const room = respBody.length - 0x03;
+    const written = respBody.write(ipWithMap + '\0', 0x03, Math.min(urlBytes + 1, room), 'ascii');
+
+    if (written < urlBytes + 1)
+        console.log(`[ZGateGameDispatch] !! Ready_Host_SN URL TRUNCATED: wrote ${written} of ${urlBytes + 1} bytes — client will travel to a map that does not exist`);
+
     client.send(msg);
-    console.log(`[ZGateGameDispatch] >> Sent Ready_Host_SN 0x00420115 ip=${ipWithMap} port=${port}`);
+    console.log(`[ZGateGameDispatch] >> Sent Ready_Host_SN 0x00420115 ip=${ipWithMap} port=${port} (mode=${READY_HOST_SN_URL_MODE}, body=0x${bodySize.toString(16)})`);
 }
 
 function sendRoomGameWaitSn(client, tag)
