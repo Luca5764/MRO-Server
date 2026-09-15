@@ -28,7 +28,25 @@ function equippedBySlot(items, mechType, partSlot) {
     );
 }
 
+// Off by default.
+//
+// This used to go out as 0x00230111, which matches no handler in the client,
+// so it was silently ignored and cost nothing. Corrected to 0x00222112 it
+// reaches ZDispatchGame::Game_User_SN for real — and the 485-byte record it
+// carries has never been checked against the client, only guessed at. The
+// first session with the right opcode hung the client on a white screen just
+// after the room came up, with these going out in the room state block.
+//
+// The record size is right (0x1E5, confirmed in the disassembly); the field
+// layout is not known. Turn this on once that layout has been read out of
+// ZDispatchGame::Game_User_SN (0x107d8ae0) rather than assumed, and send it
+// when a game actually starts rather than while sitting in a room.
+const GAME_USER_BOOTSTRAP_MODE = 'disabled'; // 'disabled' | 'enabled'
+
 async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
+    if (GAME_USER_BOOTSTRAP_MODE !== 'enabled') {
+        return;
+    }
     if (!client.campaignRoom_) {
         return;
     }
