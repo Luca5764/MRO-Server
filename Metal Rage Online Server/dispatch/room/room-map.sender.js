@@ -11,6 +11,7 @@
 //   Accessed array 'm_MapInfoList' out of bounds (0/0)
 // from ZPopup_MapSelect, i.e. it parsed our list into nothing.
 const MAP_ALL_HEADER_MODE = 'compact'; // 'compact' | 'padded'
+const MAP_ALL_SEND_TWICE = 'enabled'; // 'disabled' | 'enabled'
 const MAP_ALL_ENTRY_OFFSET = MAP_ALL_HEADER_MODE === 'compact' ? 0x02 : 0x06;
 
 const SN_MAP_CHANGE_ALL = 0x00220226;
@@ -51,6 +52,23 @@ function sendRoomMapPackets(client, ctx, getExactMessageBuffer) {
             bodyAll.writeUint16LE(0, entryOffset + 0x07);
         }
         client.send(msgAll);
+
+        // Sent twice, deliberately.
+        //
+        // ZDispatchRoom::Map_Change_All_SN fires the script event
+        // NETWORK_ROOM_INFO *before* it writes the list into FROOM_INFO. So a
+        // script handler that reads the room info on that event sees whatever
+        // was there last time — on the first packet, nothing. That matches what
+        // the client reports: ZPopup_MapSelect walking m_MapInfoList and
+        // finding it 0/0.
+        //
+        // A second, identical packet fires the event again, and this time the
+        // list from the first one is already in place.
+        if (MAP_ALL_SEND_TWICE === 'enabled') {
+            client.send(msgAll);
+            console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ALL 0x220226 again (NETWORK_ROOM_INFO fires before the write)`);
+        }
+
         console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ALL 0x220226 (count=${count}, selectedIdx=${effectiveSelectedIdx}, mapId=${campaignMapCacheKey}, header=${MAP_ALL_HEADER_MODE}, body=0x${bodySize.toString(16)})`);
     }
 

@@ -24,6 +24,16 @@ const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
 // When the room state block is re-sent after Create_SA, and why each entry
 // costs a room-master dialog. See the comment at the call site.
+// Sending Game_Info_SN with the room state turned the room into a blank white
+// window. Its handler calls Game_Data_Clear before Game_Info_Set, and clearing
+// the game data underneath a live room scene appears to take the room with it.
+//
+// So it cannot go here, and it is too late in the start path: the client has
+// already composed its travel URL by then. Both ends are wrong, which means
+// the map is probably not reaching ZPage_Room through this packet at all —
+// the script's own m_MapInfoList is empty, and that is the next thing to read.
+const GAME_INFO_SN_WITH_ROOM_STATE = 'disabled'; // 'disabled' | 'enabled'
+
 // Map_PC01 easy — the campaign room's default until the client picks another.
 const MAP_ID_DEFAULT_CAMPAIGN = 9001;
 
@@ -581,9 +591,11 @@ class ZGateGameDispatch
                             // time 0. Which is exactly the "fallback" URL we
                             // have been staring at: not a fallback at all, but
                             // a correct lookup of the wrong map.
-                            if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
-                                client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
-                            sendGameInfoSn(client, `room state [${tag}]`);
+                            if (GAME_INFO_SN_WITH_ROOM_STATE === 'enabled') {
+                                if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
+                                    client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
+                                sendGameInfoSn(client, `room state [${tag}]`);
+                            }
                         } catch (err) {
                             console.error(`[ZGateGameDispatch] >> Error sending room state:`, err.message);
                         }
