@@ -49,6 +49,14 @@ Node 的 `listen(port)` 不指定 host 時綁的是 `::`（IPv6 dual-stack），
 
 （另一個解法是在 Windows 的 `%USERPROFILE%\.wslconfig` 加 `networkingMode=mirrored`，但那會影響整台機器的 WSL 網路行為，不如直接綁 IPv4。）
 
+### 本機安裝現況（這台機器）
+
+客戶端裝在 Windows 的 `C:\Games\MetalRage Online`，並已套用 shanzenos 的 Win11 修正（patch 過的 `MetalRage.exe`、`D3D9Drv.dll`、三個 DLL；原檔備份在 `data\System\_original_backup\`）。`MetalRage.ini` 與 `Default.ini` 的 `ServerIP` 都已改為 `127.0.0.1`。
+
+repo 根目錄的 `MetalRage` 是指向它的 symlink（已 gitignore），所以 WSL 裡的伺服器能讀到 `Cache.Bin`——開機時應該看到 `Loaded 1268 Cache.Bin item indexes`。
+
+啟動遊戲用 `C:\Games\MetalRage Online\Play Metal Rage Online.bat`，**第一次必須以系統管理員身分執行**（要寫一個 SEHOP 的 registry key，之後就不用了）。
+
 ### Cache.Bin
 
 `room.dispatch.js` 開機時會找客戶端的 `MetalRage/Data/System/Cache.Bin` 來建立道具索引，搜尋順序是：從 cwd 逐層往上找 → `<repo 的上一層>/MetalRage/Data/System/Cache.Bin` → `~/Desktop/MetalRage/Data/System/Cache.Bin`。
@@ -115,6 +123,41 @@ static/          客戶端 patch 檔與遊戲資源（約 1.2GB）
 > ```bash
 > git sparse-checkout set --no-cone '/*' '!/Metal Rage Online Server/static'
 > ```
+
+---
+
+## 客戶端（逆向對象）
+
+完整筆記見 `docs/client-notes-upstream.md`（上游 Win11 Fix 附的文件原文，非我們自己的發現）。以下是對逆向工作影響最大的幾點。
+
+### 啟動與連線
+
+客戶端的伺服器位址**同時**由命令列參數與 ini 決定：
+
+```
+MetalRage.exe -globalid=TW&ip=127.0.0.1&port=9211&age=30
+```
+
+`globalid=TW` 就是台版（鐵影特攻）。另外 `MetalRage.ini` 與 `Default.ini` **兩個檔案都**要設 `ServerIP`，原廠預設值是 `172.31.23.56`，不改會連錯地方。
+
+客戶端原本會連的網域：`mr.wasabii.com.tw`、`patchmr.wasabii.com.tw`、`loginmr.wasabii.com.tw`。Wasabii 就是台灣代理商紅心辣椒——這也解釋了為什麼登入 opcode 叫 `CQ_LOGIN_WASABII`。
+
+### ⚠️ 保護機制決定了哪些逆向手段可行
+
+客戶端有四層保護，這直接限制了「能不能動態觀察客戶端」：
+
+| 層 | 內容 | 對我們的意義 |
+|---|---|---|
+| y0da Protector v1.03 | 監控 `MetalRage.exe` 整個 `.text` 的 CRC | **改 `.text` 任何一個 byte → 約 5 秒後崩潰** |
+| Themida ×2 | 保護 `ZNetwork.dll`（2009 層 import 虛擬化 + 2010 層完整性檢查） | 我們的 opcode 名稱來源就是這個 DLL，靜態分析困難 |
+| xsign | 攔截遊戲行程內的檔案建立 | 想讓客戶端自己吐 log 不可行 |
+| Anti-Attach | 阻擋執行期附加除錯器 | **不能直接 attach debugger** |
+
+**可行的切入點**（文件明列為 safe）：vtable／data patch、DLL hook（掛在companion DLL，不要碰 `MetalRage.exe`）、`VirtualAllocEx` 的 shellcode cave。
+
+> y0da 的監控執行緒**不要砍**——文件明講停掉它們反而會崩潰。
+
+這些合起來解釋了為什麼這個專案只能從伺服器端觀察封包：客戶端那側幾乎所有常規手段都被擋住了。**伺服器 log 就是我們唯一的窗口**，這也是為什麼封包紀錄值得做得這麼講究。
 
 ---
 
