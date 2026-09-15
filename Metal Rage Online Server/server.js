@@ -20,8 +20,16 @@ class DispatchServer
 
     start()
     {
-        this.server.listen(this.port, () => {
-            console.log(`[${this.name}] Listening on port: ${this.port}`);
+        // Bind IPv4 explicitly. listen(port) with no host binds '::' (IPv6
+        // dual-stack), and WSL2 in its default NAT networking mode only relays
+        // IPv4 binds to the Windows host — so a server left on '::' is
+        // unreachable from a Windows game client at 127.0.0.1, while the same
+        // server answers fine from inside WSL. That failure looks exactly like
+        // the client being misconfigured, which is an expensive thing to debug.
+        // The client is a 2009 title and IPv4-only, so nothing is lost here.
+        this.server.listen(this.port, '0.0.0.0', () => {
+            const addr = this.server.address();
+            console.log(`[${this.name}] Listening on ${addr.address}:${addr.port} (${addr.family})`);
         });
     }
 

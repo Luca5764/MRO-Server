@@ -30,6 +30,30 @@ npm run http     # 啟動 launcher/patch 用的 HTTP 服務
 ```
 
 相依套件：`express`、`mysql2`。
+
+### ⚠️ 在 WSL2 跑伺服器、客戶端在 Windows：一定要綁 IPv4
+
+`server.js` 現在明確 `listen(port, '0.0.0.0')`。**不要改回 `listen(port)`。**
+
+Node 的 `listen(port)` 不指定 host 時綁的是 `::`（IPv6 dual-stack），而 WSL2 在預設 NAT 模式下**只會把 IPv4 的監聽轉發給 Windows**。綁在 `::` 的伺服器從 WSL 內部連得到、從 Windows 的 `127.0.0.1` 連不到——症狀看起來完全像客戶端設定錯誤，非常難查。
+
+`[TEST]` 實測（WSL2 NAT 模式 + Windows 11 build 26200）：
+
+| WSL 內監聽位址 | Windows 連 `127.0.0.1` |
+|---|---|
+| `::`（`listen(port)` 預設） | ❌ 連不到 |
+| `0.0.0.0`（明確指定） | ✅ 連得到 |
+| WSL IP 直連（如 `192.168.217.8`） | ✅ 連得到，但 IP 每次重啟會變 |
+
+客戶端是 2009 年的遊戲，只用 IPv4，綁 `0.0.0.0` 沒有任何損失。
+
+（另一個解法是在 Windows 的 `%USERPROFILE%\.wslconfig` 加 `networkingMode=mirrored`，但那會影響整台機器的 WSL 網路行為，不如直接綁 IPv4。）
+
+### Cache.Bin
+
+`room.dispatch.js` 開機時會找客戶端的 `MetalRage/Data/System/Cache.Bin` 來建立道具索引，搜尋順序是：從 cwd 逐層往上找 → `<repo 的上一層>/MetalRage/Data/System/Cache.Bin` → `~/Desktop/MetalRage/Data/System/Cache.Bin`。
+
+找不到只會印一行警告然後繼續跑，不會中斷——但商店的道具索引會是空的。
 MySQL 連線設定在 `database/config.json`（預設 `127.0.0.1:3306`，database 名稱 `mro`）。
 資料表由 `metalrageserver.sql` / `database/schema.sql` 建立。
 
