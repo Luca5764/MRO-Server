@@ -230,6 +230,14 @@ Marker 有三個來源，紀錄裡會標明是哪一種。
 
 **Marker 框的是區間，不是瞬間。** 動作前後各打一個，中間全部就是候選。更有效的做法是**一次 session 只做一件事**——紀錄檔很便宜，髒了就丟掉重錄。
 
+### 客戶端自己的 log
+
+`C:\Games\MetalRage Online\data\Log\MetalRage.log`（WSL 路徑 `MetalRage/data/Log/MetalRage.log`）。
+
+**不要忽略這個檔案。** 它是單位元組編碼（不是 UTF-16），客戶端持續寫入，內容包含 `ScriptLog` 與引擎的 `Browse`／`LoadMap` 記錄——也就是**客戶端如何理解目前狀態**，這是封包看不出來的。開戰流程卡關的關鍵發現就是從這裡讀到的（客戶端組出的 travel URL 全是預設值）。
+
+崩潰時它也會寫下完整的 `Critical:` 呼叫堆疊。
+
 ### 查紀錄
 
 ```bash
