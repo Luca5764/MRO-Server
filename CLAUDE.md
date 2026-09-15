@@ -54,10 +54,28 @@ Node 的 `listen(port)` 不指定 host 時綁的是 `::`（IPv6 dual-stack），
 `room.dispatch.js` 開機時會找客戶端的 `MetalRage/Data/System/Cache.Bin` 來建立道具索引，搜尋順序是：從 cwd 逐層往上找 → `<repo 的上一層>/MetalRage/Data/System/Cache.Bin` → `~/Desktop/MetalRage/Data/System/Cache.Bin`。
 
 找不到只會印一行警告然後繼續跑，不會中斷——但商店的道具索引會是空的。
-MySQL 連線設定在 `database/config.json`（預設 `127.0.0.1:3306`，database 名稱 `mro`）。
-資料表由 `metalrageserver.sql` / `database/schema.sql` 建立。
+MySQL 連線設定在 `database/config.json`（預設 `root@127.0.0.1:3306`、無密碼、database 名稱 `mro`）。
 
-**目前沒有自動註冊機制，帳號必須手動寫進 `accounts` 資料表。**
+### ⚠️ 用 `metalrageserver.sql`，不要用 `database/schema.sql`
+
+兩個檔案**不等價**。`schema.sql` 只建 8 張表，`metalrageserver.sql` 另外建了 `catalog` 與 `item_catalog`——而 `db.js` 的 `getItemCatalog()` 正是 `FROM catalog c LEFT JOIN item_catalog ic`。只灌 `schema.sql` 的話商店會炸在 `ER_NO_SUCH_TABLE`。
+
+```bash
+sudo mysql -e "CREATE DATABASE mro CHARACTER SET utf8mb4;"
+sudo mysql mro < metalrageserver.sql
+```
+
+### 建帳號
+
+協定裡沒有註冊流程，客戶端送一個 username，伺服器找得到就讓他進。帳號得手動建，而手動建要按順序寫進七張表，所以用工具：
+
+```bash
+node tools/create-account.js <username> <nickname> [pilot]   # pilot 101 或 102
+```
+
+它包的是 `db.createAccount()`，會在同一個 transaction 裡建好 record、8 個機體等級、8 張授權、6 張地圖、4 個教學與初始裝備，帳號權限固定 4（Dev）。連不到 DB / 沒有 database / 沒有表，三種情況各有對應的提示。
+
+> **`accounts` 表沒有密碼欄位。** 登入只需要一個存在的 username。這是目前伺服器的設計而非疏漏，但意味著**不要把這個伺服器暴露在你無法控制的網路上**。
 
 ---
 
@@ -79,6 +97,7 @@ client.js        連線狀態、封包組frame、握手／keepalive
 message.js       pack / unpack / peekLength（混淆與 CRC）
 packetlog.js     結構化封包紀錄（JSONL）
 tools/slice.js   紀錄檔的查詢／切片工具
+tools/create-account.js  建立可登入的帳號
 logs/            紀錄輸出（已 gitignore）
 dispatch/        各命名空間的 handler
 dispatch/room/   房間相關的 SN 送出邏輯（被 room.dispatch.js 呼叫）
