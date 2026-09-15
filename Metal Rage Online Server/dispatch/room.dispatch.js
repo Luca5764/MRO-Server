@@ -118,7 +118,32 @@ const CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID = {
     25: 77, // Map_PC04
 };
 // Campaign map cache indices for SN_MAP_CHANGE_ALL (campaign-only, no PvP PC-maps)
-const CAMPAIGN_MAP_ALL_HINTS = [8, 37, 30, 34, 43, 6, 2, 26, 36, 43, 16, 24, 45, 47, 49, 14, 10, 22, 52, 30, 18];
+// The client looks a map up in Cache.Bin table 1 by MAP ID, not by any index
+// we invent. ZNetwork.dll's Game_Info_URL_Get walks the table comparing
+// entry[0] against the id it was given, and on a miss logs "Failed - MapIndex
+// : %d" and leaves the travel URL empty — at which point ZPage_Room falls back
+// to the level already loaded (Store_01), its GameInfo (HangarGameInfo) and
+// team 255, and the engine crashes reloading the hangar on top of itself.
+//
+// The old list below was invented cache indexes, so every lookup missed:
+//   [8, 37, 30, 34, 43, 6, 2, 26, 36, 43, 16, 24, 45, 47, 49, 14, 10, 22, 52, 30, 18]
+//
+// These are real ids, read out of Cache.Bin and checked: for each one the map
+// name appears within 220 bytes of the id's own bytes (14/14 verified,
+// including 9001/9002/9003 sitting on the three Map_PC01 records, which are
+// the 易/中/難 the campaign screen offers).
+const MAP_IDS_PVE = [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012];
+const MAP_IDS_PVP = [1011, 1021, 1031, 1041, 1051, 1061, 1071, 1081];
+const MAP_ID_DEFAULT_PVE = 9001;   // Map_PC01, 動力奪取戰(易), ZModePve.ZModePve
+const MAP_ID_DEFAULT_PVP = 1011;   // Map_C08, 十字路口, Zgame.ZTeamDM
+
+// 'real' sends the ids above; 'legacy' restores the invented indexes.
+const MAP_ID_MODE = 'real'; // 'real' | 'legacy'
+
+const LEGACY_CAMPAIGN_MAP_ALL_HINTS = [8, 37, 30, 34, 43, 6, 2, 26, 36, 43, 16, 24, 45, 47, 49, 14, 10, 22, 52, 30, 18];
+const CAMPAIGN_MAP_ALL_HINTS = MAP_ID_MODE === 'real'
+    ? MAP_IDS_PVE
+    : LEGACY_CAMPAIGN_MAP_ALL_HINTS;
 const ROOM_DEFAULT_ENTRY_HINTS = [8, 37, 30, 34, 6, 2]; // mech slot entries for SN_ROOM_DEFAULT
 const CAMPAIGN_GAME_USER_BOOTSTRAP_MODE = 'enabled'; // 'disabled' | 'enabled'
 const CACHE_INDEX_BY_ITEM_ID = loadCacheIndexByItemId();
@@ -1162,9 +1187,12 @@ class ZRoomDispatch
         const maxPlayers = Math.max(client.maxPlayers_ || 1, 1);
         const currentUsers = 1;
         const gameMode = client.gameMode_ || 0;
-        const mapIndex = client.campaignRoom_
-            ? 1
-            : Math.min(Math.max(Number(mapId) || 1, 1), 6);
+        // Was: campaign rooms sent 1, everything else a value clamped to 1..6.
+        // Neither is a real map id — the valid ones are 0, 101, 102, 1011,
+        // 1021, ... 9012 — so the client's lookup never matched.
+        const mapIndex = MAP_ID_MODE === 'real'
+            ? (client.campaignRoom_ ? MAP_ID_DEFAULT_PVE : MAP_ID_DEFAULT_PVP)
+            : (client.campaignRoom_ ? 1 : Math.min(Math.max(Number(mapId) || 1, 1), 6));
         const roomName = (client.roomName_ || client.nickname_ || 'Room').slice(0, 25);
         const nickname = (client.nickname_ || 'Player').slice(0, 25);
         const pilotId = client.pilot_ || 101;

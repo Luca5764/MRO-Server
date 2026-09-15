@@ -510,7 +510,9 @@ class ZGateGameDispatch
                 client.campaignRoom_ = isCampaignLike;
                 client.isTrueCampaign_ = isTrueCampaign;  // 실제 캠페인 여부 (PvP=false) (whether it is an actual campaign room, PvP=false)
                 client.createdMapId_ = mapId;
-                client.campaignMapCacheKey_ = CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[mapId] || 8;
+                // Real Cache.Bin map id, not an invented cache index — this
+                // value is what Game_Info_URL_Get matches entry[0] against.
+                client.campaignMapCacheKey_ = 9001; // Map_PC01, ZModePve.ZModePve
                 client.readyHostHandshakeSent_ = false;
                 client.gameUserBootstrapSent_ = false;
                 client.waitingGameInfoExperimentSent_ = false;
