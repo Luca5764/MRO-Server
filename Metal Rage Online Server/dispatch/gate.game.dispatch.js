@@ -201,12 +201,21 @@ function sendGameInfoSn(client, tag)
     body.writeUInt32LE(battleIndex, 0x00);      // packet+0x10 Battle
     body.writeUInt16LE(redTeamIndex, 0x04);     // packet+0x14 RedTeamIndex
     body.writeUInt16LE(blueTeamIndex, 0x06);    // packet+0x16 BlueTeamIndex
-    body.writeUInt16LE(mapId, 0x0A);            // packet+0x1A candidate map/battle field
-    body.writeUInt16LE(0, 0x0C);                // packet+0x1C candidate mode/round field
-    body.writeUInt8(clanFlag, 0x0E);            // packet+0x1E Clan
-    body.writeUInt16LE(2, 0x0F);                // packet+0x1F confirmed == 2 check
-    body.writeUInt16LE(userIndex, 0x11);        // packet+0x21 user/account hint
-    body.writeUInt16LE(quarterIndex, 0x13);     // packet+0x23 candidate quarter/round index
+    // Offsets below are read straight out of ZDispatchWaiting::Game_Info_SN
+    // (0x107f0949). The one that matters is 0x11: that word becomes argument 6
+    // of Game_Info_Set, which is the only writer of [this+0xfc8] — the field
+    // Game_Info_URL_Get searches Cache.Bin with to build the travel URL.
+    //
+    // We were writing userIndex there and the map id at 0x0A. So the client
+    // looked up map id 1, found nothing, logged "Failed - MapIndex : 1", and
+    // fell back to the level it was standing in with the hangar's GameInfo and
+    // team 255 — which is the crash, every time, from the first one.
+    body.writeUInt16LE(0, 0x0A);                // body+0x0A, purpose unknown
+    body.writeUInt16LE(0, 0x0C);                // body+0x0C, purpose unknown
+    body.writeUInt8(clanFlag, 0x0E);            // body+0x0E, byte
+    body.writeUInt16LE(2, 0x0F);                // body+0x0F, compared against 2
+    body.writeUInt16LE(mapId, 0x11);            // body+0x11 -> [this+0xfc8], MAP ID
+    body.writeUInt16LE(quarterIndex, 0x13);     // body+0x13, purpose unknown
     body.writeUInt8(0, 0x15);                   // packet+0x25 candidate flag
     body.writeUInt16LE(0, 0x16);                // packet+0x26 candidate field
     body.writeUInt16LE(0, 0x18);                // packet+0x28 candidate field
