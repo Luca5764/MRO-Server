@@ -11,7 +11,7 @@
 //   node tools/slice.js <file> -m 2 -s           just the opcode counts for it
 //   node tools/slice.js <file> --from 1000 --to 5000     window by ms
 //   node tools/slice.js <file> --op 0x00250102   only that opcode
-//   node tools/slice.js <file> --unhandled       only unclaimed messages
+//   node tools/slice.js <file> --unhandled       only messages nothing handled
 //   node tools/slice.js <file> --dump            hex as an offset dump
 //
 // Filters combine. Every filter narrows; none of them alter the recording.
@@ -45,8 +45,9 @@ function listSessions()
         const pkts = rows.filter(r => r.ev === 'pkt').length;
         const marks = rows.filter(r => r.ev === 'marker').length;
         const unh = rows.filter(r => r.ev === 'unhandled').length;
+        const fbk = rows.filter(r => r.ev === 'fallback').length;
         console.log(`  ${f}`);
-        console.log(`      ${(stat.size / 1024).toFixed(1)} KB · ${pkts} packets · ${marks} markers · ${unh} unhandled`);
+        console.log(`      ${(stat.size / 1024).toFixed(1)} KB · ${pkts} packets · ${marks} markers · ${unh} unhandled · ${fbk} fallback`);
     }
     console.log(`\nInspect one with:  node tools/slice.js ${files[files.length - 1]}`);
 }
@@ -141,8 +142,9 @@ if (noFilter && !opt.summary)
     const pkts = rows.filter(r => r.ev === 'pkt');
     const unh = rows.filter(r => r.ev === 'unhandled');
     console.log(`${path.basename(file)}`);
+    const fbk = rows.filter(r => r.ev === 'fallback');
     console.log(`${pkts.length} packets · ${markers.length} markers · ${unh.length} unhandled · `
-              + `${rows.filter(r => r.ev === 'connect').length} connections\n`);
+              + `${fbk.length} fallback · ${rows.filter(r => r.ev === 'connect').length} connections\n`);
 
     if (markers.length === 0)
     {
@@ -176,6 +178,15 @@ if (noFilter && !opt.summary)
         [...u.entries()].sort((a, b) => b[1] - a[1])
             .forEach(([k, v]) => console.log(`  ${String(v).padStart(5)}  ${k}`));
     }
+
+    if (fbk.length > 0)
+    {
+        const u = new Map();
+        for (const r of fbk) u.set(r.op, (u.get(r.op) || 0) + 1);
+        console.log('\nFallback (claimed, but nothing understood them — these are the ones to chase):');
+        [...u.entries()].sort((a, b) => b[1] - a[1])
+            .forEach(([k, v]) => console.log(`  ${String(v).padStart(5)}  ${k}`));
+    }
     process.exit(0);
 }
 
@@ -196,7 +207,7 @@ if (opt.from !== null) { lo = Math.max(lo === -Infinity ? opt.from : lo, opt.fro
 if (opt.to !== null) { hi = Math.min(hi === Infinity ? opt.to : hi, opt.to); title += ` to ${opt.to}ms`; }
 
 let sel = rows.filter(r => r.ms >= lo && r.ms < hi);
-if (opt.unhandled) sel = sel.filter(r => r.ev === 'unhandled');
+if (opt.unhandled) sel = sel.filter(r => r.ev === 'unhandled' || r.ev === 'fallback');
 if (opt.op) sel = sel.filter(r => r.ev !== 'pkt' || r.op.toLowerCase() === opt.op);
 
 console.log(`${path.basename(file)} — ${title}\n`);
@@ -234,6 +245,12 @@ for (const r of sel)
 
         case 'unhandled':
             console.log(`${ms(r.ms)}  !! UNHANDLED ${r.op} (${r.len}b) on ${r.server}`);
+            if (r.len > 0) console.log(opt.dump ? hexDump(r.hex) : `        ${r.hex}`);
+            break;
+
+        case 'fallback':
+            console.log(`${ms(r.ms)}  ?? FALLBACK  ${r.op} (${r.len}b) — ${r.server} replied `
+                      + `${r.replied ? r.replied + ' (empty EVENT_INFO)' : 'nothing'}, meaning unknown`);
             if (r.len > 0) console.log(opt.dump ? hexDump(r.hex) : `        ${r.hex}`);
             break;
 
