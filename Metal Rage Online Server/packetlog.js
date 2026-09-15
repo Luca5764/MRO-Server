@@ -24,12 +24,21 @@ const LOG_DIR = path.join(__dirname, 'logs');
 // Chat send, observed 2026-09-15: body is 0x102 bytes, two leading bytes then
 // a Big5/cp950 string, NUL-padded. Not UTF-16LE — room names are, chat is not.
 //
+// Each chat channel has its own opcode with the same body layout. Only the two
+// below are confirmed, both by decoding them and reading back exactly what the
+// operator had just typed. Others almost certainly exist — whisper, clan, team
+// — and they are deliberately not guessed at here: an unlisted channel simply
+// produces no marker, which is how 0x00220505 was found in the first place.
+//
 // Chat doubles as the marker channel. Typing a note into the server console
 // means alt-tabbing out of a fullscreen game at the exact moment something
 // interesting is happening, which is the moment you least want to. Typing it
 // into the game's own chat box costs nothing and lands in the same timeline,
 // two bytes away from the packets it describes.
-const CHAT_CQ = 0x00220501;
+const CHAT_CQ = new Map([
+    [0x00220501, 'lobby'],
+    [0x00220505, 'room'],
+]);
 const CHAT_TEXT_OFFSET = 0x2;
 
 // Sends that mark the boundaries of a combat session. The operator cannot type
@@ -173,13 +182,14 @@ function packet(dir, client, type, body, fields)
 {
     // A chat line is also a marker, so it appears in both roles: as the packet
     // it is, and as an annotation on the packets around it.
-    if (dir === 'recv' && type === CHAT_CQ)
+    if (dir === 'recv' && CHAT_CQ.has(type))
     {
         const text = decodeChat(body);
         if (text !== null)
         {
-            write({ ev: 'marker', text, src: 'chat', conn: client.connId_ });
-            console.log(`[packetlog] --- MARKER (chat): ${text} ---`);
+            const channel = CHAT_CQ.get(type);
+            write({ ev: 'marker', text, src: 'chat', channel, conn: client.connId_ });
+            console.log(`[packetlog] --- MARKER (chat/${channel}): ${text} ---`);
         }
     }
 
