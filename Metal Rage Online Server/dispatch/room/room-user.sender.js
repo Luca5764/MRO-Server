@@ -72,15 +72,23 @@ function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
         console.log(`[ZRoomDispatch] >> Sent SN_USER_STATE 0x220401 (count=1, userIndex=${accountIndex}, state=${userStateRaw})`);
     }
 
-    if (!client.roomMasterSent_) {
+    // Always, not once per connection.
+    //
+    // The room state block is re-sent several times by the retry timer, and
+    // every one of those re-sends carries User_Default_SN, which rebuilds the
+    // client's room user array. Room_Master_Set is only called by this packet,
+    // so a block without it leaves the rebuilt array with no master.
+    //
+    // Observed exactly that: "I saw 'start game' the instant I entered, and a
+    // prompt saying I was the room master, and then it immediately turned into
+    // 'ready'." The first block made them master; the next three took it away.
+    {
         const [msg, respBody] = getExactMessageBuffer(SN_USER_MASTER, 0x06);
         respBody.writeUint16LE(accountIndex, 0x00);
         respBody.writeUint32LE(userStateRaw, 0x02);
         client.send(msg);
         client.roomMasterSent_ = true;
         console.log(`[ZRoomDispatch] >> Sent SN_USER_MASTER 0x220319 (userIndex=${accountIndex}, state=${userStateRaw})`);
-    } else {
-        console.log(`[ZRoomDispatch] >> Skipped SN_USER_MASTER 0x220319 (already sent)`);
     }
 }
 
