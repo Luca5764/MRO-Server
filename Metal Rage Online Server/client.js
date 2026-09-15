@@ -162,6 +162,31 @@ class NetworkClient
 
                 break;
             }
+
+            // Anything reaching here was routed by the `type & 0x80` test in
+            // onData(), which looks at the low byte of the whole 32-bit opcode.
+            // Genuine system messages are 0x00020080..0x00020084, but ANY
+            // dispatch opcode whose low byte has bit 7 set is caught by the same
+            // test and lands here instead of in the dispatch chain. Without this
+            // branch such a packet is dropped with no log at all, which during
+            // reverse engineering reads as "the client never sent anything" —
+            // the single most misleading thing this server could do.
+            default:
+            {
+                console.log(`[NetworkClient] Unhandled internal message 0x${type.toString(16).padStart(8, '0')} (${data.length} bytes)`);
+
+                if ((type & 0xFFFFFF00) !== 0x00020000)
+                {
+                    console.log(`[NetworkClient]   ^^ NOT in the 0x000200XX system range.`);
+                    console.log(`[NetworkClient]   ^^ Low byte is 0x${(type & 0xFF).toString(16).padStart(2, '0')} (bit 7 set), so the (type & 0x80) test`);
+                    console.log(`[NetworkClient]   ^^ misrouted a dispatch opcode here. Record it in docs/opcode-ledger.md.`);
+                }
+
+                if (data.length > 0)
+                    console.log(`[NetworkClient] Body hex:`, data.toString('hex'));
+
+                break;
+            }
         }
     }
 
