@@ -127,79 +127,189 @@ Disassembly of `UZNetwork_DJ::Game_Info_URL_Get` (VA `0x10733cf0`):
 - When the lookup fails, `Game_Info_URL_Get` leaves the URL empty. The GUI script (`ZPage_Room.uc`) then activates its safety fallback: it queries the currently loaded Level (`Store_01`), its GameInfo (`ZModeHangar.HangarGameInfo`), and neutral team (`255`).
 - Loading `Store_01` while already inside `Store_01` triggers `Actor not found: HangarPlayerController` and crashes the Unreal engine.
 
-### 3.3 Successful Lookup Behavior
-When `[esi + 0xfc8]` matches a valid Map ID:
-- `eax + 0x20` (`FMapEntry.str_mapname`) is loaded into `%s` (e.g. `Map_C08`, `Map_PC01`).
-- `eax + 0x54` (`FMapEntry.str_gameinfo`) is loaded into `Game=%s` (e.g. `Zgame.ZTeamDM`, `ZModePve.ZModePve`).
+---
 
-### 3.4 Root Cause of `team=255`
+## 4. Reverse Engineering `User_Default_SN` (0x00220233) and `Room_User_Add`
 
-In `UZNetwork_DJ::Game_Info_URL_Get`:
+### 4.1 Handler Function and Entry Point
+
+- **Export Name:** `?User_Default_SN@ZDispatchRoom@@QAEXPAUFormat@System@Share@@PAD@Z`
+- **Export Thunk:** `0x1070979B` -> Target Function: `0x107EE2D0`
+- **Target Function invoked:** `?Room_User_Add@UZNetwork_DJ@@QAEXHHHHHPBGHHH0@Z` (VA `0x107339E0`)
+
+### 4.2 Packet Body Structure of SN_USER_DEFAULT (0x220233)
+
+Disassembly of `0x107EE360` to `0x107EE4F6`:
+- `body[0x00]`: `uint8` (1 byte, Status, must be 0)
+- `body[0x01]`: `uint8` (1 byte, `userCount`, loop limit)
+
+Followed by `userCount` records of **52 bytes (0x34)** each:
+
 ```x86
-0x10733e05: mov  edi, [esi + 0x44c]      ; Local player user/slot index
-0x10733e11: push edi
-0x10733e12: mov  ecx, esi                ; this = UZNetwork_DJ
-0x10733e14: call 0x107024d7              ; Game_User_Team_Get(slot)
+0x107EE3B8: push 0x34                    ; Record size = 52 bytes
+0x107EE3BA: lea  eax, [esp + 0x5c]       ; Stack destination buffer
+0x107EE3BE: push esi                     ; Current entry pointer in body
+0x107EE3BF: push eax
+0x107EE3C0: call memcpy                  ; Copy 52 bytes
+0x107EE3C8: add  esi, 0x34               ; Advance pointer to next user entry
 ```
 
-Disassembly of `?Game_User_Team_Get@UZNetwork_DJ@@QAEHH@Z` (VA `0x1072d3a0`):
+#### Detailed Field Map of the 52-byte (0x34) User Entry:
+
+| Entry Offset | Body Offset (1st user) | Type | Size | Read Instruction | Description & Conversion | Parameter in `Room_User_Add` |
+| :---: | :---: | :---: | :---: | :--- | :--- | :--- |
+| `0x00` | `0x02` | `uint16 LE` | 2 bytes | `movzx ecx, word ptr [esp+0x58]` | **UserIndex** (Account / Slot Index) | **Arg 1** (`[user + 0x00]`) |
+| `0x02` | `0x04` | `uint32 LE` | 4 bytes | `mov ebx, dword ptr [esp+0x5a]` | **PilotID** (Character Pilot ID, e.g. 101) | **Arg 8** (`[user + 0x38]`) |
+| `0x06` | `0x08` | `ASCII string` | 2 bytes | `lea edx, [esp+0x5e]; call atoi` | **UserLevelText** (ASCII numeric e.g. `"1\0"`), parsed by `atoi()` | **Arg 2** (`[user + 0x10]`) |
+| `0x08` | `0x0A` | `uint32 LE` | 4 bytes | `mov eax, dword ptr [esp+0x64]` | **UserHidden / Score** (Score or rating) | **Arg 3** (`[user + 0x14]`) |
+| `0x0C` | `0x0E` | `uint8` | 1 byte | `movzx eax, byte ptr [esp+0x68]` | **UserLevelType** (Mapped: 2..8 -> 2..8, else 1) | **Arg 4** (`[user + 0x18]`) |
+| `0x0D` | `0x0F` | `uint32 LE` | 4 bytes | `mov ecx, dword ptr [esp+0x65]` | **UserStateRaw** (User status flags) | **Arg 5** (`[user + 0x1C]`) |
+| `0x11` | `0x13` | `uint16 LE` | 2 bytes | `movzx ebp, word ptr [esp+0x69]` | **TeamIndex** (**0 = Red, 1 = Blue**) | **Arg 7 (`[user + 0x34]`)** |
+| `0x13` | `0x15` | `uint32 LE` | 4 bytes | `mov eax, dword ptr [esp+0x6b]` | **UserRank / SubState** (Mapped: 2..8 -> 1..5, else 0) | **Arg 9** (`[user + 0x3C]`) |
+| `0x17` | `0x19` | `uint32 LE` | 4 bytes | `mov eax, dword ptr [esp+0x6f]` | **ClanID / PackedIP** (Passed to clan badge lookup `0x107ea2d0`) | Resolves **Arg 10** Clan string |
+| `0x1B` | `0x1D` | `ASCII string` | 25 bytes| `lea edx, [esp+0x73]; call winToUNICODE` | **Nickname** (ASCII null-terminated, max 25 chars) | **Arg 6** (`[user + 0x04]`, `wchar_t*`) |
+
+> [!IMPORTANT]
+> **Nickname Encoding Confirmation:**  
+> The nickname field in `SN_USER_DEFAULT` is **ASCII / MBCS**, NOT UTF-16LE.  
+> At `0x107EE48F`, the client calls `Core.dll!?winToUNICODE@@YAPAGPAGPBDH@Z`, which takes the ASCII string from `entry + 0x1B` (`body + 0x1D`) and converts it into a UTF-16 (`wchar_t*`) string on the stack before passing it as Arg 6 to `Room_User_Add`.
+
+### 4.3 10 Parameters of `Room_User_Add` (VA `0x107339E0`)
+
+Signature: `void Room_User_Add(int userIndex, int level, int hiddenScore, int levelType, int stateRaw, const wchar_t* nickname, int teamIndex, int pilotId, int rank, const wchar_t* clanName)`
+
+Assembly destination inside user record (stride = `0x50` / `0x80`):
+- `[user + 0x00] = userIndex` (Arg 1)
+- `[user + 0x04] = FString(nickname)` (Arg 6)
+- `[user + 0x10] = level` (Arg 2)
+- `[user + 0x14] = hiddenScore` (Arg 3)
+- `[user + 0x18] = levelType` (Arg 4)
+- `[user + 0x1C] = stateRaw` (Arg 5)
+- `[user + 0x34] = teamIndex` (**Arg 7** — Used by `Game_User_Team_Get`)
+- `[user + 0x38] = pilotId` (Arg 8)
+- `[user + 0x3C] = rank` (Arg 9)
+- `[user + 0x40] = FString(clanName)` (Arg 10)
+
+---
+
+## 5. How "Room Master" and "Team Assignment" are Decided
+
+### 5.1 Room Master (房主) Determination
+
+In `UZNetwork_DJ`, whether the player is the Room Master is evaluated by `Room_Master_Check` (VA `0x10718D10`):
 ```x86
-0x1072d3a1: mov  esi, [ecx + 0x1038]     ; Room user count
-0x1072d3ab: mov  eax, 0xff               ; Default return value = 0xFF (255)
-0x1072d3b0: jle  return_255              ; If count <= 0, return 255
-0x1072d3b3: mov  ebx, [ecx + 0x1034]     ; User array pointer (stride = 0x80)
-0x1072d3c1: cmp  [edi], ebp              ; Find user by account/slot ID
-0x1072d3c3: je   found_user
+0x10718D10: mov edx, [ecx + 0x44c]  ; edx = Local User Index (Account ID / Slot)
+0x10718D17: mov esi, [ecx + 0xf74]  ; esi = Room Master Index
+0x10718D1F: cmp edx, esi
+0x10718D24: sete al                 ; Returns true (1) if Local User == Master Index
+0x10718D26: ret
+```
+
+**Where `[ecx + 0xf74]` is set:**
+- There is only one place in `ZNetwork.dll` that writes to `[ecx + 0xf74]`: `UZNetwork_DJ::Room_Master_Set` (VA `0x10718E70`).
+- `Room_Master_Set` is called by **`User_Master_SN` (opcode `0x00220319`)** at VA `0x107EADD7`:
+  - `User_Master_SN` body layout:
+    - Offset `0x00`: `uint16 LE` `userIndex` (The master's user index)
+    - Offset `0x02`: `uint32 LE` `state`
+- Therefore, to designate the local player as the room master, the server must send `SN_USER_MASTER` (`0x00220319`) with `userIndex = accountIndex`.
+
+### 5.2 Team Assignment & Why `team=255` Occurred
+
+In `UZNetwork_DJ::Game_User_Team_Get` (VA `0x1072d3a0`):
+```x86
+0x1072d3ab: mov eax, 0xff                      ; Default return = 255 (Unassigned)
+0x1072d3c1: cmp [edi], ebp                     ; Find local user by UserIndex
+0x1072d3c3: je  found_user
 ; --- User Found ---
-0x1072d3d7: mov  eax, [ecx + 0xff0]      ; Red Team ID reference
-0x1072d3e0: mov  edx, [user + 0x34]      ; User assigned team/clan
-0x1072d3e4: cmp  eax, edx
-0x1072d3e6: jne  check_blue
-0x1072d3eb: xor  eax, eax                ; Team 0 (RED)
-0x1072d3ee: ret  4
-check_blue:
-0x1072d3f1: mov  edi, [ecx + 0xff4]      ; Blue Team ID reference
-0x1072d3f9: cmp  edi, edx
-0x1072d3fb: setne al
-0x1072d407: add  eax, 0xff               ; Returns 1 (BLUE) if matched, else 255
-0x1072d40d: ret  4
+0x1072d3d7: mov eax, dword ptr [ecx + 0xff0]   ; eax = Red Team reference index
+0x1072d3e0: mov edx, dword ptr [user + 0x34]   ; edx = User's TeamIndex (from SN_USER_DEFAULT Arg 7)
+0x1072d3e4: cmp eax, edx
+0x1072d3eb: je  return_0                       ; MATCH! Return 0 (RED TEAM)
+0x1072d3f1: mov edi, dword ptr [ecx + 0xff4]   ; edi = Blue Team reference index
+0x1072d3f9: cmp edi, edx
+0x1072d3fb: je  return_1                       ; MATCH! Return 1 (BLUE TEAM)
+; If neither matches, returns 255!
 ```
-- If the local user is not found in the room user array or their team is unassigned, `Game_User_Team_Get` returns `255`.
-- Once `SN_USER_DEFAULT` (`0x220233`) correctly associates the local user with the matching team reference, `Game_User_Team_Get` returns `0` (Red Team).
+
+**Where `[ecx + 0xff0]` and `[ecx + 0xff4]` are initialized:**
+- They are populated when the client receives **`Game_Info_SN` (opcode `0x00222111`)**:
+  - In `ZDispatchWaiting::Game_Info_SN` (VA `0x107F0949`):
+    - `[packet + 0x14]` (body `0x04`, `uint16 LE`): `RedTeamIndex` -> stored in `[ecx + 0xffc]` -> copied to `[ecx + 0xff0]`
+    - `[packet + 0x16]` (body `0x06`, `uint16 LE`): `BlueTeamIndex` -> stored in `[ecx + 0x1000]` -> copied to `[ecx + 0xff4]`
+- If `Game_Info_SN` is not received before game start, or if `SN_USER_DEFAULT`'s `teamIndex` does not match `RedTeamIndex`, `Game_User_Team_Get` returns `255`!
 
 ---
 
-## 4. Parameter Origin Table (Final)
+## 6. Discrepancy Analysis with `room-user.sender.js`
 
-| URL Parameter | DLL Assembly Source | Actual Value Provenance |
-| :--- | :--- | :--- |
-| `start %s` | `FMapEntry + 0x20` | Looked up in `Cache.Bin` by Map ID (`[esi + 0xfc8]`) |
-| `?Listen` | Literal substring | Hardcoded in host format string at VA `0x10814A50` |
-| `?LPort=%d` | `[esi + 0x388]` | Port from network configuration (30907) |
-| `?Name=%d` | `[esi + 0x44c]` | Local user Account / Slot Index |
-| `?Game=%s` | `FMapEntry + 0x54` | Looked up in `Cache.Bin` by Map ID (`[esi + 0xfc8]`) |
-| `?MaxPlayers=%d`| `[esi + 0xfd4]` | Max players from `SN_ROOM_DEFAULT` offset `0x07` |
-| `?GoalScore=%d` | `[esi + 0xfd8]` | Target score from `SN_ROOM_DEFAULT` offset `0x1C` |
-| `?TimeLimit=%d` | `[esi + 0xfdc]` | Time limit from `SN_ROOM_DEFAULT` offset `0x1D` |
-| `?BalanceTeams=0`| Literal substring | Hardcoded in host format string at VA `0x10814A50` |
-| `?numbots=0` | Literal substring | Hardcoded in host format string at VA `0x10814A50` |
-| `?team=%d` | `Game_User_Team_Get`| Returns `0` (Red) or `1` (Blue); `255` if unassigned |
+Comparing `room-user.sender.js` with the binary disassembly of `0x107EE2D0`:
+
+### Current Code in `room-user.sender.js`:
+```javascript
+const [msg, respBody] = getExactMessageBuffer(SN_USER_DEFAULT, 0x36);
+respBody.writeUint8(0, 0x00);
+respBody.writeUint8(1, 0x01);
+respBody.writeUint16LE(accountIndex, 0x02);
+respBody.writeUint32LE(pilotId, 0x04);
+respBody.write(userLevelText + '\0', 0x08, 'ascii');
+respBody.writeUint32LE(userHiddenRaw >>> 0, 0x0E); // <-- BUG 1: WROTE AT 0x0E
+respBody.writeUint8(userLevelType, 0x12);          // <-- BUG 2: WROTE AT 0x12
+respBody.writeUint16LE(teamIndex, 0x13);           // <-- BUG 3: WROTE AT 0x13
+respBody.writeUint32LE(userStateRaw, 0x15);        // <-- BUG 4: WROTE AT 0x15
+respBody.writeUint32LE(packedIp, 0x19);            // <-- BUG 5: WROTE AT 0x19
+respBody.write(nickname + '\0', 0x1D, 'ascii');
+```
+
+### Exact Defects Identified:
+
+1. **Gap Bug at `0x0A` (`Entry + 0x08`)**:
+   - `userLevelText + '\0'` was written at `0x08` (2 bytes, occupying `0x08` and `0x09`).
+   - The next write jumped directly to `0x0E`!
+   - Bytes `0x0A`, `0x0B`, `0x0C`, `0x0D` were left unwritten (zeros).
+   - In `ZNetwork.dll`, offset `0x0A` (`Entry + 0x08`) is read as **Arg 3 (`uint32 LE`)**. It was reading 0!
+2. **Field Misalignment from `0x0E` to `0x13`**:
+   - `userHiddenRaw` was written at `0x0E` as a 4-byte `uint32 LE` (`0x0E..0x11`).
+   - In `ZNetwork.dll`, offset `0x0E` (`Entry + 0x0C`) is `userLevelType` (`uint8`, 1 byte)!
+   - And offset `0x0F` (`Entry + 0x0D`) is `userStateRaw` (`uint32 LE`, 4 bytes)!
+   - Writing `userHiddenRaw` at `0x0E` corrupted both `userLevelType` and `userStateRaw`.
+3. **`teamIndex` Offset Mismatch**:
+   - In `ZNetwork.dll`, `TeamIndex` is read at `Entry + 0x11` = **`body + 0x13` (`uint16 LE`)**.
+   - Because `userHiddenRaw` (4 bytes) was at `0x0E` and `userLevelType` was written at `0x12`, writing `teamIndex` at `0x13` actually placed it at the correct body offset `0x13`, but because the preceding fields were shifted, the entire struct was inconsistently populated.
+
+### Correct Implementation for `room-user.sender.js`:
+
+```javascript
+const [msg, respBody] = getExactMessageBuffer(SN_USER_DEFAULT, 0x36);
+// Header (2 bytes)
+respBody.writeUint8(0, 0x00);
+respBody.writeUint8(1, 0x01);
+
+// User Entry 1 (52 bytes = 0x34)
+respBody.writeUint16LE(accountIndex, 0x02);          // 0x00: UserIndex (uint16 LE)
+respBody.writeUint32LE(pilotId, 0x04);               // 0x02: PilotID (uint32 LE)
+respBody.write(userLevelText + '\0', 0x08, 'ascii'); // 0x06: UserLevel ASCII string (null-terminated)
+respBody.writeUint32LE(userHiddenRaw >>> 0, 0x0A);   // 0x08: UserHidden/Score (uint32 LE) - WAS WRITTEN AT 0x0E!
+respBody.writeUint8(userLevelType, 0x0E);            // 0x0C: UserLevelType (uint8) - WAS WRITTEN AT 0x12!
+respBody.writeUint32LE(userStateRaw, 0x0F);          // 0x0D: UserStateRaw (uint32 LE) - WAS WRITTEN AT 0x15!
+respBody.writeUint16LE(teamIndex, 0x13);             // 0x11: TeamIndex (uint16 LE, 0=Red, 1=Blue)
+respBody.writeUint32LE(0, 0x15);                     // 0x13: UserRank/SubState (uint32 LE)
+respBody.writeUint32LE(packedIp, 0x19);              // 0x17: ClanID / IP (uint32 LE)
+respBody.write(nickname + '\0', 0x1D, 'ascii');      // 0x1B: Nickname ASCII string (max 25 bytes)
+```
 
 ---
 
-## 5. Direct Action Items for Server Emulator
+## 7. Summary of Changes Needed to Fix Battle Travel URL
 
-To fix the crash and have the client load into battle maps:
-
-1. **Fix `SN_ROOM_DEFAULT` (0x220203) in `room-state.sender.js` and `room.dispatch.js`**:
-   - Change `mapIndex` (offset `0x05`, uint16 LE) from 1~6 arbitrary clamp to the **real Map ID**:
-     - PvP Deathmatch (十字路口): `1011` (`Map_C08`)
-     - PvE Mission (動力奪取戰): `9001` (`Map_PC01`)
-2. **Align `SN_USER_DEFAULT` (0x220233) in `room-user.sender.js`**:
-   - Ensure the user record properly registers the local player with `team = 0` (Red Team), so `Game_User_Team_Get` returns `team=0`.
-3. **Expected Result**:
-   The client will assemble and execute the valid battle travel URL:
-   ```text
-   start Map_C08?Listen?LPort=30907?Name=1?Game=Zgame.ZTeamDM?MaxPlayers=8?GoalScore=150?TimeLimit=20?BalanceTeams=0?numbots=0?team=0
-   ```
-   and successfully load the battle map.
+1. **`SN_ROOM_DEFAULT` (`0x220203`) in `room-state.sender.js` / `room.dispatch.js`**:
+   - Write real **Map ID** (e.g. `1011` for Map_C08, `9001` for Map_PC01) into offset `0x05` (`mapIndex`).
+2. **`SN_USER_DEFAULT` (`0x220233`) in `room-user.sender.js`**:
+   - Align offsets according to Section 6 table:
+     - `userHiddenRaw` at `0x0A`
+     - `userLevelType` at `0x0E`
+     - `userStateRaw` at `0x0F`
+     - `teamIndex` at `0x13`
+3. **`Game_Info_SN` (`0x00222111`)**:
+   - Ensure `RedTeamIndex = 0` (body `0x04`) and `BlueTeamIndex = 1` (body `0x06`) are sent prior to game start so `Game_User_Team_Get` evaluates `team = 0`.
+4. **`SN_USER_MASTER` (`0x00220319`) in `room-user.sender.js`**:
+   - Keep sending with `userIndex = accountIndex` so `Room_Master_Check` evaluates the player as Host.

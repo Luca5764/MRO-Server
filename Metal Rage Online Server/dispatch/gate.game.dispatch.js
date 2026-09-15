@@ -180,8 +180,11 @@ function sendGameInfoSn(client, tag)
     const mapId = Number(client.campaignMapCacheKey_ || CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[client.mapId_] || client.mapId_ || 58) & 0xFFFF;  // Cache.Bin 인덱스로 전송 (sent as Cache.Bin index)
     const userIndex = Number(client.accountIndex_ || client.accountId_ || 1) & 0xFFFF;
     const battleIndex = 1;
-    const redTeamIndex = 1;
-    const blueTeamIndex = 0;
+    // Game_User_Team_Get compares the user's team value against these two and
+    // answers 0, 1, or 255 when it matches neither. Sending red=1/blue=0 made
+    // a player on team 0 resolve as blue; red=0/blue=1 makes team 0 mean red.
+    const redTeamIndex = 0;
+    const blueTeamIndex = 1;
     const clanFlag = 0;
     const quarterIndex = 1;
 

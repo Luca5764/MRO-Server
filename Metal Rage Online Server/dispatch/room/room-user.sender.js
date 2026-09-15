@@ -18,18 +18,30 @@ function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
     } = ctx;
 
     {
+        // Header is 2 bytes, then `count` user records of 0x34 bytes each,
+        // memcpy'd whole and read field by field. Entry offsets in comments.
+        //
+        // The old layout wrote the level text at 0x08 (2 bytes) and then
+        // jumped to 0x0E, leaving 0x0A-0x0D as zeros — and 0x0A is where the
+        // hidden/score dword is read from. Everything after it was shifted
+        // too: 0x0E is a one-byte level type, not the start of a dword, and
+        // the state dword belongs at 0x0F. The record the client assembled
+        // was therefore junk, and the player never appeared in a room slot,
+        // was never the master, and had no team.
         const [msg, respBody] = getExactMessageBuffer(SN_USER_DEFAULT, 0x36);
-        respBody.writeUint8(0, 0x00);
-        respBody.writeUint8(1, 0x01);
-        respBody.writeUint16LE(accountIndex, 0x02);
-        respBody.writeUint32LE(pilotId, 0x04);
-        respBody.write(userLevelText + '\0', 0x08, 'ascii');
-        respBody.writeUint32LE(userHiddenRaw >>> 0, 0x0E);
-        respBody.writeUint8(userLevelType, 0x12);
-        respBody.writeUint16LE(teamIndex, 0x13);
-        respBody.writeUint32LE(userStateRaw, 0x15);
-        respBody.writeUint32LE(packedIp, 0x19);
-        respBody.write(nickname + '\0', 0x1D, 'ascii');
+        respBody.writeUint8(0, 0x00);                        //       status, must be 0
+        respBody.writeUint8(1, 0x01);                        //       user count
+        respBody.writeUint16LE(accountIndex, 0x02);          // +0x00 user index
+        respBody.writeUint32LE(pilotId, 0x04);               // +0x02 pilot id
+        respBody.write(userLevelText + '\0', 0x08, 'ascii'); // +0x06 level, ASCII, atoi'd
+        respBody.writeUint32LE(userHiddenRaw >>> 0, 0x0A);   // +0x08 hidden / score
+        respBody.writeUint8(userLevelType, 0x0E);            // +0x0C level type
+        respBody.writeUint32LE(userStateRaw, 0x0F);          // +0x0D state flags
+        respBody.writeUint16LE(teamIndex, 0x13);             // +0x11 team: 0 red, 1 blue
+        respBody.writeUint32LE(0, 0x15);                     // +0x13 rank / substate
+        respBody.writeUint32LE(packedIp, 0x19);              // +0x17 clan id / packed ip
+        respBody.write(nickname + '\0', 0x1D, 'ascii');      // +0x1B nickname, ASCII,
+                                                             //       widened by the client
         client.send(msg);
         console.log(`[ZRoomDispatch] >> Sent SN_USER_DEFAULT 0x220233 (54 bytes, count=1, userIndex=${accountIndex}, pilot=${pilotId}, nickname="${nickname}", team=${teamIndex}, hiddenRaw=${userHiddenRaw}, stateRaw=${userStateRaw}, levelType=${userLevelType}, roomStateRaw=${userStateRaw})`);
     }
