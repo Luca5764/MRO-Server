@@ -24,6 +24,9 @@ const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
 // When the room state block is re-sent after Create_SA, and why each entry
 // costs a room-master dialog. See the comment at the call site.
+// Map_PC01 easy — the campaign room's default until the client picks another.
+const MAP_ID_DEFAULT_CAMPAIGN = 9001;
+
 const ROOM_STATE_RETRY_SCHEDULE = [
     [350, 'delayed'],
     [1200, 'retry after scene change'],
@@ -566,6 +569,21 @@ class ZGateGameDispatch
                             const roomDispatch = new ZRoomDispatch();
                             roomDispatch.sendRoomState(client);
                             console.log(`[ZGateGameDispatch] >> Sent room state notifications (0x22 room SN) [${tag}]`);
+
+                            // Game_Info_SN belongs here, not after the start
+                            // request. Pressing start makes the client build
+                            // its travel URL immediately, out of [this+0xfc8],
+                            // and this packet is the only thing that sets it.
+                            // Sent afterwards — 350ms afterwards, as it was —
+                            // it arrives to find the URL already built from a
+                            // map id of 0, and map id 0 in Cache.Bin is
+                            // Store_01 with ZModeHangar.HangarGameInfo, goal 0,
+                            // time 0. Which is exactly the "fallback" URL we
+                            // have been staring at: not a fallback at all, but
+                            // a correct lookup of the wrong map.
+                            if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
+                                client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
+                            sendGameInfoSn(client, `room state [${tag}]`);
                         } catch (err) {
                             console.error(`[ZGateGameDispatch] >> Error sending room state:`, err.message);
                         }
