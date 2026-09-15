@@ -140,6 +140,34 @@
 
 ---
 
+## 登入 bootstrap 序列
+
+`[TEST]` 2026-09-15，真伺服器 + MySQL，合成客戶端以 `CQ_LOGIN_WASABII` 登入既有帳號，完整觀察到伺服器的回應順序（body 長度為上線位元組，含對齊填充）：
+
+| # | Opcode | 長度 | 備註 |
+|---|---|---|---|
+| 1 | `0x00110152` | 16 | SA_LOGIN_WASABII，無驗證一律成功 |
+| 2 | `0x00210101` | 32 | SN_DEFAULT_INFO |
+| 3 | `0x00210102` | 32 | SN_PLAY_INFO |
+| 4 | `0x00210103` | 96 | SN_RECORD_INFO |
+| 5 | `0x00510101` | 16 | Community 命名空間，用途未確認 |
+| 6 | `0x00210104` | 240 | SN_MECH_LEVEL（8 個機體） |
+| 7 | `0x00210115` | 32 | SN_MAP_INFO |
+| 8 | `0x00260101` | 80 | Quest/License 命名空間，用途未確認 |
+| 9 | `0x00210111` | 848 | SN_ITEM_INFO |
+| 10 | `0x00210113` | 432 | SN_WEAR_INFO |
+| 11 | `0x00210121` | 256 | SN_COMPLETE |
+| 12 | `0x00220101` | 224 | SN_SERVER_ADD |
+| 13 | `0x00220102` | 64 | SN_CHANNEL_ADD |
+
+登入請求本身：body 必須**剛好** `0x381` bytes，否則 `handleLogin()` 直接斷線；username 是前 `0x19` bytes 的 ASCII，以 `\0` 截斷。
+
+⬜ `0x00510101` 與 `0x00260101` 在這條路徑上確定會送，但 body 結構與用途都還沒查。
+
+> **注意：查不到的 username 會被自動建帳號**（`account.dispatch.js` `handleLogin()`，nickname = username、pilot 101）。做登入相關實驗時，打錯字不會得到「登入失敗」，而是安靜地多一個帳號。
+
+---
+
 ## 已知陷阱（程式碼層）
 
 ### `type & 0x80` 會誤攔 dispatch opcode

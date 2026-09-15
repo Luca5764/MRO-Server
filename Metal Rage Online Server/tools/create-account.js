@@ -1,22 +1,27 @@
 #!/usr/bin/env node
 //
-// Creates a playable account. There is no registration flow in the protocol —
-// the client sends a username and the server either finds it or does not — so
-// accounts have to be made out of band, and doing it by hand means writing
-// rows into seven tables in the right order.
+// Creates a playable account up front, with a chosen nickname and pilot.
 //
-// db.createAccount() already does all of that in one transaction (record,
-// 8 mech levels, 8 licenses, 6 maps, 4 tutorials, starter loadouts). This is
-// the missing front door to it.
+// This is a convenience, not a requirement: handleLogin() in
+// account.dispatch.js auto-creates an account for any unknown username on
+// first login, via db.createAccount(username, username, 101). That always
+// names the pilot after the login name and always picks pilot 101, so
+// creating the account beforehand is the way to get anything else.
+//
+// Either path runs the same transaction (record, 8 mech levels, 8 licenses,
+// 6 maps, 4 tutorials, starter loadouts). What this adds is the duplicate
+// checks and the setup-time error messages.
 //
 // Usage:
 //   node tools/create-account.js <username> <nickname> [pilot]
 //
 //   pilot   101 (default) or 102
 //
-// Note: the accounts table has no password column. Logging in needs only a
-// username that exists. That is the server's current design, not an oversight
-// here — do not expose this server to a network you do not control.
+// Note: the accounts table has no password column, and unknown usernames are
+// created on sight, so anyone who can reach the port can log in as anyone —
+// or as anyone new. That is the server's current design, not an oversight
+// here, but it means: do not expose this server to a network you do not
+// control.
 
 const db = require('../database/db');
 

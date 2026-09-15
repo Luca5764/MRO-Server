@@ -75,13 +75,15 @@ sudo mysql mro < metalrageserver.sql
 
 ### 建帳號
 
-協定裡沒有註冊流程，客戶端送一個 username，伺服器找得到就讓他進。帳號得手動建，而手動建要按順序寫進七張表，所以用工具：
+**協定裡沒有註冊流程，也沒有密碼驗證——但伺服器會自動建帳號。** `account.dispatch.js` 的 `handleLogin()` 查不到 username 時會直接 `db.createAccount(username, username, 101)`，所以任何沒看過的 username 第一次登入就會成為一個新帳號，nickname 等於 username、pilot 固定 101。
+
+想指定不同的 nickname 或 pilot，就在登入前先用工具建：
 
 ```bash
 node tools/create-account.js <username> <nickname> [pilot]   # pilot 101 或 102
 ```
 
-它包的是 `db.createAccount()`，會在同一個 transaction 裡建好 record、8 個機體等級、8 張授權、6 張地圖、4 個教學與初始裝備，帳號權限固定 4（Dev）。連不到 DB / 沒有 database / 沒有表，三種情況各有對應的提示。
+兩條路都是呼叫 `db.createAccount()`，會在同一個 transaction 裡建好 record、8 個機體等級、8 張授權、6 張地圖、4 個教學與初始裝備，帳號權限固定 4（Dev）。工具額外做了重名檢查，以及連不到 DB / 沒有 database / 沒有表三種情況的對應提示。
 
 > **`accounts` 表沒有密碼欄位。** 登入只需要一個存在的 username。這是目前伺服器的設計而非疏漏，但意味著**不要把這個伺服器暴露在你無法控制的網路上**。
 
