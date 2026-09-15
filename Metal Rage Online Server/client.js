@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { Socket } = require('net');
 const { pack, unpack, peekLength } = require('./message.js');
+const packetlog = require('./packetlog.js');
 
 const MSG_HEADER_SIZE = 0x10;
 const MSG_DEFAULT_SALT = 0xf0f00f0f;
@@ -48,6 +49,14 @@ class NetworkClient
 
         /** @private {DispatchCallback} - Dispatch callback for received messages */
         this.callback_ = callback;
+
+        /** @public {number} - Identifies this connection in the packet log */
+        this.connId_ = packetlog.nextConnId();
+
+        packetlog.connection('connect', this.connId_, {
+            port: socket.localPort,
+            peer: `${socket.remoteAddress}:${socket.remotePort}`,
+        });
 
         socket.on('data', (data) => this.onData(data));
     }
@@ -244,6 +253,10 @@ class NetworkClient
 
             console.log(`[NetworkClient] RECV: 0x${type.toString(16).padStart(8, '0')} len=0x${len.toString(16)} body=${body.length}b`);
 
+            packetlog.packet('recv', this, type, body, {
+                route: (type & 0x80) ? 'internal' : 'dispatch',
+            });
+
             if (type & 0x80)
             {
                 this.onInternalMessage(type, body);
@@ -264,6 +277,13 @@ class NetworkClient
      */
     send(data)
     {
+        if (data.length >= MSG_HEADER_SIZE)
+        {
+            packetlog.packet('send', this,
+                data.readUint32BE(0xC),
+                data.subarray(MSG_HEADER_SIZE));
+        }
+
         const copy = Buffer.from(data);
         pack(copy, this.salt_);
         this.socket_.write(copy);

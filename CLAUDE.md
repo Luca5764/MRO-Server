@@ -53,6 +53,9 @@ MySQL 連線設定在 `database/config.json`（預設 `127.0.0.1:3306`，databas
 ```
 client.js        連線狀態、封包組frame、握手／keepalive
 message.js       pack / unpack / peekLength（混淆與 CRC）
+packetlog.js     結構化封包紀錄（JSONL）
+tools/slice.js   紀錄檔的查詢／切片工具
+logs/            紀錄輸出（已 gitignore）
 dispatch/        各命名空間的 handler
 dispatch/room/   房間相關的 SN 送出邏輯（被 room.dispatch.js 呼叫）
 database/db.js   MySQL 存取
@@ -111,6 +114,42 @@ CRC32 計算範圍為 bytes[4 .. len-1]，以 BE 寫入 offset 0x00
 | `getExactMessageBuffer(type, bodySize)` | `room.dispatch.js:175`／`community.dispatch.js:15`（**同一份實作重複定義兩次**） | **不會**補齊 |
 
 某些封包客戶端會嚴格檢查長度，選錯會直接被斷線。修改既有程式碼時不要隨手替換。
+
+---
+
+## 封包紀錄（觀測工具）
+
+`packetlog.js` 在 `client.js` 的收發咽喉點各掛一個 hook，把**每一個封包、雙向**寫成 JSONL，一行一筆。這是加在既有 console 輸出**旁邊**的，那 190 多個 `console.log` 一個都沒動。
+
+每筆帶：時間戳、相對毫秒、連線編號、port、方向、opcode、長度、完整 body hex，以及當下的場景狀態快照（`accountId`／`roomIndex`／`mapId`／`gameMode`／`gameStarted` 等，沒設的欄位自動省略）。另外會記 `connect`／`close`／`marker`，以及沒有任何 service 認領的 `unhandled`。
+
+**寫入是同步的，這是刻意的。** 一個 session 裡最有價值的封包通常是客戶端崩潰前的最後一個，那正是有緩衝的 stream 會弄丟的那一個。
+
+### Marker：把「我做了什麼」釘進時間軸
+
+伺服器跑起來後，直接在 console 打字再按 Enter，那行字就會插進紀錄裡。**在客戶端做動作前先打**，之後就能精準切出那個動作造成的封包：
+
+```
+> 進訓練場
+> 開第一槍
+```
+
+（非互動終端會自動略過，用 .bat 或背景跑不受影響。）
+
+### 查紀錄
+
+```bash
+cd "Metal Rage Online Server"
+node tools/slice.js                        # 列出所有 session
+node tools/slice.js <檔名>                  # marker 清單 + opcode 統計
+node tools/slice.js <檔名> -m 2             # 切出 marker 2 到 marker 3 之間
+node tools/slice.js <檔名> -m 2 -s          # 同上，只要 opcode 次數
+node tools/slice.js <檔名> --unhandled      # 只看沒人認領的
+node tools/slice.js <檔名> --op 0x00250102  # 只看某個 opcode
+node tools/slice.js <檔名> --dump           # hex 改用 offset dump 排版
+```
+
+> **注意：`send` 方向的長度是實際上線位元組，含填充。** `getMessageBuffer` 會補到 16-byte 對齊，所以一個邏輯上 6 bytes 的 EVENT_INFO 在紀錄裡會顯示 16 bytes、後面拖 10 個 `00`。這是對的（線上真的是這樣），但不要誤判成 body 結構。
 
 ---
 
@@ -199,11 +238,12 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 
 ## 調查新 opcode 的標準流程
 
-1. 啟動伺服器，在客戶端做一個**單一、明確**的動作
-2. 從 log 撈出 `Unhandled message type` 的 hex dump
-3. 記錄：觸發動作、opcode、body 長度、hex
-4. 比對 DLL 字串裡的候選名稱，形成假設
-5. 寫一個最小回應試打，觀察客戶端是否前進或斷線
-6. 不論成功與否，都把結果寫進 `docs/opcode-ledger.md`
+1. 啟動伺服器，**先在 console 打一行 marker** 描述你接下來要做什麼
+2. 在客戶端做一個**單一、明確**的動作，然後再打下一個 marker
+3. `node tools/slice.js <檔名> -m <編號>` 切出那個動作造成的所有封包
+4. 用 `--unhandled` 找出沒人認領的，記下：觸發動作、opcode、body 長度、hex
+5. 比對 DLL 字串裡的候選名稱，形成假設
+6. 寫一個最小回應試打，觀察客戶端是否前進或斷線
+7. 不論成功與否，都把結果寫進 `docs/opcode-ledger.md`
 
 **失敗的嘗試和成功的一樣有價值**，請一併記錄，避免未來重複試同一條死路。
