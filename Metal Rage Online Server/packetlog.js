@@ -32,6 +32,17 @@ const LOG_DIR = path.join(__dirname, 'logs');
 const CHAT_CQ = 0x00220501;
 const CHAT_TEXT_OFFSET = 0x2;
 
+// Sends that mark the boundaries of a combat session. The operator cannot type
+// a marker mid-fight — that is exactly when they are busy — so the server marks
+// these itself and the window brackets itself.
+const AUTO_MARK_SEND = new Map([
+    [0x00250203, 'Ready_Host_SQ sent — asking client to ready up'],
+    [0x00250201, 'Ready_Success_SN sent'],
+    [0x00250301, 'BeginRound_SN sent — COMBAT STARTS HERE'],
+    [0x00240302, 'Game_Start_SA sent'],
+    [0x00222104, 'Game_Start_SN sent'],
+]);
+
 let big5 = null;
 try { big5 = new TextDecoder('big5'); } catch { /* no ICU: chat stays raw hex */ }
 
@@ -168,9 +179,12 @@ function packet(dir, client, type, body, fields)
         if (text !== null)
         {
             write({ ev: 'marker', text, src: 'chat', conn: client.connId_ });
-            console.log(`[packetlog] --- MARKER (in-game chat): ${text} ---`);
+            console.log(`[packetlog] --- MARKER (chat): ${text} ---`);
         }
     }
+
+    if (dir === 'send' && AUTO_MARK_SEND.has(type))
+        marker(AUTO_MARK_SEND.get(type), 'auto');
 
     write(Object.assign({
         ev: 'pkt',
@@ -185,13 +199,14 @@ function packet(dir, client, type, body, fields)
 }
 
 /**
- * Records an operator marker, so a session can be sliced by "what I was doing".
+ * Records a marker, so a session can be sliced by what was happening.
  * @param {string} text
+ * @param {string} [src] - 'console' (typed), 'chat' (in-game), 'auto' (server)
  */
-function marker(text)
+function marker(text, src = 'console')
 {
-    write({ ev: 'marker', text });
-    console.log(`[packetlog] --- MARKER: ${text} ---`);
+    write({ ev: 'marker', text, src });
+    console.log(`[packetlog] --- MARKER${src === 'console' ? '' : ` (${src})`}: ${text} ---`);
 }
 
 /**

@@ -106,6 +106,7 @@ node tools/create-account.js <username> <nickname> [pilot]   # pilot 101 或 102
 client.js        連線狀態、封包組frame、握手／keepalive
 message.js       pack / unpack / peekLength（混淆與 CRC）
 packetlog.js     結構化封包紀錄（JSONL）
+session.js       跨重連存活的帳號 session 狀態
 tools/slice.js   紀錄檔的查詢／切片工具
 tools/create-account.js  建立可登入的帳號
 logs/            紀錄輸出（已 gitignore）
@@ -215,14 +216,19 @@ CRC32 計算範圍為 bytes[4 .. len-1]，以 BE 寫入 offset 0x00
 
 ### Marker：把「我做了什麼」釘進時間軸
 
-伺服器跑起來後，直接在 console 打字再按 Enter，那行字就會插進紀錄裡。**在客戶端做動作前先打**，之後就能精準切出那個動作造成的封包：
+Marker 有三個來源，紀錄裡會標明是哪一種。
 
-```
-> 進訓練場
-> 開第一槍
-```
+**1. 遊戲內聊天（推薦）** — 在遊戲聊天框打的每一句話都會自動成為 marker。不用 alt-tab，而且它就落在自己所描述的封包旁邊。這是實際操作中最好用的方式。
 
-（非互動終端會自動略過，用 .bat 或背景跑不受影響。）
+**2. 伺服器 console** — 直接在終端機打字按 Enter。非互動終端會自動略過，用 .bat 或背景跑不受影響。
+
+**3. 自動（`src: auto`）** — 伺服器在自己看得到的狀態轉換時自行標記，操作者不用做任何事。戰鬥中根本沒空打字，所以這些邊界由伺服器自己劃：
+
+- `gameStarted_` 由 false 轉 true
+- 跨重連還原 session
+- 送出 `Ready_Host_SQ` / `Ready_Success_SN` / `BeginRound_SN` / `Game_Start_SA` / `Game_Start_SN`
+
+**Marker 框的是區間，不是瞬間。** 動作前後各打一個，中間全部就是候選。更有效的做法是**一次 session 只做一件事**——紀錄檔很便宜，髒了就丟掉重錄。
 
 ### 查紀錄
 
@@ -238,6 +244,30 @@ node tools/slice.js <檔名> --dump           # hex 改用 offset dump 排版
 ```
 
 > **注意：`send` 方向的長度是實際上線位元組，含填充。** `getMessageBuffer` 會補到 16-byte 對齊，所以一個邏輯上 6 bytes 的 EVENT_INFO 在紀錄裡會顯示 16 bytes、後面拖 10 個 `00`。這是對的（線上真的是這樣），但不要誤判成 body 結構。
+
+---
+
+## Session 狀態（`session.js`）
+
+**客戶端在一次遊玩中不會只用一條連線。** 切換到遊戲地圖時它會斷線並重新登入（原廠是 `ClientTravel` 到 `IP:Port/MapName`）。
+
+dispatch handler 的狀態全部掛在 `NetworkClient` 上，所以那一斷就全沒了。`gameStarted_` 尤其致命：`game.dispatch.js` 只在它為真時才開始 ready／round 流程，重連後它是 `undefined`，於是伺服器把場景進入通知當成大廳訊息回應，**對戰永遠不會開始**。這就是 `0x25xxxx` 長期挖不動的真正原因。
+
+`session.js` 改以 `accountId` 為鍵保存這些狀態，在 `handleGameLogin()` 設定 `client.accountId_` 的那一刻還原。
+
+### ⚠️ 哪些帶、哪些不帶
+
+**帶**（意圖與位置）：`gameStarted_`、`campaignStarted_`、`isTrueCampaign_`、`roomIndex_`、`roomType_`、`rawRoomType_`、`roomName_`、`mapId_`、`mapSeed_`、`gameMode_`、`maxPlayers_`、`campaignRoom_`、`campaignMapCacheKey_`、`currentHangarSlot_`
+
+**不帶**，理由很重要：
+
+- `roomMasterSent_`、`roomEnterAcked_`、`gameUserBootstrapSent_`、`readyHostHandshakeSent_` 等——這些是「**這條連線**已經送過」的旗標。新連線什麼都沒送過，帶過去會讓它跳過該送的 bootstrap。
+- `roomStateRetryTimers_`——裝的是屬於舊連線的 timer handle。
+- `accountId_`、`nickname_`、`pilot_`、`username_`——重新驗證時本來就會從 DB 重建。
+
+兩條規則：儲存時**只存有定義的值**（沒有房間概念的連線不會清掉別人記下的狀態）；還原時**新連線自己設過的值優先**（這條連線上真實發生的改變不會被舊值蓋掉）。
+
+> `session.js` 不改變伺服器送出任何東西，它只改變狀態存放的位置。它也應該永遠只做這件事。
 
 ---
 

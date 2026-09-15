@@ -158,7 +158,8 @@ if (noFilter && !opt.summary)
         markers.forEach((m, i) => {
             const next = markers[i + 1];
             const within = rows.filter(r => r.ev === 'pkt' && r.ms >= m.ms && (!next || r.ms < next.ms));
-            console.log(`  [${i}] ${ms(m.ms)}  ${m.text}   (${within.length} packets follow)`);
+            const src = m.src && m.src !== 'console' ? `${m.src}` : 'typed';
+            console.log(`  [${i}] ${ms(m.ms)}  ${String('[' + src + ']').padEnd(8)} ${m.text}   (${within.length} packets follow)`);
         });
         console.log(`\nSlice one with:  node tools/slice.js ${path.basename(file)} -m 0`);
     }
@@ -232,8 +233,11 @@ for (const r of sel)
     switch (r.ev)
     {
         case 'marker':
-            console.log(`\n${ms(r.ms)}  ======== ${r.text} ========\n`);
+        {
+            const src = r.src && r.src !== 'console' ? ` (${r.src})` : '';
+            console.log(`\n${ms(r.ms)}  ======== ${r.text}${src} ========\n`);
             break;
+        }
 
         case 'connect':
             console.log(`${ms(r.ms)}  ++ conn ${r.conn} on port ${r.port} from ${r.peer}`);

@@ -1,6 +1,7 @@
 const NetworkClient = require('./client.js');
 const { createServer } = require('net');
 const packetlog = require('./packetlog.js');
+const session = require('./session.js');
 
 const SERVER_PORT = 9211;
 const GAME_PORT = 30907;
@@ -40,7 +41,14 @@ class DispatchServer
             for (const service of this.services)
             {
                 if (service.dispatch(client, type, data))
+                {
+                    // Handlers keep their state on the client, which dies with
+                    // the socket. Mirror it into the account session so it can
+                    // outlive the reconnect the client performs when it travels
+                    // to a game map.
+                    session.save(client);
                     return;
+                }
             }
 
             // Log unhandled messages with full hex dump for reverse engineering
@@ -74,6 +82,13 @@ class DispatchServer
                 server: this.name,
                 remaining: this.clients.length,
             });
+
+            // Save here too, not only after dispatch: several handlers are
+            // async and finish after dispatch() has already returned, and
+            // keep-alives never reach the dispatch chain at all. A connection
+            // that set game state and then sat idle until close would
+            // otherwise lose exactly the state this is meant to preserve.
+            session.save(client);
         });
     }
 };

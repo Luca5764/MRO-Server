@@ -1,5 +1,6 @@
 const NetworkClient = require("../client");
 const db = require('../database/db');
+const session = require('../session.js');
 
 // Game server login handler
 // After connecting to the game server (port 30907), the client sends
@@ -90,6 +91,13 @@ class ZGameLoginDispatch
                 client.accountId_ = account.id;
                 client.nickname_ = account.nickname;
                 client.pilot_ = Number(account.pilot) || 101;
+
+                // This is the first moment this connection knows who it is, so
+                // it is the moment to bring back what the previous connection
+                // knew. The client re-logs-in like this when it travels to a
+                // game map, and without this the game-start intent set before
+                // the travel is gone.
+                session.restore(client);
 
                 const [record, mechLevels, dbItems, licenses, tutorialsResult] = await Promise.all([
                     db.getRecord(account.id),
