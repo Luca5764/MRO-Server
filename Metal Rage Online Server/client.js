@@ -72,7 +72,27 @@ class NetworkClient
         // or Date.now() for milliseconds since epoch (cheap, no allocation).
         // The original used getMilliseconds() which only returns 0-999 (ms within the current second),
         // not total elapsed time. Date.now() returns absolute ms since epoch.
-        return Date.now() - this.start_;
+        //
+        // start_ is only set once the client time-syncs (MSG_TIME_SYNC). Until
+        // then it is 0, so this would return Date.now() itself (~1.8e12) —
+        // which does not fit the uint32 the callers write it into, and
+        // writeUint32BE throws rather than truncating. That exception is not
+        // caught anywhere, so a single keep-alive arriving before a time sync
+        // takes down the entire process: both listeners, every other connected
+        // client, and whatever packet recording was in progress. A client that
+        // does that is out of spec, but losing a whole session to it is far
+        // more expensive than answering 0.
+        if (this.start_ === 0)
+            return 0;
+
+        const elapsed = Date.now() - this.start_;
+
+        if (elapsed < 0)
+            return 0;
+        if (elapsed > 0xFFFFFFFF)
+            return 0xFFFFFFFF;
+
+        return elapsed;
     }
 
     /**
