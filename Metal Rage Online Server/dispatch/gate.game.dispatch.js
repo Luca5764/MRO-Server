@@ -22,6 +22,12 @@ const POST_GAME_WAIT_READY_HOST_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_INFO_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
+// When the room state block is re-sent after Create_SA, and why each entry
+// costs a room-master dialog. See the comment at the call site.
+const ROOM_STATE_RETRY_SCHEDULE = [
+    [350, 'delayed'],
+    [1200, 'retry after scene change'],
+];
 
 let nextRoomIndex = 1;
 
@@ -566,10 +572,18 @@ class ZGateGameDispatch
                     }, delay);
                     client.roomStateRetryTimers_.push(timer);
                 };
-                sendRoomStateDelayed(350, 'delayed');
-                sendRoomStateDelayed(1200, 'retry after scene change');
-                sendRoomStateDelayed(2500, 'late room scene retry');
-                sendRoomStateDelayed(5000, 'final room scene retry');
+                // Was 350/1200/2500/5000 — a shotgun from when it was unclear
+                // when the room scene starts listening. It is clear now: the
+                // room comes up fully on the first block.
+                //
+                // Each repeat is not free. User_Default_SN makes the client
+                // rebuild its room user array, so User_Master_SN has to follow
+                // every block or the player stops being master — and the client
+                // pops a "you are the room master" dialog each time it arrives.
+                // Four blocks meant four dialogs. Two keeps a retry for the
+                // scene-change race without burying the player in prompts.
+                for (const [delay, tag] of ROOM_STATE_RETRY_SCHEDULE)
+                    sendRoomStateDelayed(delay, tag);
 
                 return true;
             }
