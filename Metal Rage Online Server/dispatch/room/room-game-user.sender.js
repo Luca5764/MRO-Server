@@ -1,6 +1,14 @@
 const db = require('../../database/db');
 
-const SN_GAME_USER = 0x00230111;
+// 0x00222112, read straight out of ZDispatchGame::Dispatch — the chain does
+// sub edx,0x222111 / dec edx and lands on Game_User_SN. The old 0x00230111 was
+// a guess and matches no handler in the client at all.
+//
+// This is the packet that fills the array Game_User_Team_Get searches, at
+// [this+0x1034] with stride 0x80, written by Game_User_Add. User_Default_SN
+// fills a different array — [this+0xf88], stride 0x50 — which is why fixing
+// that one put the player in the room and still left team=255.
+const SN_GAME_USER = 0x00222112;
 const GAME_USER_RECORD_SIZE = 0x01E5;
 const GAME_USER_HEADER_SIZE = 0x02;
 // rec+0x6C = socketCount, rec+0x6D = first socket (stride 0x2F, 8 sockets = 0x1E5 tail)
@@ -24,10 +32,9 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     if (!client.campaignRoom_) {
         return;
     }
-    if (client.gameUserBootstrapSent_) {
-        console.log('[ZRoomDispatch] >> Skipped Game_User_SN 0x230111 (already sent)');
-        return;
-    }
+    // No once-per-connection guard. User_Master_SN had one and the room state
+    // re-sends silently undid it; anything the client rebuilds has to be sent
+    // again every time.
 
     const {
         accountIndex,

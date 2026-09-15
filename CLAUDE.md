@@ -109,6 +109,8 @@ packetlog.js     結構化封包紀錄（JSONL）
 session.js       跨重連存活的帳號 session 狀態
 tools/slice.js   紀錄檔的查詢／切片工具
 tools/create-account.js  建立可登入的帳號
+tools/disasm.py          反組譯客戶端 DLL（sections/exports/at/func/xref/str）
+tools/dispatch-map.py    還原 opcode → handler 映射
 logs/            紀錄輸出（已 gitignore）
 dispatch/        各命名空間的 handler
 dispatch/room/   房間相關的 SN 送出邏輯（被 room.dispatch.js 呼叫）

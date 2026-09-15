@@ -60,30 +60,72 @@ def decode(data, base, va, size=0x2000):
     return {i.address: i for i in md.disasm(data[va - base:va - base + size], va)}
 
 
-JUMPTABLE_RE = re.compile(r"dword ptr \[(\w+)\*(\d+) \+ (0x[0-9a-f]+)\]")
+MEM_IDX_RE = re.compile(r"^(\w+), byte ptr \[(\w+) \+ (0x[0-9a-f]+)\]$")
+JMP_TBL_RE = re.compile(r"^dword ptr \[(\w+)\*(\d+) \+ (0x[0-9a-f]+)\]$")
 BASE_G = 0
 DATA_G = b""
 
 
-def run(ins, entry, opcode, names, limit=500):
-    """Walk the compare chain with edx seeded to opcode; return the handler hit."""
-    pc, edx, zf, cf = entry, opcode & 0xFFFFFFFF, False, False
+def _dword(va):
+    off = va - BASE_G
+    if off < 0 or off + 4 > len(DATA_G):
+        return None
+    return int.from_bytes(DATA_G[off:off + 4], "little")
+
+
+def _byte(va):
+    off = va - BASE_G
+    if off < 0 or off >= len(DATA_G):
+        return None
+    return DATA_G[off]
+
+
+def type_register(ins, entry):
+    """The prologue is mov <a>, [esp+4] ; mov <r>, [<a>+0xc]. Return <r> and the
+    address just past it — <r> is the register the whole chain then works on."""
+    pc, reg = entry, None
+    for _ in range(4):
+        i = ins.get(pc)
+        if i is None:
+            break
+        if i.mnemonic == "mov" and "+ 0xc]" in i.op_str:
+            reg = i.op_str.split(",")[0].strip()
+            pc += i.size
+            return reg, pc
+        pc += i.size
+    return "edx", entry
+
+
+def run(ins, entry, reg, opcode, names, limit=600):
+    """Walk the chain with `reg` seeded to opcode; return the handler reached."""
+    pc, v, zf, cf = entry, opcode & 0xFFFFFFFF, False, False
     for _ in range(limit):
         i = ins.get(pc)
         if i is None:
             return None
         m, o = i.mnemonic, i.op_str
-        if m == "cmp" and o.startswith("edx,"):
-            v = int(o.split(",")[1].strip(), 16)
-            zf, cf = edx == v, edx < v
-        elif m == "sub" and o.startswith("edx,"):
-            v = int(o.split(",")[1].strip(), 16)
-            cf = edx < v
-            edx = (edx - v) & 0xFFFFFFFF
-            zf = edx == 0
-        elif m == "dec" and o == "edx":
-            edx = (edx - 1) & 0xFFFFFFFF
-            zf = edx == 0
+
+        if m == "cmp" and o.startswith(reg + ","):
+            try:
+                n = int(o.split(",")[1].strip(), 16)
+            except ValueError:
+                return None
+            zf, cf = v == n, v < n
+        elif m == "sub" and o.startswith(reg + ","):
+            n = int(o.split(",")[1].strip(), 16)
+            cf = v < n
+            v = (v - n) & 0xFFFFFFFF
+            zf = v == 0
+        elif m == "dec" and o == reg:
+            v = (v - 1) & 0xFFFFFFFF
+            zf = v == 0
+        elif m == "movzx":
+            mt = MEM_IDX_RE.match(o)
+            if mt and mt.group(2) == reg:
+                b = _byte(int(mt.group(3), 16) + v)
+                if b is None:
+                    return None
+                v, reg = b, mt.group(1)
         elif m == "call":
             try:
                 return names.get(int(o, 16))
@@ -108,22 +150,19 @@ def run(ins, entry, opcode, names, limit=500):
             if cf or zf:
                 pc = int(o, 16); continue
         elif m == "jmp":
+            mt = JMP_TBL_RE.match(o)
+            if mt:
+                if mt.group(1) != reg:
+                    return None
+                t = _dword(int(mt.group(3), 16) + v * int(mt.group(2)))
+                if t is None:
+                    return None
+                pc = t
+                continue
             try:
                 pc = int(o, 16); continue
             except ValueError:
-                # jmp dword ptr [edx*4 + 0x107dbf48] — a jump table, which is
-                # how the compiler renders a dense run of opcodes. Read the
-                # entry the current edx selects.
-                mt = JUMPTABLE_RE.match(o)
-                if mt is None:
-                    return None
-                scale, tbl = int(mt.group(2)), int(mt.group(3), 16)
-                slot = tbl + edx * scale
-                off = slot - BASE_G
-                if off < 0 or off + 4 > len(DATA_G):
-                    return None
-                pc = int.from_bytes(DATA_G[off:off + 4], "little")
-                continue
+                return None
         elif m in ("ret", "retn"):
             return None
         pc += i.size
@@ -155,22 +194,16 @@ def main():
         va = int(first.op_str, 16)
         print("thunk -> 0x%08x" % va)
 
-    ins = decode(data, base, va, 0x4000)
-
-    # The first two instructions load the type into edx; start after them.
-    entry = va
-    for _ in range(2):
-        i = ins.get(entry)
-        if i is None:
-            break
-        entry += i.size
+    ins = decode(data, base, va, 0x8000)
+    reg, entry = type_register(ins, va)
+    print("type register: %s" % reg)
 
     found = {}
     for hi in PREFIXES:
         for mid in range(0x100):
             for lo in range(0x100):
                 op = (hi << 16) | (mid << 8) | lo
-                sym = run(ins, entry, op, names)
+                sym = run(ins, entry, reg, op, names)
                 if sym:
                     found.setdefault(sym, []).append(op)
 
