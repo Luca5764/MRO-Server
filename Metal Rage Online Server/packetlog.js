@@ -21,6 +21,37 @@ const path = require('path');
 
 const LOG_DIR = path.join(__dirname, 'logs');
 
+// Chat send, observed 2026-09-15: body is 0x102 bytes, two leading bytes then
+// a Big5/cp950 string, NUL-padded. Not UTF-16LE — room names are, chat is not.
+//
+// Chat doubles as the marker channel. Typing a note into the server console
+// means alt-tabbing out of a fullscreen game at the exact moment something
+// interesting is happening, which is the moment you least want to. Typing it
+// into the game's own chat box costs nothing and lands in the same timeline,
+// two bytes away from the packets it describes.
+const CHAT_CQ = 0x00220501;
+const CHAT_TEXT_OFFSET = 0x2;
+
+let big5 = null;
+try { big5 = new TextDecoder('big5'); } catch { /* no ICU: chat stays raw hex */ }
+
+/**
+ * Decodes a chat body, or returns null if it does not look like one.
+ * @param {Buffer} body
+ * @returns {string|null}
+ */
+function decodeChat(body)
+{
+    if (big5 === null || body.length <= CHAT_TEXT_OFFSET)
+        return null;
+
+    const raw = body.subarray(CHAT_TEXT_OFFSET);
+    const end = raw.indexOf(0);
+    const text = big5.decode(end === -1 ? raw : raw.subarray(0, end)).trim();
+
+    return text.length > 0 ? text : null;
+}
+
 // Per-client scene state worth carrying on every record. These are set ad hoc by
 // the dispatch handlers; anything undefined is simply omitted from the record.
 const CONTEXT_FIELDS = [
@@ -129,6 +160,18 @@ function connection(ev, conn, fields)
  */
 function packet(dir, client, type, body, fields)
 {
+    // A chat line is also a marker, so it appears in both roles: as the packet
+    // it is, and as an annotation on the packets around it.
+    if (dir === 'recv' && type === CHAT_CQ)
+    {
+        const text = decodeChat(body);
+        if (text !== null)
+        {
+            write({ ev: 'marker', text, src: 'chat', conn: client.connId_ });
+            console.log(`[packetlog] --- MARKER (in-game chat): ${text} ---`);
+        }
+    }
+
     write(Object.assign({
         ev: 'pkt',
         conn: client.connId_,
