@@ -267,6 +267,44 @@ body 前 2 bytes 用途未明，偏移 `0x2` 起是 **Big5／cp950** 字串，�
 
 ---
 
+## ⬜ `0x00220234` — 客戶端卡死在 Loading（實驗進行中）
+
+`[OBS]` 2026-09-15。房間內按「上一頁」送出，body 長度 0。
+
+```
+215.787s  C-->S 0x00220234 (0b)   按下上一頁
+294.380s  C-->S 0x00220234 (0b)   79 秒後又送一次
+          （伺服器兩次都沒有回應，客戶端卡在 Loading 畫面）
+```
+
+沒有任何 case 處理它。它是**偶數**，所以連 default 分支的「奇數就回 type+1」都不觸發——`ZGateGameDispatch` 宣告處理了，然後什麼都沒送。
+
+**假設：** 它是需要回應的請求，卡死就是客戶端在等那個回應。
+**未排除的替代解釋：** 它是不需回應的通知，卡死另有原因。
+
+**實驗（已上線）：** 回一個標準的空 `EVENT_INFO`、opcode 用 `0x00220235`。這**不是知識，是試打**。開關在 `gate.game.dispatch.js` 的 `BACK_FROM_ROOM_SA_EXPERIMENT_MODE`，設成 `'disabled'` 即可撤回。
+
+- 若客戶端恢復 → 假設成立，可升級為 🟡
+- 若仍卡死 → 假設錯誤，**立刻關掉**並在此記錄，避免下次再試同一條死路
+
+> 注意：`0x00220233` 是 `User_Default_SN`，`0x00220234` 與它相鄰。也有可能屬於 `User_*` 家族而非離開房間。目前的命名純屬情境推測。
+
+---
+
+## ⚠️ 六個 dispatch 都會靜默吞掉偶數 opcode
+
+每個 dispatch 都宣告整個命名空間並以 default 收尾，只對**奇數** opcode 回 `type+1` + 空 `EVENT_INFO`，偶數則什麼都不回。兩種情況都 `return true`，所以 `server.js` 永遠不會記為 unhandled。
+
+奇數那種只是「回了一個沒有意義的答案」，偶數那種**會讓客戶端無限等待**——`0x00220234` 的卡死就是這樣來的，而當時 log 看起來完全正常。
+
+**已修**：六個 dispatch（`ZGateGameDispatch`、`ZRoomDispatch`、`ZLobbyDispatch`、`ZGameDispatch`、`ZDispatch*` community、`ZGate*` social）的 default 都會寫 `fallback` 記錄，標明 opcode、body、以及回了什麼或沒回。沒回應的情況會在 console 直接警告。
+
+`[TEST]` 5 項驗證通過，涵蓋奇數會回應、偶數不回應且觸發警告。
+
+用 `node tools/slice.js <檔名> --unhandled` 一次列出所有「沒人真正理解」的封包。
+
+---
+
 ## 已知陷阱（程式碼層）
 
 ### `type & 0x80` 會誤攔 dispatch opcode

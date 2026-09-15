@@ -1,4 +1,5 @@
 const NetworkClient = require("../client");
+const packetlog = require("../packetlog.js");
 const db = require('../database/db');
 const { MAX_SLOT_COUNT } = require('../datatypes/enums');
 
@@ -161,6 +162,9 @@ class ZCommunityDispatch
             console.log(`[ZDispatchCard] >> Sent Card SA (0x00320105) 16 bytes`);
             return true;
         }
+
+        packetlog.fallback(client, `ZDispatch${name}`, type, body,
+            (type % 2 === 1) ? type + 1 : null);
 
         // Generic auto-ACK for unknown odd-numbered (CQ) messages
         if (type % 2 === 1) {

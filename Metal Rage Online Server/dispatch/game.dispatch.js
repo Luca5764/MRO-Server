@@ -92,15 +92,8 @@ class ZGameDispatch
                 // indistinguishable from messages that were really handled,
                 // and the 0x25XXXX range is exactly the range still being
                 // reverse engineered.
-                packetlog.connection('fallback', client.connId_, {
-                    server: 'ZGameDispatch',
-                    op: '0x' + (type >>> 0).toString(16).padStart(8, '0'),
-                    len: body.length,
-                    hex: body.toString('hex'),
-                    replied: (type % 2 === 1)
-                        ? '0x' + ((type + 1) >>> 0).toString(16).padStart(8, '0')
-                        : null,
-                });
+                packetlog.fallback(client, 'ZGameDispatch', type, body,
+                    (type % 2 === 1) ? type + 1 : null);
 
                 // Auto-respond to odd (CQ) messages
                 if (type % 2 === 1) {

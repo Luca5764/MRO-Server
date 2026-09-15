@@ -209,6 +209,40 @@ function packet(dir, client, type, body, fields)
 }
 
 /**
+ * Records that a dispatch answered a message it does not understand.
+ *
+ * Every dispatch claims a whole opcode namespace and ends in a default branch
+ * that replies to odd opcodes with an empty EVENT_INFO and to even ones with
+ * nothing at all. Both cases return true, so server.js never reports them as
+ * unhandled, and the recording cannot tell them apart from real handling.
+ *
+ * The silent case is worse than invisible: the client sits waiting for an
+ * answer that is never coming. That is how the 0x00220234 hang was found —
+ * the client froze on a loading screen while the log looked entirely normal.
+ *
+ * @param {object} client
+ * @param {string} tag - Which dispatch claimed it
+ * @param {number} type - Opcode
+ * @param {Buffer} body
+ * @param {number|null} [repliedType] - What was sent back, or null for nothing
+ */
+function fallback(client, tag, type, body, repliedType = null)
+{
+    const hex = (n) => '0x' + (n >>> 0).toString(16).padStart(8, '0');
+
+    connection('fallback', client.connId_, {
+        server: tag,
+        op: hex(type),
+        len: body.length,
+        hex: body.toString('hex'),
+        replied: repliedType === null ? null : hex(repliedType),
+    });
+
+    if (repliedType === null)
+        console.log(`[packetlog] !! ${tag} answered NOTHING to ${hex(type)} — the client may hang waiting for a reply`);
+}
+
+/**
  * Records a marker, so a session can be sliced by what was happening.
  * @param {string} text
  * @param {string} [src] - 'console' (typed), 'chat' (in-game), 'auto' (server)
@@ -254,6 +288,7 @@ module.exports = {
     nextConnId,
     connection,
     packet,
+    fallback,
     marker,
     listenForMarkers,
     currentPath,

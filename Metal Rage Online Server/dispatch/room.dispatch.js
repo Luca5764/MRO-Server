@@ -1,4 +1,5 @@
 ﻿const NetworkClient = require("../client");
+const packetlog = require("../packetlog.js");
 const db = require('../database/db');
 const ZCommunityDispatch = require('./community.dispatch');
 const { sendRoomStatePackets } = require('./room/room-state.sender');
@@ -622,6 +623,9 @@ class ZRoomDispatch
 
             default:
             {
+                packetlog.fallback(client, 'ZRoomDispatch', type, body,
+                    (type % 2 === 1) ? type + 1 : null);
+
                 // Auto-respond to CQ messages with OK
                 if (type % 2 === 1) {
                     const responseType = type + 1;

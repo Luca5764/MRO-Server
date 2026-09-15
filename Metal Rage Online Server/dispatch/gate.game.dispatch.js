@@ -1,4 +1,5 @@
 ﻿const NetworkClient = require("../client");
+const packetlog = require("../packetlog.js");
 
 // ZGateGameDispatch - Handles Gate-range (0x22XXXX) messages on the GAME server
 //
@@ -19,6 +20,7 @@ const READY_HOST_GATE_PRIME_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_WAIT_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const POST_GAME_WAIT_READY_HOST_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_INFO_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
+const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 let nextRoomIndex = 1;
 
@@ -652,6 +654,40 @@ class ZGateGameDispatch
             }
 
             // ==========================================
+            // 0x00220234 — EXPERIMENT, purpose unconfirmed
+            //
+            // Observed 2026-09-15: pressing "back" inside a room sends this
+            // with an empty body. It is even, so the default branch answers
+            // nothing, and the client froze on a loading screen — it sent the
+            // message again 79 seconds later and kept waiting.
+            //
+            // Hypothesis: it is a request that expects an answer, and the hang
+            // is the client waiting for one. Untested alternative: it is a
+            // notification needing no reply and the freeze has another cause.
+            //
+            // So this replies with the project's standard empty EVENT_INFO at
+            // type+1 purely to see what the client does with it. It is not
+            // knowledge. If the client still hangs, the hypothesis is wrong and
+            // this should come straight back out — set the mode to 'disabled'.
+            // Either way the result belongs in docs/opcode-ledger.md.
+            // ==========================================
+            case 0x00220234:
+            {
+                if (BACK_FROM_ROOM_SA_EXPERIMENT_MODE !== 'enabled') {
+                    packetlog.fallback(client, 'ZGateGameDispatch', type, body, null);
+                    return true;
+                }
+
+                console.log(`[ZGateGameDispatch] >> 0x220234 (back-from-room?) — EXPERIMENT: replying 0x220235`);
+                const [msg, respBody] = client.getMessageBuffer(0x00220235, 0x6);
+                respBody.writeUint16LE(0x0000, 0);
+                respBody.writeUint32LE(0x0000, 2);
+                client.send(msg);
+                packetlog.marker('EXPERIMENT: answered 0x00220234 with 0x00220235 (empty EVENT_INFO)', 'auto');
+                return true;
+            }
+
+            // ==========================================
             // Room Option Change CQ
             // ==========================================
             case 0x00220215:
@@ -668,6 +704,12 @@ class ZGateGameDispatch
 
             default:
             {
+                // Nothing here understands this message. Record that before
+                // replying (or not replying), because an even opcode gets no
+                // answer at all and the client will wait for one forever.
+                packetlog.fallback(client, 'ZGateGameDispatch', type, body,
+                    (type % 2 === 1) ? type + 1 : null);
+
                 //Respond to unhandled CQ messages
                 if (type % 2 === 1) {
                     const responseType = type + 1;

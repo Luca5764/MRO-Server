@@ -1,4 +1,5 @@
 const NetworkClient = require("../client");
+const packetlog = require("../packetlog.js");
 
 // Catch-all handler for social/misc services on the dispatch server (port 9211)
 // that share the 0x22 prefix with the Gate but use different sub-ranges:
@@ -52,6 +53,9 @@ class ZGateSocialDispatch
                     console.log(`[ZGate${name}] ASCII:`, ascii);
                 }
             }
+
+            packetlog.fallback(client, `ZGate${name}`, type, body,
+                (type % 2 === 1) ? type + 1 : null);
 
             // Auto-respond to CQ messages
             if (type % 2 === 1) {

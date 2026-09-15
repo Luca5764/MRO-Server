@@ -1,4 +1,5 @@
 const NetworkClient = require("../client");
+const packetlog = require("../packetlog.js");
 
 // ZDispatchLobby - Handles lobby operations after entering a channel
 //
@@ -166,6 +167,8 @@ class ZLobbyDispatch
 
             default:
             {
+                packetlog.fallback(client, 'ZLobbyDispatch', type, body, type + 1);
+
                 //Generic OK Response to keep client from crashing / hanging
                 const responseType = type + 1;
                 console.log(`[ZLobbyDispatch] >> Auto-responding with 0x${responseType.toString(16).padStart(8, '0')}`);
