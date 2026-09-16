@@ -70,17 +70,26 @@ class ZLobbyDispatch
             // Trying 0x00230111 based on the CQ/SA pattern (X111/X112)
             case 0x00230111:
             {
-                console.log(`[ZLobbyDispatch] >> Lobby Enter CQ (guessed)`);
+                // Only a lobby-enter while actually in the lobby. Once the
+                // player is in a game (gameStarted_), the client sends 0x230111
+                // once a second as an in-map poll, and answering it with a
+                // lobby-enter SA + empty room list is nonsense to a client
+                // sitting at the mission briefing — it was looping that pair
+                // for minutes. In-game, leave it to the fallback (which logs it)
+                // until its real in-map meaning is known.
+                if (client.gameStarted_) {
+                    console.log(`[ZLobbyDispatch] >> 0x230111 while in game — not treating as Lobby Enter`);
+                    return false;
+                }
 
+                console.log(`[ZLobbyDispatch] >> Lobby Enter CQ (guessed)`);
                 {
                     const [msg, respBody] = client.getMessageBuffer(0x00230112, 0x6);
                     respBody.writeUint16LE(0x0000, 0); // EventMessage = OK
                     respBody.writeUint32LE(0x0000, 2); // ErrorMessage = OK
                     client.send(msg);
                 }
-
                 this.sendEmptyRoomList(client);
-
                 return true;
             }
 
