@@ -15,16 +15,17 @@ const GAME_USER_HEADER_SIZE = 0x02;
 const GAME_USER_SOCKET_OFFSET = 0x6D;
 const GAME_USER_SOCKET_SIZE = 0x2F;
 
-// DefaultMech=0 base body item IDs from Cache.Bin (FSpecMechRecord)
-const DEFAULT_MECH_BODY = {
-    1: 11100101, // SA01m Vanguard
-    2: 12100101, // AA01m Dual
-    3: 13100101, // HA01m
-    4: 14200101, // NB01m
-    5: 15200101, // TB01m
-    6: 16200101, // BB01m
-    7: 17100101, // EA01m
-    8: 18100101, // OA01m
+// Canonical default loadouts from Cache.Bin Table 4 (DefaultSetList)
+// Format: body, main, left, right, booster, skin
+const CANONICAL_LOADOUTS = {
+    1: { body: 11100101, main: 22100101, left: 32100101, right: 31100101, booster: 41100101, skin: 61101001 }, // Vanguard (Small)
+    2: { body: 12100101, main: 26300101, left: 32100101, right: 31100101, booster: 41100101, skin: 61100101 }, // Dual
+    3: { body: 13100101, main: 21200101, left: 32100101, right: 31100101, booster: 41100101, skin: 61101601 }, // HA01m
+    4: { body: 14200101, main: 24100201, left: 32100101, right: 31100101, booster: 0,        skin: 61101201 }, // NB01m
+    5: { body: 15200101, main: 22200201, left: 32100101, right: 31100101, booster: 0,        skin: 61101301 }, // TB01m
+    6: { body: 16200101, main: 25300101, left: 38500101, right: 0,        booster: 43100101, skin: 61101501 }, // BB01m
+    7: { body: 17100101, main: 28100101, left: 31100101, right: 0,        booster: 42100101, skin: 61101401 }, // EA01m
+    8: { body: 18100101, main: 28300101, left: 39100101, right: 31100101, booster: 41100101, skin: 61101101 }, // OA01m
 };
 
 // The record layout below is read out of the real handler at 0x107d8ae0, from
@@ -160,24 +161,32 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
 
     // Slot 0: rec+0x6D (slot+0x00..0x2E)
     const socket = rec + GAME_USER_SOCKET_OFFSET;
+    const def = CANONICAL_LOADOUTS[mechType] || CANONICAL_LOADOUTS[1];
+    const bodyId = Number(bodyItem && bodyItem.item_id) || def.body;
+    const mainId = Number(mainItem && mainItem.item_id) || def.main;
+    const leftId = Number(leftItem && leftItem.item_id) || def.left;
+    const rightId = Number(rightItem && rightItem.item_id) !== undefined && rightItem ? Number(rightItem.item_id) : def.right;
+    const boosterId = Number(equipmentItem && equipmentItem.item_id) !== undefined && equipmentItem ? Number(equipmentItem.item_id) : def.booster;
+    const skinId = Number(skinItem && skinItem.item_id) !== undefined && skinItem ? Number(skinItem.item_id) : def.skin;
+
     // socket+0x00: u32 raw slot/mech selector (1..7 → 0..6; mechType=1 → slot 0)
     body.writeUint32LE(mechType, socket + 0x00);
     // socket+0x04: u32 body item
-    body.writeUint32LE(Number(bodyItem && bodyItem.item_id) || DEFAULT_MECH_BODY[mechType] || 11100101, socket + 0x04);
+    body.writeUint32LE(bodyId, socket + 0x04);
     // slot+0x08: u8, unread by the handler — it is the byte that leaves every
     // u32 after it unaligned, which is how the offsets below were confirmed.
     body.writeUint8(0, socket + 0x08);
     // slot+0x09/0x0D/0x11: the three Game_UserSocket_Set values (zeros for now)
     // socket+0x15: u32 main weapon
-    body.writeUint32LE(Number(mainItem && mainItem.item_id) || 0, socket + 0x15);
+    body.writeUint32LE(mainId, socket + 0x15);
     // socket+0x19: u32 left weapon
-    body.writeUint32LE(Number(leftItem && leftItem.item_id) || 0, socket + 0x19);
+    body.writeUint32LE(leftId, socket + 0x19);
     // socket+0x1D: u32 right weapon
-    body.writeUint32LE(Number(rightItem && rightItem.item_id) || 0, socket + 0x1D);
-    // socket+0x21: u32 equipment
-    body.writeUint32LE(Number(equipmentItem && equipmentItem.item_id) || 0, socket + 0x21);
+    body.writeUint32LE(rightId, socket + 0x1D);
+    // socket+0x21: u32 equipment / booster
+    body.writeUint32LE(boosterId, socket + 0x21);
     // socket+0x25: u32 skin
-    body.writeUint32LE(Number(skinItem && skinItem.item_id) || 0, socket + 0x25);
+    body.writeUint32LE(skinId, socket + 0x25);
     // socket+0x29-0x2E: padding (zeros)
 
     client.send(msg);
@@ -185,7 +194,7 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     console.log(
         `[ZRoomDispatch] >> Sent Game_User_SN 0x00222112 ` +
         `(userIndex=${accountIndex}, team=${teamIndex}, selectedMech=${mechType}, ` +
-        `body=${Number(bodyItem && bodyItem.item_id) || 0}, main=${Number(mainItem && mainItem.item_id) || 0})`
+        `body=${bodyId}, main=${mainId}, left=${leftId}, right=${rightId}, booster=${boosterId}, skin=${skinId})`
     );
 }
 

@@ -17,10 +17,10 @@
      - **Table 4 (`DefaultSetList`) 證實 1 號機 Vanguard 正確的主武器是 `22100101` (`MOM_a` / 輕量型來福機槍)**！
      - 左右副武器分別為 `SubLeft=32100101` (`AOM_a` / 簡易機槍) 與 `SubRight=31100101` (`AOC_a` / 輕型主動式加農砲)。先前資料庫缺少 slot 3 且把 31100101 錯塞到 slot 2，導致副武器掛載失敗。
      - 推進器鍵位為 `Shift` (`Key_Booster=16`)，且機體在蹲伏跪地（`Ctrl`, `Key_SitDown=17`）狀態下不可噴射。
-3. **即將套用的修復（待重啟後驗證）**：
-   - 更新 `room-game-user.sender.js` 完整 8 台機體的官方 Table 4 `CANONICAL_LOADOUTS`。
-   - 更新 `database/db.js` 的 `starterLoadouts` 為 Table 4 官方正版。
-   - 更新資料庫 Account 2 的 `items` 記錄為正版配置。
+3. **已完成套用的修復**：
+   - `room-game-user.sender.js` 已套用完整 8 台機體的官方 Table 4 `CANONICAL_LOADOUTS` 作為各槽位保底。
+   - `database/db.js` 的 `starterLoadouts` 已更新為 Table 4 官方正版（包含 slot 3 副武器右與 slot 5 塗裝）。
+   - MySQL 資料庫 Account 1 & 2 的 `items` 記錄已全數重置為 Table 4 正版預設配裝。
 
 ### 待驗證項目（請使用者實測）
 1. 登入進戰役房並出擊（Mech 1）。
