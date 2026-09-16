@@ -38,6 +38,24 @@ const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
 // in the room is not yet known — nobody has actually watched it happen.
 const GAME_INFO_SN_WITH_ROOM_STATE = 'enabled'; // 'disabled' | 'enabled'
 
+// EXPERIMENT — off by default. Server-driven combat entry.
+//
+// Decompilation (see docs/opcode-ledger.md) shows the host's F5 travel reads
+// [0xfc8] in the room scene (5), where nothing can set it, so it always
+// travels to map 0 = Store_01 and crashes. Game_Info_SN only sets [0xfc8] in
+// scene 1 or 6. Game_Wait_SN (0x420111) is what moves the client from the
+// room to scene 6.
+//
+// So this mode, on the start request, sends Game_Wait_SN FIRST (push to scene
+// 6) and then Game_Info_SN (now handled by ZDispatchGame in scene 6, which
+// sets the map and calls Game_Play_Start to travel) — giving up the host's
+// own F5 travel in favour of a server-driven one.
+//
+// Untestable statically: whether this beats the client's synchronous
+// ZPage_Room.GameStart. Flip to 'enabled' and watch the travel URL in the
+// client log — success is "start Map_PC01?...ZModePve...", not Store_01.
+const SERVER_DRIVEN_START_MODE = 'disabled'; // 'disabled' | 'enabled'
+
 // Map_PC01 easy — the campaign room's default until the client picks another.
 const MAP_ID_DEFAULT_CAMPAIGN = 9001;
 
@@ -677,6 +695,22 @@ class ZGateGameDispatch
                 // experiment that can also send 0x222102 first.
                 console.log(`[ZGateGameDispatch] >> Room Game_Start_CQ`);
                 clearPendingRoomStateRetries(client, 'game-start cq');
+
+                if (SERVER_DRIVEN_START_MODE === 'enabled') {
+                    // Push to scene 6 first, then set the map there.
+                    if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
+                        client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
+                    client.gameStarted_ = true;
+                    client.campaignStarted_ = (Number(client.rawRoomType_) === 1) ||
+                        (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5);
+                    sendRoomGameWaitSn(client, 'server-driven: to scene 6');
+                    // Give the client a beat to enter scene 6 before the map,
+                    // so the scene-6 Game_Info_SN handler is the one that runs.
+                    setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map'), 150);
+                    setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map retry'), 500);
+                    console.log(`[ZGateGameDispatch] >> SERVER_DRIVEN_START: Game_Wait_SN then Game_Info_SN`);
+                    return true;
+                }
 
                 // First thing out, synchronously, before Ready_Host_SQ and
                 // before anything is scheduled.
