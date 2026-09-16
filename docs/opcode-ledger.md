@@ -1,5 +1,7 @@
 # Opcode 台帳
 
+> **已凍結（2026-09-17）：** 第 171 行以後的內容已原文搬到 docs/journal/，索引見 docs/journal/INDEX.md。現況改看 docs/state.md。本檔不再新增內容。
+
 跨 session 的協定知識累積處。**每一列都必須標明狀態與依據。**
 
 ## 狀態定義
