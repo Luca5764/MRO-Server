@@ -81,6 +81,9 @@ $p = Get-Process $Proc -ErrorAction SilentlyContinue |
      Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
 if ($p -eq $null) { Write-Output "no window for process '$Proc'"; exit 1 }
 
+# SetForegroundWindow returns True from a background process and does nothing;
+# the foreground stays where it was. A real click is what actually focuses the
+# window, so callers who need focus should pass -Click.
 if ([In]::IsIconic($p.MainWindowHandle)) { [void][In]::ShowWindow($p.MainWindowHandle, 9) }
 [void][In]::SetForegroundWindow($p.MainWindowHandle)
 Start-Sleep -Milliseconds $Delay
