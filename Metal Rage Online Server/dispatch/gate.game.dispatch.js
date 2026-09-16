@@ -716,7 +716,14 @@ class ZGateGameDispatch
                         sendOkSa(client, 0x00222102, 'server-driven: Game_Ready_SN');
                         sendOkSa(client, 0x00222104, 'server-driven: Game_Start_SN');
                     }, 300);
-                    setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map retry'), 500);
+                    // The client sits at Loading, silent, after the above — the
+                    // one thing the old (crashing) flow sent that this lacked is
+                    // Ready_Host_SQ, which the client answered with 0x420114.
+                    // The Game_Wait state is likely waiting on that host-ready
+                    // handshake. Send it; if the client answers 0x420114, the
+                    // 0x420114 handler (below) carries it forward.
+                    setTimeout(() => sendReadyHostSq(client), 450);
+                    setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map retry'), 600);
                     console.log(`[ZGateGameDispatch] >> SERVER_DRIVEN_START: Wait -> Info -> Ready/Start`);
                     return true;
                 }
