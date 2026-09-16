@@ -15,6 +15,7 @@ param(
     [string]$Click = "",
     [string]$Key   = "",
     [string]$Type  = "",
+    [string]$Paste = "",
     [int]$Delay    = 400
 )
 
@@ -32,6 +33,23 @@ public class In {
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint f, IntPtr e);
   [DllImport("user32.dll")] public static extern short VkKeyScan(char c);
   [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint type);
+  [DllImport("user32.dll")] public static extern IntPtr LoadKeyboardLayout(string id, uint flags);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern IntPtr PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint threadId);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr pid);
+  public const uint WM_INPUTLANGCHANGEREQUEST = 0x0050;
+
+  // With a Bopomofo IME active, keystrokes are swallowed into composition and
+  // the game never sees them — in Notepad the same keys came out as 注音.
+  // Switch the target window to en-US first; everything types normally then.
+  public static string ToEnglish(IntPtr hwnd) {
+    IntPtr before = GetKeyboardLayout(GetWindowThreadProcessId(hwnd, IntPtr.Zero));
+    IntPtr en = LoadKeyboardLayout("00000409", 1);
+    PostMessage(hwnd, WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, en);
+    System.Threading.Thread.Sleep(250);
+    return before.ToString("X8");
+  }
   public struct RECT { public int Left, Top, Right, Bottom; }
   public const uint LEFTDOWN = 0x0002, LEFTUP = 0x0004;
   public const uint KEYUP = 0x0002, SCANCODE = 0x0008;
@@ -70,6 +88,13 @@ Start-Sleep -Milliseconds $Delay
 $r = New-Object In+RECT
 [void][In]::GetWindowRect($p.MainWindowHandle, [ref]$r)
 
+# Do this before any key goes out, and before the click, so the field is
+# already in English mode when it takes focus.
+if ($Key -ne "" -or $Type -ne "" -or $Paste -ne "") {
+    $was = [In]::ToEnglish($p.MainWindowHandle)
+    Write-Output ("layout -> en-US (was " + $was + ")")
+}
+
 if ($Click -ne "") {
     $xy = $Click.Split(",")
     $x = $r.Left + [int]$xy[0]
@@ -91,3 +116,15 @@ if ($Key -ne "") {
     else { Write-Output ("unknown key '" + $Key + "'; known: " + ($VK.Keys -join " ")); exit 1 }
 }
 if ($Type -ne "") { [In]::TypeText($Type); Write-Output ("typed " + $Type) }
+
+# Typing goes through whatever IME is active — with a Chinese IME in the way,
+# characters are swallowed into composition and the game sees nothing. Pasting
+# skips the IME entirely, which is how a human does it here too.
+if ($Paste -ne "") {
+    Set-Clipboard -Value $Paste
+    Start-Sleep -Milliseconds 150
+    [In]::keybd_event(0x11, [byte][In]::MapVirtualKey(0x11, 0), [In]::SCANCODE, [IntPtr]::Zero)   # Ctrl down
+    [In]::Press(0x56, $false)                                                                     # V
+    [In]::keybd_event(0x11, [byte][In]::MapVirtualKey(0x11, 0), [In]::SCANCODE -bor [In]::KEYUP, [IntPtr]::Zero)
+    Write-Output ("pasted " + $Paste)
+}
