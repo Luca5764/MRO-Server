@@ -5,42 +5,30 @@
 
 ---
 
-## 目前交接快照（2026-09-16 20:45，請以此段為準）
+## 目前交接快照（2026-09-16 21:38，請以此段為準）
 
-這一輪已由一個 AI 完成並實測：客戶端可以登入、建戰役房、載入 `Map_PC01`、生成玩家機體、移動與瞄準；玩家死亡後會顯示 `RESPAWN` 讀條，讀條結束也已成功重新生成機體。使用者目前回報：左鍵按很多次仍不能開火、沒有推進器、裝備顯示像另一台機體、沒有副裝備／推進器、場上沒有敵人。
+本輪接手後已徹底查明「武器顯示鷹式榴彈砲、無副武器、無法開火」的根本原因與官方標準解法：
+1. **問題定位與實測結果**：
+   - 截圖 `shots/shot-211936.png` 確認機體外觀已是 Vanguard (`SA01m`)，防禦值 280。
+   - 但 HUD 顯示「鷹式榴彈砲 / ANACONDA II (D)」，且無副武器、不能開火。客戶端 log 依然出現 `WeaponLog=== Small Cannot use Map_PC01.MOC_a`。
+2. **根本原因**：
+   - 反編譯 `Engine.dll` 解析 `Cache.Bin` 的 Table 7 (`FSpecWeaponMainRecord`) 與 Table 4 (`DefaultSetList`)：
+     - `wid=21100101`（`Zweapon.MOC_a`）在台版中文正是「鷹式榴彈砲」，但它是 Medium/Heavy 機體專用武器。Small 機體（Vanguard `SA01m`）裝載時引擎會印出 `Small Cannot use Map_PC01.MOC_a` 並拒絕掛載，導致手部沒有武器 Actor，故**無法開火**。
+     - **Table 4 (`DefaultSetList`) 證實 1 號機 Vanguard 正確的主武器是 `22100101` (`MOM_a` / 輕量型來福機槍)**！
+     - 左右副武器分別為 `SubLeft=32100101` (`AOM_a` / 簡易機槍) 與 `SubRight=31100101` (`AOC_a` / 輕型主動式加農砲)。先前資料庫缺少 slot 3 且把 31100101 錯塞到 slot 2，導致副武器掛載失敗。
+     - 推進器鍵位為 `Shift` (`Key_Booster=16`)，且機體在蹲伏跪地（`Ctrl`, `Key_SitDown=17`）狀態下不可噴射。
+3. **即將套用的修復（待重啟後驗證）**：
+   - 更新 `room-game-user.sender.js` 完整 8 台機體的官方 Table 4 `CANONICAL_LOADOUTS`。
+   - 更新 `database/db.js` 的 `starterLoadouts` 為 Table 4 官方正版。
+   - 更新資料庫 Account 2 的 `items` 記錄為正版配置。
 
-伺服器現在在 tmux `server` 中執行，最後一次重啟後的記錄是
-`Metal Rage Online Server/logs/session-20260916-203513.jsonl`。使用者已明確授權接手者控制與重啟這個 tmux session；客戶端操作仍由使用者手動完成。若要修改已載入的 Node 程式，必須先重啟 server，否則測到的是舊程式。
+### 待驗證項目（請使用者實測）
+1. 登入進戰役房並出擊（Mech 1）。
+2. 檢查機體手中是否有主武器（輕量型來福機槍），副武器（簡易機槍 / 輕型主動式加農砲）。
+3. 檢查按左鍵能否正常射擊。
+4. 站立狀態下按 Shift 檢查是否有推進器噴射效果。
+5. 檢查 `MetalRage.log` 是否不再出現 `Cannot use Map_PC01.MOC_a`。
 
-本輪已修改、不要回退的檔案：
-
-- `Metal Rage Online Server/dispatch/account.dispatch.js`
-- `Metal Rage Online Server/dispatch/gamelogin.dispatch.js`
-- `Metal Rage Online Server/dispatch/community.dispatch.js`
-- `Metal Rage Online Server/dispatch/lobby.dispatch.js`
-- `docs/HANDOFF.md`
-- `docs/opcode-ledger.md`
-
-另有未追蹤的研究筆記 `docs/research/`，以及工具執行產生的
-`Metal Rage Online Server/tools/__pycache__/`；不要用 reset、checkout 或刪除整個目錄來清理工作樹。
-
-### 已確認的行為與修正
-
-1. `Game_User_SN 0x00222112` 必須在客戶端場景 6 發送，`team=0` 才會讓 travel URL 進入玩家隊伍；已啟用並填入 account 2 的第一台機體。
-2. `Game_Info_SN` 的 TimeLimit 已固定為 10 分鐘。
-3. `WearInfo_SN` 的每個裝備欄位順序已修正為 `[itemIndex, uniqueKey]`；離線重播時庫存配對由 0 增至 24。這只證明倉庫封包配對正確，不代表戰鬥欄位已完成。
-4. 開局封包配對已核對：`BeginRound_CN/SN = 0x00230151/0x00230152`，`Respawn_CN/SN = 0x00230103/0x00230104`。先前把 `0x00230103` 當 SN 是錯的。
-5. `Death_CN 0x00230123` 的實際 body 為 `0000020003000000000000`：攻擊者 0、受害者 2、環境死亡類型 3。伺服器現在回傳長度 0x51 的 `Death_SN 0x00230124`，把受害者 2 寫在 body+0x0C；5 秒後再送 `Respawn_SN` 作保底。最新實測已看到重生機體。
-6. 使用者按左鍵時，最新記錄沒有任何新的開火／攻擊 opcode，只有既有的內部 `0x00020083` 心跳／同步封包。這表示目前問題發生在客戶端產生武器操作事件之前，不能先假設是伺服器缺少回應。
-7. 客戶端仍記錄 `Class''ZMechanicA 'call failed`，以及 `PreLoadallPveAI_BD: ... DefaultPawnClass` null；目前只知道沒有敵人，尚未證明是地圖資產、AI 設定或遊戲狀態封包造成。
-
-### 下一個 AI 的工作邊界
-
-優先追查「武器未掛載 → 客戶端不送開火封包」這條鏈，並獨立追查敵人生成。先讀 DLL／組語與既有 `docs/research/`，再改一個變數並重啟測試。不要重新調整已驗證的 team、TimeLimit、BeginRound、Respawn 或 Death 欄位，除非新證據直接推翻它們。
-
-裝備目前由 `dispatch/room/room-game-user.sender.js` 組成：account 2、selected mech 1 的資料是 body `11200101`、主武器 `21100101`、左武器 `31100101`、右武器 0、裝備／推進器 `41100101`、skin 0；三個 `Game_UserSocket_Set` 欄位仍為 0。這些 socket 欄位的語意尚未確認，不能直接把其他機體物品硬塞進去。資料庫的 `items` 表中，機體 1 沒有 `part_slot=3` 或 `5`；這是待查資料，不等於要偽造裝備。
-
-測試時請把「客戶端是否送出新 recv opcode」和「畫面是否有武器／敵人」分開記錄。客戶端遊戲操作不可由伺服器端工具代按；不得繞過 XIGNCODE、注入行程、附加除錯器或偽造輸入來源旗標。
 
 ---
 

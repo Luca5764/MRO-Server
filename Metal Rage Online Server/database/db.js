@@ -189,14 +189,14 @@ async function createAccount(username, nickname, pilot)
         //   5=Firepower(TB), 6=Engineer(BB), 7=Maintenance(EA), 8=Observation(OA)
         const starterLoadouts = [
              // 기체 바디 (part_slot=0, slot=0) (mech body)
-            [1, 0, 11200101],  // 소형 (light)
-            [2, 0, 12200101],  // 강습 (assault)
-            [3, 0, 13200101],  // 중형 (medium)
-            [4, 0, 14300101],  // 저격 (sniper)
-            [5, 0, 15300101],  // 화력 (firepower)
-            [6, 0, 16300101],  // 공병 (engineer)
-            [7, 0, 17200101],  // 정비 (maintenance)
-            [8, 0, 18200101],  // 관측 (observation)
+            [1, 0, 11100101],  // 소형 (light) - SA01m Vanguard
+            [2, 0, 12100101],  // 강습 (assault) - AA01m Dual
+            [3, 0, 13100101],  // 중형 (medium) - HA01m
+            [4, 0, 14200101],  // 저격 (sniper) - NB01m
+            [5, 0, 15200101],  // 화력 (firepower) - TB01m
+            [6, 0, 16200101],  // 공병 (engineer) - BB01m
+            [7, 0, 17100101],  // 정비 (maintenance) - EA01m
+            [8, 0, 18100101],  // 관측 (observation) - OA01m
 
             // [mech_type, part_slot, item_id]
             // Mech 1 - Light

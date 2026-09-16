@@ -15,6 +15,18 @@ const GAME_USER_HEADER_SIZE = 0x02;
 const GAME_USER_SOCKET_OFFSET = 0x6D;
 const GAME_USER_SOCKET_SIZE = 0x2F;
 
+// DefaultMech=0 base body item IDs from Cache.Bin (FSpecMechRecord)
+const DEFAULT_MECH_BODY = {
+    1: 11100101, // SA01m Vanguard
+    2: 12100101, // AA01m Dual
+    3: 13100101, // HA01m
+    4: 14200101, // NB01m
+    5: 15200101, // TB01m
+    6: 16200101, // BB01m
+    7: 17100101, // EA01m
+    8: 18100101, // OA01m
+};
+
 // The record layout below is read out of the real handler at 0x107d8ae0, from
 // the assembly rather than the decompiler — Ghidra mislabels two of the stack
 // slots. The record buffer sits at esp+0xA8 in that frame; every offset here
@@ -151,7 +163,7 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     // socket+0x00: u32 raw slot/mech selector (1..7 → 0..6; mechType=1 → slot 0)
     body.writeUint32LE(mechType, socket + 0x00);
     // socket+0x04: u32 body item
-    body.writeUint32LE(Number(bodyItem && bodyItem.item_id) || mechType, socket + 0x04);
+    body.writeUint32LE(Number(bodyItem && bodyItem.item_id) || DEFAULT_MECH_BODY[mechType] || 11100101, socket + 0x04);
     // slot+0x08: u8, unread by the handler — it is the byte that leaves every
     // u32 after it unaligned, which is how the offsets below were confirmed.
     body.writeUint8(0, socket + 0x08);
