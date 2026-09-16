@@ -189,71 +189,55 @@ async function createAccount(username, nickname, pilot)
         //   5=Firepower(TB), 6=Engineer(BB), 7=Maintenance(EA), 8=Observation(OA)
         // Official default loadouts from Cache.Bin Table 4 (DefaultSetList)
         // [mech_type, part_slot, item_id]
-        // part_slot: 0=body, 1=main, 2=sub_left, 3=sub_right, 4=booster, 5=skin
+        // Inventory equipment slots: 0=body, 1=main, 2=sub, 4=booster
         const starterLoadouts = [
             // Mech 1 - Light / Vanguard (SA01m)
             [1, 0, 11100101], // Body: SA01m Vanguard
             [1, 1, 22100101], // Main: MOM_a Light rifle
             [1, 2, 32100101], // SubLeft: AOM_a Secondary machine gun
-            [1, 3, 31100101], // SubRight: AOC_a Light active cannon
             [1, 4, 41100101], // Booster: BPE_a Plasma thruster
-            [1, 5, 61101001], // Skin: Vanguard default
 
             // Mech 2 - Assault / Dual (AA01m)
             [2, 0, 12100101], // Body: AA01m Dual
             [2, 1, 26300101], // Main: Dual main weapon
             [2, 2, 32100101], // SubLeft: AOM_a
-            [2, 3, 31100101], // SubRight: AOC_a
             [2, 4, 41100101], // Booster: BPE_a
-            [2, 5, 61100101], // Skin: Dual default
 
             // Mech 3 - Medium / 劍虎 (HA01m)
             [3, 0, 13100101], // Body: HA01m
             [3, 1, 21200101], // Main: MNC_a Multi-column smoothbore
             [3, 2, 32100101], // SubLeft: AOM_a
-            [3, 3, 31100101], // SubRight: AOC_a
             [3, 4, 41100101], // Booster: BPE_a
-            [3, 5, 61101601], // Skin: HA01m default
 
             // Mech 4 - Sniper / 判官 (NB01m)
             [4, 0, 14200101], // Body: NB01m
             [4, 1, 24100201], // Main: Sniper rifle
             [4, 2, 32100101], // SubLeft: AOM_a
-            [4, 3, 31100101], // SubRight: AOC_a
-            // Booster: 0 (No booster for Sniper in Table 4)
-            [4, 5, 61101201], // Skin: NB01m default
+            [4, 4, 41100101], // Booster: BPE_a
 
             // Mech 5 - Firepower / 聖戰士 (TB01m)
             [5, 0, 15200101], // Body: TB01m
             [5, 1, 22200201], // Main: Firepower cannon
             [5, 2, 32100101], // SubLeft: AOM_a
-            [5, 3, 31100101], // SubRight: AOC_a
-            // Booster: 0 (No booster for Firepower in Table 4)
-            [5, 5, 61101301], // Skin: TB01m default
+            [5, 4, 41200101], // Booster: BHE_a
 
             // Mech 6 - Engineer / 雷霆 (BB01m)
             [6, 0, 16200101], // Body: BB01m
             [6, 1, 25300101], // Main: BB01m main
-            [6, 2, 38500101], // SubLeft: ATA_a / Mine/construction
-            // SubRight: 0 (No SubRight for Engineer in Table 4)
+            [6, 2, 38500101], // SubLeft: ATA_a
             [6, 4, 43100101], // Booster: ABA_a
-            [6, 5, 61101501], // Skin: BB01m default
 
             // Mech 7 - Maintenance / 智多星 (EA01m)
             [7, 0, 17100101], // Body: EA01m
             [7, 1, 28100101], // Main: Repair/beam
             [7, 2, 31100101], // SubLeft: AOC_a
-            // SubRight: 0 (No SubRight for Maintenance in Table 4)
             [7, 4, 42100101], // Booster: ADA_a
-            [7, 5, 61101401], // Skin: EA01m default
 
             // Mech 8 - Observation / 觀星者 (OA01m)
             [8, 0, 18100101], // Body: OA01m
             [8, 1, 28300101], // Main: MPF_a Remote detection
             [8, 2, 39100101], // SubLeft: AEF_a EMP
-            [8, 3, 31100101], // SubRight: AOC_a
             [8, 4, 41100101], // Booster: BPE_a
-            [8, 5, 61101101], // Skin: OA01m default
         ];
 
         for (const [mechType, partSlot, itemId] of starterLoadouts) {
