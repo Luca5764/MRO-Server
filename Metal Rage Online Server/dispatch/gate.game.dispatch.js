@@ -24,15 +24,19 @@ const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
 // When the room state block is re-sent after Create_SA, and why each entry
 // costs a room-master dialog. See the comment at the call site.
-// Sending Game_Info_SN with the room state turned the room into a blank white
-// window. Its handler calls Game_Data_Clear before Game_Info_Set, and clearing
-// the game data underneath a live room scene appears to take the room with it.
+// Send Game_Info_SN with the room state, so [this+0xfc8] holds the map before
+// the player presses start. That is the only way it can be set in time:
+// ZPage_Room composes its travel URL the instant the start request goes out,
+// a millisecond before anything we send back can arrive.
 //
-// So it cannot go here, and it is too late in the start path: the client has
-// already composed its travel URL by then. Both ends are wrong, which means
-// the map is probably not reaching ZPage_Room through this packet at all —
-// the script's own m_MapInfoList is empty, and that is the next thing to read.
-const GAME_INFO_SN_WITH_ROOM_STATE = 'disabled'; // 'disabled' | 'enabled'
+// This was switched off once on the strength of a "blank white window" that
+// turned out to be a screenshot cropped to the title bar. There was never a
+// blank window; nothing was ever observed to break here.
+//
+// What the handler does do, per the disassembly, is call Game_Play_Start and
+// Scene_Change(6) after setting the map. Whether that is visible or a problem
+// in the room is not yet known — nobody has actually watched it happen.
+const GAME_INFO_SN_WITH_ROOM_STATE = 'enabled'; // 'disabled' | 'enabled'
 
 // Map_PC01 easy — the campaign room's default until the client picks another.
 const MAP_ID_DEFAULT_CAMPAIGN = 9001;
