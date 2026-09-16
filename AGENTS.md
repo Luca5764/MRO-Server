@@ -26,7 +26,7 @@
 
 | 等級 | 目前的模型 |
 |---|---|
-| **高階** | Claude 主力、Codex 主力、Codex 的審查用模型 |
+| **高階** | Claude 主力、Codex 主力（GPT-6 Astra）、Codex 的 reviewer（Astra） |
 | **中階** | Gemini（Antigravity）、Codex 的 Luna 子 agent、Claude 的 Sonnet 子 agent |
 
 **權限依「能不能下結論」來分，不依公司分。** 這個專案最貴的錯誤是把推測寫成已確認，錯的 ✅ 會讓後面整串推論跟著歪。
