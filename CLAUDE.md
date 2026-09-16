@@ -112,6 +112,8 @@ tools/create-account.js  建立可登入的帳號
 tools/disasm.py          反組譯客戶端 DLL（sections/exports/at/func/xref/str）
 tools/dispatch-map.py    還原 opcode → handler 映射
 tools/ghidra/            Ghidra headless 反編譯（decompile.sh <位址>）
+tools/win/               從 WSL 截圖與操作 Windows 上的客戶端
+shots/                   截圖輸出（已 gitignore）
 logs/            紀錄輸出（已 gitignore）
 dispatch/        各命名空間的 handler
 dispatch/room/   房間相關的 SN 送出邏輯（被 room.dispatch.js 呼叫）
@@ -232,6 +234,22 @@ Marker 有三個來源，紀錄裡會標明是哪一種。
 - 送出 `Ready_Host_SQ` / `Ready_Success_SN` / `BeginRound_SN` / `Game_Start_SA` / `Game_Start_SN`
 
 **Marker 框的是區間，不是瞬間。** 動作前後各打一個，中間全部就是候選。更有效的做法是**一次 session 只做一件事**——紀錄檔很便宜，髒了就丟掉重錄。
+
+### 自己看畫面
+
+```bash
+tools/win/shot.sh                  # 截遊戲視窗
+tools/win/shot.sh --full           # 截整個桌面
+tools/win/drive.sh click 512,300   # 點擊（視窗相對座標）
+tools/win/drive.sh key '{F5}'
+tools/win/drive.sh type '進訓練場'  # 打進遊戲聊天框 → 自動成為 marker
+```
+
+**為什麼要有這個：** 這個專案的判斷大量依賴「畫面上發生了什麼」，而轉述過的畫面不是觀察。曾有一張只框到標題列的截圖被當成「畫面全白」，據此做了兩次錯誤的回歸判定，再據此建立了一整套錯誤的場景切換理論——台帳裡連續數條記錄因此作廢。
+
+> `drive.sh` 會**奪取前景並移動滑鼠**，等於接管機器。操作者正在使用電腦時不要跑。
+>
+> 只用作業系統層級的輸入，**不注入行程、不附加除錯器**——客戶端有 y0da、Themida 與 anti-attach，那條線本專案不碰。
 
 ### 客戶端自己的 log
 
