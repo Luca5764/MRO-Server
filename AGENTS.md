@@ -61,7 +61,7 @@ docs/
   research/<日期>-<主題>/   decompile 輸出、hex dump 等大段原始資料
 ```
 
-> **遷移中：** `docs/opcode-ledger.md` 是舊的單一台帳（快 1800 行），正在拆進上述結構。`state.md` 建好之前，以舊台帳為準，但**不要整份讀**，用 grep 找要的段落。舊台帳前後有矛盾（例如第 710 行 `Assist_SN` 的 opcode 已被第 1631 行更正），越後面越新。
+> **舊台帳已凍結（2026-09-17）：** `docs/opcode-ledger.md` 不再新增內容，第 171 行以後的段落已原文搬到 `docs/journal/`，現況以 `docs/state.md` 為準。舊台帳前 170 行的 opcode 表與約第 696–736 行的「完整映射」表**已知有錯**，不要引用；查名稱用 `tools/dispatch-map.py` 或 `docs/client-dispatch-map.md`。
 
 **token 花在讀，不花在存。** 記多少都沒關係，重點是每次只讀需要的部分：
 

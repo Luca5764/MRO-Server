@@ -65,3 +65,4 @@
 | 2026-09-16 | `2026-09-16-32-weapon-no-fire-wrong-model-root-cause.md` | — | — | 以客戶端 log 與 Cache.Bin/DLL 分析追查武器無法開火、機體外觀顯示成另一台機體的根因。 |
 | 2026-09-16 | `2026-09-16-33-weapon-model-true-root-cause-verified.md` | — | — | 以截圖與 Cache.Bin/DLL 反編譯進一步驗證武器掛載與機體型號問題的真正根因。 |
 | 2026-09-17 | `2026-09-17-01-review-iteminfo-stall-root-cause.md` | `0x00230121` | — | 覆核武器掛載修正效果，並以 Cache.Bin Table 4 解析檢視預設配裝資料與資料庫的不一致之處。 |
+| 2026-09-17 | `2026-09-17-02-ledger-contradictions-adjudicated.md` | `0x00230103`、`0x00230112`、`0x00222102`、`0x00420116`… | ✅ | 高階逐條裁決舊台帳 8 條矛盾（重跑 dispatch-map 核對），建立 state.md；程式碼未改。 |
