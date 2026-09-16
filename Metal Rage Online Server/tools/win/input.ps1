@@ -29,8 +29,33 @@ public class In {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, IntPtr e);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint f, IntPtr e);
+  [DllImport("user32.dll")] public static extern short VkKeyScan(char c);
+  [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint type);
   public struct RECT { public int Left, Top, Right, Bottom; }
   public const uint LEFTDOWN = 0x0002, LEFTUP = 0x0004;
+  public const uint KEYUP = 0x0002, SCANCODE = 0x0008;
+
+  // The client reads the keyboard through DirectInput, which never sees the
+  // window messages SendKeys posts. These are real key events with real scan
+  // codes, which it does see.
+  public static void Press(byte vk, bool shift) {
+    byte sc = (byte)MapVirtualKey((uint)vk, 0);
+    if (shift) keybd_event(0x10, (byte)MapVirtualKey(0x10, 0), SCANCODE, IntPtr.Zero);
+    keybd_event(vk, sc, SCANCODE, IntPtr.Zero);
+    System.Threading.Thread.Sleep(25);
+    keybd_event(vk, sc, SCANCODE | KEYUP, IntPtr.Zero);
+    if (shift) keybd_event(0x10, (byte)MapVirtualKey(0x10, 0), SCANCODE | KEYUP, IntPtr.Zero);
+    System.Threading.Thread.Sleep(35);
+  }
+
+  public static void TypeText(string s) {
+    foreach (char c in s) {
+      short r = VkKeyScan(c);
+      if (r == -1) continue;
+      Press((byte)(r & 0xFF), (r & 0x100) != 0);
+    }
+  }
 }
 "@
 
@@ -57,5 +82,12 @@ if ($Click -ne "") {
     Write-Output ("clicked {0},{1} (window at {2},{3})" -f $x, $y, $r.Left, $r.Top)
 }
 
-if ($Key -ne "")  { [Windows.Forms.SendKeys]::SendWait($Key);  Write-Output ("key " + $Key) }
-if ($Type -ne "") { [Windows.Forms.SendKeys]::SendWait($Type); Write-Output ("typed " + $Type) }
+# Named keys go through keybd_event too; SendKeys is not seen by DirectInput.
+$VK = @{ "{F5}" = 0x74; "{ENTER}" = 0x0D; "{ESC}" = 0x1B; "{TAB}" = 0x09;
+         "{BACKSPACE}" = 0x08; "{SPACE}" = 0x20 }
+
+if ($Key -ne "") {
+    if ($VK.ContainsKey($Key)) { [In]::Press([byte]$VK[$Key], $false); Write-Output ("key " + $Key) }
+    else { Write-Output ("unknown key '" + $Key + "'; known: " + ($VK.Keys -join " ")); exit 1 }
+}
+if ($Type -ne "") { [In]::TypeText($Type); Write-Output ("typed " + $Type) }
