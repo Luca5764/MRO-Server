@@ -1080,6 +1080,58 @@ do {
 
 ---
 
+## ✅ `Game_Info_URL_Get` 完整邏輯（Ghidra）
+
+`[TEST]` 2026-09-16，`0x10733cf0` 反編譯：
+
+```c
+cache = UCacheManager::GetCache();
+for (i = 0; i < cache[0x84]; i++) {
+    if (entry[0] == *(this + 0xfc8)) {                 // 以 [0xfc8] 查 Map ID
+        mapName  = FString(cache[0x80] + 0x20 + i*0xBC);   // FMapEntry+0x20
+        gameInfo = FString(cache[0x80] + 0x54 + i*0xBC);   // FMapEntry+0x54
+        goto build;
+    }
+}
+Log("UZNetwork_DJ::Game_Info_URL_Get: Failed - MapIndex");   // 失敗僅記錄
+build:
+    team = Game_User_Team_Get(this, *(this + 0x44c));   // Name=%d 也取自 0x44c
+    switch (*(this + 0xfcc)) { ... }                    // 選 host / guest 格式字串
+```
+
+**查表失敗時地圖名與 GameInfo 字串維持空白**，URL 會長成 `start ?Listen?...`。我方觀察到的是 `Store_01` + `ZModeHangar.HangarGameInfo`——**查表成功，`[0xfc8]` 就是 0**。
+
+⬜ `[0xfcc]` 決定用 host 還是 guest 格式，`Game_Info_Set` **不寫入它**，來源未知。
+
+---
+
+## 兩個 `Game_Info_SN` handler，差別在有沒有清資料
+
+`[TEST]` 2026-09-16。opcode `0x00222111` 有**兩個** handler，依場景啟用（各自開頭檢查 `*(this+4)`）：
+
+| Handler | 位址 | 是否呼叫 `Game_Data_Clear` |
+|---|---|---|
+| `ZDispatchWaiting::Game_Info_SN` | `0x107f0910` | **是** |
+| `ZDispatchGame::Game_Info_SN` | `0x107d4f50` | 否 |
+
+**兩者都從 `body+0x11` 取地圖 ID**（傳給 `Game_Info_Set` 的參數順序不同，但落點同為 `[0xfc8]`）——我方封包內容正確。
+
+在房間場景送出會白畫面，推測是 `ZDispatchWaiting` 版本被啟用並清空了遊戲資料。
+
+**目前策略**：改在收到 `0x00222103`（開始請求）時**同步、第一個**送出，不再延遲 350ms。若 `ZPage_Room` 是在送出請求的當下就組 URL、不等任何回應，則從伺服器端無法補救，地圖必須以其他途徑抵達客戶端。
+
+---
+
+## ✅ 房間地圖清單已可顯示（連送兩次有效）
+
+`[TEST]` 2026-09-16。連送兩次 `Map_Change_All_SN` 後，房間畫面的地圖清單**確實列出內容**：動力奪取戰 ×3、援救基地戰 ×3（即 `9001`~`9006`，客戶端自 Cache.Bin 解出中文名）。按鈕亦維持「遊戲開始」。
+
+⬜ 但 `ZPopup_MapSelect.m_MapInfoList` **仍為 `0/0`**（`OnDraw_Preview` 報錯 4182 次）。房間清單與該彈出視窗的清單是**不同的資料來源**，後者尚未解決。
+
+⬜ 房間清單有內容後，`GameStart` 組出的 URL **仍為 `Store_01`**——證明 `ZPage_Room` 的地圖來源也不是房間清單。
+
+---
+
 ## 已知陷阱（程式碼層）
 
 ### `type & 0x80` 會誤攔 dispatch opcode

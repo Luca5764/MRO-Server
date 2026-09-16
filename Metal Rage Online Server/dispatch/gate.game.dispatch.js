@@ -673,6 +673,22 @@ class ZGateGameDispatch
                 // experiment that can also send 0x222102 first.
                 console.log(`[ZGateGameDispatch] >> Room Game_Start_CQ`);
                 clearPendingRoomStateRetries(client, 'game-start cq');
+
+                // First thing out, synchronously, before Ready_Host_SQ and
+                // before anything is scheduled.
+                //
+                // Game_Info_URL_Get builds the travel URL from [this+0xfc8],
+                // and Game_Info_SN is the only packet that sets it. It cannot
+                // go earlier — sent while the room scene is live it blanks the
+                // client — so the start request is the first safe moment, and
+                // it has to be the very first reply rather than 350ms behind
+                // one. If ZPage_Room composes its URL before any reply arrives,
+                // nothing sent from here can win and the map has to reach the
+                // client some other way entirely.
+                if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
+                    client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
+                sendGameInfoSn(client, 'immediate, on game-start cq');
+
                 client.gameStarted_ = true;
                 client.campaignStarted_ = (Number(client.rawRoomType_) === 1) ||
                     (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5);
