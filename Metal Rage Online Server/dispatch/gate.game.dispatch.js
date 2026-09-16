@@ -54,7 +54,7 @@ const GAME_INFO_SN_WITH_ROOM_STATE = 'enabled'; // 'disabled' | 'enabled'
 // Untestable statically: whether this beats the client's synchronous
 // ZPage_Room.GameStart. Flip to 'enabled' and watch the travel URL in the
 // client log — success is "start Map_PC01?...ZModePve...", not Store_01.
-const SERVER_DRIVEN_START_MODE = 'disabled'; // 'disabled' | 'enabled'
+const SERVER_DRIVEN_START_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 // Map_PC01 easy — the campaign room's default until the client picks another.
 const MAP_ID_DEFAULT_CAMPAIGN = 9001;
@@ -707,8 +707,17 @@ class ZGateGameDispatch
                     // Give the client a beat to enter scene 6 before the map,
                     // so the scene-6 Game_Info_SN handler is the one that runs.
                     setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map'), 150);
+                    // Then complete the ready/start handshake to release the
+                    // client's "Loading" wait. Game_Info_SN sets the map and
+                    // preps state (Game_Play_Start) but does not itself travel;
+                    // observed the client sitting at a Loading popup with no
+                    // crash, waiting for this sequence we previously skipped.
+                    setTimeout(() => {
+                        sendOkSa(client, 0x00222102, 'server-driven: Game_Ready_SN');
+                        sendOkSa(client, 0x00222104, 'server-driven: Game_Start_SN');
+                    }, 300);
                     setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map retry'), 500);
-                    console.log(`[ZGateGameDispatch] >> SERVER_DRIVEN_START: Game_Wait_SN then Game_Info_SN`);
+                    console.log(`[ZGateGameDispatch] >> SERVER_DRIVEN_START: Wait -> Info -> Ready/Start`);
                     return true;
                 }
 
