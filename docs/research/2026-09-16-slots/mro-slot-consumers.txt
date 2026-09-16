@@ -1,0 +1,232 @@
+// ======== 0x1072e500  FUN_1072e470  @ 1072e470 ========
+void __thiscall FUN_1072e470(int param_1,int param_2)
+
+{
+  byte bVar1;
+  int iVar2;
+  int *piVar3;
+  char *pcVar4;
+  int local_1c;
+  int local_18;
+  undefined1 *local_14;
+  void *local_10;
+  undefined1 *puStack_c;
+  undefined4 local_8;
+  
+  puStack_c = &LAB_10802650;
+  local_10 = ExceptionList;
+  local_18 = 0;
+  bVar1 = **(byte **)(param_2 + 0xc);
+  local_14 = &stack0xffffffd0;
+  ExceptionList = &local_10;
+  *(byte **)(param_2 + 0xc) = *(byte **)(param_2 + 0xc) + 1;
+  local_8 = 0;
+  (**(code **)(GNatives_exref + (uint)bVar1 * 4))(param_2,&local_18);
+  local_1c = 0;
+  bVar1 = **(byte **)(param_2 + 0xc);
+  *(byte **)(param_2 + 0xc) = *(byte **)(param_2 + 0xc) + 1;
+  (**(code **)(GNatives_exref + (uint)bVar1 * 4))(param_2,&local_1c);
+  iVar2 = *(int *)(param_2 + 0xc);
+  pcVar4 = (char *)(iVar2 + 1);
+  *(char **)(param_2 + 0xc) = pcVar4;
+  if (*pcVar4 == 'B') {
+    *(int *)(param_2 + 0xc) = iVar2 + 2;
+    (**(code **)(GNatives_exref + 0x108))(param_2,0);
+  }
+  iVar2 = 0;
+  while( true ) {
+    if (*(int *)(param_1 + 0x1044) <= iVar2) {
+      ExceptionList = local_10;
+      return;
+    }
+    piVar3 = (int *)(iVar2 * 0xec + *(int *)(param_1 + 0x1040));
+    if (*piVar3 == local_18) break;
+    iVar2 = iVar2 + 1;
+  }
+  piVar3[0x39] = local_1c;
+  ExceptionList = local_10;
+  return;
+}
+
+
+// ======== 0x10730444  FUN_107301f0  @ 107301f0 ========
+void __thiscall FUN_107301f0(UZNetwork_DJ *param_1,int param_2)
+
+{
+  FArray *pFVar1;
+  undefined1 *puVar2;
+  int iVar3;
+  UCacheManager *pUVar4;
+  int iVar5;
+  int iVar6;
+  char *pcVar7;
+  undefined4 *puVar8;
+  int iVar9;
+  undefined4 local_3c [9];
+  UCacheManager *local_18;
+  undefined1 *local_14;
+  void *local_10;
+  undefined1 *puStack_c;
+  undefined4 local_8;
+  
+  puStack_c = &LAB_108026e0;
+  local_10 = ExceptionList;
+  iVar3 = *(int *)(param_2 + 0xc);
+  pcVar7 = (char *)(iVar3 + 1);
+  ExceptionList = &local_10;
+  *(char **)(param_2 + 0xc) = pcVar7;
+  local_14 = &stack0xffffffb8;
+  local_8 = 0;
+  puVar2 = &stack0xffffffb8;
+  if (*pcVar7 == 'B') {
+    *(int *)(param_2 + 0xc) = iVar3 + 2;
+    (**(code **)(GNatives_exref + 0x108))(param_2,0);
+    puVar2 = local_14;
+  }
+  local_14 = puVar2;
+  UZNetwork_DJ::Room_Data_Clear(param_1);
+  UZNetwork_DJ::Game_Data_Clear(param_1);
+  UZNetwork_DJ::Account_Index_Set(param_1,1);
+  *(uint *)(param_1 + 0xfac) = *(uint *)(param_1 + 0xfac) | 1;
+  *(undefined4 *)(param_1 + 0xfe0) = *(undefined4 *)(param_1 + 0x44c);
+  *(uint *)(param_1 + 0xfe8) = *(uint *)(param_1 + 0xfe8) | 1;
+  *(undefined4 *)(param_1 + 0xff0) = 1;
+  *(undefined4 *)(param_1 + 0xff4) = 2;
+  *(undefined4 *)(param_1 + 0xfe4) = 1;
+  iVar3 = FArray::AddZeroed((FArray *)(param_1 + 0x1024),0x20,1);
+  pFVar1 = (FArray *)(param_1 + 0x1034);
+  *(undefined4 *)(iVar3 * 0x20 + *(int *)(param_1 + 0x1024)) = 1;
+  iVar3 = FArray::AddZeroed(pFVar1,0x80,1);
+  iVar3 = iVar3 * 0x80;
+  *(undefined4 *)(iVar3 + *(int *)pFVar1) = *(undefined4 *)(param_1 + 0x44c);
+  *(undefined4 *)(iVar3 + 0x10 + *(int *)pFVar1) = *(undefined4 *)(param_1 + 0x514);
+  *(undefined4 *)(iVar3 + 0x14 + *(int *)pFVar1) = *(undefined4 *)(param_1 + 0x518);
+  *(undefined4 *)(iVar3 + 0x18 + *(int *)pFVar1) =
+       *(undefined4 *)(param_1 + *(int *)(param_1 + 0x818) * 0x58 + 0x558);
+  *(undefined4 *)(iVar3 + 0x1c + *(int *)pFVar1) =
+       *(undefined4 *)(param_1 + *(int *)(param_1 + 0x818) * 0x58 + 0x55c);
+  FStringNoInit::operator=
+            ((FStringNoInit *)(iVar3 + 4 + *(int *)pFVar1),(FStringNoInit *)(param_1 + 0x450));
+  *(undefined4 *)(iVar3 + 0x34 + *(int *)pFVar1) = 1;
+  *(undefined4 *)(iVar3 + 0x70 + *(int *)pFVar1) = 1;
+  pUVar4 = UCacheManager::GetCache();
+  pFVar1 = (FArray *)(param_1 + 0x1040);
+  local_18 = pUVar4;
+  iVar3 = FArray::AddZeroed(pFVar1,0xec,1);
+  *(undefined4 *)(iVar3 * 0xec + 4 + *(int *)pFVar1) = *(undefined4 *)(param_1 + 0x860);
+  *(undefined4 *)(iVar3 * 0xec + 8 + *(int *)pFVar1) = *(undefined4 *)(param_1 + 0xdd4);
+  iVar6 = 0;
+  do {
+    iVar9 = 0;
+    if (7 < iVar6) {
+      ExceptionList = local_10;
+      return;
+    }
+    if (*(int *)(param_1 + iVar6 * 0xac + 0x880) != 0) {
+      for (iVar5 = 0; iVar5 < 6; iVar5 = iVar5 + 1) {
+        local_3c[iVar5] = 0;
+      }
+      if (pUVar4 != (UCacheManager *)0x0) {
+        for (; iVar9 < *(int *)(pUVar4 + 0xb4); iVar9 = iVar9 + 1) {
+          iVar5 = iVar9 * 0x1c;
+          if ((*(int *)(iVar5 + *(int *)(pUVar4 + 0xb0)) == *(int *)(param_1 + iVar6 * 0xac + 0x880)
+              ) && (*(int *)(iVar5 + *(int *)(pUVar4 + 0xb0) + 4) == *(int *)(param_1 + 0xdd8))) {
+            puVar8 = (undefined4 *)(iVar5 + *(int *)(local_18 + 0xb0));
+            local_3c[0] = *puVar8;
+            local_3c[1] = puVar8[2];
+            local_3c[2] = puVar8[3];
+            local_3c[3] = puVar8[4];
+            local_3c[4] = puVar8[5];
+            local_3c[5] = puVar8[6];
+            pUVar4 = local_18;
+            break;
+          }
+          pUVar4 = local_18;
+        }
+      }
+      iVar9 = 0;
+      while (iVar9 < 6) {
+        iVar5 = iVar3 * 0x3b + iVar9;
+        if (*(int *)(param_1 + iVar9 * 0x1c + 0x880 + iVar6 * 0xac) == 0) {
+          *(undefined4 *)(*(int *)(param_1 + 0x1040) + 0xc + (iVar5 + iVar6 * 6) * 4) =
+               local_3c[iVar9];
+          iVar9 = iVar9 + 1;
+          pUVar4 = local_18;
+        }
+        else {
+          *(int *)(*(int *)(param_1 + 0x1040) + 0xc + (iVar5 + iVar6 * 6) * 4) =
+               *(int *)(param_1 + iVar9 * 0x1c + 0x880 + iVar6 * 0xac);
+          iVar9 = iVar9 + 1;
+          pUVar4 = local_18;
+        }
+      }
+    }
+    iVar6 = iVar6 + 1;
+  } while( true );
+}
+
+
+// ======== 0x107344f1  FUN_107344f0  @ 107344f0 ========
+void __thiscall FUN_107344f0(int param_1,int param_2)
+
+{
+  int iVar1;
+  int *piVar2;
+  
+  iVar1 = 0;
+  if (0 < *(int *)(param_1 + 0x1044)) {
+    piVar2 = *(int **)(param_1 + 0x1040);
+    while (*piVar2 != param_2) {
+      iVar1 = iVar1 + 1;
+      piVar2 = piVar2 + 0x3b;
+      if (*(int *)(param_1 + 0x1044) <= iVar1) {
+        return;
+      }
+    }
+    thunk_FUN_107319b0(iVar1,1);
+  }
+  return;
+}
+
+
+// ======== 0x107343e8  FUN_107343e0  @ 107343e0 ========
+void __thiscall
+FUN_107343e0(int param_1,int param_2,undefined4 param_3,undefined4 param_4,undefined4 param_5,
+            undefined4 param_6,undefined4 param_7,undefined4 param_8,undefined4 param_9,
+            undefined4 param_10)
+
+{
+  int iVar1;
+  FArray *this;
+  int *piVar2;
+  
+  iVar1 = 0;
+  if (0 < *(int *)(param_1 + 0x1044)) {
+    piVar2 = *(int **)(param_1 + 0x1040);
+    do {
+      if (*piVar2 == param_2) {
+        thunk_FUN_107319b0(iVar1,1);
+        break;
+      }
+      iVar1 = iVar1 + 1;
+      piVar2 = piVar2 + 0x3b;
+    } while (iVar1 < *(int *)(param_1 + 0x1044));
+  }
+  this = (FArray *)(param_1 + 0x1040);
+  iVar1 = FArray::AddZeroed(this,0xec,1);
+  iVar1 = iVar1 * 0xec;
+  *(int *)(iVar1 + *(int *)this) = param_2;
+  *(undefined4 *)(iVar1 + 4 + *(int *)this) = param_3;
+  *(undefined4 *)(iVar1 + 0xd0 + *(int *)this) = param_4;
+  *(undefined4 *)(iVar1 + 0xe4 + *(int *)this) = 0;
+  *(undefined4 *)(iVar1 + 0xcc + *(int *)this) = param_5;
+  *(undefined4 *)(iVar1 + 0xd4 + *(int *)this) = param_6;
+  *(undefined4 *)(iVar1 + 0xd8 + *(int *)this) = param_7;
+  *(undefined4 *)(iVar1 + 0xdc + *(int *)this) = param_8;
+  *(undefined4 *)(iVar1 + 0xe0 + *(int *)this) = param_9;
+  *(undefined4 *)(iVar1 + 0xe8 + *(int *)this) = param_10;
+  return;
+}
+
+
+INFO  REPORT: Save succeeded for processed file: /ZNetwork.dll (HeadlessAnalyzer)

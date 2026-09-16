@@ -1,0 +1,315 @@
+// ======== 0x10704840  Item_Add  @ 10704840 ========
+/* public: void __thiscall UZNetwork_DJ::Item_Add(int,int,bool,int,int,int,int,int,int) */
+
+void __thiscall
+UZNetwork_DJ::Item_Add
+          (UZNetwork_DJ *this,int param_1,int param_2,bool param_3,int param_4,int param_5,
+          int param_6,int param_7,int param_8,int param_9)
+
+{
+  uint uVar1;
+  undefined4 uVar2;
+  undefined4 uVar3;
+  undefined4 uVar4;
+  undefined4 uVar5;
+  undefined4 uVar6;
+  UCacheManager *this_00;
+  FGameItemRecord *pFVar7;
+  int iVar8;
+  int *piVar9;
+  FArray *this_01;
+  undefined4 *puVar10;
+  byte bStack_113;
+  int iStack_ec;
+  undefined4 uStack_e8;
+  undefined4 uStack_e4;
+  undefined4 uStack_e0;
+  undefined4 uStack_dc;
+  undefined4 uStack_d8;
+  FString aFStack_d4 [12];
+  undefined4 auStack_c8 [8];
+  int iStack_a8;
+  int iStack_a0;
+  undefined4 uStack_9c;
+  undefined4 uStack_98;
+  int iStack_94;
+  int iStack_90;
+  int iStack_8c;
+  undefined4 uStack_84;
+  undefined4 uStack_80;
+  FGameItemRecord aFStack_7c [112];
+  void *pvStack_c;
+  undefined1 *puStack_8;
+  int iStack_4;
+  
+                    /* 0x4840  656  ?Item_Add@UZNetwork_DJ@@QAEXHH_NHHHHHH@Z */
+  iStack_4 = 0xffffffff;
+  puStack_8 = &LAB_10802735;
+  pvStack_c = ExceptionList;
+  iStack_ec = 0;
+  uStack_e8 = 0;
+  uStack_e4 = 0;
+  uStack_e0 = 0;
+  uStack_dc = 0;
+  bStack_113 = 0;
+  uStack_d8 = 0;
+  ExceptionList = &pvStack_c;
+  FString::FString(aFStack_d4);
+  iStack_4 = 0;
+  puVar10 = auStack_c8;
+  for (iVar8 = 0x13; iVar8 != 0; iVar8 = iVar8 + -1) {
+    *puVar10 = 0;
+    puVar10 = puVar10 + 1;
+  }
+  this_00 = UCacheManager::GetCache();
+  if (this_00 != (UCacheManager *)0x0) {
+    pFVar7 = (FGameItemRecord *)UCacheManager::GetGameItemRecord(this_00,(int)aFStack_7c);
+    iStack_4._0_1_ = 1;
+    FGameItemRecord::operator=((FGameItemRecord *)&iStack_ec,pFVar7);
+    iStack_4 = (uint)iStack_4._1_3_ << 8;
+    FGameItemRecord::~FGameItemRecord(aFStack_7c);
+  }
+  uVar6 = uStack_d8;
+  uVar5 = uStack_dc;
+  uVar4 = uStack_e0;
+  uVar3 = uStack_e4;
+  uVar2 = uStack_e8;
+  if (iStack_ec != 0) {
+    iVar8 = FString::operator==(aFStack_d4,(ushort *)&DAT_10814408);
+    if ((iVar8 != 0) ||
+       (iVar8 = FString::operator==(aFStack_d4,(ushort *)&DAT_1081440c), iVar8 != 0)) {
+      bStack_113 = 1;
+    }
+    if ((iStack_a8 == 2) && (param_4 = iStack_a0, param_3)) {
+      param_4 = param_5;
+    }
+    if (iStack_a8 != 0) {
+      iVar8 = 0;
+      if (0 < *(int *)(this + 0x820)) {
+        piVar9 = *(int **)(this + 0x81c);
+        do {
+          if (*piVar9 == param_1) {
+            thunk_FUN_10731140(iVar8,1);
+            break;
+          }
+          iVar8 = iVar8 + 1;
+          piVar9 = piVar9 + 0x14;
+        } while (iVar8 < *(int *)(this + 0x820));
+      }
+      this_01 = (FArray *)(this + 0x81c);
+      iVar8 = FArray::AddZeroed(this_01,0x50,1);
+      iVar8 = iVar8 * 0x50;
+      *(int *)(iVar8 + *(int *)this_01) = param_1;
+      *(int *)(*(int *)this_01 + 4 + iVar8) = param_2;
+      *(undefined4 *)(*(int *)this_01 + 8 + iVar8) = uVar2;
+      *(undefined4 *)(*(int *)this_01 + 0xc + iVar8) = uVar3;
+      *(undefined4 *)(*(int *)this_01 + 0x10 + iVar8) = uVar4;
+      *(undefined4 *)(*(int *)this_01 + 0x14 + iVar8) = uVar5;
+      *(undefined4 *)(*(int *)this_01 + 0x18 + iVar8) = uVar6;
+      *(undefined4 *)(*(int *)this_01 + 0x1c + iVar8) = uStack_98;
+      *(int *)(*(int *)this_01 + 0x20 + iVar8) = iStack_a8;
+      *(int *)(*(int *)this_01 + 0x24 + iVar8) = param_4;
+      *(undefined4 *)(*(int *)this_01 + 0x28 + iVar8) = uStack_9c;
+      *(undefined4 *)(*(int *)this_01 + 0x2c + iVar8) = uStack_84;
+      *(undefined4 *)(*(int *)this_01 + 0x30 + iVar8) = uStack_80;
+      *(int *)(*(int *)this_01 + 0x34 + iVar8) = param_6;
+      *(int *)(*(int *)this_01 + 0x38 + iVar8) = param_7;
+      *(int *)(*(int *)this_01 + 0x3c + iVar8) = param_8;
+      *(int *)(*(int *)this_01 + 0x40 + iVar8) = param_9;
+      *(uint *)(*(int *)this_01 + 0x4c + iVar8) =
+           *(uint *)(*(int *)this_01 + 0x4c + iVar8) & 0xfffffffd;
+      uVar1 = *(uint *)(*(int *)this_01 + 0x4c + iVar8);
+      *(uint *)(*(int *)this_01 + 0x4c + iVar8) = uVar1 ^ ((uint)bStack_113 << 4 ^ uVar1) & 0x10;
+      uVar1 = *(uint *)(*(int *)this_01 + 0x4c + iVar8);
+      *(uint *)(*(int *)this_01 + 0x4c + iVar8) =
+           uVar1 ^ ((uint)(0 < iStack_94) << 5 ^ uVar1) & 0x20;
+      uVar1 = *(uint *)(*(int *)this_01 + 0x4c + iVar8);
+      *(uint *)(*(int *)this_01 + 0x4c + iVar8) =
+           uVar1 ^ ((uint)(iStack_90 == 1) << 6 ^ uVar1) & 0x40;
+      uVar1 = *(uint *)(*(int *)this_01 + 0x4c + iVar8);
+      *(uint *)(*(int *)this_01 + 0x4c + iVar8) = uVar1 ^ ((uint)param_3 << 7 ^ uVar1) & 0x80;
+      uVar1 = *(uint *)(*(int *)this_01 + 0x4c + iVar8);
+      *(uint *)(*(int *)this_01 + 0x4c + iVar8) =
+           uVar1 ^ ((uint)(iStack_8c == 1) << 8 ^ uVar1) & 0x100;
+    }
+  }
+  iStack_4 = 0xffffffff;
+  FGameItemRecord::~FGameItemRecord((FGameItemRecord *)&iStack_ec);
+  ExceptionList = pvStack_c;
+  return;
+}
+
+
+// ======== 0x107033b9  WearInfo_SN  @ 107033b9 ========
+/* public: void __thiscall ZDispatchAccount::WearInfo_SN(struct Share::System::Format *,char *) */
+
+void __thiscall ZDispatchAccount::WearInfo_SN(ZDispatchAccount *this,Format *param_1,char *param_2)
+
+{
+  Format *pFVar1;
+  UObject *pUVar2;
+  ZNetworkManager *this_00;
+  Format *pFVar3;
+  int iVar4;
+  uint uVar5;
+  bool bVar6;
+  ZNetworkManager *in_stack_0000000c;
+  int in_stack_00000014;
+  int in_stack_0000001c;
+  uint in_stack_ffffffc0;
+  int in_stack_ffffffc4;
+  undefined4 in_stack_ffffffcc;
+  undefined4 auStack_2c [5];
+  ZNetworkManager *pZStack_18;
+  int iStack_c;
+  int iStack_4;
+  
+                    /* 0x33b9  1043
+                       ?WearInfo_SN@ZDispatchAccount@@QAEXPAUFormat@System@Share@@PAD@Z */
+  pFVar1 = param_1;
+  if (this[4] == (ZDispatchAccount)0x0) {
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchAccount::WearInfo_SN");
+    ZNetworkManager::Log_Write
+              ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+    return;
+  }
+  uVar5 = 0;
+  iVar4 = 0;
+  bVar6 = param_1 != (Format *)0x0;
+  param_1 = (Format *)((uint)param_1 & 0xffffff00);
+  pFVar3 = pFVar1;
+  if (bVar6) {
+    pFVar3 = (Format *)0x0;
+    if (pFVar1 + 0x10 != (Format *)0x0) {
+      thunk_FUN_1073d780(&param_1,pFVar1 + 0x10,1);
+      pFVar3 = (Format *)0x0;
+      if (pFVar1 + 0x11 != (Format *)0x0) {
+        thunk_FUN_1073d780(&stack0xffffffc3,pFVar1 + 0x11,1);
+        uVar5 = in_stack_ffffffc0 >> 0x18;
+        pFVar3 = (Format *)0x0;
+        if (pFVar1 + 0x12 != (Format *)0x0) {
+          thunk_FUN_1073d780(&stack0xffffffc4,pFVar1 + 0x12,4);
+          pFVar3 = (Format *)0x0;
+          if (pFVar1 + 0x16 != (Format *)0x0) {
+            iVar4 = in_stack_ffffffc4;
+            thunk_FUN_1073d780(&stack0xffffffc4,pFVar1 + 0x16,4);
+            pFVar3 = pFVar1 + 0x1a;
+          }
+        }
+      }
+    }
+  }
+  pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+  UZNetwork_DJ::Pilot_Info_Set((UZNetwork_DJ *)pUVar2,iVar4);
+  ZNetworkManager::Log_Set
+            (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchAccount::WearInfo_SN");
+  ZNetworkManager::Log_Write(this_00,*(ushort **)GZNetworkManager_exref);
+  if (pFVar3 != (Format *)0x0) {
+    thunk_FUN_1073d780(&stack0xffffffcc,pFVar3,4);
+    pFVar3 = pFVar3 + 4;
+  }
+  switch(in_stack_ffffffcc) {
+  case 1:
+    iVar4 = 0;
+    break;
+  case 2:
+    iVar4 = 1;
+    break;
+  case 3:
+    iVar4 = 2;
+    break;
+  case 4:
+    iVar4 = 3;
+    break;
+  case 5:
+    iVar4 = 4;
+    break;
+  case 6:
+    iVar4 = 5;
+    break;
+  case 7:
+    iVar4 = 6;
+    break;
+  default:
+    iVar4 = 7;
+  }
+  pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+  UZNetwork_DJ::Slot_Selected_Set((UZNetwork_DJ *)pUVar2,iVar4);
+  ZNetworkManager::Log_Set
+            (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchAccount::WearInfo_SN");
+  ZNetworkManager::Log_Write
+            (*(ZNetworkManager **)GZNetworkManager_exref,
+             (ushort *)*(ZNetworkManager **)GZNetworkManager_exref);
+  for (; uVar5 != 0; uVar5 = uVar5 - 1) {
+    if (pFVar3 != (Format *)0x0) {
+      thunk_FUN_1073d780(auStack_2c,pFVar3,0x34);
+      pFVar3 = pFVar3 + 0x34;
+    }
+    switch(auStack_2c[0]) {
+    case 1:
+      iVar4 = 0;
+      break;
+    case 2:
+      iVar4 = 1;
+      break;
+    case 3:
+      iVar4 = 2;
+      break;
+    case 4:
+      iVar4 = 3;
+      break;
+    case 5:
+      iVar4 = 4;
+      break;
+    case 6:
+      iVar4 = 5;
+      break;
+    case 7:
+      iVar4 = 6;
+      break;
+    default:
+      iVar4 = 7;
+    }
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchAccount::WearInfo_SN");
+    ZNetworkManager::Log_Write
+              (*(ZNetworkManager **)GZNetworkManager_exref,
+               (ushort *)*(ZNetworkManager **)GZNetworkManager_exref);
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchAccount::WearInfo_SN");
+    ZNetworkManager::Log_Write(pZStack_18,*(ushort **)GZNetworkManager_exref);
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchAccount::WearInfo_SN");
+    ZNetworkManager::Log_Write
+              ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchAccount::WearInfo_SN");
+    ZNetworkManager::Log_Write
+              (*(ZNetworkManager **)GZNetworkManager_exref,
+               (ushort *)*(ZNetworkManager **)GZNetworkManager_exref);
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchAccount::WearInfo_SN");
+    ZNetworkManager::Log_Write(in_stack_0000000c,*(ushort **)GZNetworkManager_exref);
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchAccount::WearInfo_SN");
+    ZNetworkManager::Log_Write
+              ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Slot_Info_Set((UZNetwork_DJ *)pUVar2,iVar4,0,iStack_c);
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Slot_Info_Set((UZNetwork_DJ *)pUVar2,iVar4,1,iStack_4);
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Slot_Info_Set((UZNetwork_DJ *)pUVar2,iVar4,2,(int)param_1);
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Slot_Info_Set((UZNetwork_DJ *)pUVar2,iVar4,3,(int)in_stack_0000000c);
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Slot_Info_Set((UZNetwork_DJ *)pUVar2,iVar4,4,in_stack_00000014);
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Slot_Info_Set((UZNetwork_DJ *)pUVar2,iVar4,5,in_stack_0000001c);
+  }
+  return;
+}
+
+
+INFO  REPORT: Save succeeded for processed file: /ZNetwork.dll (HeadlessAnalyzer)

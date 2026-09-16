@@ -21,8 +21,6 @@ function getExactMessageBuffer(type, bodySize) {
 }
 
 function sendReadySuccessAndBeginRound(client, sourceTag) {
-    const BEGIN_ROUND_DELAY_MS = 6000;
-
     {
         const [msg, respBody] = client.getMessageBuffer(0x00420116, 0x6);
         respBody.writeUint16LE(0x0000, 0);
@@ -30,31 +28,6 @@ function sendReadySuccessAndBeginRound(client, sourceTag) {
         client.send(msg);
         console.log(`[ZDispatchWaiting] >> Sent 0x00420116 after ${sourceTag}`);
     }
-
-    setTimeout(() => {
-        // BeginRound_SN — 실제 서버는 IP:Port/MapName 형식으로 ClientTravel (real server ClientTravels in IP:Port/MapName format)
-        // Cache.Bin 인덱스 → 맵 파일명 변환 (Cache.Bin index → map filename conversion)
-        const CACHE_INDEX_TO_MAP_NAME = {
-            58: 'Map_PC01', 70: 'Map_PC02', 64: 'Map_PC03', 77: 'Map_PC04',
-            8: 'Map_C01', 34: 'Map_C02', 83: 'Map_C03', 32: 'Map_C04',
-            6: 'Map_C06', 2: 'Map_C08', 56: 'Map_C08_R', 26: 'Map_C09',
-            36: 'Map_C18', 43: 'Map_C19', 16: 'Map_C20', 24: 'Map_C21',
-            45: 'Map_C22', 47: 'Map_C25', 49: 'Map_C30',
-            14: 'Map_N01', 54: 'Map_N01_R', 10: 'Map_N05', 22: 'Map_N07',
-            52: 'Map_N11', 30: 'Map_N13', 18: 'Map_N17',
-            1: 'Map_Ptuto', 4: 'Map_Ptuto2',
-        };
-        const mapCacheKey = Number(client.campaignMapCacheKey_) || 58;
-        const mapName = CACHE_INDEX_TO_MAP_NAME[mapCacheKey] || 'Map_PC01';
-        // body: u16 0, u16 0, map name null-terminated string
-        const mapNameBuf = Buffer.from(mapName + '\0', 'ascii');
-        const [msg, respBody] = client.getMessageBuffer(0x00230152, 4 + mapNameBuf.length);
-        respBody.writeUint16LE(0, 0);
-        respBody.writeUint16LE(0, 2);
-        mapNameBuf.copy(respBody, 4);
-        client.send(msg);
-        console.log(`[ZDispatchWaiting] >> Sent 0x00230152 after ${sourceTag} (${BEGIN_ROUND_DELAY_MS}ms delay) map=${mapName}`);
-    }, BEGIN_ROUND_DELAY_MS);
 }
 
 // ZDispatchCommunity + ZDispatchFriend + other social services

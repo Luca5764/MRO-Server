@@ -1,0 +1,188 @@
+// ======== 0x10709c32  Slot_Info_Set  @ 10709c32 ========
+/* public: void __thiscall UZNetwork_DJ::Slot_Info_Set(int,int,int) */
+
+void __thiscall UZNetwork_DJ::Slot_Info_Set(UZNetwork_DJ *this,int param_1,int param_2,int param_3)
+
+{
+  int iVar1;
+  int iVar2;
+  int *piVar3;
+  
+                    /* 0x9c32  990  ?Slot_Info_Set@UZNetwork_DJ@@QAEXHHH@Z */
+  if ((param_1 < 8) && (param_2 < 6)) {
+    iVar1 = param_2 * 0x1c + param_1 * 0xac;
+    iVar2 = 0;
+    *(undefined4 *)(this + iVar1 + 0x878) = 0;
+    *(undefined4 *)(this + iVar1 + 0x87c) = 0;
+    *(undefined4 *)(this + iVar1 + 0x880) = 0;
+    if (0 < *(int *)(this + 0x820)) {
+      piVar3 = *(int **)(this + 0x81c);
+      while (*piVar3 != param_3) {
+        iVar2 = iVar2 + 1;
+        piVar3 = piVar3 + 0x14;
+        if (*(int *)(this + 0x820) <= iVar2) {
+          return;
+        }
+      }
+      iVar2 = iVar2 * 0x50;
+      *(undefined4 *)(this + iVar1 + 0x878) = *(undefined4 *)(iVar2 + *(int *)(this + 0x81c));
+      *(undefined4 *)(this + iVar1 + 0x87c) = *(undefined4 *)(iVar2 + 4 + *(int *)(this + 0x81c));
+      *(undefined4 *)(this + iVar1 + 0x880) = *(undefined4 *)(iVar2 + 8 + *(int *)(this + 0x81c));
+      *(undefined4 *)(this + iVar1 + 0x884) = *(undefined4 *)(iVar2 + 0x34 + *(int *)(this + 0x81c))
+      ;
+      *(undefined4 *)(this + (param_2 + 0x4e) * 0x1c + param_1 * 0xac) =
+           *(undefined4 *)(iVar2 + 0x38 + *(int *)(this + 0x81c));
+      *(undefined4 *)(this + iVar1 + 0x88c) = *(undefined4 *)(iVar2 + 0x3c + *(int *)(this + 0x81c))
+      ;
+      *(undefined4 *)(this + iVar1 + 0x890) = *(undefined4 *)(iVar2 + 0x40 + *(int *)(this + 0x81c))
+      ;
+    }
+  }
+  return;
+}
+
+
+// ======== 0x10702513  Slot_DefaultMech_Set  @ 10702513 ========
+/* public: int __thiscall UZNetwork_DJ::Slot_DefaultMech_Set(int) */
+
+int __thiscall UZNetwork_DJ::Slot_DefaultMech_Set(UZNetwork_DJ *this,int param_1)
+
+{
+  UZNetwork_DJ *pUVar1;
+  UCacheManager *pUVar2;
+  int *piVar3;
+  int iVar4;
+  int iVar5;
+  int iVar6;
+  
+                    /* 0x2513  989  ?Slot_DefaultMech_Set@UZNetwork_DJ@@QAEHH@Z */
+  if (7 < param_1) {
+    return 0;
+  }
+  iVar6 = param_1 * 0xac;
+  pUVar1 = this + iVar6 + 0x878;
+  *(int *)pUVar1 = 0;
+  *(undefined4 *)(this + iVar6 + 0x87c) = 0;
+  *(undefined4 *)(this + iVar6 + 0x880) = 0;
+  pUVar2 = UCacheManager::GetCache();
+  if (pUVar2 != (UCacheManager *)0x0) {
+    iVar5 = 0;
+    if (0 < *(int *)(pUVar2 + 0xcc)) {
+      piVar3 = *(int **)(pUVar2 + 200);
+      do {
+        if ((piVar3[4] == 0) && ((*piVar3 % 10000000) / 1000000 + -1 == param_1)) {
+          iVar4 = 0;
+          if (0 < *(int *)(this + 0x820)) {
+            piVar3 = (int *)(*(int *)(this + 0x81c) + 8);
+            goto LAB_1072a647;
+          }
+          break;
+        }
+        iVar5 = iVar5 + 1;
+        piVar3 = piVar3 + 0x1c;
+      } while (iVar5 < *(int *)(pUVar2 + 0xcc));
+    }
+  }
+  goto LAB_1072a68d;
+  while( true ) {
+    iVar4 = iVar4 + 1;
+    piVar3 = piVar3 + 0x14;
+    if (*(int *)(this + 0x820) <= iVar4) break;
+LAB_1072a647:
+    if (*piVar3 == (*(int **)(pUVar2 + 200))[iVar5 * 0x1c]) {
+      iVar4 = iVar4 * 0x50;
+      *(int *)pUVar1 = *(int *)(iVar4 + *(int *)(this + 0x81c));
+      *(undefined4 *)(this + iVar6 + 0x87c) = *(undefined4 *)(*(int *)(this + 0x81c) + 4 + iVar4);
+      *(undefined4 *)(this + iVar6 + 0x880) = *(undefined4 *)(*(int *)(this + 0x81c) + 8 + iVar4);
+      break;
+    }
+  }
+LAB_1072a68d:
+  *(undefined4 *)(this + iVar6 + 0x894) = 0;
+  *(undefined4 *)(this + iVar6 + 0x898) = 0;
+  *(undefined4 *)(this + iVar6 + 0x89c) = 0;
+  *(undefined4 *)(this + iVar6 + 0x8b0) = 0;
+  *(undefined4 *)(this + iVar6 + 0x8b4) = 0;
+  *(undefined4 *)(this + iVar6 + 0x8b8) = 0;
+  *(undefined4 *)(this + iVar6 + 0x8cc) = 0;
+  *(undefined4 *)(this + iVar6 + 0x8d0) = 0;
+  *(undefined4 *)(this + iVar6 + 0x8d4) = 0;
+  *(undefined4 *)(this + iVar6 + 0x8e8) = 0;
+  *(undefined4 *)(this + iVar6 + 0x8ec) = 0;
+  *(undefined4 *)(this + iVar6 + 0x8f0) = 0;
+  *(undefined4 *)(this + iVar6 + 0x904) = 0;
+  *(undefined4 *)(this + iVar6 + 0x908) = 0;
+  *(undefined4 *)(this + iVar6 + 0x90c) = 0;
+  return *(int *)pUVar1;
+}
+
+
+// ======== 0x107029ff  Game_Item_Add  @ 107029ff ========
+/* public: void __thiscall UZNetwork_DJ::Game_Item_Add(int,int,int,int,int,int,int,int,int) */
+
+void __thiscall
+UZNetwork_DJ::Game_Item_Add
+          (UZNetwork_DJ *this,int param_1,int param_2,int param_3,int param_4,int param_5,
+          int param_6,int param_7,int param_8,int param_9)
+
+{
+  int iVar1;
+  FArray *this_00;
+  int *piVar2;
+  
+                    /* 0x29ff  545  ?Game_Item_Add@UZNetwork_DJ@@QAEXHHHHHHHHH@Z */
+  iVar1 = 0;
+  if (0 < *(int *)(this + 0x1044)) {
+    piVar2 = *(int **)(this + 0x1040);
+    do {
+      if (*piVar2 == param_1) {
+        thunk_FUN_107319b0(iVar1,1);
+        break;
+      }
+      iVar1 = iVar1 + 1;
+      piVar2 = piVar2 + 0x3b;
+    } while (iVar1 < *(int *)(this + 0x1044));
+  }
+  this_00 = (FArray *)(this + 0x1040);
+  iVar1 = FArray::AddZeroed(this_00,0xec,1);
+  iVar1 = iVar1 * 0xec;
+  *(int *)(iVar1 + *(int *)this_00) = param_1;
+  *(int *)(iVar1 + 4 + *(int *)this_00) = param_2;
+  *(int *)(iVar1 + 0xd0 + *(int *)this_00) = param_3;
+  *(undefined4 *)(iVar1 + 0xe4 + *(int *)this_00) = 0;
+  *(int *)(iVar1 + 0xcc + *(int *)this_00) = param_4;
+  *(int *)(iVar1 + 0xd4 + *(int *)this_00) = param_5;
+  *(int *)(iVar1 + 0xd8 + *(int *)this_00) = param_6;
+  *(int *)(iVar1 + 0xdc + *(int *)this_00) = param_7;
+  *(int *)(iVar1 + 0xe0 + *(int *)this_00) = param_8;
+  *(int *)(iVar1 + 0xe8 + *(int *)this_00) = param_9;
+  return;
+}
+
+
+// ======== 0x10709403  Game_User_State_All_Set  @ 10709403 ========
+/* public: void __thiscall UZNetwork_DJ::Game_User_State_All_Set(int,bool) */
+
+void __thiscall UZNetwork_DJ::Game_User_State_All_Set(UZNetwork_DJ *this,int param_1,bool param_2)
+
+{
+  int iVar1;
+  int iVar2;
+  
+                    /* 0x9403  588  ?Game_User_State_All_Set@UZNetwork_DJ@@QAEXH_N@Z */
+  iVar2 = 0;
+  if (0 < *(int *)(this + 0x1038)) {
+    iVar1 = 0;
+    do {
+      if ((!param_2) || (*(int *)(*(int *)(this + 0x1034) + 0x70 + iVar1) == 0)) {
+        *(int *)(*(int *)(this + 0x1034) + 0x70 + iVar1) = param_1;
+      }
+      iVar2 = iVar2 + 1;
+      iVar1 = iVar1 + 0x80;
+    } while (iVar2 < *(int *)(this + 0x1038));
+  }
+  return;
+}
+
+
+INFO  REPORT: Save succeeded for processed file: /ZNetwork.dll (HeadlessAnalyzer)

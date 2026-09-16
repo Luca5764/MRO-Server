@@ -1581,3 +1581,81 @@ ledger 的「一次只改一個變數」原則在此是有意放寬的:兩項的
 - 同一行的 `TimeLimit=` — 應為 `10`
 - 進圖後是否出現選機體畫面;若出現,客戶端應送 `ChangeSlot_CN 0x00230101`
   (目前無 handler,會落到 unhandled logger 並 dump body)
+
+## 接手驗證準備（2026-09-16）
+
+- ✅ 已確認 [OBS] 客戶端 log 實際位於 `/mnt/c/Games/MetalRage Online/data/Log/MetalRage.log`，已更正 HANDOFF 路徑。
+- ✅ 已確認 [OBS] 接手時既有 log 最後一次 `Map_PC01` travel 仍為 `team=255`、`TimeLimit=1`；tmux `server` 留存輸出也為舊版 `quarter=1`。這是舊流程基準，不能當作新修改的測試結果。
+- ✅ 已確認 [TEST] `gate.game.dispatch.js` 與 `room-game-user.sender.js` 通過 `node --check`。磁碟程式包含啟用 Game_User_SN、場景 6 排程及 TimeLimit=10；執行效果仍待重啟伺服器後手動開局驗證。
+- ✅ 已確認 [DLL] 匯出表中 `ChangeSlot_CN` thunk 為 `0x10702d51`，`ChangeSlot_SN` thunk 為 `0x107044c6`；僅定位符號，尚未解析回應布局。
+
+## 新版開局實測：team 已修正，仍無選機體畫面（2026-09-16）
+
+- ✅ 已確認 [TEST] 重啟 tmux `server` 後，記錄 `session-20260916-200401.jsonl` 在 70.370s 送出 487-byte `Game_User_SN`，userIndex=1、team=0、selected slot raw=1、slotCount=1、body item=11200101、main item=21100101。
+- ✅ 已確認 [OBS] 客戶端 travel URL 為 `Map_PC01?...?TimeLimit=10?...?team=0`，並記錄 `Login Info InName=Lucas,InTeam=0,InBrowseTeam=0,InServerIndex=1`。兩項修改的觀察特徵皆已通過。
+- ✅ 已確認 [OBS] 使用者回報仍無選機體畫面；截圖 `shots/team0-first-test.png` 顯示 MISSION BRIEFING / CAMPAIGN MODE、地圖與 DEFENSE 標記，未見選機體 UI 或玩家機體。本次檢查時未收到 `ChangeSlot_CN`。
+- ❌ 已排除 [TEST] 「只要 team 從 255 修成 0 就會出現選機體／機體」並不成立；先前把 spectator 全部歸因於 team 的敘述過強。隊伍表修正成功，不代表出擊條件已滿足。
+- ⬜ 未知 [OBS] log 同時有 `Class''ZMechanicA 'call failed` 與 `PreLoadallPveAI_BD` 的 `DefaultPawnClass` null 錯誤；尚未判定與缺少選機體畫面是否相關，不据此修改資產或封包。
+
+## 槽位／出擊函式後續分析（2026-09-16）
+
+- ✅ 已確認 [DLL] `Game_Slot_Set`（thunk `0x10707a6d`）只將六個輸入 int 寫入 `[this+0x1040]` 使用者記錄的指定槽位；`Game_Slot_Selected_Set`（`0x10703a17`）只寫該記錄 `+0x08`。兩者本身不觸發 UI，也不轉換 item ID。尚需追查讀取端才能判定槽位要用 item code 或 Cache 索引。
+- ✅ 已確認 [DLL] `ChangeSlot_SN` thunk `0x107044c6` → 本體 `0x107db2f0`，場景閘門通過後讀取 body `+0x0A` u16 user index、`+0x0C` u8 slot raw（1..7 → 0..6，其餘 → 7）。成功條件為 body `+0x00` u16 與 `+0x02` u32 均為 0。上述偏移已用組語核對；未讀欄位的用途及完整格式仍未知。
+- ✅ 已確認 [DLL] 上述成功分支設定 selected slot/socket，若本機為 host，依 `Game_Item_InstantRespawn_Get(user)` 的值送 `InstantRespawn_CN`（非零）或 `Respawn_CN`（零）。因此選槽回應與後續重生存在明確呼叫鏈；尚未收到實際 ChangeSlot_CN，不提前猜造回應。
+- ✅ 已確認 [DLL] `Game_User_Sally_Add`（`0x10704c28`）只在使用者表 `[0x1034]` 對應記錄的 `+0x44` 加上傳入值，本身不建立 pawn。先前「最像 spawn」僅依名稱的猜測，不能當作實際生成機體的函式。
+
+## WearInfo 槽位關聯鍵錯位：已修，待實測（2026-09-16）
+
+✅ 已確認 [DLL] `WearInfo_SN` 本體 `0x107c46e0`：`0x107c4877` 複製 0x34-byte 記錄到基準 `esp+0x1c`；`0x107c4a13` 讀 `esp+0x24`，即 **rec+0x08**，作為 `Slot_Info_Set(userSlot, 0, key)` 的第三參數。後續裝備取 rec+0x10、+0x18、+0x20、+0x28、+0x30。
+
+`Slot_Info_Set`（thunk `0x10709c32`）先清空機庫槽位，再以此 key 查物品表 `[this+0x81c]` 每筆的第一個 int；找不到便返回。`ItemInfo_SN`（`0x107c4560`）組語確認將 rec+0x00 傳入 `Item_Add` p1，作為該 key。故 WearInfo 的每組第二個 u32 必須是 ItemInfo 的物品實例 ID，而非 item code。
+
+原伺服器的 `[uniqueKey, itemIndex]` 使客戶端拿 item code 查實例表，槽位全空。已在 `account.dispatch.js` 與 `gamelogin.dispatch.js` 同步改成 `[itemIndex, uniqueKey]`，未改 Game_User_SN 或其他開局時序。
+
+✅ 已確認 [TEST] 兩檔通過 `node --check`。取 `session-20260916-200401.jsonl` 兩條連線的真實 ItemInfo/WearInfo，執行修改後的序列化迴圈，再依 DLL 的 key 查找方式重播：每條連線成功配對由 **0 → 24**。
+
+⬜ 未知／下一個獨立問題：兩條登入路徑都刻意過濾 `part_slot=0`，8 個機體本體不在 ItemInfo。此次只修關聯鍵，未解除過濾；因此不能宣稱已解決選機體 UI。程式註解稱本體資料曾造成斷線，需先追清 ItemInfo/Cache 資料再恢復。
+
+✅ 已確認 [OBS] 修正後重新登入，使用者觀察到機庫初始仍未直接顯示內容，但滑鼠移到選單會出現預覽圖；點擊預覽圖後，機體與裝備均正常顯示。伺服器同時收到各槽位的 `Slot_Change_CQ 0x00240107`，並能依槽位填入 body/main/left/equipment。這證明 WearInfo 關聯鍵修正已恢復機庫的實際資料鏈；初始畫面採延遲／互動載入，不能再以「登入瞬間空白」單獨判定資料失敗。
+
+⚠ 上一段「part_slot=0 過濾可能仍阻止 UI」的風險在機庫路徑上已被本次觀察降低：即使 ItemInfo 未列本體，點擊後機體仍能顯示。它是否影響戰鬥選機體仍需新開局單獨確認。
+
+## WearInfo 修正後進圖：仍為觀察者；新增 Respawn_SN 單變數實驗
+
+- ✅ 已確認 [OBS] `session-20260916-201428.jsonl` 第二次開局的 `Game_User_SN` 已使用使用者最後點選的第 8 槽：selectedMech=8、body=18200101、main=28300101。travel 仍為 team=0 / TimeLimit=10。
+- ✅ 已確認 [OBS] 截圖 `shots/wearinfo-fixed-ingame.png` 仍只有 MISSION BRIEFING 與自由視角，沒有選機體 UI；本輪沒有 `ChangeSlot_CN 0x00230101`。因此 WearInfo 修正已恢復機庫，但沒有自行觸發戰鬥選槽流程。
+- ✅ 已確認 [DLL] `Respawn_SN` 本體 `0x107d5b60` 讀 body+0x00 u16、body+0x02 u32 作成功條件，body+0x0A u16 作 user index；成功時使用 `Game_User_SN` 已設的 selected slot，增加 Sally、state 設 2，呼叫 `Game_Action_Revive("SUCCESS")` → `AGameInfo::eventSelectUnitSlot_BD`。
+- ❌ 已排除 [TEST] 第一輪 Respawn 實驗誤送 `0x00230103`。重新執行 `tools/dispatch-map.py 0x1070139d ZNetwork.dll` 確認它不是任何 server→client handler；客戶端因此完全忽略，不能用來判斷 Respawn body 或出擊鏈失敗。
+- 🟡 實驗 [DLL] 正確配對是 `Respawn_CN 0x00230103` / `Respawn_SN 0x00230104`。已將同一個 12-byte body 改送 `0x00230104`；其 handler 本體仍是已核對的 `0x107d5b60`。待重啟實測。
+
+⚠️ 更正前文完整映射中一組系統性錯位：最新工具輸出確認 `Respawn_SN=0x230104`、`InstantRespawn_SN=0x230106`、`Timeout_SN=0x230112`、`Assist_SN=0x230122`、`Death_SN=0x230124`；舊表把多個 CN 奇數 opcode 誤標成 SN。後續以 `tools/dispatch-map.py 0x1070139d ZNetwork.dll` 的實際輸出為準。
+
+## ✅ 首次成功生成並持有機體（2026-09-16）
+
+- ✅ 已確認 [TEST] 記錄 `session-20260916-202706.jsonl`：客戶端送 `BeginRound_CN 0x230151` 後，伺服器回 `BeginRound_SN 0x230152`，再於 250ms 後送正確的 `Respawn_SN 0x230104`，body success=0/error=0/userIndex=2。
+- ✅ 已確認 [OBS] 使用者回報「有機體了」；截圖 `shots/first-mech-spawn.png` 明確顯示第三人稱機體、準星、小地圖、280 DEFENS 與彈藥 HUD。這確認 `Respawn_SN` handler 成功走到 `Game_Action_Revive("SUCCESS")` / `SelectUnitSlot_BD`，主要 spawn 阻塞已解除。
+- ⬜ 待確認 [OBS] WASD、瞄準、射擊等操控是否正常，以及死亡後重生流程。
+- ✅ 清理 [DLL/TEST] 移除 `0x420114` handler 原本排程的 6 秒延遲 `BeginRound_SN`。客戶端已會自行送 `BeginRound_CN`，新的明確 handler 當場回覆；舊延遲包在 Respawn 成功後再次呼叫 `Game_Play_Start`，會把 user state 從 2 重設為 1，且攜帶無用的 map-name body，屬重複且可能破壞狀態的通知。
+
+### 其他已確認與更正
+
+- ❌ 更正 [DLL] `[0x1040]`、stride 0xEC 是 `Game_Item_Add` 建立的表；`Game_UserSocket_Add` 實際建立 `[0x104c]`、stride 0x68。前文將兩者混為一談不正確；開局封包確實皆有呼叫。
+- ✅ 已確認 [DLL] `Respawn_SN` 本體 `0x107d5b60`：成功且玩家 state !=2 才增加 Sally、設 state=2，再呼叫 `Game_Action_Revive("SUCCESS", user, selectedSlot)`。後者在 host 旗標有效時呼叫 `AGameInfo::eventSelectUnitSlot_BD`。這是伺服器回應接到腳本出擊的明確入口，不等於初次顯示選機體 UI。
+- ✅ 已確認 [DLL/OBS] `execGame_Load_Complete` → `Battle_Success_CN`，`execGame_Play_Start` → `BeginRound_CN`；本輪皆已收到，並非完全沒有載入完成通知。
+- ✅ 已確認 [DLL] `Game_Play_Start` 設 `[0xfe8]` bit0、重置多項回合狀態並呼叫 `Game_User_State_All_Set(1, mode==9)`，沒有直接發送 UI 事件。
+- 分析輸出與 WearInfo 組語保存在 `docs/research/2026-09-16-slots/`。Ghidra 多處 stack 變數名與實際參數錯位，欄位以組語核對結果為準。
+
+## 死亡／重生回歸實測（2026-09-16）
+
+- ✅ 已確認 [DLL] `Death_CN` 本體 `0x107d99f5` 將 client body 的 attacker u16、victim u16、death type u8、flag u8、part byte u8、auxiliary u32 寫入 `Death_SN` 格式；實測 body `0000020003000000000000` 即 attacker=0、victim=2、environment type=3。
+- ✅ 已確認 [DLL] `Death_SN` 本體 `0x107db760` 讀 `body+0x00` status、`+0x02` error、`+0x0A` attacker、`+0x0C` victim、`+0x0E` death type，成功分支用 victim 呼叫 `Game_User_State_Set(victim, 1)` 後執行 `Game_Action_Death`。舊版全零短回覆把 victim 留為 0，故 account 2 的 state 不會變成可重生。
+- ✅ 已實作 [TEST] `lobby.dispatch.js` 的 `Death_CN 0x00230123` handler：送 0x51-byte body 的 `Death_SN 0x00230124`，victim 寫在 +0x0C；並在 5 秒後送 `Respawn_SN 0x00230104` 作舊版客戶端的保底。新增 `Respawn_CN 0x00230103` handler，收到客戶端請求時立即送同一個 SN。
+- ✅ 已確認 [OBS] 最新記錄 `session-20260916-203513.jsonl`：12:38:37 收到 Death_CN，12:38:37 回 Death_SN（伺服器實際封包因 16-byte 對齊記錄為 96 bytes），12:38:42 回 Respawn_SN；使用者確認「有重生了」。因此死亡讀條卡死已排除。
+- ⬜ 未知 [OBS] 5 秒保底是否與所有死亡類型的客戶端讀條長度一致；目前只以環境死亡 type=3 驗證，若日後發現重生過早／過晚再調整，不能先刪除 victim 欄位修正。
+
+## 戰鬥操控與 AI 待查（2026-09-16）
+
+- ✅ 已確認 [OBS] 使用者在機體生成後 WASD 與準心可動，死亡後可重生。
+- ✅ 已確認 [TEST] 使用者連續按滑鼠左鍵期間，`session-20260916-203513.jsonl` 沒有新增任何疑似開火／攻擊的 client→server opcode；只有週期性內部 `0x00020083`。所以目前優先級是「客戶端武器 actor／裝備資料沒有使輸入事件成立」，不是先在伺服器盲回一個未知攻擊 opcode。
+- 🟡 假設 [OBS] `Game_User_SN` 的 selected mech 1 欄位目前是 body=11200101、main=21100101、left=31100101、right=0、equipment/booster=41100101、skin=0，三個 `Game_UserSocket_Set` 值為 0。這些 socket 參數的語意和是否需要 serial key 尚未由 DLL 讀取端確認；不要把其他 mech 的物品直接填入。
+- ⬜ 未知 [OBS] Map_PC01 沒有敵人；客戶端 log 有 `Class''ZMechanicA 'call failed` 和 `PreLoadallPveAI_BD ... DefaultPawnClass` null，尚未判定為地圖資產缺失、AI 設定缺失或戰鬥狀態封包不完整。下一步應先反編譯／檢查相關讀取端，再做單變數測試。

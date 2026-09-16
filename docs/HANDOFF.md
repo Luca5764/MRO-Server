@@ -5,6 +5,45 @@
 
 ---
 
+## 目前交接快照（2026-09-16 20:45，請以此段為準）
+
+這一輪已由一個 AI 完成並實測：客戶端可以登入、建戰役房、載入 `Map_PC01`、生成玩家機體、移動與瞄準；玩家死亡後會顯示 `RESPAWN` 讀條，讀條結束也已成功重新生成機體。使用者目前回報：左鍵按很多次仍不能開火、沒有推進器、裝備顯示像另一台機體、沒有副裝備／推進器、場上沒有敵人。
+
+伺服器現在在 tmux `server` 中執行，最後一次重啟後的記錄是
+`Metal Rage Online Server/logs/session-20260916-203513.jsonl`。使用者已明確授權接手者控制與重啟這個 tmux session；客戶端操作仍由使用者手動完成。若要修改已載入的 Node 程式，必須先重啟 server，否則測到的是舊程式。
+
+本輪已修改、不要回退的檔案：
+
+- `Metal Rage Online Server/dispatch/account.dispatch.js`
+- `Metal Rage Online Server/dispatch/gamelogin.dispatch.js`
+- `Metal Rage Online Server/dispatch/community.dispatch.js`
+- `Metal Rage Online Server/dispatch/lobby.dispatch.js`
+- `docs/HANDOFF.md`
+- `docs/opcode-ledger.md`
+
+另有未追蹤的研究筆記 `docs/research/`，以及工具執行產生的
+`Metal Rage Online Server/tools/__pycache__/`；不要用 reset、checkout 或刪除整個目錄來清理工作樹。
+
+### 已確認的行為與修正
+
+1. `Game_User_SN 0x00222112` 必須在客戶端場景 6 發送，`team=0` 才會讓 travel URL 進入玩家隊伍；已啟用並填入 account 2 的第一台機體。
+2. `Game_Info_SN` 的 TimeLimit 已固定為 10 分鐘。
+3. `WearInfo_SN` 的每個裝備欄位順序已修正為 `[itemIndex, uniqueKey]`；離線重播時庫存配對由 0 增至 24。這只證明倉庫封包配對正確，不代表戰鬥欄位已完成。
+4. 開局封包配對已核對：`BeginRound_CN/SN = 0x00230151/0x00230152`，`Respawn_CN/SN = 0x00230103/0x00230104`。先前把 `0x00230103` 當 SN 是錯的。
+5. `Death_CN 0x00230123` 的實際 body 為 `0000020003000000000000`：攻擊者 0、受害者 2、環境死亡類型 3。伺服器現在回傳長度 0x51 的 `Death_SN 0x00230124`，把受害者 2 寫在 body+0x0C；5 秒後再送 `Respawn_SN` 作保底。最新實測已看到重生機體。
+6. 使用者按左鍵時，最新記錄沒有任何新的開火／攻擊 opcode，只有既有的內部 `0x00020083` 心跳／同步封包。這表示目前問題發生在客戶端產生武器操作事件之前，不能先假設是伺服器缺少回應。
+7. 客戶端仍記錄 `Class''ZMechanicA 'call failed`，以及 `PreLoadallPveAI_BD: ... DefaultPawnClass` null；目前只知道沒有敵人，尚未證明是地圖資產、AI 設定或遊戲狀態封包造成。
+
+### 下一個 AI 的工作邊界
+
+優先追查「武器未掛載 → 客戶端不送開火封包」這條鏈，並獨立追查敵人生成。先讀 DLL／組語與既有 `docs/research/`，再改一個變數並重啟測試。不要重新調整已驗證的 team、TimeLimit、BeginRound、Respawn 或 Death 欄位，除非新證據直接推翻它們。
+
+裝備目前由 `dispatch/room/room-game-user.sender.js` 組成：account 2、selected mech 1 的資料是 body `11200101`、主武器 `21100101`、左武器 `31100101`、右武器 0、裝備／推進器 `41100101`、skin 0；三個 `Game_UserSocket_Set` 欄位仍為 0。這些 socket 欄位的語意尚未確認，不能直接把其他機體物品硬塞進去。資料庫的 `items` 表中，機體 1 沒有 `part_slot=3` 或 `5`；這是待查資料，不等於要偽造裝備。
+
+測試時請把「客戶端是否送出新 recv opcode」和「畫面是否有武器／敵人」分開記錄。客戶端遊戲操作不可由伺服器端工具代按；不得繞過 XIGNCODE、注入行程、附加除錯器或偽造輸入來源旗標。
+
+---
+
 ## 這是什麼
 
 Metal Rage Online(鐵影特攻 Online),2009 年 GameHi 的機甲 TPS,台灣由紅心辣椒代理,
@@ -22,24 +61,40 @@ Metal Rage Online(鐵影特攻 Online),2009 年 GameHi 的機甲 TPS,台灣由�
 已經可以:登入 → 大廳 → 房間(地圖列表正常)→ 按 F5 → 客戶端讀進 `Map_PC01`,
 顯示 MISSION BRIEFING(CAMPAIGN MODE / Protect the strategy fusion)。
 
-還不行:**沒有機體**。WASD 只能移動攝影機 = spectator。
+✅ **2026-09-16 已首次成功生成機體。** 正確流程是在客戶端送
+`BeginRound_CN 0x00230151` 後回 `BeginRound_SN 0x00230152`，再送成功的
+`Respawn_SN 0x00230104`（body +0x0A=user index）。截圖在
+`shots/first-mech-spawn.png`，封包記錄 `session-20260916-202706.jsonl`。
+先前誤送 `0x00230103`（那是 CN），所以客戶端完全忽略。
+
+目前待確認：WASD／瞄準／射擊是否正常，以及死亡後重生流程。
 
 根因已經查清楚(詳見 ledger「`team=255` 的成因鏈」):travel URL 的 `team=%d` 來自
 `Game_User_Team_Get(自己的 account index)`,它查 `[this+0x1034]` 這張表,查不到就回 255。
 那張表只有 `Game_User_SN (0x00222112)` 會填,而該封包先前是關閉的。
 
-**本輪已經修了,但還沒實測。** 改了兩件事:
+**2026-09-16 已實測：兩項修改生效，但仍未出現選機體畫面。**
+記錄 `session-20260916-200401.jsonl`，travel URL 已為 `team=0`、`TimeLimit=10`，
+客戶端也記錄 `InTeam=0`。截圖 `shots/team0-first-test.png` 仍為任務簡報。
+因此隊伍表問題已修好，但不能把缺少機體完全歸因於 team；下一步查槽位資料與選機體 UI 的觸發條件。
+
+**最新待測修改：** `WearInfo_SN` 每組裝備原送 `[uniqueKey, itemIndex]`，組語確認
+第二個值才是 `Slot_Info_Set` 查庫存用的 uniqueKey。兩條登入路徑已交換欄位；
+真實封包離線重播的庫存配對由 0 → 24。尚未實測 UI。
+機體本體仍被 ItemInfo 的 `part_slot=0` 過濾排除，是下一個獨立待查問題，不能把本次修正當作已能出擊。
+
+已生效的兩項修改:
 1. `Game_User_SN` 打開,並從房間(場景 5,handler 必定丟棄)移到場景 6 的開局序列
 2. `Game_Info_SN` 的 `+0x13` 原本誤寫 `quarterIndex=1`,那其實是 TimeLimit(分鐘),改成 10
 
 ---
 
-## 你要做的第一件事:驗證這兩項
+## 開局驗證步驟（上述兩項已通過，供後續回歸使用）
 
 請使用者開伺服器(`tmux` session 名為 `server`,`npm start`)、開客戶端、登入、建房、按 F5。
 然後看三件事:
 
-1. `/mnt/c/Games/MetalRage Online/MetalRage.log` 裡的 travel URL
+1. `/mnt/c/Games/MetalRage Online/data/Log/MetalRage.log` 裡的 travel URL
    - `team=` 應該從 `255` 變成 `0`
    - `TimeLimit=` 應該從 `1` 變成 `10`
 2. 進圖後是否出現**選機體畫面**
@@ -67,8 +122,10 @@ DLL 側的候選符號(都還沒驗證):
 - `UZNetwork_DJ::Item_InstantRespawnCount_Get` — `Game_Info_SN` 的最後一行就呼叫它
 - `UZNetwork_DJ::Game_User_State_All_Set` — `Game_Play_Start` 以 `(1, false)` 呼叫
 
-再往後是戰鬥封包:`Death_SN 0x00230107`、`Respawn_SN 0x00230103`、`Assist_SN 0x00230106`
-(已從 dispatch map 讀出,尚未對照真實流量)。
+再往後是戰鬥封包。2026-09-16 重新執行 dispatcher 恢復工具確認：
+`Respawn_CN/SN = 0x00230103/04`、`InstantRespawn_CN/SN = 0x00230105/06`、
+`Death_CN/SN = 0x00230123/24`、`Assist_CN/SN = 0x00230121/22`。
+舊 ledger 曾把多個 CN 奇數 opcode 誤標為 SN；以 `tools/dispatch-map.py 0x1070139d ZNetwork.dll` 輸出為準。
 
 ---
 
@@ -145,7 +202,7 @@ ledger 裡有一條方法學紀錄,是因為曾經一輪改兩處,症狀變了�
 ## 環境
 
 - MySQL 已裝好、schema 已匯入(用 `metalrageserver.sql`,不是 `database/schema.sql`)
-- 伺服器跑在 tmux session `server`;使用者保留手動介入的餘地
+- 伺服器跑在 tmux session `server`;使用者已明確授權 Codex 控制 tmux（包含重啟伺服器），使用者仍可手動介入。客戶端遊戲操作仍由使用者執行。
 - Ghidra 12.1.3 在 `~/tools/ghidra_12.1.3_PUBLIC`,專案在 `~/tools/mro-ghidra-proj`
 - `tools/win/shot.sh` 截圖**可用**;`tools/win/drive.sh` 送輸入**無效**(前景視窗與 IME 都試過了,
   點擊也不進去)。**遊戲操作一律請使用者手動執行**,你只能觀察。

@@ -120,6 +120,109 @@ class ZLobbyDispatch
                 return true;
             }
 
+            // BeginRound_CN. Despite this file's historical name, the client
+            // dispatch map assigns the in-game 0x23xxxx range to ZDispatchGame.
+            // Once the listen host reports that its round has started, confirm
+            // the round and then revive the already-selected slot. The latter
+            // is the native path that calls AGameInfo::SelectUnitSlot_BD.
+            case 0x00230151:
+            {
+                const [beginMsg, beginBody] = client.getMessageBuffer(0x00230152, 0x06);
+                beginBody.writeUint16LE(0, 0);
+                beginBody.writeUint32LE(0, 2);
+                client.send(beginMsg);
+                console.log(`[ZLobbyDispatch] >> Sent BeginRound_SN 0x00230152`);
+
+                setTimeout(() => {
+                    if (!client.gameStarted_)
+                        return;
+
+                    // ZDispatchGame::Respawn_SN reads:
+                    //   body+0x00 u16 EventMessage
+                    //   body+0x02 u32 ErrorMessage
+                    //   body+0x0A u16 user/account index
+                    // On success it takes the selected slot already installed
+                    // by Game_User_SN and calls Game_Action_Revive("SUCCESS"),
+                    // which reaches AGameInfo::eventSelectUnitSlot_BD.
+                    const [respawnMsg, respawnBody] = client.getMessageBuffer(0x00230104, 0x0C);
+                    respawnBody.writeUint16LE(0, 0x00);
+                    respawnBody.writeUint32LE(0, 0x02);
+                    respawnBody.writeUint32LE(0, 0x06);
+                    respawnBody.writeUint16LE(Number(client.accountIndex_ || client.accountId_ || 1), 0x0A);
+                    client.send(respawnMsg);
+                    console.log(
+                        `[ZLobbyDispatch] >> Sent Respawn_SN 0x00230104 ` +
+                        `(userIndex=${Number(client.accountIndex_ || client.accountId_ || 1)})`
+                    );
+                }, 250);
+                return true;
+            }
+
+            // Death_CN. The client body is:
+            //   +0x00 attacker user index (u16)
+            //   +0x02 victim user index (u16)
+            //   +0x04 encoded death type (u8)
+            //   +0x05 special flag (u8)
+            //   +0x06 weapon/part byte (u8)
+            //   +0x07 auxiliary value (u32)
+            // Death_SN has two score snapshots after the event fields. They
+            // may be zero while the score service is still unimplemented, but
+            // the victim index must be present: Death_SN uses it to move the
+            // game user from alive (2) to respawnable (1).
+            case 0x00230123:
+            {
+                const attackerIndex = body.length >= 2 ? body.readUint16LE(0x00) : 0;
+                const victimIndex = body.length >= 4
+                    ? body.readUint16LE(0x02)
+                    : Number(client.accountIndex_ || client.accountId_ || 1);
+                const deathType = body.length >= 5 ? body[0x04] : 0x03;
+                const specialFlag = body.length >= 6 ? body[0x05] : 0;
+                const weaponPart = body.length >= 7 ? body[0x06] : 0;
+                const auxiliaryValue = body.length >= 11 ? body.readUint32LE(0x07) : 0;
+
+                // Last field consumed by Death_SN is a u32 at body+0x4d.
+                const [deathMsg, deathBody] = client.getMessageBuffer(0x00230124, 0x51);
+                deathBody.writeUint16LE(0, 0x00);
+                deathBody.writeUint32LE(0, 0x02);
+                deathBody.writeUint32LE(0, 0x06);
+                deathBody.writeUint16LE(attackerIndex, 0x0A);
+                deathBody.writeUint16LE(victimIndex, 0x0C);
+                deathBody[0x0E] = deathType;
+                deathBody[0x0F] = specialFlag;
+                deathBody[0x10] = weaponPart;
+                deathBody.writeUint32LE(auxiliaryValue, 0x11);
+                client.send(deathMsg);
+                console.log(
+                    `[ZLobbyDispatch] >> Sent Death_SN 0x00230124 ` +
+                    `(attacker=${attackerIndex}, victim=${victimIndex}, type=${deathType})`
+                );
+
+                // Some builds do not emit Respawn_CN after an environmental
+                // death. Match the visible respawn countdown, then revive the
+                // victim unless a client request has already done so.
+                client.respawnGeneration_ = (client.respawnGeneration_ || 0) + 1;
+                const generation = client.respawnGeneration_;
+                setTimeout(() => {
+                    if (!client.gameStarted_ || client.respawnGeneration_ !== generation)
+                        return;
+                    this.sendRespawn(client, victimIndex, 'death countdown');
+                }, 5000);
+                return true;
+            }
+
+            // Respawn_CN. Its payload is not needed by Respawn_SN; the server
+            // identifies the player from the connection.
+            case 0x00230103:
+            {
+                client.respawnGeneration_ = (client.respawnGeneration_ || 0) + 1;
+                this.sendRespawn(
+                    client,
+                    Number(client.accountIndex_ || client.accountId_ || 1),
+                    'Respawn_CN'
+                );
+                return true;
+            }
+
             // Lobby Room Create
             case 0x00230131:
             {
@@ -203,5 +306,19 @@ class ZLobbyDispatch
         body[1] = 0x00; // Room count = 0
         body.writeUint16LE(0, 2);
         client.send(msg);
+    }
+
+    sendRespawn(client, userIndex, sourceTag)
+    {
+        const [msg, body] = client.getMessageBuffer(0x00230104, 0x0C);
+        body.writeUint16LE(0, 0x00);
+        body.writeUint32LE(0, 0x02);
+        body.writeUint32LE(0, 0x06);
+        body.writeUint16LE(userIndex, 0x0A);
+        client.send(msg);
+        console.log(
+            `[ZLobbyDispatch] >> Sent Respawn_SN 0x00230104 ` +
+            `(userIndex=${userIndex}, source=${sourceTag})`
+        );
     }
 };

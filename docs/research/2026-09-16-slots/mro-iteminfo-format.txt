@@ -1,0 +1,74 @@
+// ======== 0x107095c0  ItemInfo_SN  @ 107095c0 ========
+/* public: void __thiscall ZDispatchAccount::ItemInfo_SN(struct Share::System::Format *,char *) */
+
+void __thiscall ZDispatchAccount::ItemInfo_SN(ZDispatchAccount *this,Format *param_1,char *param_2)
+
+{
+  Format *pFVar1;
+  UObject *this_00;
+  Format *pFVar2;
+  uint uVar3;
+  bool bVar4;
+  undefined3 unaff_retaddr;
+  byte bStack_29;
+  undefined1 uStack_28;
+  undefined4 uStack_24;
+  int iStack_20;
+  int iStack_1c;
+  ushort uStack_10;
+  int iStack_e;
+  byte bStack_a;
+  int iStack_9;
+  int iStack_5;
+  undefined1 uStack_1;
+  
+                    /* 0x95c0  652  ?ItemInfo_SN@ZDispatchAccount@@QAEXPAUFormat@System@Share@@PAD@Z
+                        */
+  pFVar1 = param_1;
+  if (this[4] != (ZDispatchAccount)0x0) {
+    uVar3 = 0;
+    bVar4 = param_1 != (Format *)0x0;
+    param_1 = (Format *)((uint)param_1 & 0xffffff00);
+    pFVar2 = pFVar1;
+    if (bVar4) {
+      pFVar2 = (Format *)0x0;
+      if (pFVar1 + 0x10 != (Format *)0x0) {
+        thunk_FUN_1073d780(&param_1,pFVar1 + 0x10,1);
+        pFVar2 = (Format *)0x0;
+        if (pFVar1 + 0x11 != (Format *)0x0) {
+          thunk_FUN_1073d780(&bStack_29,pFVar1 + 0x11,1);
+          uVar3 = (uint)bStack_29;
+          pFVar2 = (Format *)0x0;
+          if (pFVar1 != (Format *)0xffffffee) {
+            pFVar2 = pFVar1 + 0x16;
+          }
+        }
+      }
+    }
+    for (; uVar3 != 0; uVar3 = uVar3 - 1) {
+      if (pFVar2 != (Format *)0x0) {
+        thunk_FUN_1073d780(&uStack_24,pFVar2,0x23);
+        pFVar2 = pFVar2 + 0x23;
+      }
+      uStack_28 = iStack_1c == 1;
+      ZNetworkManager::Log_Set
+                (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchAccount::ItemInfo_SN");
+      ZNetworkManager::Log_Write
+                (*(ZNetworkManager **)GZNetworkManager_exref,
+                 (ushort *)*(ZNetworkManager **)GZNetworkManager_exref);
+      this_00 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Item_Add
+                ((UZNetwork_DJ *)this_00,iStack_20,iStack_1c,SUB41(uStack_24,0),(uint)uStack_10,
+                 iStack_e,(uint)bStack_a,iStack_9,iStack_5,CONCAT31(unaff_retaddr,uStack_1));
+    }
+    return;
+  }
+  ZNetworkManager::Log_Set
+            (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchAccount::ItemInfo_SN");
+  ZNetworkManager::Log_Write
+            ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+  return;
+}
+
+
+INFO  REPORT: Save succeeded for processed file: /ZNetwork.dll (HeadlessAnalyzer)

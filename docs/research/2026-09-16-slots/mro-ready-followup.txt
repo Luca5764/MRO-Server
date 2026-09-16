@@ -1,0 +1,178 @@
+// ======== 0x1070369d  Ready_Success_SN  @ 1070369d ========
+/* public: void __thiscall ZDispatchGame::Ready_Success_SN(struct Share::System::Format *,char *) */
+
+void __thiscall ZDispatchGame::Ready_Success_SN(ZDispatchGame *this,Format *param_1,char *param_2)
+
+{
+  UObject *this_00;
+  wchar_t *pwVar1;
+  ushort *puVar2;
+  
+                    /* 0x369d  877
+                       ?Ready_Success_SN@ZDispatchGame@@QAEXPAUFormat@System@Share@@PAD@Z */
+  if (this[4] == (ZDispatchGame)0x0) {
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::Ready_Success_SN");
+    ZNetworkManager::Log_Write
+              ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+    return;
+  }
+  ZNetworkManager::Log_Set
+            (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchGame::Ready_Success_SN");
+  ZNetworkManager::Log_Write
+            ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+  if (this[8] != (ZDispatchGame)0x0) {
+    puVar2 = (ushort *)0x0;
+    pwVar1 = L"NETWORK_GAME_START";
+    this[8] = (ZDispatchGame)0x0;
+    this_00 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Event_Call((UZNetwork_DJ *)this_00,(ushort *)pwVar1,puVar2);
+  }
+  return;
+}
+
+
+// ======== 0x1070a254  Ready_Host_SN  @ 1070a254 ========
+/* public: void __thiscall ZDispatchGame::Ready_Host_SN(struct Share::System::Format *,char *) */
+
+void __thiscall ZDispatchGame::Ready_Host_SN(ZDispatchGame *this,Format *param_1,char *param_2)
+
+{
+  Format *pFVar1;
+  int iVar2;
+  UObject *pUVar3;
+  uint uVar4;
+  ushort *puVar5;
+  undefined4 uStack_24;
+  uint uStack_20;
+  ushort auStack_1c [14];
+  
+                    /* 0xa254  875  ?Ready_Host_SN@ZDispatchGame@@QAEXPAUFormat@System@Share@@PAD@Z
+                        */
+  uStack_24 = this;
+  if (this[4] == (ZDispatchGame)0x0) {
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::Ready_Host_SN");
+    ZNetworkManager::Log_Write
+              ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+    return;
+  }
+  uStack_20 = 0;
+  auStack_1c[0] = 0;
+  auStack_1c[1] = 0;
+  auStack_1c[2] = 0;
+  auStack_1c[3] = 0;
+  auStack_1c[4] = 0;
+  auStack_1c[5] = 0;
+  auStack_1c[6] = 0;
+  auStack_1c[7] = 0;
+  auStack_1c[8] = 0;
+  auStack_1c[9] = 0;
+  pFVar1 = param_1 + 0x13;
+  auStack_1c[10] = 0;
+  auStack_1c[0xb] = 0;
+  auStack_1c[0xc] = 0;
+  auStack_1c[0xd] = 0;
+  if (pFVar1 != (Format *)0x0) {
+    iVar2 = winGetSizeUNICODE((char *)pFVar1);
+    if (iVar2 < 0x10) {
+      iVar2 = winGetSizeUNICODE((char *)pFVar1);
+      if (iVar2 < 1) {
+        uStack_20 = uStack_20 & 0xffff0000;
+        goto LAB_107d57b0;
+      }
+    }
+    else {
+      iVar2 = 0x10;
+    }
+    winToUNICODE((ushort *)&uStack_20,(char *)pFVar1,iVar2);
+    *(undefined2 *)((int)&uStack_24 + iVar2 * 2 + 2) = 0;
+  }
+LAB_107d57b0:
+  uVar4 = (uint)*(ushort *)(param_1 + 0x10);
+  ZNetworkManager::Log_Set
+            (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchGame::Ready_Host_SN");
+  ZNetworkManager::Log_Write
+            ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+  puVar5 = auStack_1c;
+  pUVar3 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+  UZNetwork_DJ::Game_Host_Set((UZNetwork_DJ *)pUVar3,puVar5,uVar4);
+  if ((*(int *)GIsClient_exref != 0) && (*(char *)(uStack_20 + 9) != '\0')) {
+    *(undefined1 *)(uStack_20 + 9) = 0;
+    uStack_24 = (ZDispatchGame *)0x107d5823;
+    pUVar3 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    uStack_24 = (ZDispatchGame *)0x107d582a;
+    UZNetwork_DJ::Game_Host_Connect((UZNetwork_DJ *)pUVar3);
+  }
+  return;
+}
+
+
+// ======== 0x10704700  Game_Play_Start  @ 10704700 ========
+/* public: void __thiscall UZNetwork_DJ::Game_Play_Start(void) */
+
+void __thiscall UZNetwork_DJ::Game_Play_Start(UZNetwork_DJ *this)
+
+{
+  int iVar1;
+  int iVar2;
+  
+                    /* 0x4700  551  ?Game_Play_Start@UZNetwork_DJ@@QAEXXZ */
+  iVar2 = *(int *)(this + 0x1000);
+  *(undefined4 *)(this + 0xfec) = *(undefined4 *)(this + 0xff8);
+  *(uint *)(this + 0xfe8) = *(uint *)(this + 0xfe8) | 1;
+  *(int *)(this + 0xff0) = *(int *)(this + 0xffc);
+  *(int *)(this + 0xff4) = iVar2;
+  iVar1 = Game_Score_Get(this,*(int *)(this + 0xffc));
+  *(int *)(this + 0x1004) = iVar1;
+  iVar2 = Game_Score_Get(this,iVar2);
+  *(int *)(this + 0x1008) = iVar2;
+  iVar2 = *(int *)(this + 0xfcc);
+  if ((iVar2 == 2) || (iVar2 == 3)) {
+    *(undefined4 *)(this + 0x1010) = 1;
+  }
+  else {
+    *(uint *)(this + 0x1010) = (iVar2 != 4) - 1 & 3;
+  }
+  *(undefined4 *)(this + 0x1014) = 0;
+  *(undefined4 *)(this + 0x1018) = 0;
+  *(undefined4 *)(this + 0x101c) = 0;
+  *(undefined4 *)(this + 0x1020) = 0;
+  if (iVar2 == 9) {
+    Game_User_State_All_Set(this,1,true);
+    return;
+  }
+  Game_User_State_All_Set(this,1,false);
+  return;
+}
+
+
+// ======== 0x10701f3c  Game_UserSocket_Add  @ 10701f3c ========
+/* public: void __thiscall UZNetwork_DJ::Game_UserSocket_Add(int) */
+
+void __thiscall UZNetwork_DJ::Game_UserSocket_Add(UZNetwork_DJ *this,int param_1)
+
+{
+  int iVar1;
+  int *piVar2;
+  
+                    /* 0x1f3c  571  ?Game_UserSocket_Add@UZNetwork_DJ@@QAEXH@Z */
+  iVar1 = 0;
+  if (0 < *(int *)(this + 0x1050)) {
+    piVar2 = *(int **)(this + 0x104c);
+    do {
+      if (*piVar2 == param_1) {
+        thunk_FUN_10731a50(iVar1,1);
+        break;
+      }
+      iVar1 = iVar1 + 1;
+      piVar2 = piVar2 + 0x1a;
+    } while (iVar1 < *(int *)(this + 0x1050));
+  }
+  iVar1 = FArray::AddZeroed((FArray *)(this + 0x104c),0x68,1);
+  *(int *)(iVar1 * 0x68 + *(int *)(this + 0x104c)) = param_1;
+  return;
+}
+
+
+INFO  REPORT: Save succeeded for processed file: /ZNetwork.dll (HeadlessAnalyzer)

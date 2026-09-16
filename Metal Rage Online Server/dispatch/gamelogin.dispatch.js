@@ -204,7 +204,7 @@ class ZGameLoginDispatch
 
                 // SN_WEAR_INFO (0x210113) — DLL: WearInfo_SN
                 // Header: [u8 suc][u8 cnt][u32 pilotSerialIndex][u32 pilotItemIndex][u32 selectedMechType]
-                // Entry (52 bytes): [u32 mechType] + 6 x [u32 serialIndex, u32 itemIndex]
+                // Entry (52 bytes): [u32 mechType] + 6 x [u32 itemIndex, u32 serialIndex]
                 // Slot 0=Mech(body), 1=MainWeapon, 2=LeftWeapon, 3=RightWeapon, 4=Equipment, 5=Skin
                 {
                     const ENTRY_SIZE = 52;
@@ -247,8 +247,9 @@ class ZGameLoginDispatch
                         for (const entry of mechEntries) {
                             respBody.writeUint32LE(entry.mechType, offset);
                             for (let s = 0; s < 6; s++) {
-                                respBody.writeUint32LE(entry.slots[s].uniqueKey, offset + 4 + s * 8);
-                                respBody.writeUint32LE(entry.slots[s].itemIndex, offset + 4 + s * 8 + 4);
+                                // WearInfo_SN reads entry+0x08+n*8 as the Item_Add unique key.
+                                respBody.writeUint32LE(entry.slots[s].itemIndex, offset + 4 + s * 8);
+                                respBody.writeUint32LE(entry.slots[s].uniqueKey, offset + 8 + s * 8);
                             }
                             offset += ENTRY_SIZE;
                         }

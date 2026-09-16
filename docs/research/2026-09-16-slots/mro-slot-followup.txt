@@ -1,0 +1,309 @@
+// ======== 0x107d5bac  FUN_107d5b60  @ 107d5b60 ========
+void __thiscall FUN_107d5b60(int param_1,int param_2)
+
+{
+  bool bVar1;
+  UObject *pUVar2;
+  int iVar3;
+  uint uVar4;
+  wchar_t *pwVar5;
+  uint uVar6;
+  int iVar7;
+  
+  if (*(char *)(param_1 + 4) == '\0') {
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::Respawn_SN");
+    ZNetworkManager::Log_Write
+              ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+    return;
+  }
+  uVar4 = (uint)*(ushort *)(param_2 + 0x1a);
+  uVar6 = uVar4;
+  pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+  iVar3 = UZNetwork_DJ::Game_Slot_Selected_Get((UZNetwork_DJ *)pUVar2,uVar6);
+  ZNetworkManager::Log_Set
+            (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchGame::Respawn_SN");
+  ZNetworkManager::Log_Write
+            (*(ZNetworkManager **)(param_2 + 0x12),*(ushort **)GZNetworkManager_exref);
+  if ((*(short *)(param_2 + 0x10) == 0) && (*(int *)(param_2 + 0x12) == 0)) {
+    uVar6 = uVar4;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    bVar1 = UZNetwork_DJ::Account_Index_Diff((UZNetwork_DJ *)pUVar2,uVar6);
+    if (bVar1) {
+      iVar7 = 0;
+      pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Game_Info_Kill_Set((UZNetwork_DJ *)pUVar2,iVar7);
+    }
+    uVar6 = uVar4;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    iVar7 = UZNetwork_DJ::Game_User_State_Get((UZNetwork_DJ *)pUVar2,uVar6);
+    if (iVar7 == 2) {
+      return;
+    }
+    iVar7 = 1;
+    uVar6 = uVar4;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Game_User_Sally_Add((UZNetwork_DJ *)pUVar2,uVar6,iVar7);
+    iVar7 = 2;
+    uVar6 = uVar4;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Game_User_State_Set((UZNetwork_DJ *)pUVar2,uVar6,iVar7);
+    pwVar5 = L"SUCCESS";
+  }
+  else {
+    uVar6 = uVar4;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    bVar1 = UZNetwork_DJ::Account_Index_Diff((UZNetwork_DJ *)pUVar2,uVar6);
+    if (bVar1) {
+      iVar7 = 3;
+      pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Community_Chat_Command((UZNetwork_DJ *)pUVar2,iVar7);
+    }
+    uVar6 = uVar4;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    iVar7 = UZNetwork_DJ::Game_User_State_Get((UZNetwork_DJ *)pUVar2,uVar6);
+    if (iVar7 == 2) {
+      return;
+    }
+    pwVar5 = L"OBSERVER";
+  }
+  pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+  UZNetwork_DJ::Game_Action_Revive((UZNetwork_DJ *)pUVar2,(ushort *)pwVar5,uVar4,iVar3);
+  return;
+}
+
+
+// ======== 0x107d5d7d  FUN_107d5d30  @ 107d5d30 ========
+void __thiscall FUN_107d5d30(int param_1,int param_2)
+
+{
+  bool bVar1;
+  UObject *pUVar2;
+  int iVar3;
+  int iVar4;
+  uint uVar5;
+  wchar_t *pwVar6;
+  uint uVar7;
+  int iVar8;
+  
+  if (*(char *)(param_1 + 4) == '\0') {
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::InstantRespawn_SN");
+    ZNetworkManager::Log_Write
+              ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+    return;
+  }
+  uVar5 = (uint)*(ushort *)(param_2 + 0x1a);
+  uVar7 = uVar5;
+  pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+  iVar3 = UZNetwork_DJ::Game_Slot_Selected_Get((UZNetwork_DJ *)pUVar2,uVar7);
+  uVar7 = uVar5;
+  pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+  iVar4 = UZNetwork_DJ::Game_Item_InstantRespawn_Get((UZNetwork_DJ *)pUVar2,uVar7);
+  ZNetworkManager::Log_Set
+            (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchGame::InstantRespawn_SN");
+  ZNetworkManager::Log_Write
+            (*(ZNetworkManager **)(param_2 + 0x12),*(ushort **)GZNetworkManager_exref);
+  if ((*(short *)(param_2 + 0x10) == 0) && (*(int *)(param_2 + 0x12) == 0)) {
+    uVar7 = uVar5;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    bVar1 = UZNetwork_DJ::Account_Index_Diff((UZNetwork_DJ *)pUVar2,uVar7);
+    if (bVar1) {
+      iVar8 = 0;
+      pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Game_Info_Kill_Set((UZNetwork_DJ *)pUVar2,iVar8);
+    }
+    uVar7 = uVar5;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    iVar8 = UZNetwork_DJ::Game_User_State_Get((UZNetwork_DJ *)pUVar2,uVar7);
+    if (iVar8 != 2) {
+      iVar8 = 1;
+      uVar7 = uVar5;
+      pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Game_User_Sally_Add((UZNetwork_DJ *)pUVar2,uVar7,iVar8);
+      iVar8 = 2;
+      uVar7 = uVar5;
+      pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Game_User_State_Set((UZNetwork_DJ *)pUVar2,uVar7,iVar8);
+      pwVar6 = L"SUCCESS";
+      uVar7 = uVar5;
+      pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Game_Action_Revive((UZNetwork_DJ *)pUVar2,(ushort *)pwVar6,uVar7,iVar3);
+    }
+    uVar7 = uVar5;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    bVar1 = UZNetwork_DJ::Account_Index_Diff((UZNetwork_DJ *)pUVar2,uVar7);
+    if (bVar1) {
+      pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Item_Use((UZNetwork_DJ *)pUVar2,iVar4);
+      pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Item_InstantRespawnCount_Get((UZNetwork_DJ *)pUVar2);
+    }
+    iVar3 = 0;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Game_Item_InstantRespawn_Set((UZNetwork_DJ *)pUVar2,uVar5,iVar3);
+    return;
+  }
+  uVar7 = uVar5;
+  pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+  bVar1 = UZNetwork_DJ::Account_Index_Diff((UZNetwork_DJ *)pUVar2,uVar7);
+  if (bVar1) {
+    iVar4 = 3;
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Community_Chat_Command((UZNetwork_DJ *)pUVar2,iVar4);
+  }
+  uVar7 = uVar5;
+  pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+  iVar4 = UZNetwork_DJ::Game_User_State_Get((UZNetwork_DJ *)pUVar2,uVar7);
+  if (iVar4 != 2) {
+    pwVar6 = L"OBSERVER";
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    UZNetwork_DJ::Game_Action_Revive((UZNetwork_DJ *)pUVar2,(ushort *)pwVar6,uVar5,iVar3);
+  }
+  return;
+}
+
+
+// ======== 0x107047e6  Game_Action_Revive  @ 107047e6 ========
+/* public: void __thiscall UZNetwork_DJ::Game_Action_Revive(unsigned short const *,int,int) */
+
+void __thiscall
+UZNetwork_DJ::Game_Action_Revive(UZNetwork_DJ *this,ushort *param_1,int param_2,int param_3)
+
+{
+  int iVar1;
+  ALevelInfo *pAVar2;
+  ZNetworkManager *extraout_ECX;
+  ZNetworkManager *this_00;
+  ZNetworkManager *pZVar3;
+  FString *pFVar4;
+  FString aFStack_18 [12];
+  void *pvStack_c;
+  undefined1 *puStack_8;
+  undefined4 uStack_4;
+  
+                    /* 0x47e6  522  ?Game_Action_Revive@UZNetwork_DJ@@QAEXPBGHH@Z */
+  uStack_4 = 0xffffffff;
+  puStack_8 = &LAB_108015f9;
+  pvStack_c = ExceptionList;
+  if (((byte)this[0xfac] & 1) != 0) {
+    ExceptionList = &pvStack_c;
+    iVar1 = wcscmp((wchar_t *)param_1,L"SUCCESS");
+    if (iVar1 == 0) {
+      if ((DAT_108e550c != 0) && (*(ULevel **)(DAT_108e550c + 0x14c) != (ULevel *)0x0)) {
+        pAVar2 = ULevel::GetLevelInfo(*(ULevel **)(DAT_108e550c + 0x14c));
+        if (pAVar2 != (ALevelInfo *)0x0) {
+          pAVar2 = ULevel::GetLevelInfo(*(ULevel **)(DAT_108e550c + 0x14c));
+          if (*(int *)(pAVar2 + 0x630) != 0) {
+            pAVar2 = ULevel::GetLevelInfo(*(ULevel **)(DAT_108e550c + 0x14c));
+            AGameInfo::eventSelectUnitSlot_BD(*(AGameInfo **)(pAVar2 + 0x630),param_2,param_3);
+            ExceptionList = pvStack_c;
+            return;
+          }
+        }
+      }
+      ZNetworkManager::Log_Set
+                (*(ZNetworkManager **)GZNetworkManager_exref,1,"UZNetwork_DJ::Game_Action_Revive");
+      this_00 = extraout_ECX;
+      pZVar3 = *(ZNetworkManager **)GZNetworkManager_exref;
+    }
+    else {
+      if ((DAT_108e550c != 0) && (*(ULevel **)(DAT_108e550c + 0x14c) != (ULevel *)0x0)) {
+        pAVar2 = ULevel::GetLevelInfo(*(ULevel **)(DAT_108e550c + 0x14c));
+        if (pAVar2 != (ALevelInfo *)0x0) {
+          pAVar2 = ULevel::GetLevelInfo(*(ULevel **)(DAT_108e550c + 0x14c));
+          if (*(int *)(pAVar2 + 0x630) != 0) {
+            FString::FString(aFStack_18,param_1);
+            pFVar4 = aFStack_18;
+            uStack_4 = 0;
+            pAVar2 = ULevel::GetLevelInfo(*(ULevel **)(DAT_108e550c + 0x14c));
+            AGameInfo::eventSelectUnitSlotFailed_BD(*(AGameInfo **)(pAVar2 + 0x630),param_2,pFVar4);
+            uStack_4 = 0xffffffff;
+            FString::~FString(aFStack_18);
+            ExceptionList = pvStack_c;
+            return;
+          }
+        }
+      }
+      ZNetworkManager::Log_Set
+                (*(ZNetworkManager **)GZNetworkManager_exref,1,"UZNetwork_DJ::Game_Action_Revive");
+      this_00 = *(ZNetworkManager **)GZNetworkManager_exref;
+      pZVar3 = this_00;
+    }
+    ZNetworkManager::Log_Write(this_00,(ushort *)pZVar3);
+  }
+  ExceptionList = puStack_8;
+  return;
+}
+
+
+// ======== 0x10705bff  execGame_Load_Complete  @ 10705bff ========
+/* public: void __thiscall UZNetwork_DJ::execGame_Load_Complete(struct FFrame &,void * const) */
+
+void __thiscall
+UZNetwork_DJ::execGame_Load_Complete(UZNetwork_DJ *this,FFrame *param_1,void *param_2)
+
+{
+  byte bVar1;
+  int iVar2;
+  char *pcVar3;
+  int iStack_18;
+  undefined1 *puStack_14;
+  void *pvStack_10;
+  undefined1 *puStack_c;
+  undefined4 uStack_8;
+  
+                    /* 0x5bff  1123  ?execGame_Load_Complete@UZNetwork_DJ@@QAEXAAUFFrame@@QAX@Z */
+  puStack_c = &LAB_10801610;
+  pvStack_10 = ExceptionList;
+  puStack_14 = &stack0xffffffd4;
+  iStack_18 = 0;
+  bVar1 = **(byte **)(param_1 + 0xc);
+  ExceptionList = &pvStack_10;
+  *(byte **)(param_1 + 0xc) = *(byte **)(param_1 + 0xc) + 1;
+  uStack_8 = 0;
+  (**(code **)(GNatives_exref + (uint)bVar1 * 4))(param_1,&iStack_18);
+  iVar2 = *(int *)(param_1 + 0xc);
+  pcVar3 = (char *)(iVar2 + 1);
+  *(char **)(param_1 + 0xc) = pcVar3;
+  if (*pcVar3 == 'B') {
+    *(int *)(param_1 + 0xc) = iVar2 + 2;
+    (**(code **)(GNatives_exref + 0x108))(param_1,0);
+  }
+  ZDispatchGame::Battle_Success_CN((ZDispatchGame *)&DAT_108e7e88,iStack_18);
+  ExceptionList = pvStack_10;
+  return;
+}
+
+
+// ======== 0x10703080  execGame_Play_Start  @ 10703080 ========
+/* public: void __thiscall UZNetwork_DJ::execGame_Play_Start(struct FFrame &,void * const) */
+
+void __thiscall UZNetwork_DJ::execGame_Play_Start(UZNetwork_DJ *this,FFrame *param_1,void *param_2)
+
+{
+  int iVar1;
+  char *pcVar2;
+  void *pvStack_10;
+  undefined1 *puStack_c;
+  undefined4 uStack_8;
+  
+                    /* 0x3080  1124  ?execGame_Play_Start@UZNetwork_DJ@@QAEXAAUFFrame@@QAX@Z */
+  puStack_c = &LAB_10801620;
+  pvStack_10 = ExceptionList;
+  iVar1 = *(int *)(param_1 + 0xc);
+  pcVar2 = (char *)(iVar1 + 1);
+  ExceptionList = &pvStack_10;
+  *(char **)(param_1 + 0xc) = pcVar2;
+  uStack_8 = 0;
+  if (*pcVar2 == 'B') {
+    *(int *)(param_1 + 0xc) = iVar1 + 2;
+    (**(code **)(GNatives_exref + 0x108))(param_1,0);
+  }
+  ZDispatchGame::BeginRound_CN((ZDispatchGame *)&DAT_108e7e88);
+  ExceptionList = pvStack_10;
+  return;
+}
+
+
+INFO  REPORT: Save succeeded for processed file: /ZNetwork.dll (HeadlessAnalyzer)
