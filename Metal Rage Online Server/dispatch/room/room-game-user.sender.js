@@ -165,9 +165,11 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     const bodyId = Number(bodyItem && bodyItem.item_id) || def.body;
     const mainId = Number(mainItem && mainItem.item_id) || def.main;
     const leftId = Number(leftItem && leftItem.item_id) || def.left;
-    const rightId = Number(rightItem && rightItem.item_id) !== undefined && rightItem ? Number(rightItem.item_id) : def.right;
-    const boosterId = Number(equipmentItem && equipmentItem.item_id) !== undefined && equipmentItem ? Number(equipmentItem.item_id) : def.booster;
-    const skinId = Number(skinItem && skinItem.item_id) !== undefined && skinItem ? Number(skinItem.item_id) : def.skin;
+    // right/booster/skin may legitimately be 0 in Table 4, so only a missing
+    // row falls back; a present row is used as-is (NaN writes as 0).
+    const rightId = rightItem ? Number(rightItem.item_id) || 0 : def.right;
+    const boosterId = equipmentItem ? Number(equipmentItem.item_id) || 0 : def.booster;
+    const skinId = skinItem ? Number(skinItem.item_id) || 0 : def.skin;
 
     // socket+0x00: u32 raw slot/mech selector (1..7 → 0..6; mechType=1 → slot 0)
     body.writeUint32LE(mechType, socket + 0x00);

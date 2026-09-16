@@ -196,6 +196,10 @@ CRC32 計算範圍為 bytes[4 .. len-1]，以 BE 寫入 offset 0x00
 - `peekLength()` 用來在不破壞緩衝區的情況下解出長度欄位（offset 6–7）
 - TCP 可能黏包或斷包，`client.js` 用 `recvbuf_` 累積後逐 frame 處理
 
+### ⚠️ 客戶端拒收超過 0x400 bytes 的 frame
+
+`ZNetwork.dll 0x107f8fad`：header 長度欄位大於 `0x400`（1024，含 16 bytes header）就驗證失敗。失敗的 frame 不會被消化，**這條連線之後的所有封包也全部卡住**，客戶端不會斷線也不會報錯，看起來只是「沒反應」。`client.js` 的 `send()` 遇到這種封包會印 `!!` 並寫一個 auto marker。清單類封包（例如 ItemInfo 一筆 35 bytes，單包最多 28 筆）必須注意大小。
+
 ### ⚠️ Header 是 BE，body 幾乎都是 LE
 
 這是最容易踩的雷。header 欄位用 `writeUint16BE`／`writeUint32BE`，但 body 內的欄位普遍是 `writeUint16LE`／`writeUint32LE`。字串則是 **UTF-16LE 且以 `\0` 結尾**（例如房間名稱）。

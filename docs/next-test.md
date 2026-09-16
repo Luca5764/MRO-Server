@@ -1,35 +1,29 @@
-# 下一輪要測的:伺服器驅動開戰(server-driven start)
+# 下一輪要測的（2026-09-17）
 
-## 一句話
-房主按 F5 直接 travel 走不通(結構上 `[0xfc8]` 在房間場景設不了,見 opcode-ledger)。
-改由伺服器在收到開始請求後,先把客戶端推進場景 6、再送地圖。這是**試打**,不保證成功。
+前一版（伺服器驅動開戰）已驗證成功，內容見 opcode-ledger。
 
-## 怎麼開啟
-`Metal Rage Online Server/dispatch/gate.game.dispatch.js` 最上面:
-```js
-const SERVER_DRIVEN_START_MODE = 'disabled';  // 改成 'enabled'
-```
-改完**重啟伺服器**(舊的 node 要先關掉)。
+**先重啟伺服器**，`client.js` 有改。改動只多了一個「封包超過 0x400 bytes」的警告，送出的內容沒變。
 
-## 怎麼測
-1. 登入 → 建**戰役房**(協力模式) → 停在房間
-2. 按 **遊戲開始(F5)**
-3. 讓客戶端跑完(進遊戲 or 崩潰都可),**崩潰的話按 confirm 讓 log 寫完**
+## 測試 A：武器與操控（不用改任何設定）
 
-## 怎麼判斷
-看客戶端 log `C:\Games\MetalRage Online\data\Log\MetalRage.log` 裡的:
-```
-ScriptLog: [ ZPage_Room ][ GameStart ]  start ???
-```
-- `start Map_PC01?...?Game=ZModePve.ZModePve`  → **成功**,地圖對了
-- `start Store_01?...?ZModeHangar`             → 還是老樣子,伺服器沒搶贏客戶端的 F5 travel
+在遊戲聊天框打字當 marker，**一次只做一件事**：
 
-不管哪個,把那行給 Claude(或直接說「測了」讓它自己讀)。
+1. 打 `A1 開火` → 按住左鍵約 3 秒 → 打 `A1 end`
+2. 打 `A2 副武器` → 試右鍵，以及其他武器鍵（依 `OptionAll_Default.ini`）→ 打 `A2 end`
+3. 打 `A3 推進器` → **站著**按 Shift → 打 `A3 end`
+4. 每一步都截圖：`tools/win/shot.sh`
 
-## 如果沒用
-表示客戶端 F5 的同步 travel 搶在伺服器前面,伺服器端無解。
-下一步會是:客戶端側(改 ini / 研究 ZPage_Room),或接受「房主開戰」這條路走不通、
-改試別的進戰鬥方式。細節在 docs/opcode-ledger.md「開戰機制的完整靜態分析」那節。
+要看的：
+- `node tools/slice.js <檔名> -m <n>`：每一段有沒有出現新的 client→server opcode
+- `MetalRage.log`：有沒有 `Cannot use`、`Accessed None`
 
-## 回退
-把 `SERVER_DRIVEN_START_MODE` 改回 `'disabled'`,重啟。房間功能不受影響。
+## 測試 B：ItemInfo 卡住，是大小問題還是 slot 內容問題
+
+只有在測試 A 做完後才做，**一次只改一個變數**。
+
+- **B1（只改大小）**：先照原樣把 slot 1／2／4 的 24 筆送出，再把其中 12 筆複製一次（`id` 要不同），湊成 36 筆，整包超過 0x400。
+  **預期**：console 出現 `!! frame ... > 0x400`，客戶端卡在登入。
+- **B2（只改內容）**：送 slot 1／2／3／4／5，但每台機只留一部分，讓總數 ≤ 28 筆（例如只送 1–4 號機，共 20 筆）。
+  **預期**：如果原因真的是大小，應該能正常登入。
+
+B2 能過，就可以做分包的 ItemInfo（單包 ≤ 28 筆），再把 slot 3／5 和機體本體（part_slot=0）都加回來。

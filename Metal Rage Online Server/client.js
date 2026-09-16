@@ -6,6 +6,10 @@ const packetlog = require('./packetlog.js');
 const MSG_HEADER_SIZE = 0x10;
 const MSG_DEFAULT_SALT = 0xf0f00f0f;
 const MSG_MAX_SIZE = 0x1000;
+// The client's frame parser (ZNetwork.dll 0x107f8fad: `cmp eax, 0x400; ja`)
+// rejects any frame whose header length exceeds 0x400. A rejected frame is
+// never consumed, so the connection just stalls until it times out.
+const CLIENT_MAX_FRAME = 0x400;
 
 const MSG_HANDSHAKE = 0x00020080;
 const MSG_HANDSHAKE_RESPONSE = 0x00020081;
@@ -302,6 +306,14 @@ class NetworkClient
             packetlog.packet('send', this,
                 data.readUint32BE(0xC),
                 data.subarray(MSG_HEADER_SIZE));
+        }
+
+        if (data.length > CLIENT_MAX_FRAME)
+        {
+            const type = data.length >= MSG_HEADER_SIZE ? data.readUint32BE(0xC) : 0;
+            const text = `frame 0x${type.toString(16).padStart(8, '0')} is ${data.length} bytes > 0x400; client will stall on it`;
+            console.error(`[NetworkClient] !! ${text}`);
+            packetlog.marker(text, 'auto');
         }
 
         const copy = Buffer.from(data);

@@ -1,0 +1,311 @@
+// ======== 0x1070a425  Assist_SN  @ 1070a425 ========
+/* public: void __thiscall ZDispatchGame::Assist_SN(struct Share::System::Format *,char *) */
+
+void __thiscall ZDispatchGame::Assist_SN(ZDispatchGame *this,Format *param_1,char *param_2)
+
+{
+  uint uVar1;
+  uint uVar2;
+  UObject *pUVar3;
+  int iVar4;
+  uint uVar5;
+  int iVar6;
+  uint uVar7;
+  
+                    /* 0xa425  261  ?Assist_SN@ZDispatchGame@@QAEXPAUFormat@System@Share@@PAD@Z */
+  if (this[4] != (ZDispatchGame)0x0) {
+    uVar1 = (uint)*(ushort *)(param_1 + 0x1c);
+    uVar5 = (uint)*(ushort *)(param_1 + 0x1a);
+    switch(param_1[0x1e]) {
+    case (Format)0x1:
+      break;
+    case (Format)0x2:
+      break;
+    case (Format)0x3:
+      break;
+    case (Format)0x4:
+      break;
+    case (Format)0x5:
+      break;
+    case (Format)0x6:
+      break;
+    default:
+      break;
+    case (Format)0xc:
+      break;
+    case (Format)0x15:
+      break;
+    case (Format)0x16:
+      break;
+    case (Format)0x17:
+      break;
+    case (Format)0x1f:
+      break;
+    case (Format)0x20:
+      break;
+    case (Format)0x21:
+      break;
+    case (Format)0x29:
+      break;
+    case (Format)0x2a:
+      break;
+    case (Format)0x2b:
+      break;
+    case (Format)0x2c:
+      break;
+    case (Format)0x2d:
+      break;
+    case (Format)0x2e:
+      break;
+    case (Format)0x33:
+      break;
+    case (Format)0x34:
+      break;
+    case (Format)0x35:
+      break;
+    case (Format)0x3d:
+      break;
+    case (Format)0x47:
+      break;
+    case (Format)0x51:
+      break;
+    case (Format)0x52:
+      break;
+    case (Format)0x5b:
+    }
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchGame::Assist_SN");
+    ZNetworkManager::Log_Write
+              (*(ZNetworkManager **)GZNetworkManager_exref,
+               (ushort *)*(ZNetworkManager **)GZNetworkManager_exref);
+    if ((*(short *)(param_1 + 0x10) == 0) && (*(int *)(param_1 + 0x12) == 0)) {
+      iVar4 = (int)*(short *)(param_1 + 0x23);
+      uVar2 = (uint)*(ushort *)(param_1 + 0x21);
+      uVar7 = (uint)*(ushort *)(param_1 + 0x25);
+      iVar6 = (int)*(short *)(param_1 + 0x27);
+      pUVar3 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Game_User_Assist_Set((UZNetwork_DJ *)pUVar3,uVar5,uVar2,iVar4);
+      pUVar3 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      UZNetwork_DJ::Game_User_Assist_Set((UZNetwork_DJ *)pUVar3,uVar1,uVar7,iVar6);
+    }
+    return;
+  }
+  ZNetworkManager::Log_Set(*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::Assist_SN")
+  ;
+  ZNetworkManager::Log_Write
+            ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+  return;
+}
+
+
+// ======== 0x107060eb  Assist_CN  @ 107060eb ========
+/* public: void __thiscall ZDispatchGame::Assist_CN(int,int,int,int,int) */
+
+void __thiscall
+ZDispatchGame::Assist_CN
+          (ZDispatchGame *this,int param_1,int param_2,int param_3,int param_4,int param_5)
+
+{
+  bool bVar1;
+  UObject *pUVar2;
+  Format *pFVar3;
+  int iVar4;
+  
+                    /* 0x60eb  260  ?Assist_CN@ZDispatchGame@@QAEXHHHHH@Z */
+  if (this[4] == (ZDispatchGame)0x0) {
+    ZNetworkManager::Log_Set
+              (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::Assist_CN");
+  }
+  else {
+    pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+    bVar1 = UZNetwork_DJ::Game_Host_Check((UZNetwork_DJ *)pUVar2);
+    if (bVar1) {
+      pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+      bVar1 = UZNetwork_DJ::Game_Play_Check((UZNetwork_DJ *)pUVar2);
+      if (bVar1) {
+        if ((param_5 == 2) || (4 < param_5)) {
+          iVar4 = param_3;
+          pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+          bVar1 = UZNetwork_DJ::Game_User_Check((UZNetwork_DJ *)pUVar2,iVar4);
+          if (!bVar1) {
+            ZNetworkManager::Log_Set
+                      (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::Assist_CN");
+            goto LAB_107d9d38;
+          }
+        }
+        else {
+          iVar4 = param_1;
+          pUVar2 = UClass::GetDefaultObject(&UZNetwork_DJ::PrivateStaticClass);
+          bVar1 = UZNetwork_DJ::Game_User_Check((UZNetwork_DJ *)pUVar2,iVar4);
+          if (!bVar1) {
+            ZNetworkManager::Log_Set
+                      (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::Assist_CN");
+LAB_107d9d38:
+            ZNetworkManager::Log_Write
+                      ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref)
+            ;
+            return;
+          }
+        }
+        pFVar3 = (Format *)thunk_FUN_107d87d0();
+        pFVar3[0x16] = param_4._0_1_;
+        *(short *)(pFVar3 + 0x10) = (short)param_3;
+        *(short *)(pFVar3 + 0x12) = (short)param_1;
+        switch(param_5) {
+        case 1:
+          pFVar3[0x14] = (Format)0x1;
+          break;
+        case 2:
+          pFVar3[0x14] = (Format)0x2;
+          break;
+        case 3:
+          pFVar3[0x14] = (Format)0x3;
+          break;
+        case 4:
+          pFVar3[0x14] = (Format)0x4;
+          break;
+        default:
+          pFVar3[0x14] = (Format)0xb;
+          break;
+        case 6:
+          pFVar3[0x14] = (Format)0xc;
+          break;
+        case 7:
+          pFVar3[0x14] = (Format)0x15;
+          break;
+        case 8:
+          pFVar3[0x14] = (Format)0x16;
+          break;
+        case 9:
+          pFVar3[0x14] = (Format)0x17;
+          break;
+        case 10:
+          pFVar3[0x14] = (Format)0x1f;
+          break;
+        case 0xb:
+          pFVar3[0x14] = (Format)0x20;
+          break;
+        case 0xc:
+          pFVar3[0x14] = (Format)0x21;
+          break;
+        case 0xd:
+          pFVar3[0x14] = (Format)0x29;
+          break;
+        case 0xe:
+          pFVar3[0x14] = (Format)0x2a;
+          break;
+        case 0xf:
+          pFVar3[0x14] = (Format)0x2b;
+          break;
+        case 0x10:
+          pFVar3[0x14] = (Format)0x2c;
+          break;
+        case 0x11:
+          pFVar3[0x14] = (Format)0x2d;
+          break;
+        case 0x12:
+          pFVar3[0x14] = (Format)0x2e;
+          break;
+        case 0x13:
+          pFVar3[0x14] = (Format)0x33;
+          break;
+        case 0x14:
+          pFVar3[0x14] = (Format)0x34;
+          break;
+        case 0x15:
+          pFVar3[0x14] = (Format)0x35;
+          break;
+        case 0x16:
+          pFVar3[0x14] = (Format)0x3d;
+          break;
+        case 0x17:
+          pFVar3[0x14] = (Format)0x47;
+          break;
+        case 0x18:
+          pFVar3[0x14] = (Format)0x51;
+          break;
+        case 0x19:
+          pFVar3[0x14] = (Format)0x52;
+          break;
+        case 0x1a:
+          pFVar3[0x14] = (Format)0x5b;
+          break;
+        case 0x1b:
+          pFVar3[0x14] = (Format)0x5;
+          break;
+        case 0x1c:
+          pFVar3[0x14] = (Format)0x6;
+        }
+        if (param_2 == 1) {
+          pFVar3[0x15] = (Format)0x1;
+        }
+        else {
+          pFVar3[0x15] = (Format)0x2;
+        }
+        ZNetworkManager::Log_Set
+                  (*(ZNetworkManager **)GZNetworkManager_exref,2,"ZDispatchGame::Assist_CN");
+        ZNetworkManager::Log_Write
+                  ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+        ZNetworkManager::Send(*(ZNetworkManager **)GZNetworkManager_exref,pFVar3,0);
+        return;
+      }
+      ZNetworkManager::Log_Set
+                (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::Assist_CN");
+    }
+    else {
+      ZNetworkManager::Log_Set
+                (*(ZNetworkManager **)GZNetworkManager_exref,1,"ZDispatchGame::Assist_CN");
+    }
+  }
+  ZNetworkManager::Log_Write
+            ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+  return;
+}
+
+
+// ======== 0x10707d56  Game_User_Assist_Set  @ 10707d56 ========
+/* public: void __thiscall UZNetwork_DJ::Game_User_Assist_Set(int,int,int) */
+
+void __thiscall
+UZNetwork_DJ::Game_User_Assist_Set(UZNetwork_DJ *this,int param_1,int param_2,int param_3)
+
+{
+  int *piVar1;
+  int iVar2;
+  int iVar3;
+  int iVar4;
+  
+                    /* 0x7d56  577  ?Game_User_Assist_Set@UZNetwork_DJ@@QAEXHHH@Z */
+  iVar3 = 0;
+  if (0 < *(int *)(this + 0x1038)) {
+    piVar1 = *(int **)(this + 0x1034);
+    do {
+      if (*piVar1 == param_1) {
+        iVar2 = param_2 * 5;
+        if (*(int *)(this + 0xfcc) != 9) {
+          iVar2 = param_2;
+        }
+        iVar4 = iVar3 * 0x80;
+        piVar1 = *(int **)(this + 0x1034) + iVar3 * 0x20 + 0x13;
+        *piVar1 = *piVar1 + iVar2;
+        *(int *)(iVar4 + 0x54 + *(int *)(this + 0x1034)) =
+             *(int *)(iVar4 + 0x54 + *(int *)(this + 0x1034)) + param_2;
+        piVar1 = (int *)(iVar4 + 0x5c + *(int *)(this + 0x1034));
+        *piVar1 = *piVar1 + param_3;
+        ZNetworkManager::Log_Set
+                  (*(ZNetworkManager **)GZNetworkManager_exref,2,
+                   "UZNetwork_DJ::Game_User_Assist_Set");
+        ZNetworkManager::Log_Write
+                  ((ZNetworkManager *)GZNetworkManager_exref,*(ushort **)GZNetworkManager_exref);
+        break;
+      }
+      iVar3 = iVar3 + 1;
+      piVar1 = piVar1 + 0x20;
+    } while (iVar3 < *(int *)(this + 0x1038));
+  }
+  *(uint *)(this + 0x1030) = *(uint *)(this + 0x1030) | 1;
+  return;
+}
+
+
+INFO  REPORT: Save succeeded for processed file: /ZNetwork.dll (HeadlessAnalyzer)
