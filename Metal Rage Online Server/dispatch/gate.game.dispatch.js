@@ -1,5 +1,6 @@
 ﻿const NetworkClient = require("../client");
 const packetlog = require("../packetlog.js");
+const { sendGameUserBootstrap } = require('./room/room-game-user.sender');
 
 // ZGateGameDispatch - Handles Gate-range (0x22XXXX) messages on the GAME server
 //
@@ -213,6 +214,28 @@ function sendRoomGameWaitSn(client, tag)
     console.log(`[ZGateGameDispatch] >> Sent Game_Wait_SN 0x00420111 [${tag}]`);
 }
 
+// Game_User_SN, sent from here rather than from room state because the handler
+// is ZDispatchGame's and only runs in scene 6. The context the room build needs
+// is small enough to assemble from the client; the sender reads the equipped
+// loadout out of the database itself.
+function sendGameUserSn(client, tag)
+{
+    const ctx = {
+        accountIndex: Number(client.accountIndex_ || client.accountId_ || 1),
+        nickname: client.nickname_ || 'Player',
+        userLevelText: '1',
+        // Must match one of the two values Game_Info_SN puts in [0xffc] and
+        // [0x1000], which Game_Play_Start copies to [0xff0] and [0xff4]. We
+        // send red=0 there, so team 0 resolves to red instead of 255.
+        teamIndex: 0,
+        selectedMech: Number(client.currentHangarSlot_) || 1,
+        pilotId: Number(client.pilot_) || 101,
+    };
+    console.log(`[ZGateGameDispatch] >> Game_User_SN [${tag}]`);
+    return Promise.resolve(sendGameUserBootstrap(client, ctx, getExactMessageBuffer))
+        .catch(err => console.error(`[ZGateGameDispatch] >> Game_User_SN failed: ${err.message}`));
+}
+
 function sendGameInfoSn(client, tag)
 {
     const BODY_SIZE = 0x1A;
@@ -227,44 +250,58 @@ function sendGameInfoSn(client, tag)
     const redTeamIndex = 0;
     const blueTeamIndex = 1;
     const clanFlag = 0;
-    const quarterIndex = 1;
 
-    // Experimental Game_Info_SN body.
-    // Confirmed fields exist, but semantics are still partial.
-    // Static analysis shows:
-    //   packet+0x10 -> logged as Battle
-    //   packet+0x14 -> logged as RedTeamIndex
-    //   packet+0x16 -> logged as BlueTeamIndex
-    //   packet+0x1E -> logged as Clan
-    //   packet+0x1F -> compared with 2, logged as a boolean-like Quarter flag
-    // Keep map and player hints in later fields until their exact semantics are
-    // confirmed, so we do not poison team/map selection again.
-    body.writeUInt32LE(battleIndex, 0x00);      // packet+0x10 Battle
-    body.writeUInt16LE(redTeamIndex, 0x04);     // packet+0x14 RedTeamIndex
-    body.writeUInt16LE(blueTeamIndex, 0x06);    // packet+0x16 BlueTeamIndex
-    // Offsets below are read straight out of ZDispatchWaiting::Game_Info_SN
-    // (0x107f0949). The one that matters is 0x11: that word becomes argument 6
-    // of Game_Info_Set, which is the only writer of [this+0xfc8] — the field
-    // Game_Info_URL_Get searches Cache.Bin with to build the travel URL.
+    // Every offset below is now read out of the real handler rather than
+    // guessed. ZDispatchGame::Game_Info_SN (thunk 0x107079af -> 0x107d4f50)
+    // pulls ten values out of the body and hands them to Game_Info_Set and
+    // Game_Info_Team_Set; the argument order came from the assembly, because
+    // the decompiler transposes p2/p3 and p8/p9 on that call.
     //
-    // We were writing userIndex there and the map id at 0x0A. So the client
-    // looked up map id 1, found nothing, logged "Failed - MapIndex : 1", and
-    // fell back to the level it was standing in with the hangar's GameInfo and
-    // team 255 — which is the crash, every time, from the first one.
-    body.writeUInt16LE(0, 0x0A);                // body+0x0A, purpose unknown
-    body.writeUInt16LE(0, 0x0C);                // body+0x0C, purpose unknown
-    body.writeUInt8(clanFlag, 0x0E);            // body+0x0E, byte
-    body.writeUInt16LE(2, 0x0F);                // body+0x0F, compared against 2
-    body.writeUInt16LE(mapId, 0x11);            // body+0x11 -> [this+0xfc8], MAP ID
-    body.writeUInt16LE(quarterIndex, 0x13);     // body+0x13, purpose unknown
-    body.writeUInt8(0, 0x15);                   // packet+0x25 candidate flag
-    body.writeUInt16LE(0, 0x16);                // packet+0x26 candidate field
-    body.writeUInt16LE(0, 0x18);                // packet+0x28 candidate field
+    //   Game_Info_Set(p1..p10):
+    //     p1  body+0x00 u32   -> [0xfc0]  battle index
+    //     p2  body+0x0E u8    -> [0xfc4] bit0   (bool)
+    //     p3  body+0x0F u16==2-> [0xfc4] bit1   (bool)
+    //     p4  body+0x0A u16   -> [0xfe0]
+    //     p5  body+0x0C u16   -> [0xfe4]
+    //     p6  body+0x11 u16   -> [0xfc8]  MAP ID
+    //     p7  body+0x13 u16   -> [0xfd4]  TIME LIMIT, in minutes
+    //     p8  body+0x16 u16   -> [0xfd8]  goal score, modes 0 and 1
+    //     p9  body+0x18 u16   -> [0xfdc]  goal score, mode 5
+    //     p10 body+0x15 u8    -> [0xfd0]  goal score, modes 4, 6 and 7
+    //   Game_Info_Team_Set(body+0x04 u16, body+0x06 u16) -> [0xffc], [0x1000]
+    //
+    // Game_Info_URL_Get then reads [0xfc8] for the map, [0xfd4] for
+    // TimeLimit, and one of [0xfd0]/[0xfd8]/[0xfdc] for GoalScore, choosing by
+    // [0xfcc] — the mode, which Game_Info_Set copies out of the Cache.Bin
+    // entry for the map, not out of this packet. Cache.Bin on disk is
+    // variable-length, so rather than work out which of the three fields this
+    // map's mode will read, all three carry the same value.
+    //
+    // Game_Play_Start runs at the end of the handler and copies [0xffc] and
+    // [0x1000] into [0xff0] and [0xff4], which is what Game_User_Team_Get
+    // compares a player's team against.
+    const timeLimitMinutes = 10;
+    const goalScore = 0;
+
+    body.writeUInt32LE(battleIndex, 0x00);      // -> [0xfc0]  battle index
+    body.writeUInt16LE(redTeamIndex, 0x04);     // -> [0xffc]  -> [0xff0], team 0
+    body.writeUInt16LE(blueTeamIndex, 0x06);    // -> [0x1000] -> [0xff4], team 1
+    body.writeUInt16LE(0, 0x0A);                // -> [0xfe0], purpose unknown
+    body.writeUInt16LE(0, 0x0C);                // -> [0xfe4], purpose unknown
+    body.writeUInt8(clanFlag, 0x0E);            // -> [0xfc4] bit0
+    body.writeUInt16LE(2, 0x0F);                // == 2 -> [0xfc4] bit1
+    body.writeUInt16LE(mapId, 0x11);            // -> [0xfc8], MAP ID
+    body.writeUInt16LE(timeLimitMinutes, 0x13); // -> [0xfd4], TimeLimit=%d
+    body.writeUInt8(goalScore, 0x15);           // -> [0xfd0], goal score 4/6/7
+    body.writeUInt16LE(goalScore, 0x16);        // -> [0xfd8], goal score 0/1
+    body.writeUInt16LE(goalScore, 0x18);        // -> [0xfdc], goal score 5
 
     client.send(msg);
     console.log(
         `[ZGateGameDispatch] >> Sent Game_Info_SN 0x00222111 [${tag}] ` +
-        `(battle=${battleIndex}, red=${redTeamIndex}, blue=${blueTeamIndex}, map=${mapId}, clan=${clanFlag}, user=${userIndex}, quarter=${quarterIndex}, body=${body.toString('hex')})`
+        `(battle=${battleIndex}, red=${redTeamIndex}, blue=${blueTeamIndex}, map=${mapId}, ` +
+        `clan=${clanFlag}, user=${userIndex}, timeLimit=${timeLimitMinutes}, goal=${goalScore}, ` +
+        `body=${body.toString('hex')})`
     );
 }
 
@@ -704,6 +741,13 @@ class ZGateGameDispatch
                     client.campaignStarted_ = (Number(client.rawRoomType_) === 1) ||
                         (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5);
                     sendRoomGameWaitSn(client, 'server-driven: to scene 6');
+                    // The in-game player table, which has to exist before the
+                    // client builds its travel URL: Game_Info_URL_Get asks
+                    // Game_User_Team_Get for team=%d, that searches the array
+                    // Game_User_SN fills, and an empty array answers 255 —
+                    // which is how the map came up with a free camera and no
+                    // mech. Scene 6 first, or ZDispatchGame drops it.
+                    setTimeout(() => sendGameUserSn(client, 'server-driven: in-game user table'), 60);
                     // Give the client a beat to enter scene 6 before the map,
                     // so the scene-6 Game_Info_SN handler is the one that runs.
                     setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map'), 150);

@@ -145,7 +145,12 @@ const CAMPAIGN_MAP_ALL_HINTS = MAP_ID_MODE === 'real'
     ? MAP_IDS_PVE
     : LEGACY_CAMPAIGN_MAP_ALL_HINTS;
 const ROOM_DEFAULT_ENTRY_HINTS = [8, 37, 30, 34, 6, 2]; // mech slot entries for SN_ROOM_DEFAULT
-const CAMPAIGN_GAME_USER_BOOTSTRAP_MODE = 'enabled'; // 'disabled' | 'enabled'
+// Off here on purpose. Game_User_SN is handled by ZDispatchGame, which checks
+// the scene byte first and returns without reading a thing unless the client is
+// in scene 6. Room state goes out in scene 5, so this call site could only ever
+// have sent the packet into a discard. The live send is in
+// gate.game.dispatch.js, after Game_Wait_SN has moved the client to scene 6.
+const CAMPAIGN_GAME_USER_BOOTSTRAP_MODE = 'disabled'; // 'disabled' | 'enabled'
 const CACHE_INDEX_BY_ITEM_ID = loadCacheIndexByItemId();
 
 function loadCacheIndexByItemId() {

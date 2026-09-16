@@ -1408,3 +1408,176 @@ Game_Info_SN 0x222111    → retry
 - [ ] 定位 `Death_CN` 的 opcode：進訓練場後讓機體被擊毀，觀察未處理封包
 - [ ] 定位 `Game_Score_SN` 需要的 body 結構
 - [ ] 釐清 `0x23xxxx` Lobby 已確認範圍
+
+---
+
+## 場景 6 的三個 CN:客戶端在地圖裡送什麼 ✅ 已確認 [DLL]
+
+先前這三個都被當成「未知輪詢」,其中 `0x00230111` 還被 `lobby.dispatch.js` 誤判成 Lobby Enter。
+在 `ZNetwork.dll` 掃描 `mov dword ptr [...], <opcode>` 即可定位送出端,三處引用的形狀完全一致
+(一個 `[ecx+0xc]` 建構子 + 兩個全域 Format 的 send 站)。
+
+| opcode | 名稱 | 封包長度 | 送出前提 |
+|---|---|---|---|
+| `0x00230111` | `ZDispatchGame::Timeout_CN` | 0x10(無 body) | scene 6 + `Game_Host_Check()` + **`Game_Play_Check()`** |
+| `0x00230151` | `ZDispatchGame::BeginRound_CN` | 0x14(4-byte body) | scene 6 |
+| `0x00420117` | `ZDispatchGame::Battle_Success_CN` | 0x10 | scene 6 + `Game_Host_Check()`,參數為 0 的分支 |
+
+對應的 SN 在 dispatch map 裡:`Timeout_SN 0x00230112`、`BeginRound_SN 0x00230152`、`ChangeSlot_SN 0x00230102`。
+
+**這推翻了「回合沒有開始」的假設。** `Timeout_CN` 的送出前提就包含 `Game_Play_Check()` 為真,
+所以客戶端進圖後回合其實正常開始了;那 60 秒的靜默是 `TimeLimit=1`(單位:分鐘)的回合計時,
+跑完之後客戶端每秒回報一次逾時。問題從頭到尾不是回合,是**玩家沒有 pawn**。
+
+### 方法學
+先前把 `0x00230111` 標成「每秒輪詢,含義未知」,是因為只從客戶端的 *dispatcher* 找它——
+而 dispatcher 只列 server→client。客戶端自己送的封包要在 **send 站**找,也就是搜尋
+把 opcode 寫進 Format 結構的那條 `mov`。這條路徑對任何 CQ/CN 都適用。
+
+---
+
+## `team=255` 的成因鏈 ✅ 已確認 [DLL]
+
+`UZNetwork_DJ::Game_Info_URL_Get`(thunk `0x10733e71` → `0x10733cf0`)組 travel URL,
+最後一個 `%d` 來自 `Game_User_Team_Get(this, [this+0x44c])`,參數是自己的 account index。
+
+```c
+// Game_User_Team_Get, 0x107024d7
+iVar1 = 0xff;                       // 預設 255
+// 陣列 [this+0x1034],筆數 [this+0x1038],stride 0x80
+// 找 entry[0] == accountIndex
+teamRaw = entry[0x34];
+if (teamRaw == [this+0xff0]) return 0;   // 紅
+if (teamRaw == [this+0xff4]) return 1;   // 藍
+return 255;
+```
+
+`[0x1034]` 這張表**只有** `Game_User_Add`(`0x10703850`)寫,而 `Game_User_Add`
+**只有** `ZDispatchGame::Game_User_SN`(`0x00222112`)呼叫。該封包先前是關閉的,
+表是空的 → 查無此人 → 255 → UE2 視為未分配隊伍 → 只給 spectator 攝影機,不 spawn pawn。
+
+這也解釋了先前修好 `User_Default_SN` 之後房間裡看得到玩家、進圖卻仍然 `team=255`:
+`User_Default_SN` 填的是另一張表(`[this+0xf88]`,stride 0x50),與 `[0x1034]` 無關。
+
+兩個 team ref 的來源:
+```
+Game_Info_SN → Game_Info_Team_Set(body+0x04, body+0x06) → [0xffc], [0x1000]
+             → Game_Play_Start                          → [0xff0]=[0xffc], [0xff4]=[0x1000]
+```
+所以送 red=0 / blue=1,`Game_User_SN` 記錄的 team 欄位寫 0,就會解析成紅隊。
+
+---
+
+## `Game_Info_SN` (0x00222111) body ✅ 已確認 [DLL]
+
+來源:`ZDispatchGame::Game_Info_SN` thunk `0x107079af` → `0x107d4f50`。
+**參數順序取自組語,不是反編譯器**——Ghidra 在這個呼叫上把 p2/p3 與 p8/p9 對調了。
+
+| body | 型別 | → `Game_Info_Set` | → 欄位 |
+|---|---|---|---|
+| +0x00 | u32 | p1 | `[0xfc0]` battle index |
+| +0x04 | u16 | `Game_Info_Team_Set` p1 | `[0xffc]` → `[0xff0]` 紅隊值 |
+| +0x06 | u16 | `Game_Info_Team_Set` p2 | `[0x1000]` → `[0xff4]` 藍隊值 |
+| +0x0A | u16 | p4 | `[0xfe0]` |
+| +0x0C | u16 | p5 | `[0xfe4]` |
+| +0x0E | u8 | p2 (bool) | `[0xfc4]` bit0 |
+| +0x0F | u16,取 `== 2` | p3 (bool) | `[0xfc4]` bit1 |
+| +0x11 | u16 | p6 | **`[0xfc8]` MAP ID** |
+| +0x13 | u16 | p7 | **`[0xfd4]` TimeLimit,單位分鐘** |
+| +0x15 | u8 | p10 | `[0xfd0]` GoalScore,模式 4/6/7 |
+| +0x16 | u16 | p8 | `[0xfd8]` GoalScore,模式 0/1 |
+| +0x18 | u16 | p9 | `[0xfdc]` GoalScore,模式 5 |
+
+模式 `[0xfcc]` **不是**這個封包給的,而是 `Game_Info_Set` 依 map id 去 Cache.Bin 該筆
+記憶體結構的 `+0x18`(int index 6)取得。Cache.Bin 在磁碟上是變長格式(map 1011 該欄是
+`"S"`、9001 是 `"S0b"`),沒辦法用固定 stride 讀出來,所以伺服器改成**三個 GoalScore 欄位
+寫同一個值**,哪個模式都對。
+
+**先前的錯誤**:`+0x13` 寫的是 `quarterIndex = 1`,那正是 TimeLimit,所以 URL 出現
+`TimeLimit=1`,60 秒後回合結束並開始 `Timeout_CN` 洪水。已改為 10。
+
+---
+
+## `Game_User_SN` (0x00222112) 記錄布局 ✅ 已確認 [DLL]
+
+來源:`ZDispatchGame::Game_User_SN` thunk `0x1070920a` → `0x107d8ae0`。
+記錄緩衝區在該 frame 的 `esp+0xA8`;以下每個偏移都對應一條實際讀取它的指令。
+
+```
+body+0x00 u8   flag(未讀)
+body+0x01 u8   記錄數
+body+0x02      記錄陣列,每筆 0x1E5
+
+rec+0x00 u16      Game_User_Add p1,其餘所有呼叫的 key
+rec+0x02 u16      Game_User_Add p7 → entry+0x34  ★ TEAM
+rec+0x04 u32      Game_User_Add p3 → entry+0x14
+rec+0x08 u32      Game_Item_Add p2
+rec+0x0C u32      此處未讀
+rec+0x10 u32      Game_Slot_Selected_Set,1..7 → 0..6,其餘 7
+rec+0x14 u32      Game_User_Clan_Set p3
+rec+0x18 u32      Game_User_Clan_Set p2
+rec+0x1C char[2]  atoi → Game_User_Add p2 → entry+0x10,等級
+rec+0x1E char[25] 轉寬字元 → Game_User_Add p6 → entry+0x04,暱稱
+rec+0x37 char[25] 轉寬字元 → Game_User_Clan_Set p4,戰隊名
+rec+0x50..0x68    七個 u32 → Game_Item_Add p6,p5,p7,p3,p4,p8,p9
+rec+0x6C u8       槽位數
+rec+0x6D + n*0x2F 槽位記錄(最多 8)
+
+slot+0x00 u32  槽位索引,1..7 → 0..6,其餘 7
+slot+0x04 u32  Game_Slot_Set p3 → row+0x0C
+slot+0x08 u8   此處未讀(就是這個 byte 讓後面所有 u32 都不對齊)
+slot+0x09 u32  Game_UserSocket_Set p3
+slot+0x0D u32  Game_UserSocket_Set p4
+slot+0x11 u32  Game_UserSocket_Set p5
+slot+0x15 u32  Game_Slot_Set p4 → row+0x10
+slot+0x19 u32  Game_Slot_Set p5 → row+0x14
+slot+0x1D u32  Game_Slot_Set p6 → row+0x18
+slot+0x21 u32  Game_Slot_Set p7 → row+0x1C
+slot+0x25 u32  Game_Slot_Set p8 → row+0x20
+```
+
+結構是緊密打包、沒有對齊洞——這正是驗算:`0x6D + 8 × 0x2F = 0x1E5`,分毫不差等於記錄大小。
+
+⚠ 注意 Ghidra 對這個函式的 stack 變數命名有誤(`iStack_1dc` 實際是 `rec+0x08` 而非 `+0x0C`,
+槽位陣列起點是 `rec+0x6D` 而非 `+0x71`)。**以組語為準。**
+
+處理順序:`Game_User_Add` → `Game_User_Clan_Set` → `Game_Item_Add` → `Game_UserSocket_Add`
+→(每槽:`Game_Slot_Set`、`Game_UserSocket_Set`)→ `Game_Slot_Selected_Set`
++ `Game_UserSocket_Selected_Set`。`Game_Slot_Set` 寫 `[0x1040]`(stride 0xEC,每槽 0x18,
+六個 int),而那張表由同一封包裡的 `Game_UserSocket_Add` 建立——所以**選機體 UI 也依賴這個封包**。
+
+---
+
+## 選機體是 UnrealScript native ✅ 已確認 [DLL]
+
+`UZNetwork_DJ::execGame_Slot`(`0x10704278`)是 UnrealScript native:取兩個 int 參數,
+直接呼叫 `ZDispatchGame::ChangeSlot_CN(a, b)`。也就是玩家在選機體畫面按下去,
+腳本呼叫 `Game_Slot(x, y)`,客戶端就送 `0x00230101`,伺服器應以 `ChangeSlot_SN 0x00230102` 回應。
+
+玩家回憶的進圖流程(有影片佐證):任務簡報動畫 → 選機體 → 畫面右側 F1~F5 技能列
+(消耗 SP 30/30/50/200/300:攻擊力、防禦力、裝填、核心 EMP、憤怒模式),
+標籤 `RESPAWN 0 / KILL 0`;進入後 RESPAWN 變成 4,才能操控機體。
+DLL 側對應的候選:`Game_User_Sally_Add`(出撃)、`Game_Item_InstantRespawn_Get/Set`、
+`Item_InstantRespawnCount_Get`(`Game_Info_SN` 最後一行就呼叫它)、
+`Game_User_State_All_Set`(`Game_Play_Start` 以 `(1, false)` 呼叫)。⬜ 尚未驗證。
+
+---
+
+## 本輪伺服器改動(一次改兩項,但可分辨)
+
+1. `Game_Info_SN` 的 `+0x13` 由 `quarterIndex=1` 改為 `timeLimitMinutes=10`,
+   GoalScore 三格同時寫 0。
+2. `Game_User_SN` 由 disabled 改 enabled,並從 `room.dispatch.js` 的房間狀態
+   (場景 5,handler 必定丟棄)移到 `gate.game.dispatch.js` 的 server-driven 序列,
+   在 `Game_Wait_SN` 之後 60ms 送出(場景 6),早於 450ms 的 `Ready_Host_SQ`。
+
+ledger 的「一次只改一個變數」原則在此是有意放寬的:兩項的觀察特徵互斥且各自獨立——
+第 1 項只會表現在 URL 的 `TimeLimit=` 與 `Timeout_CN` 是否洪水,
+第 2 項只會表現在 URL 的 `team=` 是 0 還是 255、以及是否出現選機體畫面。
+任一項失敗都能單獨歸因。
+
+### 下一次測試要看的三件事
+- `MetalRage.log` 裡 travel URL 的 `team=` — 應為 `0`,不再是 `255`
+- 同一行的 `TimeLimit=` — 應為 `10`
+- 進圖後是否出現選機體畫面;若出現,客戶端應送 `ChangeSlot_CN 0x00230101`
+  (目前無 handler,會落到 unhandled logger 並 dump body)

@@ -11,9 +11,45 @@ const db = require('../../database/db');
 const SN_GAME_USER = 0x00222112;
 const GAME_USER_RECORD_SIZE = 0x01E5;
 const GAME_USER_HEADER_SIZE = 0x02;
-// rec+0x6C = socketCount, rec+0x6D = first socket (stride 0x2F, 8 sockets = 0x1E5 tail)
+// rec+0x6C = slotCount, rec+0x6D = first slot (stride 0x2F, 8 slots = 0x1E5 tail)
 const GAME_USER_SOCKET_OFFSET = 0x6D;
 const GAME_USER_SOCKET_SIZE = 0x2F;
+
+// The record layout below is read out of the real handler at 0x107d8ae0, from
+// the assembly rather than the decompiler — Ghidra mislabels two of the stack
+// slots. The record buffer sits at esp+0xA8 in that frame; every offset here
+// is an instruction that touches it.
+//
+//   rec+0x00 u16      -> Game_User_Add p1, the user index every other call keys on
+//   rec+0x02 u16      -> Game_User_Add p7 -> entry+0x34, THE TEAM
+//   rec+0x04 u32      -> Game_User_Add p3 -> entry+0x14
+//   rec+0x08 u32      -> Game_Item_Add p2
+//   rec+0x0C u32         unread here
+//   rec+0x10 u32      -> Game_Slot_Selected_Set, 1..7 mapped to 0..6, else 7
+//   rec+0x14 u32      -> Game_User_Clan_Set p3
+//   rec+0x18 u32      -> Game_User_Clan_Set p2
+//   rec+0x1C char[2]  -> atoi -> Game_User_Add p2 -> entry+0x10, level
+//   rec+0x1E char[25] -> widened -> Game_User_Add p6 -> entry+0x04, nickname
+//   rec+0x37 char[25] -> widened -> Game_User_Clan_Set p4, clan name
+//   rec+0x50..0x68    -> seven u32 into Game_Item_Add p6,p5,p7,p3,p4,p8,p9
+//   rec+0x6C u8          slot count
+//   rec+0x6D + n*0x2F    slot records
+//
+// The struct is packed with no alignment holes, which is the check that the
+// reading is right: 0x6D + 8 * 0x2F is 0x1E5 exactly, the record size.
+//
+// Per slot, again from the assembly (esi walks the slot at slot+0x04):
+//   slot+0x00 u32 -> slot index, 1..7 mapped to 0..6, else 7
+//   slot+0x04 u32 -> Game_Slot_Set p3 -> row+0x0C
+//   slot+0x08 u8     unread here (this is why the u32s below are unaligned)
+//   slot+0x09 u32 -> Game_UserSocket_Set p3
+//   slot+0x0D u32 -> Game_UserSocket_Set p4
+//   slot+0x11 u32 -> Game_UserSocket_Set p5
+//   slot+0x15 u32 -> Game_Slot_Set p4 -> row+0x10
+//   slot+0x19 u32 -> Game_Slot_Set p5 -> row+0x14
+//   slot+0x1D u32 -> Game_Slot_Set p6 -> row+0x18
+//   slot+0x21 u32 -> Game_Slot_Set p7 -> row+0x1C
+//   slot+0x25 u32 -> Game_Slot_Set p8 -> row+0x20
 
 function writeCString(body, text, offset, maxBytes) {
     const value = String(text || '').slice(0, Math.max(maxBytes - 1, 0));
@@ -28,26 +64,24 @@ function equippedBySlot(items, mechType, partSlot) {
     );
 }
 
-// Off by default.
+// On, and this is the packet that decides whether the player gets a mech.
 //
-// This used to go out as 0x00230111, which matches no handler in the client,
-// so it was silently ignored and cost nothing. Corrected to 0x00222112 it
-// reaches ZDispatchGame::Game_User_SN for real — and the 485-byte record it
-// carries has never been checked against the client, only guessed at. The
-// first session with the right opcode hung the client on a white screen just
-// after the room came up, with these going out in the room state block.
+// Game_Info_URL_Get builds the travel URL's team=%d from
+// Game_User_Team_Get(myAccountIndex), which searches the array at
+// [this+0x1034] and answers 255 when it finds nothing. Game_User_Add is the
+// only thing that ever writes that array, and this packet is the only thing
+// that calls Game_User_Add. With it off the array was empty, the URL carried
+// team=255, and the client loaded the map as a spectator — camera, no pawn.
 //
-// The record size is right (0x1E5, confirmed in the disassembly); the field
-// layout is not known. Turn this on once that layout has been read out of
-// ZDispatchGame::Game_User_SN (0x107d8ae0) rather than assumed, and send it
-// when a game actually starts rather than while sitting in a room.
-const GAME_USER_BOOTSTRAP_MODE = 'disabled'; // 'disabled' | 'enabled'
+// Two things had to be true before turning it on. The layout is one: it is
+// now read out of the handler rather than assumed. The other is the scene:
+// Game_User_SN is a ZDispatchGame handler and returns immediately unless the
+// client is in scene 6, so sending it while the player sat in the room, as
+// this used to, could never have worked. It goes out after Game_Wait_SN.
+const GAME_USER_BOOTSTRAP_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     if (GAME_USER_BOOTSTRAP_MODE !== 'enabled') {
-        return;
-    }
-    if (!client.campaignRoom_) {
         return;
     }
     // No once-per-connection guard. User_Master_SN had one and the room state
@@ -108,19 +142,20 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     // rec+0x37: asciiz[0x19] clan name
     writeCString(body, '', rec + 0x37, 0x19);
 
-    // rec+0x50-0x6B: Game_Item_Add bonus/stats fields (all 0 = no bonus)
-    // rec+0x6C: socketCount byte
+    // rec+0x50-0x68: the seven u32 Game_Item_Add reads (all 0 = no bonus)
+    // rec+0x6C: slot count
     body.writeUint8(1, rec + 0x6C);
 
-    // Socket 0: rec+0x6D (socket+0x00..0x2E)
+    // Slot 0: rec+0x6D (slot+0x00..0x2E)
     const socket = rec + GAME_USER_SOCKET_OFFSET;
     // socket+0x00: u32 raw slot/mech selector (1..7 → 0..6; mechType=1 → slot 0)
     body.writeUint32LE(mechType, socket + 0x00);
     // socket+0x04: u32 body item
     body.writeUint32LE(Number(bodyItem && bodyItem.item_id) || mechType, socket + 0x04);
-    // socket+0x08: u8 state/user-socket field
+    // slot+0x08: u8, unread by the handler — it is the byte that leaves every
+    // u32 after it unaligned, which is how the offsets below were confirmed.
     body.writeUint8(0, socket + 0x08);
-    // socket+0x09-0x14: unknown (zeros, left as buffer default)
+    // slot+0x09/0x0D/0x11: the three Game_UserSocket_Set values (zeros for now)
     // socket+0x15: u32 main weapon
     body.writeUint32LE(Number(mainItem && mainItem.item_id) || 0, socket + 0x15);
     // socket+0x19: u32 left weapon
@@ -136,7 +171,7 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     client.send(msg);
     client.gameUserBootstrapSent_ = true;
     console.log(
-        `[ZRoomDispatch] >> Sent Game_User_SN 0x230111 ` +
+        `[ZRoomDispatch] >> Sent Game_User_SN 0x00222112 ` +
         `(userIndex=${accountIndex}, team=${teamIndex}, selectedMech=${mechType}, ` +
         `body=${Number(bodyItem && bodyItem.item_id) || 0}, main=${Number(mainItem && mainItem.item_id) || 0})`
     );
