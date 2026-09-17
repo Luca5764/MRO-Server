@@ -22,3 +22,23 @@
 要看的：`bJumppreparation_JW`、`MechSituation`、`BoosterPower`、`bBooster_JW`，以及畫面上有沒有 controller／state／weapon 相關的行。
 
 如果按 End 沒反應：可能這個客戶端不讀 `[Engine.Input]`，Claude 再找別的方法。
+
+## 測試 E 結果與 E2（14:20）
+
+- [OBS] 按 End 沒反應。
+- [DLL] `UInput::StaticConfigName` `0x10321fa0` 回傳 `"User"`；`StaticInitInput` `0x10467570` 用 `EInputKey` 名稱去掉 `IK_` 當 config 鍵名（`End`）。`setinput_BD`（`UInput::Exec` `0x104683c0`）只清掉「同一個指令綁在別的鍵」的重複綁定，不會清掉整張表。decompile：`docs/research/2026-09-17-fire-gate/UInput_Init.c`、`UInput_Exec.c`。
+- [SRC] ZPveHud.PostRender 有呼叫 `super.PostRender`，理論上會走到 `DefaultHud.uc:1377` 的 debug 繪製。
+- 所以要先分清楚：是「User.ini 的綁定沒讀進來」，還是「ShowDebug 有執行但沒畫出來」。
+
+**E2**：User.ini 改成
+```
+[Engine.Input]
+End=ShowScores
+Insert=ShowDebug
+PageDown=ShowDebug
+```
+1. 完全重開客戶端，進 PvE。
+2. 按住 End：**有沒有出現計分板**（跟 Tab 一樣）。
+3. 按 Insert，再試 PageDown：有沒有除錯文字。
+
+判讀：End 沒有計分板 → User.ini 綁定根本沒讀，要換方法；End 有計分板但 Insert／PageDown 沒有除錯文字 → 綁定有效，問題在 debug 繪製。
