@@ -7,16 +7,10 @@
 
 ## 目前交接快照（2026-09-17，請以此段為準）
 
-- **本輪收尾（依操作者指示停止）：** 任務 1 已完成並 commit；任務 2 以 wip 保存，未完成完整 body 定義。沒有繼續 DLL 調查或開新子 agent；程式、測試設定、操作者剛提交的規則／Codex 設定均未改，不 push。
-- **ItemInfo：** `journal/2026-09-17-03-iteminfo-accumulation.md`。✅ [DLL] 不同實例 key 追加、同 key 替換單筆；斷線完成／初始化會清庫。待 Claude 審查，分包尚未實測。
-- **ChangeSlot：** `journal/2026-09-17-04-changeslot-body-wip.md`。🟡 WIP：已核對主要欄位、slot／socket 寫入與後續呼叫；`+0x06..+0x09`、精確總長及腳本效果仍 ⬜；子 agent 的負搜尋結果未獨立覆核。
-- **分析交接契約（由 Claude 接手）：**
-  - 目標：審查上述兩篇的結論與證據，裁決 wip 未完成項。
-  - 範圍：兩篇日誌、各自 research、對應 state 格；不動 handler。
-  - 背景：任務 1 已有追加／替換結論；任務 2 因操作者收尾指示停止。
-  - 限制：沒有新實測；保留未知，不能以負搜尋斷言格式不存在。
-  - 交付：審查／更正日誌與對應 state 更新。
-  - 完成條件：每個採用結論能對回 DLL 位址；未完成 body 格式保持 WIP。
+- **2026-09-17 早上 Codex 純分析（Claude 已調度與審查）：**
+  - ItemInfo：`journal/2026-09-17-03-iteminfo-accumulation.md`。✅ [DLL] 不同實例 key 追加、同 key 替換單筆；斷線完成／初始化會清庫。Claude 已抽查組語。測試 B 過了之後可以直接分包，但要在場景 2 內送完。
+  - ChangeSlot：`journal/2026-09-17-04-changeslot-body-wip.md`，🟡 WIP，尚未審查。`+0x06..+0x09`、精確總長、腳本效果仍 ⬜。之後要實作 `ChangeSlot_SN` 前先審這篇。
+- **Codex 模型已改（2026-09-17）：** 主力 Luna（中階）、reviewer Sol，由 Claude 在 tmux 調度，見 `CLAUDE.md`。
 
 - **紀錄結構已改（2026-09-17）：** 現況看 `docs/state.md`，歷史看 `docs/journal/`（索引 `INDEX.md`）。`opcode-ledger.md` 已凍結。規則在 `AGENTS.md`。
 - **下一步（契約）：**

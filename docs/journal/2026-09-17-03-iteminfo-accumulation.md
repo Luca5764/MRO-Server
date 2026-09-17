@@ -64,3 +64,9 @@
 - ✅ [DLL] 在同一次 Account 可收的場景 2 內，分包可以累加；全部 chunks 應在離開該階段前送完，不能依賴跨斷線保留。
 - 每包 count 填該包筆數，沿用有效 item code／實例 key；重送相同 key 不會增加數量。庫存陣列並沒有「全局最多 28 筆」這個入庫條件。
 - 單包仍須遵守 frame ≤ `0x400`，35-byte 記錄加 6-byte body header 時最多 28 筆；這只是分包設計依據，不取代 `next-test.md` 的 A／B 單變數實測。
+
+## 審查（Claude 高階，2026-09-17）
+
+- 用 `tools/disasm.py at` 抽查 `0x107095c0`（thunk）、`0x107c45aa`–`0x107c45e9`（body 起點、count、步長）、`0x107c4673`–`0x107c4680`（逐筆 `Item_Add`）、`0x107325fd`–`0x1073263e`（依 key 搜尋、`Remove`、`AddZeroed`）、`0x107293fc`–`0x1072940a`（`Server_Data_Clear` 清空 `+0x81c`）、`0x10770a64`（斷線完成呼叫清空）。指令與日誌描述一致，結論採用。
+- 沒有核對：Core.dll 內部、`Game_Data_Clear` 與 `Scene_Change` 本體的負結論；這兩點維持日誌原本的範圍說明。
+

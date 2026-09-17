@@ -89,6 +89,7 @@
 ### 接手時
 
 依序讀，讀完就停：`docs/HANDOFF.md` 快照 → `docs/state.md` → `docs/journal/INDEX.md` 最後 20 行 → grep 要處理的 opcode。
+要查某個函式或 opcode 時，除了 journal 也 grep `docs/research/`，原始 decompile 常常已經在那裡。
 然後**先驗證上一位最後標的一兩個 ✅**，再開始新工作。
 
 ### 交接時（額度隨時可能用完）
@@ -117,6 +118,8 @@
 - 分派子 agent 的機制各自實作：Codex 目前關閉子 agent（`.codex/config.toml`），由 Claude 主力在 tmux 開 Codex 派任務；Claude Code 用 `.claude/agents/`（explorer、worker、verifier）；Antigravity 只擔任中階。
 
 ## 參考文件
+
+文中的 `tools/` 都是指 `Metal Rage Online Server/tools/`（repo 根目錄沒有 `tools/`），指令要在 `Metal Rage Online Server/` 底下執行。
 
 | 檔案 | 什麼時候讀 |
 |---|---|
