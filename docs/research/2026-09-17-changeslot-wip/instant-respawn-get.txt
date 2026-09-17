@@ -1,0 +1,40 @@
+  0x1072ddd0  push                     esi
+  0x1072ddd1  mov                      esi, dword ptr [ecx + 0x1044]
+  0x1072ddd7  xor                      eax, eax
+  0x1072ddd9  xor                      edx, edx
+  0x1072dddb  test                     esi, esi
+  0x1072dddd  jle                      0x1072de14
+  0x1072dddf  push                     ebx
+  0x1072dde0  mov                      ebx, dword ptr [esp + 0xc]
+  0x1072dde4  push                     edi
+  0x1072dde5  mov                      edi, dword ptr [ecx + 0x1040]
+  0x1072ddeb  mov                      ecx, edi
+  0x1072dded  lea                      ecx, [ecx]
+  0x1072ddf0  cmp                      dword ptr [ecx], ebx
+  0x1072ddf2  je                       0x1072de05
+  0x1072ddf4  inc                      edx
+  0x1072ddf5  add                      ecx, 0xec
+  0x1072ddfb  cmp                      edx, esi
+  0x1072ddfd  jl                       0x1072ddf0
+  0x1072ddff  pop                      edi
+  0x1072de00  pop                      ebx
+  0x1072de01  pop                      esi
+  0x1072de02  ret                      4
+  0x1072de05  imul                     edx, edx, 0xec
+  0x1072de0b  mov                      eax, dword ptr [edx + edi + 0xe4]
+  0x1072de12  pop                      edi
+  0x1072de13  pop                      ebx
+  0x1072de14  pop                      esi
+  0x1072de15  ret                      4
+  0x1072de18  int3
+  0x1072de19  int3
+  0x1072de1a  int3
+  0x1072de1b  int3
+  0x1072de1c  int3
+  0x1072de1d  int3
+  0x1072de1e  int3
+  0x1072de1f  int3
+  0x1072de20  int3
+  0x1072de21  int3
+  0x1072de22  int3
+  0x1072de23  int3

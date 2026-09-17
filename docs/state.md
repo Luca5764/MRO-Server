@@ -66,7 +66,7 @@
 | C→S | `0x00230121` | `Assist_CN`：`+2` user、`+4` type、`+6` 數值 | 回空的 `Assist_SN`，實際無效果 | ✅ [DLL] 格式；🟡 語意 |
 | S→C | `0x00230122` | `Assist_SN`：`+0x0A`／`+0x0C` 兩個 user、兩組數值 | — | ✅ [DLL] |
 | C→S | `0x00230111` | `Timeout_CN`：場景 6、host、遊戲進行中才送；實測在地圖內每秒一次 | 遊戲中不回（交給 fallback） | ✅ [DLL] |
-| C→S | `0x00230101` | `ChangeSlot_CN`（選機體時由 `execGame_Slot` 送出） | 回空 body，未照 DLL 結構實作 | ✅ [DLL] 名稱；⬜ 回應 |
+| C→S | `0x00230101` | `ChangeSlot_CN`（選機體時由 `execGame_Slot` 送出） | 回空 body，未照 DLL 結構實作 | ✅ [DLL] 名稱；🟡 回應分析 WIP，完整格式仍未知（`journal/2026-09-17-04-changeslot-body-wip.md`） |
 
 `Assist_CN` 的觀察：死亡前連送 5 次，數值 80→60→40→20→0，接著環境死亡（type 3）。語意 🟡 未確認。依據 `journal/2026-09-17-01-review-iteminfo-stall-root-cause.md`。
 
@@ -115,7 +115,7 @@
 
 1. **測試 A**：開火、副武器、推進器（`docs/next-test.md`）
 2. **測試 B**：ItemInfo 是大小還是內容的問題；如果是大小，就實作分包，再把 slot 3／5 和機體本體加回來
-3. `ChangeSlot_SN 0x00230102` 照 DLL 結構實作（`journal/2026-09-16-26-slot-sortie-function-followup-analysis.md`）
+3. `ChangeSlot_SN 0x00230102` 照 DLL 結構實作；目前只保存部分結構與行為證據，待 Claude 審查，未實作（`journal/2026-09-17-04-changeslot-body-wip.md`；前文 `journal/2026-09-16-26-slot-sortie-function-followup-analysis.md`）
 4. `Assist_CN` 數值遞減代表什麼
 5. `Map_PC01` 沒有敵人：`ZMechanicA call failed`、`PreLoadallPveAI_BD` 讀到 null（`journal/2026-09-16-31-combat-control-and-ai-todo.md`）
 6. `Game_Score_SN`、`EndRound_SN`、`EndGame_SN` 的 body 結構

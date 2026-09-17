@@ -7,14 +7,16 @@
 
 ## 目前交接快照（2026-09-17，請以此段為準）
 
-- **本輪純分析進度：** ItemInfo 分包調查已完成，詳見 `journal/2026-09-17-03-iteminfo-accumulation.md`。✅ [DLL] 不同實例 key 追加、同 key 替換單筆；斷線完成／初始化會清庫。結論待 Claude 審查。操作者不在，測試 A／B 均未執行，程式碼未改。
-- **本輪剩餘契約：**
-  - 目標：依操作者收尾指示，將現有 `ChangeSlot_SN 0x00230102` 證據整理成 wip 日誌。
-  - 範圍：DLL、指定日誌與對應 state 格；不改 handler。
-  - 背景：`journal/2026-09-16-26-slot-sortie-function-followup-analysis.md` 已知部分欄位；需補完整存入與分支證據。
-  - 限制：不再新增 DLL 調查或子 agent；保留操作者剛提交的設定／規則檔；結論由 Claude 後續審查。
-  - 交付：`journal/2026-09-17-04-<主題>.md`、INDEX，獨立 `wip:` commit、不 push。
-  - 完成條件：寫明已核對範圍，未核對／未知部分標 🟡／⬜；輸出文件使用回饋後停止。
+- **本輪收尾（依操作者指示停止）：** 任務 1 已完成並 commit；任務 2 以 wip 保存，未完成完整 body 定義。沒有繼續 DLL 調查或開新子 agent；程式、測試設定、操作者剛提交的規則／Codex 設定均未改，不 push。
+- **ItemInfo：** `journal/2026-09-17-03-iteminfo-accumulation.md`。✅ [DLL] 不同實例 key 追加、同 key 替換單筆；斷線完成／初始化會清庫。待 Claude 審查，分包尚未實測。
+- **ChangeSlot：** `journal/2026-09-17-04-changeslot-body-wip.md`。🟡 WIP：已核對主要欄位、slot／socket 寫入與後續呼叫；`+0x06..+0x09`、精確總長及腳本效果仍 ⬜；子 agent 的負搜尋結果未獨立覆核。
+- **分析交接契約（由 Claude 接手）：**
+  - 目標：審查上述兩篇的結論與證據，裁決 wip 未完成項。
+  - 範圍：兩篇日誌、各自 research、對應 state 格；不動 handler。
+  - 背景：任務 1 已有追加／替換結論；任務 2 因操作者收尾指示停止。
+  - 限制：沒有新實測；保留未知，不能以負搜尋斷言格式不存在。
+  - 交付：審查／更正日誌與對應 state 更新。
+  - 完成條件：每個採用結論能對回 DLL 位址；未完成 body 格式保持 WIP。
 
 - **紀錄結構已改（2026-09-17）：** 現況看 `docs/state.md`，歷史看 `docs/journal/`（索引 `INDEX.md`）。`opcode-ledger.md` 已凍結。規則在 `AGENTS.md`。
 - **下一步（契約）：**

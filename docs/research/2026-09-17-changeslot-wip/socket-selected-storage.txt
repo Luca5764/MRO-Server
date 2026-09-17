@@ -1,0 +1,60 @@
+  0x1072e070  mov                      edx, dword ptr [ecx + 0x1050]
+  0x1072e076  xor                      eax, eax
+  0x1072e078  test                     edx, edx
+  0x1072e07a  jle                      0x1072e0ae
+  0x1072e07c  push                     esi
+  0x1072e07d  mov                      esi, dword ptr [ecx + 0x104c]
+  0x1072e083  push                     edi
+  0x1072e084  mov                      edi, dword ptr [esp + 0xc]
+  0x1072e088  mov                      ecx, esi
+  0x1072e08a  lea                      ebx, [ebx]
+  0x1072e090  cmp                      dword ptr [ecx], edi
+  0x1072e092  je                       0x1072e0a1
+  0x1072e094  inc                      eax
+  0x1072e095  add                      ecx, 0x68
+  0x1072e098  cmp                      eax, edx
+  0x1072e09a  jl                       0x1072e090
+  0x1072e09c  pop                      edi
+  0x1072e09d  pop                      esi
+  0x1072e09e  ret                      8
+  0x1072e0a1  mov                      ecx, dword ptr [esp + 0x10]
+  0x1072e0a5  imul                     eax, eax, 0x68
+  0x1072e0a8  pop                      edi
+  0x1072e0a9  mov                      dword ptr [eax + esi + 4], ecx
+  0x1072e0ad  pop                      esi
+  0x1072e0ae  ret                      8
+  0x1072e0b1  int3
+  0x1072e0b2  int3
+  0x1072e0b3  int3
+  0x1072e0b4  int3
+  0x1072e0b5  int3
+  0x1072e0b6  int3
+  0x1072e0b7  int3
+  0x1072e0b8  int3
+  0x1072e0b9  int3
+  0x1072e0ba  int3
+  0x1072e0bb  int3
+  0x1072e0bc  int3
+  0x1072e0bd  int3
+  0x1072e0be  int3
+  0x1072e0bf  int3
+  0x1072e0c0  int3
+  0x1072e0c1  int3
+  0x1072e0c2  int3
+  0x1072e0c3  int3
+  0x1072e0c4  int3
+  0x1072e0c5  int3
+  0x1072e0c6  int3
+  0x1072e0c7  int3
+  0x1072e0c8  int3
+  0x1072e0c9  int3
+  0x1072e0ca  int3
+  0x1072e0cb  int3
+  0x1072e0cc  int3
+  0x1072e0cd  int3
+  0x1072e0ce  int3
+  0x1072e0cf  int3
+  0x1072e0d0  push                     esi
+  0x1072e0d1  mov                      esi, dword ptr [ecx + 0x1050]
+  0x1072e0d7  xor                      eax, eax
+  0x1072e0d9  xor                      edx, edx

@@ -1,0 +1,13 @@
+WIP evidence snapshot — 2026-09-17
+These files preserve existing Luna subagent outputs from /tmp/mro-changeslot-20260917/.
+No new DLL investigation was performed after the operator requested wrap-up.
+ZNetwork source: /mnt/c/Games/MetalRage Online/data/System/ZNetwork.dll
+ZNetwork SHA256 recorded by root earlier in this session:
+6b07758edf57adcce7c96adeccc015d7a30bb72ba67eb01ad8b84e3451cfea1b
+The Engine.dll negative opcode scan is a subagent report; root did not reproduce the scan.
+Its output only lists the filename and ImageBase. Scan script/hash were not retained.
+Root reviewed the body offsets and the two selected-slot setters before wrap-up.
+Exact declared packet length, +0x06..+0x09 semantics, and UI/script effects remain unknown.
+Raw disasm counts can extend beyond functions: ChangeSlot_SN ends at 0x107db444 (ret 8),
+0x107db448 is a jump table, not executable instructions. Do not use its decoded mnemonics.
+The journal separates checked evidence from unverified subagent findings.

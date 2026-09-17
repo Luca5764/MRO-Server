@@ -68,3 +68,4 @@
 | 2026-09-17 | `2026-09-17-02-ledger-contradictions-adjudicated.md` | `0x00230103`、`0x00230112`、`0x00222102`、`0x00420116`… | ✅ | 高階逐條裁決舊台帳 8 條矛盾（重跑 dispatch-map 核對），建立 state.md；程式碼未改。 |
 | 2026-09-16 | `2026-09-16-34-handoff-history.md` | — | — | 舊版 HANDOFF.md 的交接快照與狀態說明，2026-09-17 原文搬入。 |
 | 2026-09-17 | `2026-09-17-03-iteminfo-accumulation.md` | `0x00210111` | ✅ [DLL]；待 Claude 審查 | ItemInfo 依實例 key 追加或替換單筆；追到 Core 陣列增刪與斷線完成、初始化的整庫清空路徑，未改程式或實測。 |
+| 2026-09-17 | `2026-09-17-04-changeslot-body-wip.md` | `0x00230102` | 🟡 WIP／待 Claude 審查 | 保存已核對的 status、user、slot 與存入／後續呼叫位址；四個未讀 bytes、精確總長與腳本效果仍未知，未核對的子 agent 搜尋另標待審。 |

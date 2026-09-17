@@ -1,0 +1,57 @@
+Existing root tool output excerpts, transcribed at wrap-up (no fresh DLL read).
+These are selected excerpts, not a complete control-flow listing.
+
+ZNetwork.dll: already checked export/thunk identities
+0x107044c6 jmp 0x107db2f0 ; ZDispatchGame::ChangeSlot_SN
+0x1070928c jmp 0x107d4bf0 ; ZDispatchGame::Check
+0x107d4bf0 cmp dword ptr [esp + 4], 6
+0x107047e6 jmp 0x1071a740 ; UZNetwork_DJ::Game_Action_Revive(PBGHH)
+0x10707630 -> 0x1071a560 ; UZNetwork_DJ::Game_Host_Check
+0x1071a560 mov eax, dword ptr [ecx + 0xfac]
+0x1071a566 and eax, 1
+0x1071a569 ret
+0x1070322e jmp 0x107d96e0 ; Respawn_CN
+0x107d9731 mov dword ptr [0x109023ec], 0x00230103
+0x10709a57 jmp 0x107d97b0 ; InstantRespawn_CN
+0x107d9805 mov dword ptr [0x109028bc], 0x00230105
+
+0x107db448 jump table dwords, raw slots 1..7:
+0x107db343 0x107db347 0x107db34e 0x107db355 0x107db35c 0x107db363 0x107db36a
+0x1082b848 UTF-16LE: Result : 0x%08X, UserIndex : %d, SlotNumber : %d
+0x1082b8ac UTF-16LE: OBSERVER
+0x10814ea4 UTF-16LE: SUCCESS
+
+Game_Action_Revive (see error-callee.txt for the existing complete raw output)
+0x1071a755 mov al, byte ptr [ecx + 0xfac]
+0x1071a75e test al, 1
+0x1071a760 je 0x1071a8df
+0x1071a76b push 0x10814ea4
+0x1071a770 push esi
+0x1071a771 call dword ptr [0x1091bd60] ; wcscmp
+0x1071a781 jne 0x1071a81a
+; Non-SUCCESS string path, after non-null engine/level/game checks:
+0x1071a856 push esi
+0x1071a857 lea ecx, [esp + 8]
+0x1071a85b call dword ptr [0x1091b848] ; FString constructor
+0x1071a861 mov eax, dword ptr [esp + 0x24] ; user argument
+0x1071a871 lea edx, [esp + 4]
+0x1071a875 push edx
+0x1071a876 push eax
+0x1071a87f call dword ptr [0x1091ba64]
+0x1071a885 mov ecx, dword ptr [eax + 0x630]
+0x1071a88b call dword ptr [0x1091ba68]
+
+Verified imports:
+0x1091bd60 MSVCR71.dll wcscmp
+0x1091ba64 Engine.dll ?GetLevelInfo@ULevel@@QAEPAVALevelInfo@@XZ
+0x1091ba68 Engine.dll ?eventSelectUnitSlotFailed_BD@AGameInfo@@QAEXHABVFString@@@Z
+0x1091ba6c Engine.dll ?eventSelectUnitSlot_BD@AGameInfo@@QAEXHH@Z
+
+Engine.dll: eventSelectUnitSlotFailed_BD wrapper at 0x1033ca60
+0x1033ca86 mov ecx, dword ptr [esp + 0x2c]
+0x1033ca8a mov eax, dword ptr [esp + 0x28]
+0x1033ca9b mov dword ptr [esp + 0xc], eax
+0x1033ca9f call dword ptr [0x10679134]
+0x1033cac1 call dword ptr [edi + 0x10]
+0x1033cae6 ret 8
+The downstream script/UI behavior was not traced.

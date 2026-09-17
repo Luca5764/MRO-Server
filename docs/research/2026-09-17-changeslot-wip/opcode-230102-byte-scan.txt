@@ -1,0 +1,2 @@
+VA 0x107dbd3d file 0x0dbd3d section b'.text\x00\x00\x00'
+VA 0x1083ac78 file 0x13ac78 section b'.rdata\x00\x00'

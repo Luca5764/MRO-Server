@@ -1,0 +1,60 @@
+  0x1072df10  mov                      edx, dword ptr [ecx + 0x1044]
+  0x1072df16  xor                      eax, eax
+  0x1072df18  test                     edx, edx
+  0x1072df1a  jle                      0x1072df54
+  0x1072df1c  push                     esi
+  0x1072df1d  mov                      esi, dword ptr [ecx + 0x1040]
+  0x1072df23  push                     edi
+  0x1072df24  mov                      edi, dword ptr [esp + 0xc]
+  0x1072df28  mov                      ecx, esi
+  0x1072df2a  lea                      ebx, [ebx]
+  0x1072df30  cmp                      dword ptr [ecx], edi
+  0x1072df32  je                       0x1072df44
+  0x1072df34  inc                      eax
+  0x1072df35  add                      ecx, 0xec
+  0x1072df3b  cmp                      eax, edx
+  0x1072df3d  jl                       0x1072df30
+  0x1072df3f  pop                      edi
+  0x1072df40  pop                      esi
+  0x1072df41  ret                      8
+  0x1072df44  mov                      ecx, dword ptr [esp + 0x10]
+  0x1072df48  imul                     eax, eax, 0xec
+  0x1072df4e  pop                      edi
+  0x1072df4f  mov                      dword ptr [eax + esi + 8], ecx
+  0x1072df53  pop                      esi
+  0x1072df54  ret                      8
+  0x1072df57  int3
+  0x1072df58  int3
+  0x1072df59  int3
+  0x1072df5a  int3
+  0x1072df5b  int3
+  0x1072df5c  int3
+  0x1072df5d  int3
+  0x1072df5e  int3
+  0x1072df5f  int3
+  0x1072df60  int3
+  0x1072df61  int3
+  0x1072df62  int3
+  0x1072df63  int3
+  0x1072df64  int3
+  0x1072df65  int3
+  0x1072df66  int3
+  0x1072df67  int3
+  0x1072df68  int3
+  0x1072df69  int3
+  0x1072df6a  int3
+  0x1072df6b  int3
+  0x1072df6c  int3
+  0x1072df6d  int3
+  0x1072df6e  int3
+  0x1072df6f  int3
+  0x1072df70  push                     esi
+  0x1072df71  mov                      esi, dword ptr [ecx + 0x1044]
+  0x1072df77  xor                      eax, eax
+  0x1072df79  xor                      edx, edx
+  0x1072df7b  test                     esi, esi
+  0x1072df7d  jle                      0x1072dfb1
+  0x1072df7f  push                     ebx
+  0x1072df80  mov                      ebx, dword ptr [esp + 0xc]
+  0x1072df84  push                     edi
+  0x1072df85  mov                      edi, dword ptr [ecx + 0x1040]
