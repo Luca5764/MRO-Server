@@ -1,0 +1,155 @@
+G5 raw evidence — PvE selected mech / slot path
+Date: 2026-09-17
+Source: /mnt/c/Games/MetalRage Online/data/System/ZNetwork.dll
+SHA-256: 6b07758edf57adcce7c96adeccc015d7a30bb72ba67eb01ad8b84e3451cfea1b
+ImageBase: 0x10700000
+
+Commands (run from Metal Rage Online Server/):
+  python3 tools/disasm.py at 0x1071b790 55
+  python3 tools/disasm.py at 0x107d9570 75
+  python3 tools/disasm.py at 0x107db2f0 85
+  python3 tools/disasm.py at 0x1071f090 42
+  python3 tools/disasm.py at 0x107e0e60 56
+
+1. UZNetwork_DJ::execGame_Slot
+Export/thunk: 0x10704278 -> 0x1071b790.
+
+0x1071b7ad  mov esi, dword ptr [ebp + 8]
+0x1071b7bc  movzx edx, byte ptr [eax]
+0x1071b7c6  lea eax, [ebp - 0x18]
+0x1071b7d3  call dword ptr [0x1091b850 + edx*4]
+0x1071b7d6  mov eax, dword ptr [esi + 0xc]
+0x1071b7dc  mov dword ptr [ebp - 0x14], edi
+0x1071b7df  movzx edx, byte ptr [eax]
+0x1071b7e6  lea eax, [ebp - 0x14]
+0x1071b7f0  call dword ptr [0x1091b850 + edx*4]
+0x1071b816  mov eax, dword ptr [ebp - 0x14]
+0x1071b819  mov ecx, dword ptr [ebp - 0x18]
+0x1071b81c  push eax
+0x1071b81d  push ecx
+0x1071b81e  mov ecx, 0x108e7e88
+0x1071b823  call 0x10702d51
+
+The two FFrame values are passed to ZDispatchGame::ChangeSlot_CN in source
+order: Game_Slot(UserIndex, SlotNumber). The 0x10704278 export is a thunk;
+the call target 0x1071b790 is the native parser.
+
+2. ZDispatchGame::ChangeSlot_CN
+Export/thunk: 0x10702d51 -> 0x107d9570. The body buffer starts at
+0x10901f10 in this function.
+
+0x107d95a3  push esi
+0x107d95a4  mov esi, dword ptr [esp + 0xc]     ; second argument
+0x107d95a9  xor eax, eax
+0x107d95ab  cmp esi, 6
+0x107d95b3  mov edi, 0x10901f10
+0x107d95b8  rep stosd
+0x107d95be  mov dword ptr [0x10901f1c], 0x230101 ; opcode @ +0x0c
+0x107d95c8  mov word ptr [0x10901f16], 0x13      ; length @ +0x06
+0x107d95d1  mov word ptr [0x10901f20], di        ; body +0x00
+0x107d95d8  ja 0x107d9620
+0x107d95da  jmp dword ptr [esi*4 + 0x107d9670]
+0x107d95e1  mov byte ptr [0x10901f22], 1
+0x107d95ea  mov byte ptr [0x10901f22], 2
+0x107d95f3  mov byte ptr [0x10901f22], 3
+0x107d95fc  mov byte ptr [0x10901f22], 4
+0x107d9605  mov byte ptr [0x10901f22], 5
+0x107d960e  mov byte ptr [0x10901f22], 6
+0x107d9617  mov byte ptr [0x10901f22], 7
+0x107d9620  mov byte ptr [0x10901f22], 8
+0x107d9663  push 0x10901f10
+0x107d966b  jmp 0x10701582
+
+Therefore ChangeSlot_CN sends frame length 0x13 (header 16 + body 3),
+opcode 0x00230101, body[0..1] = first argument UserIndex as u16 LE, and
+body[2] = second argument SlotNumber + 1 as u8 for internal values 0..6;
+values above 6 are encoded as 8. The write at 0x107d95d1 is the first
+argument (the first argument is at [esp+0xc] after the two saved registers).
+
+3. ZDispatchGame::ChangeSlot_SN
+Export/thunk: 0x107044c6 -> 0x107db2f0. ebx is the Format pointer and
+the message body begins at ebx+0x10.
+
+0x107db327  push ebx
+0x107db328  mov ebx, dword ptr [esp + 0xc]
+0x107db32c  movzx eax, byte ptr [ebx + 0x1c] ; body +0x0c
+0x107db331  dec eax
+0x107db336  movzx edi, word ptr [ebx + 0x1a] ; body +0x0a
+0x107db3a5  cmp word ptr [ebx + 0x10], 0      ; body +0x00
+0x107db3aa  jne 0x107db427
+0x107db3ac  mov eax, dword ptr [ebx + 0x12]  ; body +0x02
+0x107db3af  test eax, eax
+0x107db3b1  jne 0x107db427
+0x107db3c2  call 0x10703a17                 ; Game_Slot_Selected_Set
+0x107db3c7  push esi
+0x107db3c8  push edi
+0x107db3e9  call 0x1070a164                 ; Game_UserSocket_Selected_Set
+0x107db3fd  call 0x10707630                 ; Game_Host_Check
+0x107db40c  push edi
+0x107db40d  call 0x1070322e                 ; Respawn_CN if no instant item
+0x107db419  push esi
+0x107db41a  push edi
+0x107db41b  call 0x10709a57                 ; InstantRespawn_CN otherwise
+
+Slot mapping in the handler is raw 1..7 -> internal 0..6; raw 8 and all
+other values -> internal 7. The handler actually reads only body +0x00,
++0x02, +0x0a and +0x0c. Its body +0x04..+0x09 and +0x0e onward are not
+read by this function. It only accepts the success branch when status u16
+at +0x00 and result u32 at +0x02 are zero. The exact intended response
+body size beyond the reads is not inferred here.
+
+4. PvE slot-selection UI path (decrypted UnrealScript)
+Source files are from ~/mro-decrypted/src and are not repository files.
+
+ZGameMidMenu/ZSlotSelectPage.uc:
+  InteranlOpen(): lines 63-115 maps display indices 2,3,4,5,6 to internal
+  mech slots 3,6,5,2,4; other display indices retain their index.
+  SlotClick()/SlotDBClick(): lines 236-288 mark one SlotButton selected and
+  call Controller.CloseMenu().
+  InternalOnClose(): lines 496-529 repeats the display->internal mapping;
+  lines 547-555 call PC.ServerMechWeaponSetIndex_MH(nSelMech) when no pawn;
+  lines 562-575 fall back to slot 0 if the selected slot is unusable.
+
+ZBase/DefaultPlayerController.uc:916-926:
+  ServerMechWeaponSetIndex_MH(SlotIndex, optional SerialIndex) calls
+  Game_InstantRespawn(ServerIndex_BD, SerialIndex) only when SerialIndex>0,
+  then calls Game_Slot(ServerIndex_BD, SlotIndex).
+
+ZModePve/ZPvePlayercontroller.uc:1413-1427 and 1433-1465:
+  state PlayerSelectMech opens ZGameMidMenu.ZSlotSelectPage after
+  Game_Play_Check() is true. The menu is opened at lines 1487-1490.
+  Once the page closes, the timer marks bSelectMech and closes the UI.
+
+5. Hangar-only native path
+ZNetwork_DJ::Hangar_Slot_Select is export/thunk 0x10709c1e -> 0x1071f090.
+At 0x1071f0f9 it passes the parsed int to DefaultSlot_Change_CQ
+(0x107066f9 -> 0x107e0e60). That function writes:
+
+0x107e0ed0  mov dword ptr [0x1090842c], 0x240111
+0x107e0eda  mov word ptr [0x10908426], 0x14
+0x107e0ee5..0x107e0f40 map input 0..6 to body values 1..7, else 8
+0x107e0f7b  push 0x240112
+0x107e0f80  push 0x10908420
+0x107e0f85  call 0x10701582
+
+This is a separate frame: opcode 0x00240111, total length 0x14, body is
+one u32 LE 1-based slot. Its server answer is 0x00240112. This path changes
+the hangar default slot; it is not the in-game Game_Slot path.
+
+6. Current server comparison
+gate.game.dispatch.js:231 passes currentHangarSlot_ (or 1) to Game_User_SN.
+room/room-game-user.sender.js:145 writes that value at record +0x10.
+The current room handler stores currentHangarSlot_ only from 0x00240107 at
+room.dispatch.js:618-623, which is hangar Slot_Change_CQ (loadout update),
+not from in-game ChangeSlot_CN 0x00230101.
+
+The in-game 0x00230101 case is currently in lobby.dispatch.js:97-109 and
+returns a generic 6-byte 0x00230102 response. The client dispatch map calls
+0x00230102 ZDispatchGame::ChangeSlot_SN, so this owner/name is historical;
+the response body shape is also not the structure read at 0x107db2f0.
+
+The separate hangar default-slot server code is also directionally shifted:
+room.dispatch.js:598 listens for 0x00240112 and sends 0x00240113, while the
+DLL native at 0x107e0e60 sends 0x00240111 and the client dispatch map names
+0x00240112 DefaultSlot_Change_SA. This is recorded as a separate code issue;
+it is not evidence that the PvE selector uses the hangar packet.
