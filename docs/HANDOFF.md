@@ -15,9 +15,9 @@
   - 交付：一篇日誌，記錄每個動作對應的 opcode 與客戶端 log；由高階更新 `state.md` 第 4 節。
   - 完成條件：三個動作各有明確的「有／沒有新封包、有／沒有錯誤 log」結論。
 
-- ✅ 21:57 實測：Vanguard 手上已是正確的主武器「輕型來福機槍」，`Cannot use MOC_a` 消失（`shots/current-mission.png`）。死亡／重生正常。
-- ✅ 21:46 登入卡住已找到原因：客戶端拒收整包超過 **0x400 bytes** 的 frame（`ZNetwork.dll 0x107f8fad`）。36 筆 ItemInfo 是 1296 bytes，所以卡住。**不是**「只能有 24 個槽位」。`client.js` 現在遇到超大封包會警告並寫 marker。
+- ✅ 2026-09-16 21:57 實測：Vanguard 手上已是正確的主武器「輕型來福機槍」，`Cannot use MOC_a` 消失（`shots/current-mission.png`）。死亡／重生正常。
+- ✅ 2026-09-16 21:46 登入卡住已找到原因：客戶端拒收整包超過 **0x400 bytes** 的 frame（`ZNetwork.dll 0x107f8fad`）。36 筆 ItemInfo 是 1296 bytes，所以卡住。**不是**「只能有 24 個槽位」。`client.js` 現在遇到超大封包會警告並寫 marker。
 - ✅ Table 4 已獨立重新解析核對（`Cache.Bin` 0x37456，32 筆）。
 - ⬜ 待測：開火、副武器、推進器；以及大小和 slot 內容的單變數測試。步驟見 `docs/next-test.md`。
 - ⚠️ 設計任何新封包前先算大小：**header + body ≤ 1024 bytes**。
-- 已知不一致：4、5 號機在 Table 4 沒有推進器，但 DB 有給。見 ledger 2026-09-17。
+- 已知不一致：4、5 號機在 Table 4 沒有推進器，但 DB 有給。見 `journal/2026-09-17-01-review-iteminfo-stall-root-cause.md`。
