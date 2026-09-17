@@ -57,3 +57,15 @@
 - ✅ [DLL] `RadioChat_Sel N` 是 `WinDrv.dll` 原生程式送出的：視窗程序 `0x11114bdf` 附近的 `WM_KEYDOWN`（case 0x100／0x104），先對所有 `< 0xff` 的鍵呼叫 `CauseInputEvent`，接著對數字鍵 `0x30–0x39`／`0x60–0x69` 額外執行 `RadioChat_Sel n`。decompile：`docs/research/2026-09-17-fire-gate/WinDrv_WndProc_keydown.c`。所以鍵盤事件確實有進到引擎的輸入系統，數字鍵觸發的 `RadioChat_Sel` 跟開火無關。
 - ✅ [檔案] `System/User.ini`、`DefUser.ini` 的 `[Engine.PlayerInput]` 是空的，**所有按鍵綁定都來自腳本執行時的 `setinput_BD`**（`Engine/OptionAll.uc`）。
 - ⬜ 仍然不知道：開火按鍵事件在哪裡被吃掉（綁定沒生效、GUI 攔截、還是 state）。
+
+## 關鍵分界：只有「會呼叫 exec 函式」的綁定失效（同日）
+
+- [OBS] 操作者：按 W 時機體真的會走（不是只有鏡頭動），也可以蹲下（Ctrl）；畫面上方的 "Protect the strategy fusion" 橫幅一直都在。
+- ✅ [DLL] `Engine.dll` 內建的 alias 表（UTF-16 字串，`UInput::Exec` 附近）：
+  - 可用：`MoveForward`=`Axis aBaseY ...`、滑鼠 `Axis aBaseX/aLookUp`、`Duck`=`Button bDuck | Axis aUp Speed=-300.0`，**只有 Axis／Button**。
+  - 失效：`Fire`=`Button bFire | Fire`、`AltFire`=`Button bAltFire | AltFire`、`Jump`=`Jump | Axis aUp Speed=+300.0`、`EventButtonClick`=`Button bEventButtonClick_MH | EventButtonDown_MH`，以及 `SwitchWeapon n`、`ChangeKit`，**都有 exec 函式呼叫**。
+  - `CaptureButtonClick`=`Button bCaptureButton`（F）只有 Button 也失效，⬜ 可能是腳本端另有條件。
+- ✅ [LOG] 走 Console／HUD 的 exec 可用：`TeamTalk`（`Engine/Console.uc:147`）、`RadioChat_Sel`（`ZBase/DefaultHud.uc:4221`，由 WinDrv 直接送出）。
+- 🟡 [GUESS] 所以問題縮小成：「送到 PlayerController（或 Pawn）的 exec 呼叫沒有生效」。可能是呼叫被 exec 鏈中更前面的物件吃掉，或是 PlayerController 所在的 state 把這些函式覆寫成空的。
+- ✅ [DLL] exec 鏈在 `UPlayer::Exec` `0x104d8120`（decompile：`docs/research/2026-09-17-fire-gate/UPlayer_Exec.c`）：依序問 Actor+0xa0 物件、Level 的 +0x630、Actor+0x740／+0x8dc／+0x8ec、PlayerController 本身、+0x8e4、Pawn（+0x3c0）、Pawn+0x494／+0x49c，任何一個回傳非 0 就停止。各偏移分別是什麼物件還沒對應。
+- [SRC] 腳本裡在 controller 之外定義 `exec SwitchWeapon` 的只有 `ZBase/DefaultHud.uc:4259`（`state RadioMsgShow_Pressed`，無線電選單開著時擋住換武器），沒有找到其他物件定義 `exec Fire`／`Jump`。
