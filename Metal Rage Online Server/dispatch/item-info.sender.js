@@ -17,7 +17,7 @@
 // testing that chunking itself works.
 const ITEM_INFO_CHUNK = 12;
 // Include mech body rows (part_slot 0). Off until chunking is confirmed alone.
-const ITEM_INFO_INCLUDE_BODY = false;
+const ITEM_INFO_INCLUDE_BODY = true;
 
 const SN_ITEM_INFO = 0x00210111;
 const ITEM_RECORD_SIZE = 35;
