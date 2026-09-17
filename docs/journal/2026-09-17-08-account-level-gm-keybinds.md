@@ -102,3 +102,14 @@
 - ✅ [LOG] `MetalRage.log`：訓練場的 URL 是 `Browse: Store_01?Game=ZModeHangar.HangarGameInfo?Team=0`（**沒有 `?Listen`**，應該是 `NM_Standalone`）；PvE 則是 `Browse: Map_PC01?Listen?LPort=30907?...Game=ZModePve.ZModePve...`（listen server）。
 - 🟡 [SRC] `ZBase/PawnSecond.uc:701` `IsLocallyControlled()` 在 Standalone 下**一律回傳 true**，在 listen server 下才要檢查 Controller 是不是有 Viewport 的 PlayerController。武器 ready（`BaseGun_Attachment.AnimEnd`、`W_DefaultWeaponAttachment.CheckAmmoNChangeClientState`）和 `DefaultMech.uc` 的許多本地邏輯都靠這個判斷。這能解釋「訓練場（Standalone）開火正常、PvE（Listen）不正常」，但還沒證實 PvE 裡 `IsLocallyControlled()` 真的是 false，Space／Shift 也還沒被這條解釋到。
 - ⬜ log 裡沒有看到 UE2 標準的 NetDriver／listen 訊息；`LPort=30907` 跟伺服器的遊戲埠相同，客戶端在 Windows 上 listen 時有沒有衝突，還不知道。
+
+## Host URL 與 PvE 生成機體的流程（同日，純讀碼）
+
+- ✅ [DLL] `UZNetwork_DJ::Game_Info_URL_Get`（thunk `0x10706960` → `0x10733cf0`；decompile `docs/research/2026-09-17-fire-gate/Game_Info_URL_Get.c`）：
+  - `[this+0xfac] & 1`（host 旗標）為真：`start %s?Listen?LPort=%d?...`（格式字串在 `0x10814a50`），LPort 取 `[this+0x388]`。
+  - 否則：`start %s:%d/%s?team=%d`（`0x10814b34`），IP 取 `[this+0xfb0]`、port 取 `[this+0xfbc]`，也就是以 client 身分連到 host。
+  - 所以我們目前讓客戶端當 host（listen server）。`+0x388` 由哪個封包寫入還沒查。
+- ✅ [SRC] `ZGameMainMenu/ZPage_Room.uc:1303` `GameStart()` 呼叫 `Game_URL_Get()` 之後，用 `DelayedConsoleCommand` 執行。
+- ✅ [SRC] 生成機體：`ZBase/DefaultGameInfo.uc:1753` `event SelectUnitSlot_BD`（native 觸發）→ `ServerPlayerStart_MH()` → `RestartPlayer`（`:974`）→ `Spawn(PawnClass)`（`:1075`，此時 `PostNetBeginPlay`→`InitializeMech` 就會先跑一次，`UseWeaponIndex_MH` 還沒填）→ `:1085` 填 `UseWeaponIndex_MH` → `:1102` 再跑一次 `InitializeMech()` → `:1136` `DWeapon_Delete_ALL_JW()`（只刪地雷、陷阱）→ `:1145` `Possess`。兩次 `InitializeMech` 都在 `Possess` **之前**，當下 `Controller==None`，所以 `IsLocallyControlled()` 是 false（非 Standalone）。
+- 🟡 這是原廠 host 的正常流程，選武器動畫的 AnimEnd 應該發生在 Possess 之後，照理不會卡住。**光讀碼還是找不到確定的卡點。**
+- ⬜ `SelectUnitSlot_BD` 由 ZNetwork.dll 在哪個封包觸發（推測是 `Respawn_SN 0x00230104`），還沒核對。
