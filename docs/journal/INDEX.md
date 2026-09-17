@@ -80,7 +80,7 @@
 | 2026-09-17 | `2026-09-17-12-pve-round-zero.md` | `0x00222111`、`0x00220201` | ✅ [DLL] 欄位；🟡 Create_CQ 順序；✅ [SHOT] 測試 N 通過（ROUND 1、生怪） | PvE 回合沒啟動：Game_Info_SN body+0x15 是 MapInfo.Round，我們送 0，`ModeReset_BD` 直接 return；改送建房 body[6]（PlayRound=5）。附 GAME_INFO 完整偏移並更正 2026-09-16-05。 |
 | 2026-09-17 | `2026-09-17-13-death-assist-cn.md` | `0x00230123`、`0x00230121`、`0x00230104` | ✅ [DLL]；測試 O 斷線→修 client.js；測試 P 未再斷線 ✅ [LOG] | Death_CN：body+0 擊殺者、body+2 被擊殺者、類型 1～4＝玩家；伺服器原本擊殺 AI 也送 Respawn_SN(0)，改成只對玩家死亡重生。Assist_CN 格式初步記錄。 |
 | 2026-09-17 | `2026-09-17-14-campaign-result.md` | `0x00230139`、`0x0023013a`、`0x00222213` | ✅ [DLL]／[LOG]；EndGame_SN 格式 ✅ [DLL]；待測 Q | 測試 P 沒斷線；任務失敗時客戶端送 Campaign_CN（body[2]=1 成功／2 失敗），伺服器沒回應，畫面停在遊戲中；Campaign_SN 只更新分數，結束遊戲推測要 EndGame_SN。 |
-| 2026-09-17 | `2026-09-17-15-assist-cn-sn-format.md` | `0x00230121`、`0x00230122` | 🟡 [DLL]；待審 | G1：Assist_CN（body 7 bytes）與 Assist_SN（body ≥25 bytes）完整欄位與組語位址核對；定位 Game_Assist/Game_User_Assist_Set 兩組得分更新。 |
-| 2026-09-17 | `2026-09-17-16-death-sn-format-verification.md` | `0x00230123`、`0x00230124` | 🟡 [DLL]；待審 | G2：Death_SN（body 0x51 bytes）所有欄位與組語位址逐一核對；確認 State 切換屬實、AI 擊殺送 Death_SN 無害且能觸發 HUD 廣播。 |
-| 2026-09-17 | `2026-09-17-17-game-chat-broadcast-format.md` | `0x00220507`、`0x00220509`、`0x00360601`、`0x00360602` | 🟡 [DLL]；待審 | G3：遊戲內聊天廣播格式組語核對；確認 All/Team 頻道為同 opcode 對稱廣播（258b body、雙空格切分），定位 HUD 顯示路徑。 |
-| 2026-09-17 | `2026-09-17-18-create-cq-map-difficulty.md` | `0x00220201`、`0x00220221` | 🟡 [DLL]；待審 | G4：Create_CQ（67b）與 Map_Change_One_CQ（26b）逐欄位組語核對；分析 PvE 難度計算公式與地圖選定傳遞機制。 |
+| 2026-09-17 | `2026-09-17-15-assist-cn-sn-format.md` | `0x00230121`、`0x00230122` | 🟡 [DLL]；Claude 已抽查 | G1：Assist_CN（body 7 bytes）與 Assist_SN（body ≥25 bytes）完整欄位與組語位址核對；定位 Game_Assist/Game_User_Assist_Set 兩組得分更新。 |
+| 2026-09-17 | `2026-09-17-16-death-sn-format-verification.md` | `0x00230123`、`0x00230124` | 🟡 [DLL]；Claude 已抽查 | G2：Death_SN（body 0x51 bytes）所有欄位與組語位址逐一核對；確認 State 切換屬實、AI 擊殺送 Death_SN 無害且能觸發 HUD 廣播。 |
+| 2026-09-17 | `2026-09-17-17-game-chat-broadcast-format.md` | `0x00220507`、`0x00220509`、`0x00360601`、`0x00360602` | 🟡 [DLL]；Claude 已抽查 | G3：遊戲內聊天廣播格式組語核對；確認 All/Team 頻道為同 opcode 對稱廣播（258b body、雙空格切分），定位 HUD 顯示路徑。 |
+| 2026-09-17 | `2026-09-17-18-create-cq-map-difficulty.md` | `0x00220201`、`0x00220221` | ✅ [DLL]（Claude 核對） | G4：Create_CQ（67b）與 Map_Change_One_CQ（26b）逐欄位組語核對；分析 PvE 難度計算公式與地圖選定傳遞機制。 |

@@ -67,3 +67,7 @@
   2. 改圖處理（`0x00220221`）：更新 `client.mapIndex_ = incomingFields.w1`、`client.playRound_ = incomingFields.b5`、`client.campaignMapCacheKey_ = incomingFields.w1`。
   3. 兩項變數透過 `session.js` 跨重連延續，`sendGameInfoSn` 即可將正確的選定地圖與回合數送進 `Game_Info_SN`。
 
+
+## 審查（Claude 高階，2026-09-17）
+
+- ✅ [DLL] 抽查：`0x107e5cb6`–`0x107e5cee` 寫入 `0x1090f2e1`(u8)、`e2`(u16)、`e6`(u8)、`e4`(u16)、`e7`(u16)、`e9`(u16)，與表格一致；`Map_Change_One_CQ` `0x107eecc4`／`0x107eeccb` 相符。[SRC] `ZPanel_PVE.uc:328` `(MapIndex - 9001) / 3`、`ZPopup_CreateRoom.uc` 的 `PlayPve != 1` 與 campaign `DefaultMap == 3` 相符。Create_CQ 欄位順序由 🟡 升為 ✅（Claude 核對）。

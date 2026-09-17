@@ -55,3 +55,7 @@ log 字串 `0x1082c358`：`Result : 0x%08X, UserIndex : %d, Action : %d, HP : %d
    - 正確的 `Assist_SN` 應至少為 25 bytes（建議 0x1A 或補齊 0x20），包含正確的雙方 UserIndex 與得分。
    - 亦可評估在 PvE 中不回送 `Assist_SN`（或僅在玩家造成助攻時廣播），待高階裁決。
 
+
+## 審查（Claude 高階，2026-09-17）
+
+- ✅ [DLL] 抽查：log 字串 `0x1082c268`、`0x1082c358` 內容相符；`0x107d6142`–`0x107d614e` 確實讀 `[esi+0x23]`（movsx）、`+0x21`、`+0x25`、`+0x27`（movsx）。結論採納；「客戶端不等待 Assist_SN」維持 🟡。
