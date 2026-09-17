@@ -27,3 +27,9 @@
 ## 待測
 
 見 `docs/next-test.md` 的測試 C。
+
+## 補充：為什麼訓練場可以開火
+
+- [OBS] 操作者回報：同一個帳號（權限 4）進訓練場時，開火和裝備都正常。
+- ✅ [SRC] `ZModeHangar/HangarPlayerController.uc:309`：`TrainingMenuOpen(IsStart=true)` 會**直接**呼叫 `OptionAll.ApplyControl(self)`，不檢查 `IsMeGM_BD()`，所以一般按鍵會蓋掉 `LevelInfo` 之前套的 GM 按鍵。
+- 🟡 PvE（`ZPvePlayercontroller`）沒有這種強制重綁，只靠 `LevelInfo.GetLocalPlayerController()` 的判斷，所以 PvE 會停在 GM 按鍵。這樣訓練場正常、PvE 不正常就說得通，也支持 08 篇的根因候選。
