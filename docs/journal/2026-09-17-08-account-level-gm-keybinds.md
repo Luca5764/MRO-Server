@@ -33,3 +33,20 @@
 - [OBS] 操作者回報：同一個帳號（權限 4）進訓練場時，開火和裝備都正常。
 - ✅ [SRC] `ZModeHangar/HangarPlayerController.uc:309`：`TrainingMenuOpen(IsStart=true)` 會**直接**呼叫 `OptionAll.ApplyControl(self)`，不檢查 `IsMeGM_BD()`，所以一般按鍵會蓋掉 `LevelInfo` 之前套的 GM 按鍵。
 - 🟡 PvE（`ZPvePlayercontroller`）沒有這種強制重綁，只靠 `LevelInfo.GetLocalPlayerController()` 的判斷，所以 PvE 會停在 GM 按鍵。這樣訓練場正常、PvE 不正常就說得通，也支持 08 篇的根因候選。
+
+## 測試 C 結果（13:13–13:15，`session-20260917-131036.jsonl`）
+
+- ✅ [LOG] `DefaultInfo_SN 0x00210101` body 開頭已經是 `30 00`（`"0"`）。
+- [OBS] 操作者用隊伍聊天回報：「剛剛全部重新嘗試過了還是沒效果」。
+- ✅ [LOG] 開局後 client→server 只有 `0x00420114`、`0x00420117`、`0x00230151`、兩句聊天、`0x00230123`，按鍵動作仍然沒有送出封包。
+- [LOG] `MetalRage.log` 跟權限 4 時不同：多了 `#### RadioChat can not found.!!!!! PilotCode : [ 101 ] Select_Num : [ 1 ] ####`，`RadioChat_Sel 0` 從 9 行變 3 行。可見按鍵綁定或狀態確實有變，但光改這個不夠。
+- ❌ **只改權限不能解決按鍵沒反應。** 權限 ≥1 會套用 GM 按鍵這件事仍然成立（[SRC]），但不是唯一的原因。
+
+## 為什麼權限先維持 0，不照原計畫改回 4
+
+- ✅ [SRC] `ZModePve/ZPvePlayercontroller.uc` 約第 1440 行，`state PlayerSelectMech` 的 `BeginState`：`IsMeGM_BD()==true` 會直接 `GotoState('Spectating')`。所以權限 ≥1 時，PvE 無論如何都進不了一般玩家流程，一般帳號本來就該是 0。這跟 `next-test.md` 寫的「沒效就改回 4」不同，理由就是這一段原始碼。
+
+## 下一條線（待查）
+
+- [SRC] 同一個 state 顯示 PvE 的正常流程是：`PlayerSelectMech` → `Game_Play_Check()` 為真時 `OpenSlotSelectPage()`（`ZGameMidMenu.ZSlotSelectPage`，選機體）→ `LoadPlayers()` → 片頭影片結束（`bIsSendEndMovie`，約第 1035 行）→ 有 Pawn 就 `GotoState('PlayerWalking')`。這個 state 裡的 `exec function Fire` 是空的。
+- 🟡 [GUESS] 我們用 `Respawn_SN` 直接生出 Pawn，可能跳過了這個流程，controller 停在不能開火的 state。要查出實際停在哪個 state，以及哪個伺服器封包會推進它。
