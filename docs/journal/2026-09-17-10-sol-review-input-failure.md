@@ -72,3 +72,12 @@ decompile：`docs/research/2026-09-17-fire-gate/Option_Game.c`。
 - ✅ 所以 F、I、J 三個測試一致：**修好的是重新執行 `ApplyControl`**；單純開關 GUI（J）不會修好。「開局時 GUI／輸入狀態殘留」這個方向排除。測試 I 那段「不是 ApplyControl」的說法作廢。
 - ⬜ 仍然不知道：PvE 開局時為什麼綁定是錯的。權限寫入點只有 `DefaultInfo_SN`（`"0"`），照理 `LevelInfo.GetLocalPlayerController` 會走一般的 `ApplyControl`。
 - 下一個分辨實驗（測試 K）：`ApplyGMControl` 會把 ScrollLock 綁成 `ViewModeUIGM_BD`（`OptionAll.uc` GM 表），連按 4 次會依序設定 `bHideName_BD`、`DrawGmList_BD=false`、`bDrawTeamScore=false`、`hideBottomBar_Bd=true`（`DefaultPlayerController.uc:9569-9595`）；一般表**沒有**綁 ScrollLock。開局壞掉的狀態下，連按 ScrollLock，如果畫面底部 HUD 列消失，就證明開局套用的是 GM 表。
+
+## Sol 討論：下一個實驗設計（17:50–18:05，同一個 tmux `sol` session，未關閉）
+
+請求：`docs/research/2026-09-17-fire-gate/review-request-sol-2.md`。Sol 約 12 分鐘完成，沒有被中斷。
+- (a) 測試 K 只能「陽性確認 GM 表」，陰性結果分不出假設 2 和 3。建議加上 **F1 指紋**：
+  - ✅ [SRC]（Claude 已核對）`Engine/OptionAll.uc:814` 一般 `ApplyControl` 把 F1 綁成 `PressGameGuide`（按鍵教學）；`:1008` `ApplyPveController` 在 PvE 把 F1 **改綁**成 `UseSPPoint_BD 0`；`:990` GM 表把 ScrollLock 綁成 `ViewModeUIGM_BD`。
+  - 所以 PvE 正確套用後，F1 應該**叫不出**按鍵教學。操作者之前回報「F1 可以叫出按鍵教學」（壞掉的狀態下），代表 `ApplyPveController` 在開局時**很可能沒有**套上。🟡 當時是不是壞掉的狀態，要在測試 L 重新確認。
+- (b) 實驗 1（不改伺服器）：雙鍵指紋，見 `docs/next-test.md` 測試 L。實驗 2 看結果再決定改一個伺服器變數：GM 指紋陽性 → 在 `Game_Wait_SN` 後、`Game_User_SN` 前補送一次 `"0"` 的 `DefaultInfo_SN`；F1 指紋 → 只把 `Game_Wait_SN`→`Game_User_SN` 的間隔拉到 3 秒（測 controller 建立的競態）。
+- (c) ✅ [LOG]（Sol）`DefaultInfo_SN` 比 `Game_Wait_SN` 早 11.8 秒送出，所以「權限封包還沒到」可以排除，只剩轉場後被重置的可能。✅ [SRC] `Option_Game_SN` 的事件不會觸發 `ApplyControl`（`ZGUIController.uc:384-386`），不適合當探針。
