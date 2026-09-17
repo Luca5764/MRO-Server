@@ -83,3 +83,4 @@
 | 2026-09-17 | `2026-09-17-15-assist-cn-sn-format.md` | `0x00230121`、`0x00230122` | 🟡 [DLL]；待審 | G1：Assist_CN（body 7 bytes）與 Assist_SN（body ≥25 bytes）完整欄位與組語位址核對；定位 Game_Assist/Game_User_Assist_Set 兩組得分更新。 |
 | 2026-09-17 | `2026-09-17-16-death-sn-format-verification.md` | `0x00230123`、`0x00230124` | 🟡 [DLL]；待審 | G2：Death_SN（body 0x51 bytes）所有欄位與組語位址逐一核對；確認 State 切換屬實、AI 擊殺送 Death_SN 無害且能觸發 HUD 廣播。 |
 | 2026-09-17 | `2026-09-17-17-game-chat-broadcast-format.md` | `0x00220507`、`0x00220509`、`0x00360601`、`0x00360602` | 🟡 [DLL]；待審 | G3：遊戲內聊天廣播格式組語核對；確認 All/Team 頻道為同 opcode 對稱廣播（258b body、雙空格切分），定位 HUD 顯示路徑。 |
+| 2026-09-17 | `2026-09-17-18-create-cq-map-difficulty.md` | `0x00220201`、`0x00220221` | 🟡 [DLL]；待審 | G4：Create_CQ（67b）與 Map_Change_One_CQ（26b）逐欄位組語核對；分析 PvE 難度計算公式與地圖選定傳遞機制。 |

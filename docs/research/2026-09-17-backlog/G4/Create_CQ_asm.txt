@@ -1,0 +1,54 @@
+================================================================================
+ZDispatchLobby::Create_CQ (0x107e5b60) & execLobby_Room_Create (0x10718740)
+================================================================================
+
+[UnrealScript Signature in ZNetwork_DJ.uc:1435]
+native static function Lobby_Room_Create(
+    int RoomType, string RoomName, string Password, int MaxUser,
+    int MapIndex, int PlayRound, int PlayTime, int PlayKill, int PlayGoal
+);
+
+[Call Site in UZNetwork_DJ::execLobby_Room_Create @ 0x10718740]
+Argument push order into Create_CQ (0x107188fc .. 0x1071891e):
+  0x10718902  push ecx  ; 11th arg: PlayGoal (from [ebp - 0x14])
+  0x10718906  push edx  ; 10th arg: PlayKill (from [ebp - 0x18])
+  0x1071890a  push ecx  ; 9th arg:  PlayTime (from [ebp - 0x1c])
+  0x1071890e  push edx  ; 8th arg:  PlayRound (from [ebp - 0x20])
+  0x10718912  push ecx  ; 7th arg:  MapIndex (from [ebp - 0x24])
+  0x10718916  push edx  ; 6th arg:  MaxUser (from [ebp - 0x28])
+  0x1071891a  push esi  ; 5th arg:  Password string pointer
+  0x1071891b  push ecx  ; 4th arg:  HasPassword bool (1 if Len(Pass)>0)
+  0x1071891c  push eax  ; 3rd arg:  RoomName string pointer
+  0x1071891d  push ebx  ; 2nd arg:  QuickTitleIndex (0 if custom title)
+  0x1071891e  push edx  ; 1st arg:  RoomType (from [ebp - 0x30])
+  0x1071891f  mov ecx, 0x108e7df8 ; this (ZDispatchLobby)
+  0x10718924  call 0x10705925     ; thunk -> ZDispatchLobby::Create_CQ (0x107e5b60)
+
+[Function ZDispatchLobby::Create_CQ @ 0x107e5b60]
+Frame: opcode 0x00220201 at 0x1090f2dc, total length 0x43 (67 bytes) at 0x1090f2d6.
+Header: 0x1090f2d0..0x1090f2df (16 bytes). Body starts at 0x1090f2e0.
+
+Exact Assembly Mapping for Body[0..13]:
+  0x107e5c10  lea eax, [esi - 1]                  ; RoomType
+  0x107e5c2b  jmp [eax*4 + 0x107e5d08]            ; switch (RoomType):
+  0x107e5c32  mov byte ptr [0x1090f2e0], 3        ; body[0] = 3 (case 1)
+  0x107e5c3b  mov byte ptr [0x1090f2e0], 1        ; body[0] = 1 (case 2)
+  0x107e5c44  mov byte ptr [0x1090f2e0], 5        ; body[0] = 5 (case 3)
+  0x107e5c4d  mov byte ptr [0x1090f2e0], 6        ; body[0] = 6 (case 4)
+  0x107e5c56  mov byte ptr [0x1090f2e0], 2        ; body[0] = 2 (default)
+  
+  0x107e5cb6  mov byte ptr [0x1090f2e1], al       ; body[1] = MaxUser (u8, from [esp + 0x24])
+  0x107e5cc0  mov word ptr [0x1090f2e2], cx       ; body[2..3] = MapIndex (u16 LE, from [esp + 0x28])
+  0x107e5cd7  mov word ptr [0x1090f2e4], ax       ; body[4..5] = PlayTime (u16 LE, from [esp + 0x30])
+  0x107e5ccc  mov byte ptr [0x1090f2e6], dl       ; body[6] = PlayRound (u8, from [esp + 0x2c])
+  0x107e5ce7  mov word ptr [0x1090f2e7], cx       ; body[7..8] = PlayKill (u16 LE, from [esp + 0x34])
+  0x107e5cee  mov word ptr [0x1090f2e9], dx       ; body[9..10] = PlayGoal (u16 LE, from [esp + 0x38])
+  
+  0x107e5c65  mov byte ptr [0x1090f2eb], 1        ; body[11] = IsQuickTitle (u8)
+  0x107e5c6c  mov word ptr [0x1090f2ec], ax       ; body[12..13] = QuickTitleIndex (u16 LE, from [esp + 0x14])
+
+Remainder of body:
+  body[14..38] (25 bytes): RoomName (ANSI string, copied at 0x107e5c82)
+  body[39] (u8): HasPassword (0x1090f307, set to 1 if password given at 0x107e5c9d)
+  body[40..50] (11 bytes): Password (ANSI string, copied at 0x107e5ca4)
+Total body = 51 bytes (0x33). 16 + 51 = 67 bytes (0x43).

@@ -1,0 +1,73 @@
+================================================================================
+ZDispatchRoom::Map_Change_One_CQ (0x107eec30) & execRoom_Map_Change_One (0x107195a0)
+================================================================================
+
+[UnrealScript Signature in ZNetwork_DJ.uc:1551]
+native static function Room_Map_Change_One(
+    int MapNumber, int MapIndex, int MapTime, int MapKill, int MapCapture, int MapRound
+);
+
+[Callers in UnrealScript]
+1. ZGameMainMenu/ZPanel_PVE.uc:349 (when user clicks difficulty button or changes map in PvE)
+2. ZGameMainMenu/ZPanel_RoomInfo.uc:1054 (when room host changes map or options in lobby/room)
+
+[Call Site in UZNetwork_DJ::execRoom_Map_Change_One @ 0x107195a0]
+UnrealScript FFrame evaluations (0x107195c6..0x10719674):
+  [ebp - 0x28] = 1st arg: MapNumber (int)
+  [ebp - 0x24] = 2nd arg: MapIndex (int)
+  [ebp - 0x20] = 3rd arg: MapTime (int)
+  [ebp - 0x1c] = 4th arg: MapKill (int)
+  [ebp - 0x18] = 5th arg: MapCapture (int)
+  [ebp - 0x14] = 6th arg: MapRound (int)
+
+Argument push order into Map_Change_One_CQ (0x1071969a..0x107196b7):
+  0x1071969a  mov eax, [ebp - 0x14] ; MapRound
+  0x1071969d  mov ecx, [ebp - 0x18] ; MapCapture
+  0x107196a0  mov edx, [ebp - 0x1c] ; MapKill
+  0x107196a3  push eax              ; 6th push: MapRound
+  0x107196a4  mov eax, [ebp - 0x20] ; MapTime
+  0x107196a7  push ecx              ; 5th push: MapCapture
+  0x107196a8  mov ecx, [ebp - 0x24] ; MapIndex
+  0x107196ab  push edx              ; 4th push: MapKill
+  0x107196ac  mov edx, [ebp - 0x28] ; MapNumber
+  0x107196af  push eax              ; 3rd push: MapTime
+  0x107196b0  push ecx              ; 2nd push: MapIndex
+  0x107196b1  push edx              ; 1st push: MapNumber
+  0x107196b2  mov ecx, 0x108e7e00   ; this (ZDispatchRoom)
+  0x107196b7  call 0x1070939a       ; thunk -> ZDispatchRoom::Map_Change_One_CQ (0x107eec30)
+
+[Function ZDispatchRoom::Map_Change_One_CQ @ 0x107eec30]
+Calling convention: __thiscall (ret 0x18 = 6 dwords).
+Frame setup:
+  Buffer base: 0x10915310
+  0x107eecb1  mov dword ptr [0x1091531c], 0x220221 ; Opcode 0x00220221 (Map_Change_One_CQ)
+  0x107eecbb  mov word ptr [0x10915316], 0x1a      ; Total frame length = 0x1A (26 bytes)
+  Header: 16 bytes (0x10915310..0x1091531f)
+  Body: 10 bytes (0x10915320..0x10915329)
+
+Exact Assembly Mapping for Body[0..9]:
+  0x107eec63  mov dx, word ptr [esp + 0xc]         ; loaded before push edi: [esp_orig + 0x0c] = MapTime
+  0x107eec68  push edi                             ; stack offsets shift by +4
+  0x107eec77  mov al, byte ptr [esp + 8]           ; [esp_orig + 4] = MapNumber
+  0x107eec7b  mov cx, word ptr [esp + 0xc]         ; [esp_orig + 8] = MapIndex
+  0x107eec80  mov byte ptr [0x10915320], al        ; body[0] = MapNumber (u8)
+  0x107eec85  mov ax, word ptr [esp + 0x14]        ; [esp_orig + 0x10] = MapKill
+  0x107eec8a  mov word ptr [0x10915321], cx        ; body[1..2] = MapIndex (u16 LE)
+  0x107eec91  mov cx, word ptr [esp + 0x18]        ; [esp_orig + 0x14] = MapCapture
+  0x107eec96  mov word ptr [0x10915323], dx        ; body[3..4] = MapTime (u16 LE)
+  0x107eec9d  mov dl, byte ptr [esp + 0x1c]        ; [esp_orig + 0x18] = MapRound
+  0x107eeca1  mov word ptr [0x10915326], ax        ; body[6..7] = MapKill (u16 LE)
+  0x107eecc4  mov word ptr [0x10915328], cx        ; body[8..9] = MapCapture / Goal (u16 LE)
+  0x107eeccb  mov byte ptr [0x10915325], dl        ; body[5] = MapRound (u8)
+
+================================================================================
+Other In-Room Option CQs:
+================================================================================
+- MaxUser_Change_CQ (0x107eeae0):
+  Opcode 0x00220211, Frame Len 0x11 (17b, body 1b).
+  0x107eeb41  mov byte ptr [0x10914980], al        ; body[0] = MaxUser (u8)
+
+- Option_Change_CQ (0x107eeb80):
+  Opcode 0x00220215, Frame Len 0x13 (19b, body 3b).
+  0x107eebe3  mov byte ptr [0x10914e51], al        ; body[1] = OptionBalance (u8)
+  0x107eebe8  mov byte ptr [0x10914e52], cl        ; body[2] = OptionIntrude (u8)
