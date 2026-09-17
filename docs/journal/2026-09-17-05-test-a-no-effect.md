@@ -8,7 +8,9 @@
 - ✅ [LOG] session 從 `Respawn_SN 0x00230104`（ms=72976）到操作者回報為止，client→server 只有週期性 `0x00020083`（每 10 秒一次）。三個動作都**沒有**送出新的 opcode。
 - ✅ [LOG] 同一段時間也沒有聊天封包，也沒有任何 marker（只有兩個 auto marker）。在戰鬥場景用聊天框打 marker 不會送到伺服器，所以這一輪沒辦法切段。之後的 marker 改成由伺服器 console（tmux）打。
 - ✅ [SHOT] `shots/testA-now.png` 的彈藥是 `080 /0720`，跟前一天的 `shots/current-mission.png` 一樣，可見左鍵沒有消耗彈藥。
-- ⬜ [LOG] `MetalRage.log` 目前停在 8192 bytes（寫到 `PRELoadAllMesh_BD` 附近），看起來是緩衝還沒寫出去，要等客戶端結束後才看得到戰鬥中的 WeaponLog。
+- ✅ [LOG] `MetalRage.log` 在客戶端執行中停在 8192 bytes，是緩衝還沒寫出。12:41 客戶端結束後寫完，共 237 行。
+- ✅ [LOG] 結束後的完整 log：`Game class is 'ZModePve'`、`START MATCH`、`MyHud: ZPveHud`、`Pawn: SA01m`、controller 是 `ZPvePlayercontroller`。從 `START MATCH` 到結束，**沒有任何** `WeaponLog`、`Cannot use`、`Accessed None`，也沒有跟輸入有關的訊息。`Cannot use MOC_a` 確實已經消失。
+- [LOG] 載入階段仍有 `PreLoadallPveAI_BD ... Accessed null class context 'DefaultPawnClass'`（兩次）和 `AI_Boat_k` 找不到，跟 2026-09-16-31 記錄的相同。
 
 ## 目前能說的
 
@@ -16,5 +18,5 @@
 
 ## 下一步
 
-1. 請操作者結束客戶端，讓 log 寫完，讀 `WeaponLog`、`Cannot use`、`Accessed None`。
-2. 看 log 的結果，再決定要查 DLL（輸入或開火的前置條件），還是做單變數測試。
+1. 客戶端 log 沒有錯誤，所以接下來做靜態分析：找出 `ZPvePlayercontroller` 或 Pawn 的開火與推進器，要先滿足哪些狀態（回合或遊戲狀態旗標、ZNetwork 的狀態），以及是誰設定這些狀態的。
+2. 分析有結論之前不做新的實測。
