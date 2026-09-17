@@ -88,6 +88,11 @@ const SLOT_CHANGE_PART_NAMES = ['body', 'main', 'left', 'right', 'equipment', 's
 // G6 shop/inventory unblock is opt-in until the client is tested with the
 // corrected ShopList fields and post-purchase ItemInfo refresh.
 const SHOP_UNBLOCK_MODE = 'disabled'; // 'disabled' | 'enabled'
+// G6e: keep purchased inventory classified by the currently selected hangar
+// slot only when explicitly enabled; disabled preserves catalog mech_type.
+const PURCHASE_MECH_SLOT_MODE = 'disabled'; // 'disabled' | 'enabled'
+// G6e: independently resend the existing chunked ItemInfo after a purchase.
+const PURCHASE_ITEMINFO_REFRESH = 'disabled'; // 'disabled' | 'enabled'
 // G6c: item_catalog.mech_type is actually the weapon family, not the mech
 // that can equip it. Slot 1 (Small) cannot use the 21x main-weapon family
 // that the catalog filter selects for it; Cache.Bin's DefaultSetList shows
@@ -798,7 +803,9 @@ class ZRoomDispatch
                     // 2=주무기→1, 3=보조무기→2, 4=부스터→4, 5=스킨→5, 6=장비→4, 7=부스터→4, 8=지원→5 (2=MainWeapon→1, 3=SubWeapon→2, 4=Booster→4, 5=Skin→5, 6=Equipment→4, 7=Booster→4, 8=Support→5)
                     const partSlotMap = { 2: 1, 3: 2, 4: 4, 5: 4, 6: 4, 7: 4, 8: 4 };
                     const partSlot = partSlotMap[catType] ?? 1;
-                    const mechType = Number(item.mech_type) || 0;
+                    const mechType = PURCHASE_MECH_SLOT_MODE === 'enabled'
+                        ? (Number(client.currentHangarSlot_) || 1)
+                        : (Number(item.mech_type) || 0);
                     await db.pool.execute(
                         'INSERT INTO items (account_id, item_id, slot, mech_type, part_slot, quantity, equipped) VALUES (?, ?, ?, ?, ?, 1, 0)',
                         [client.accountId_, itemId, partSlot, mechType, partSlot]
@@ -811,7 +818,7 @@ class ZRoomDispatch
             }
         }
 
-        if (result === 0 && SHOP_UNBLOCK_MODE === 'enabled') {
+        if (result === 0 && (PURCHASE_ITEMINFO_REFRESH === 'enabled' || SHOP_UNBLOCK_MODE === 'enabled')) {
             try {
                 const items = await db.getItems(client.accountId_);
                 require('./item-info.sender').sendItemInfo(
