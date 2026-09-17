@@ -1,14 +1,9 @@
-# 下一輪要測的（2026-09-17 18:50）
+# 下一輪要測的（2026-09-17 18:45）
 
-背景：`journal/2026-09-17-11-grade-info-sn-root-cause.md`。
+測試 M 已通過（`journal/2026-09-17-11-grade-info-sn-root-cause.md`）：PvE 開局即可開火、跳、推進器。
 
-## 測試 M：Grade_Info_SN 改送 0
-
-伺服器已重啟（只改了 `Grade_Info_SN` 的值 11 → 0）。
-
-1. 完全重開客戶端，登入，照常開 PvE，**不要開選項**。
-2. 直接試：左鍵開火、Space 跳、Shift 推進器、右鍵、Scroll Lock（應該**沒反應**）、F1（應該**叫不出**按鍵教學）。
-3. 留意大廳、房間、商店有沒有因為權限變一般而出現新問題。
-4. 隊伍聊天回報，最後關掉客戶端。
-
-預期：不用開選項就能開火、跳、推進器。
+候選（尚未排定，由高階決定）：
+1. 測試 B（ItemInfo 大小 vs slot 內容），見 `journal/2026-09-17-03`、`-01`。
+2. 地圖沒有敵人／`PreLoadallPveAI_BD ... DefaultPawnClass` 錯誤（可用 `tools/uetool` 讀 `Map_PC01.u` 的 actor）。
+3. 遊戲內聊天回送（`0x00220507`／`0x00220509` 以同 opcode 廣播），見 `journal/2026-09-17-05`。
+4. 整理 `DefaultInfo_SN` 的 UserType 欄位命名與 DB 欄位（目前誤叫 account_level）。

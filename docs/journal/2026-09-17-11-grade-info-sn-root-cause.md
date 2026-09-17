@@ -20,3 +20,11 @@
 - `dispatch/gamelogin.dispatch.js`（4 處）、`account.dispatch.js`（3 處）、`community.dispatch.js`（1 處）：`writeUInt32LE(11, 0)` → `writeUInt32LE(0, 0)`，並更正註解。
 - 伺服器已重啟。待測：`docs/next-test.md` 測試 M。
 - 注意：權限改成 0 之後，只有開發者才能用的功能（如果有的話）可能會消失，測試時要留意。
+
+## 測試 M 結果（18:38–18:43，`session-20260917-183633.jsonl`）
+
+- ✅ [SHOT] `shots/testM-enter.png`（剛進 PvE，沒開過選項）：彈藥 `068 /0720`（先前一直停在 080），右側出現 `RESPAWN 3 / KILL 0`、`SP 0000`，以及 F1～F5 SP 技能列表（攻擊力增加、防禦力增加、子彈裝填、核心EMP、憤怒模式）。這些都是一般玩家的 PvE HUD，之前不會出現。
+- ✅ [OBS] 隊伍聊天：「all step pass, it worked」；「f1 pass, not pop up」（F1 變成 SP 技能，不再叫出按鍵教學）。**不用開選項**，開火、跳、推進器、右鍵都正常。
+- ✅ **結論：根因就是 `Grade_Info_SN 0x00510101` 送 11（開發者）；改送 0 後修好。**
+- ❌ 測試 L 的 Scroll Lock 指紋有瑕疵：[OBS]「scroll lock still can hide gui」，權限 0 時 Scroll Lock 仍然能隱藏 GUI，所以 Scroll Lock **不是** GM 表獨有的探針（腳本裡只有 `OptionAll.uc:990` 綁它，來源 ⬜，可能是原生程式處理）。測試 L 的結論靠 F1 指紋和測試 M 仍然成立。
+- 後續：`DefaultInfo_SN` 的 UserType 欄位（`tools/set-account-level.js`、`ACCOUNT_LEVEL_STR`、DB 欄位名 `account_level`）命名錯誤，要另外整理，而且應該送 1／2（男／女）；目前 `lucas` 送 `"0"`，暫時看不出影響。
