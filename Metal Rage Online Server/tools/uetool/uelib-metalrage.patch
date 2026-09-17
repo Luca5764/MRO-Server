@@ -1,0 +1,19 @@
+diff --git a/src/UnrealPackage.cs b/src/UnrealPackage.cs
+index 2890657..d9db225 100644
+--- a/src/UnrealPackage.cs
++++ b/src/UnrealPackage.cs
+@@ -398,6 +398,14 @@ namespace UELib
+                 [Build(134, 134, 38u, 39u, BuildGeneration.UE2_5)]
+                 ArcticCombat,
+ 
++                /// <summary>
++                /// Metal Rage Online
++                /// 
++                /// 134/029
++                /// </summary>
++                [Build(134, 29u, BuildGeneration.UE2_5)]
++                MetalRage,
++
+                 /// <summary>
+                 /// Men of Valor
+                 /// 

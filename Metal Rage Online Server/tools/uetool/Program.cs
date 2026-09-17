@@ -2,6 +2,7 @@
 //
 // Build UELib once (net8.0, C# 12):
 //   git clone https://github.com/EliotVU/Unreal-Library ~/tools/Unreal-Library
+//   git -C ~/tools/Unreal-Library apply "$(pwd)/tools/uetool/uelib-metalrage.patch"
 //   dotnet build ~/tools/Unreal-Library/src/Eliot.UELib.csproj -c Release -p:GeneratePackageOnBuild=false \
 //     -p:UELibTargetFrameworks=net8.0 -p:TargetFrameworks=net8.0 -p:LangVersion=12
 // Then:

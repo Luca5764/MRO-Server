@@ -32,4 +32,4 @@
 - 操作者安裝了 .NET SDK 8（`8.0.131`）。UELib（EliotVU/Unreal-Library，2026-08 版）clone 在 `~/tools/Unreal-Library`，要用 net8.0、C# 12、Release 編譯；編譯指令寫在 `tools/uetool/Program.cs`。Debug 版的 `Debug.Assert` 會讓程式崩潰。
 - ✅ [TEST] `tools/uetool`：`list` 可以列出封包內所有物件（例如 `Map_PC01.u`：`MRStart` 25 個、`PlayerStart` 10 個、`ZPveNapalmWep` 12 個、`DefaultBriefing` 3 個、`Action_WAITFOREVENT` 等）。
 - ✅ [TEST] `decompile` 可以讀**地圖 actor 的屬性**（例如 `Map_PC01.LevelInfo0`）。少數 struct 大小不合（`Region` 預期 13、實際 6）。
-- ❌ [TEST] **class 物件讀不了**（`Engine.Console` 等）：`Couldn't load object Class ... InvalidCastException`，bytecode 也有 `Bad expression token`。推測 MRO 的 v134/29 改過 UClass／UStruct 的序列化格式或 bytecode token，所以 class 的 defaultproperties 和 bytecode 目前拿不到。要修得逆向那段格式差異，先不做。
+- ❌ [TEST] **class 物件讀不了**（`Engine.Console` 等）：（已被 2026-09-17-09-uelib-class-deserialization-fixed.md 更正：原推測 MRO 改格式錯誤，根因為 UELib 未將 MRO v134/29 識別為 UE2_5 世代導致 CppText/StructFlags 欄位位移；加入 GameBuild.MetalRage 識別後已完全修復）`Couldn't load object Class ... InvalidCastException`，bytecode 也有 `Bad expression token`。推測 MRO 的 v134/29 改過 UClass／UStruct 的序列化格式或 bytecode token，所以 class 的 defaultproperties 和 bytecode 目前拿不到。要修得逆向那段格式差異，先不做。

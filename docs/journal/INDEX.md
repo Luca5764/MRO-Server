@@ -74,3 +74,4 @@
 | 2026-09-17 | `2026-09-17-06-fire-gate-weapon-state.md`（追加 A4） | `0x00230152` | ✅ [LOG]／[DLL] | A4：R、1、左右鍵、2／3／4、Space、F 全部沒反應，只有移動、視角、聊天可用；`BeginRound_SN` 在場景 6 無條件呼叫 `Game_Play_Start`。 |
 | 2026-09-17 | `2026-09-17-07-tzp-script-source-decrypted.md` | — | ✅ [DLL]／[TEST] | `.tzp` 以 Core.dll `0x101622d0` 的 XOR 表離線解密，內含 UnrealScript 原始碼（1539 class，不 commit）；開火與跳的閘門候選：`bSetWepComplete`、`bNoInputKey_JW`。 |
 | 2026-09-17 | `2026-09-17-08-account-level-gm-keybinds.md` | `0x00210101` | ✅ [SRC]／[DLL]；待測 | 帳號權限 ≥1 會讓 `LevelInfo` 套用 `ApplyGMControl`（沒有 Fire，左右鍵與 Space 變成切換觀戰視角）；`lucas` 權限改成 0 待測試 C。 |
+| 2026-09-17 | `2026-09-17-09-uelib-class-deserialization-fixed.md` | — | 🟡 [DLL]／[TEST]；待審 | UELib 無法讀取 class 物件根因修復：MRO v134/29 未被識別為 UE2_5 世代導致 CppText 多讀與 StructFlags 漏讀；補入 GameBuild.MetalRage 後 class defaultproperties 與屬性全部可讀。 |
