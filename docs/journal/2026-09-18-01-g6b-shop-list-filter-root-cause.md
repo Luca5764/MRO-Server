@@ -96,3 +96,12 @@ SubOrdinationRecord；研究檔只把它們保留為待審，不猜格式。至�
 - 本篇所有新結論標為 🟡／⬜ 待高階審查；沒有改 `state.md`，沒有標 ✅。
 - 未改程式、DB schema/data、G6 save handler、ItemInfo 分包、PVE_SLOT_SELECT_FLOW、
   Grade_Info、Death_SN 或 G7。
+
+## 審查（Claude 高階，2026-09-18）
+
+- ✅ [DLL] 抽查 `Item_List_Check`（`0x10718040`）：`0x107180a8` 呼叫 `GetCache`、`0x107180bb` 呼叫 `GetGameItemRecord`，只看 Cache 裡有沒有這個物品，不看旗標、價格、擁有狀態。與本篇一致。
+- ✅ [SRC] `ZPanel_ShopItems.uc:690-746` `ItemSubordinateCheck`：取目前槽位機體的 `HighGroup/MiddleGroup`，再比對 Cache `SubOrdinationList` 中同 `RepresentIndex` 的紀錄；主武器（HighGroup 2）、副武器（3）、推進器（4）、6 都要通過才列出。與本篇一致。
+- ✅ [SQL] `metalrageserver.sql` 的 `item_catalog`：`21xxxxxx` 的 `mech_type=1`、`22xxxxxx` 的 `mech_type=2`……也就是**把武器 ID 第二位（武器家族）當成適用機體**，不是 Cache 的 SubOrdination。`buildShopItems()` 用這個欄位依槽位篩選，所以 1 號機（`SA01m`，Small）拿到的是它不能裝的 21x 家族（跟 `Small Cannot use MOC_a` 相符）。
+- 🟡 結論採納為強假設：**商店空白是伺服器依錯誤的 `mech_type` 篩商品，送出的全是客戶端相容性檢查不通過的武器。**
+- 修正方向（待實驗確認後再做）：伺服器不該用 `catalog.mech_type` 篩選，應把可販售的商品送出、交給客戶端 `ItemSubordinateCheck` 過濾；但每個 frame ≤ 0x400（每筆 20 bytes，一包 ≤ 50 筆），多包是否累加要先查 `Item_ShopList_Add`。
+- 下一步：採用本篇實驗 1（只把 slot 1 清單第一筆 `21100101` 換成 `22100101`，開關預設關閉），見 `docs/backlog.md` G6c。
