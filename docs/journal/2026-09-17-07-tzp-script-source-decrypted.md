@@ -26,3 +26,10 @@
 - ✅ [TEST] `data/MUD` 共 445 個 `.tzp`，**全部**用同一種方式解開，包括地圖 `Map_PC01.tzp` 等 34 張、貼圖、模型、特效（`~/mro-decrypted/*.u`）。地圖包沒有原始碼文字，但擺放的 actor 和屬性（例如 `ZPveEvent`、重生點、AI）要用 UE2 工具讀。
 - ✅ [TEST] 以下本來就是明文，不用解密：`data/MUZ/*.mra`（186 個，開頭直接是 `C1832A9E`）、`Resource/**/*.sou`（RIFF／WAV）、`*.dds`／`*.c_dds`（DDS）、`System/*.twt`／`*.c_twt`（UTF-16 文字）、`Music/*.ogg`。
 - `System/*.xem` 是 PE 執行檔（反作弊相關模組），**不碰**。
+
+## uetool（UELib）試用結果（同日）
+
+- 操作者安裝了 .NET SDK 8（`8.0.131`）。UELib（EliotVU/Unreal-Library，2026-08 版）clone 在 `~/tools/Unreal-Library`，要用 net8.0、C# 12、Release 編譯；編譯指令寫在 `tools/uetool/Program.cs`。Debug 版的 `Debug.Assert` 會讓程式崩潰。
+- ✅ [TEST] `tools/uetool`：`list` 可以列出封包內所有物件（例如 `Map_PC01.u`：`MRStart` 25 個、`PlayerStart` 10 個、`ZPveNapalmWep` 12 個、`DefaultBriefing` 3 個、`Action_WAITFOREVENT` 等）。
+- ✅ [TEST] `decompile` 可以讀**地圖 actor 的屬性**（例如 `Map_PC01.LevelInfo0`）。少數 struct 大小不合（`Region` 預期 13、實際 6）。
+- ❌ [TEST] **class 物件讀不了**（`Engine.Console` 等）：`Couldn't load object Class ... InvalidCastException`，bytecode 也有 `Bad expression token`。推測 MRO 的 v134/29 改過 UClass／UStruct 的序列化格式或 bytecode token，所以 class 的 defaultproperties 和 bytecode 目前拿不到。要修得逆向那段格式差異，先不做。
