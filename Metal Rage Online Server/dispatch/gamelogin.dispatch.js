@@ -175,32 +175,8 @@ class ZGameLoginDispatch
                 }
 
 
-                // SN_ITEM_INFO — equipment only. Body rows disconnect in
-                // ItemInfo_SN/Item_Add and are only referenced by WearInfo.
-                {
-                    const ITEM_RECORD_SIZE = 35;
-                    const headerSize = 6;
-                    const [msg, respBody] = client.getMessageBuffer(0x00210111, headerSize + (ITEM_RECORD_SIZE * equipmentItems.length));
-                    respBody.writeUint8(1, 0);                         // SuccessFlag
-                    respBody.writeUint8(equipmentItems.length, 1);      // ItemCount
-                    respBody.writeUint32LE(account.id || 0, 2);        // AccountKey
-                    let offset = headerSize;
-                    for (const item of equipmentItems) {
-                        respBody.writeUint32LE(item.id || 0, offset);
-                        respBody.writeUint32LE(item.item_id, offset + 0x04);
-                        respBody.writeUint32LE(item.equipped ? 1 : 0, offset + 0x08);
-                        respBody.writeUint32LE(0, offset + 0x0C);
-                        respBody.writeUint16LE(item.mech_type || 0, offset + 0x10);
-                        respBody.writeUint32LE(item.part_slot || 0, offset + 0x12);
-                        respBody.writeUint8(item.equipped ? 2 : 0, offset + 0x16);  // use type: 2=equipment
-                        respBody.writeUint32LE(item.quantity || 1, offset + 0x17);
-                        respBody.writeUint32LE(0xFFFFFFFF, offset + 0x1B);         // expiration = permanent
-                        respBody.writeUint32LE(0xFFFFFFFF, offset + 0x1F);         // expiration2 = permanent
-                        offset += ITEM_RECORD_SIZE;
-                    }
-                    client.send(msg);
-                    console.log(`[ZGameLoginDispatch] >> Sent SN_ITEM_INFO: ${equipmentItems.length} items (equipment only)`);
-                }
+                // SN_ITEM_INFO — see dispatch/item-info.sender.js (chunked, ≤0x400 per frame).
+                require('./item-info.sender').sendItemInfo(client, items, account.id, 'gamelogin');
 
                 // SN_WEAR_INFO (0x210113) — DLL: WearInfo_SN
                 // Header: [u8 suc][u8 cnt][u32 pilotSerialIndex][u32 pilotItemIndex][u32 selectedMechType]

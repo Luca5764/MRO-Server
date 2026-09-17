@@ -571,56 +571,8 @@ class ZAccountDispatch
             console.log(`[ZDispatchAccount] >> Sent SN_LICENSE_INFO: ${licenses.length} licenses (type=${licenses[0].license_type||1})`);
         }
 
-        // SN_ITEM_INFO — Equipment/inventory data.
-        // ZNetwork.dll (ZDispatchAccount::ItemInfo_SN):
-        //
-        // Header:
-        //   u8  SuccessFlag  (non-zero = valid)
-        //   u8  ItemCount
-        //   u32 AccountKey   (skipped by handler)
-        //
-        // Per-item record: 35 bytes (0x23)
-        //   u32 UniqueKey    (item instance ID)
-        //   u32 ItemIndex    (item type code)
-        //   u32 EquipStatus  (1 = equipped)
-        //   u32 (padding)
-        //   u16 Field_10
-        //   u32 Field_12
-        //   u8  Field_16
-        //   u32 Field_17
-        //   u32 Field_1B
-        //   u32 Field_1F
-        //
-        // Debug string confirms: "UniqueKey : %d, ItemIndex : %d"
-        // Body rows (part_slot=0) still disconnect in ItemInfo_SN/Item_Add.
-        // Keep ItemInfo to equipment rows only and solve body Slot_Info separately.
-        {
-            const itemInfoItems = items.filter(item => Number(item.part_slot) !== 0);
-            const ITEM_RECORD_SIZE = 35;
-            const headerSize = 6; // u8 + u8 + u32
-            const [msg, body] = client.getMessageBuffer(SN_ITEM_INFO, headerSize + (ITEM_RECORD_SIZE * itemInfoItems.length));
-
-            body.writeUint8(1, 0);
-            body.writeUint8(itemInfoItems.length, 1);
-            body.writeUint32LE(accountId || 0, 2);
-
-            let offset = headerSize;
-            for (const item of itemInfoItems) {
-                body.writeUint32LE(item.id || 0, offset);
-                body.writeUint32LE(item.item_id, offset + 0x04);
-                body.writeUint32LE(item.equipped ? 1 : 0, offset + 0x08);
-                body.writeUint32LE(0, offset + 0x0C);
-                body.writeUint16LE(item.mech_type || 0, offset + 0x10);
-                body.writeUint32LE(item.part_slot || 0, offset + 0x12);
-                body.writeUint8(item.equipped ? 2 : 0, offset + 0x16);
-                body.writeUint32LE(item.quantity || 1, offset + 0x17);
-                body.writeUint32LE(0xFFFFFFFF, offset + 0x1B);
-                body.writeUint32LE(0xFFFFFFFF, offset + 0x1F);
-                offset += ITEM_RECORD_SIZE;
-            }
-            client.send(msg);
-            console.log(`[ZDispatchAccount] >> Sent SN_ITEM_INFO: ${itemInfoItems.length} items (equipment only)`);
-        }
+        // SN_ITEM_INFO — see dispatch/item-info.sender.js (chunked, ≤0x400 per frame).
+        require('./item-info.sender').sendItemInfo(client, items, accountId, 'account');
 
         // SN_WEAR_INFO (0x210113) — DLL: WearInfo_SN
         // Header: [u8 success][u8 count][u32 pilotSerialIndex][u32 pilotItemIndex][u32 selectedMechType]
