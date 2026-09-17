@@ -16,12 +16,15 @@
 - [SRC] 客戶端 `SlotChangeRecv` 在 `0x00240108` 成功後重新呼叫
   `SlotUpdate`、`PreviewLoad`、`InvenUpdate`、`ShopUpdate`；所以回應要保留
   現有 7 dword loadout payload，而不是只回 6-byte generic SA。
-- [DLL] `docs/client-dispatch-map.md` 將 `0x00240108` 命名為
-  `ZDispatchHangar::Slot_Change_SA`；現有程式實測封包 body 為 0x22 bytes，
-  前 6 bytes 是標準 status/result，後 0x1c bytes 是七個 dword。
-- ⬜ 本工作區沒有 `ZNetwork.dll`，因此無法可靠補寫 `Hangar_Slot_Change`
-  native 的完整組語位址；不捏造位址。既有 DLL 證據只確認 server handler
-  名稱與 `0x00240108` 的 dispatcher 入口。
+- [DLL] `Slot_Change_CQ` export thunk `0x10701429` 跳到本體
+  `0x107e0c50`。`0x107e0cbb`--`0x107e0d30` 把腳本傳入的 slot 0..6 映成
+  線上值 1..7（其他值映成 8）；`0x107e0d3c`--`0x107e0d7c` 依序把六個
+  參數寫到 frame，`0x107e0dbb` 寫入 SA opcode `0x00240108` 後送出 CQ。
+- [DLL] `Slot_Change_SA` export thunk `0x10705d30` 跳到本體
+  `0x107dde80`。成功條件在 `0x107ddee5`--`0x107ddefd` 檢查
+  EventMessage／ErrorMessage 都為 0；`0x107ddf03`--`0x107ddfe9` 從 payload
+  的 slot 與後續六個 dword 逐一更新本地槽位。因此完整 body 是 6-byte
+  `FNETWORK_EVENT_INFO` 加 0x1c-byte payload，共 0x22 bytes。
 
 ## 實作決定
 
@@ -40,3 +43,28 @@
   實測：換主武器、重登、進 PvE。
 - [TEST] 先完成 `node --check` 與 diff review，再請操作者重啟 tmux `server`。
 - 協作：本回合沒有可用的 `spawn_agent` 工具，未宣稱有子 agent 審查。
+
+## 高階靜態審查（Codex Sol）
+
+- [DLL] 已依上列位址核對 CQ／SA 欄位；腳本 `SerialIndex` 與 native 的參數
+  搬移相符。靜態格式審查通過，行為仍須實測後才能標 ✅。
+- [TEST] `node --check database/db.js`、`node --check dispatch/room.dispatch.js`
+  與 `git diff --check 6f8a564..1af0ffd` 通過。
+- [TEST] diff 僅改 `database/db.js`、`dispatch/room.dispatch.js` 與本篇紀錄；
+  未改 ItemInfo 分包、`PVE_SLOT_SELECT_FLOW`、Grade_Info_SN 或 Death_SN 戰績。
+- [TEST] 沒有 schema 變更；沿用既有 `items.equipped/mech_type/part_slot`，因此
+  不需要資料庫 migration 腳本。開關在提交內容中仍預設 `disabled`。
+
+## 實測 U1：被商店／庫存前置條件阻塞
+
+- [TEST] 暫時把 `EQUIP_SAVE_MODE` 改為 `enabled` 並重啟伺服器；測試結束後
+  已恢復 `disabled`。
+- [LOG] `logs/session-20260917-220519.jsonl`：購買 `41200101` 時收到
+  `0x00240201`，伺服器成功新增 account 1 的 items row，庫存由 34 增至 35；
+  該物品是 part 4（推進器），不是主武器。
+- [OBS][SHOT] 操作者重新登入後仍看不到新物品；主武器頁右側商店清單完全
+  空白，左下庫存只有目前裝備的一把，見 `shots/shot-221153.png`。
+- ⬜ 因客戶端沒有第二件可選裝備，無法觸發帶不同 serial 的
+  `Slot_Change_CQ 0x00240107`，所以「換裝顯示／重登保留／PvE 武器」三項
+  尚未測到。G6 靜態審查通過，但不能開預設；需先另案修正既有
+  `ShopList_SN`／`Packege_Item_SN` 顯示路徑，再續測 G6。

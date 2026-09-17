@@ -12,7 +12,7 @@ Claude 額度用盡，操作者指定 **Codex Sol（`codex -m gpt-5.6-sol`，高
 接手順序：讀本頁下方快照 → `docs/state.md` → `docs/journal/INDEX.md` 最後 25 行 → `docs/backlog.md`（G6、G7）。
 
 待辦（依序）：
-1. **審查 G6（Codex Luna，已提交）**：`flash-wip` 上的 `17b9cc8 wip: add opt-in hangar equipment persistence`、`1af0ffd docs: clarify hangar slot payload fields`（`flash-wip` 已合併 `reverse-work`）。核對：Slot_Change_CQ／SA 欄位是否有組語位址佐證、開關是否預設關閉、DB 變更是否寫成腳本、是否動到已實測通過的行為（ItemInfo 分包、`PVE_SLOT_SELECT_FLOW`、Grade_Info_SN、Death_SN 戰績）。若尚未實測，安排操作者在開關打開時測：換主武器 → 機庫顯示 → 重登保留 → PvE 出場武器。通過後把開關預設打開、合併回 `reverse-work`、更新 `state.md` 第 4 節。
+1. **G6 高階靜態審查已通過，實測阻塞**：Codex Sol 已核對 `Slot_Change_CQ` 本體 `0x107e0c50` 與 `Slot_Change_SA` 本體 `0x107dde80`，開關維持預設關閉，也未碰 ItemInfo 分包、`PVE_SLOT_SELECT_FLOW`、Grade_Info_SN、Death_SN 戰績。測試 U1 發現主武器商店清單空白、購入物重登後仍不顯示，客戶端沒有第二件裝備可選，故無法觸發不同 serial 的 CQ。先另案修正 `ShopList_SN`／`Packege_Item_SN` 顯示路徑，再續測：換主武器 → 機庫顯示 → 重登保留 → PvE 出場武器；通過後才開預設、合併回 `reverse-work`、更新 `state.md` 第 4 節。證據見 `2026-09-17-23-g6-slot-change-save.md`。
 2. **G7（Gemini，進行中）**：在獨立 worktree `/home/lucas/mro-reverse-g7`（分支 `flash-wip-g7`）。完成後同樣審查、合併。**G6、G7 的實測不能同時跑**（伺服器、客戶端各一套）。
 3. 之後候選：結算細節（EndGame_SN 隊伍分數、exp／point 真實算法、遊戲結束後取消殘留重生）、`Assist_SN` 照 G1。寫成 backlog 契約交給中階。
 
