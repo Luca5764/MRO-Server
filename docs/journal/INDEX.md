@@ -89,3 +89,4 @@
 | 2026-09-17 | `2026-09-17-21-battle-score-totals.md` | `0x00230124` | ✅ [DLL]／[OBS] S1 通過（有分數） | Game_User_Battle_Set 是直接指定 Kill/Death/Exp/Point，伺服器原本送 0 會清空戰績；改成送累計值（exp/point 暫定每殺 10）。 |
 | 2026-09-17 | `2026-09-17-22-pve-mech-slot-selection.md` | `0x00230101`、`0x00230102`、`0x00240111` | ✅ Claude 已審＋實作，測試 T2／T3 通過 | G5：確認 PvE `ZSlotSelectPage` 關閉後經 `Game_Slot` 送 `ChangeSlot_CN` 的 body 與時機；對照 hangar default-slot 路徑、目前 `Game_User_SN` 狀態缺口與跳過選擇頁的實測原因。 |
 | 2026-09-17 | `2026-09-17-23-g6-slot-change-save.md` | `0x00240107`、`0x00240108` | 🟡 高階靜態審查通過／實測阻塞／預設關閉 | G6：CQ／SA 欄位已由 DLL 位址核對；商店清單空白且購入物不顯示，客戶端沒有第二件裝備可選，待先修 ShopList／Packege_Item 顯示路徑。 |
+| 2026-09-17 | `2026-09-17-23-game-chat-echo-g7.md` | `0x00220507`、`0x00220509` | ✅ [DLL][LOG][OBS] V1 通過 | G7：遊戲內隊伍與全體聊天以相同 opcode／258-byte body 回送，兩頻道均在 HUD 顯示；高階審查修正 disabled fallback 後，預設 enabled。 |

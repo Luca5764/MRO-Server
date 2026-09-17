@@ -5,21 +5,18 @@
 
 ---
 
-## ⚡ 高階主力交接：Claude → Codex Sol（2026-09-17 21:55）
+## ⚡ 高階主力交接：Codex Sol（2026-09-17 22:30）
 
-Claude 額度用盡，操作者指定 **Codex Sol（`codex -m gpt-5.6-sol`，高階）接手高階主力**，依 `AGENTS.md` 權限表行事（可標 ✅、改 `state.md`、改預設行為、審查中階）。Sol 額度有限，**分析與實作盡量交給中階（Codex Luna、Gemini），Sol 只做審查、裁決、合併、標 ✅**。
-
-接手順序：讀本頁下方快照 → `docs/state.md` → `docs/journal/INDEX.md` 最後 25 行 → `docs/backlog.md`（G6、G7）。
-
-待辦（依序）：
-1. **G6 高階靜態審查已通過，實測阻塞**：Codex Sol 已核對 `Slot_Change_CQ` 本體 `0x107e0c50` 與 `Slot_Change_SA` 本體 `0x107dde80`，開關維持預設關閉，也未碰 ItemInfo 分包、`PVE_SLOT_SELECT_FLOW`、Grade_Info_SN、Death_SN 戰績。測試 U1 發現主武器商店清單空白、購入物重登後仍不顯示，客戶端沒有第二件裝備可選，故無法觸發不同 serial 的 CQ。先另案修正 `ShopList_SN`／`Packege_Item_SN` 顯示路徑，再續測：換主武器 → 機庫顯示 → 重登保留 → PvE 出場武器；通過後才開預設、合併回 `reverse-work`、更新 `state.md` 第 4 節。證據見 `2026-09-17-23-g6-slot-change-save.md`。
-2. **G7（Gemini，進行中）**：在獨立 worktree `/home/lucas/mro-reverse-g7`（分支 `flash-wip-g7`）。完成後同樣審查、合併。**G6、G7 的實測不能同時跑**（伺服器、客戶端各一套）。
-3. 之後候選：結算細節（EndGame_SN 隊伍分數、exp／point 真實算法、遊戲結束後取消殘留重生）、`Assist_SN` 照 G1。寫成 backlog 契約交給中階。
-
-注意：
-- 主目錄 `/home/lucas/mro-reverse` 目前是 `flash-wip`（Codex 在用）。tmux `server` 的伺服器若重啟，會跑工作目錄當下分支的程式。
-- 解密後的客戶端原始碼在 `~/mro-decrypted/src`（不在 repo）；工具說明見快照第一列。
-- commit 最後一行 `Agent: codex-sol (高階)`；中階為 `Agent: codex (中階)`、`Agent: gemini (中階)`。
+- **G7 已完成並合併 `reverse-work`**：Gemini 實作，高階審查修正 disabled
+  fallback；Team／All `0x00220507`／`0x00220509` 均實測在 HUD 顯示，預設
+  已開啟。證據見 `2026-09-17-23-game-chat-echo-g7.md`。
+- **G6 靜態審查通過、實測阻塞**：CQ 本體 `0x107e0c50`、SA 本體
+  `0x107dde80` 已核對，開關維持預設關閉。主武器商店清單空白、購入物重登
+  後仍不顯示，客戶端沒有第二件裝備可選。先另案修正 `ShopList_SN`／
+  `Packege_Item_SN` 顯示路徑，再續測換裝、重登與 PvE 武器。G6 審查 commit
+  在 `flash-wip` 的 `6180060`，尚未合併 G6 程式到主線。
+- `server` tmux 目前跑 G7 worktree；後續工作前切回
+  `/home/lucas/mro-reverse/Metal Rage Online Server` 的 `reverse-work`。
 
 ---
 
