@@ -28,3 +28,18 @@
 ## 下一步
 
 不改程式，請操作者觀察武器狀態機有沒有在動：按 R 重新裝填、按 1 重選主武器後再按左鍵、按右鍵看有沒有瞄準、按 2 看能不能換到副武器。
+
+## 測試 A4 結果（12:51–12:53，同一個 session 紀錄）
+
+- ✅ [LOG] 操作者用隊伍聊天 `0x00220507` 當 marker（Big5）：「接下來我會按下R」→「我剛剛按了10次R」→「接下來我會按下1」→「不能開火」→「右鍵沒反應」→「234都沒反應」→「space沒反應」→「F沒反應 接下來關掉遊戲」。（原文「又見」是「右鍵」的選字錯誤。）
+- ✅ [LOG] 這段時間 client→server 除了聊天和 `0x00020083`，沒有任何其他封包。
+- ✅ [LOG] `MetalRage.log` 在第二個 `START MATCH` 之後只多了 9 行 `ScriptLog: RadioChat_Sel 0`，沒有 weapon、reload、booster 相關訊息。9 行對應哪幾個按鍵不明（log 沒有時間戳）。
+- [OBS] 所以：R、1、左鍵、右鍵、2／3／4、Space、F **全部沒反應**；只有 WASD、準心、聊天可以用。
+- 🟡 [GUESS] Space（跳）不是武器動作，也沒反應，所以問題比「武器狀態 +0x41c」更上層，比較像 controller 或 Pawn 還沒進入可以行動的狀態。聊天是 HUD 或 console 層的輸入，不能拿來排除這一點。先前 05 篇的「不是整個輸入被擋住」要改成「只有移動、視角、聊天能用」。
+
+## Game_Play 旗標（排除一個嫌疑）
+
+- ✅ [DLL] `UZNetwork_DJ::Game_Play_Check`（thunk `0x10703832` → `0x1071a730`）回傳 `[this+0xfe8] & 1`；`Game_Play_Start`（thunk `0x10704700` → `0x10734050`）在 `0x1073406c` 把這個位元設成 1。
+- ✅ [DLL] `Game_Play_Start` 有三個呼叫點：`0x107d50ac`（在 `ZDispatchGame::Game_Info_SN` 內）、`0x107d5b32`（在 `ZDispatchGame::BeginRound_SN` `0x107d5ad0` 內）、`0x107f0a87`（在 `ZDispatchWaiting::Game_Info_SN` 內）。decompile 存在 `docs/research/2026-09-17-fire-gate/BeginRound_SN.c`。
+- ✅ [DLL] `BeginRound_SN`（`0x107d5ad0`）只檢查 `[this+4]`，也就是 `ZDispatchGame::Check`（`0x107d4bf0`）在場景 6 設成 1 的旗標，不讀 body，接著就呼叫 `Game_Play_Start`。
+- 🟡 [LOG] 伺服器在 04:51:46 回應客戶端的 `0x00230151`，送出了 `BeginRound_SN 0x00230152`；當時客戶端已在戰鬥中，所以 `Game_Play_Start` 應該有執行。腳本有沒有用 `Game_Play_Check` 決定能不能行動，讀不到。
