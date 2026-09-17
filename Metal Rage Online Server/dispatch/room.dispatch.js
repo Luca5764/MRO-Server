@@ -620,7 +620,7 @@ class ZRoomDispatch
             // ==========================================
             // Hangar slot change request.
             // The client CQ sends 7 dwords:
-            //   slot, mech, main, left, right, equipment, skin.
+            //   slot, body/mech, main, left, right, equipment, skin.
             // ZDispatchHangar::Slot_Change_SA expects the normal SA header
             // before the same 7 dwords: u16 origin + u32 result + payload.
             // ==========================================
