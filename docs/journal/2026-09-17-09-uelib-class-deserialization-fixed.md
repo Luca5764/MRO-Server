@@ -47,3 +47,12 @@
   - `dotnet run --project tools/uetool -- ~/mro-decrypted/Engine.u get Engine.Console ConsoleHotKey`：精確取得 `ConsoleHotKey=135`。
   - `dotnet run --project tools/uetool -- ~/mro-decrypted/ZBase.u decompile ZBase.DefaultPlayerController`：成功解出全部自訂機體與控制參數（`CheatClass=Class'ZBase.DefaultCheet'`、`PawnClass=Class'ZBase.DefaultMech'`…）。
 - 產出 patch：`tools/uetool/uelib-metalrage.patch`，並於 `Program.cs` 註解中加入 `git apply` 指引。
+
+## 審查（Claude 高階，同日）
+
+- ✅ [DLL] `Core.dll` `0x1011e865`：`cmp ..., 0x1a` / `jl 0x1011e876`，確實是「LicenseeVer >= 26 才讀 StructFlags」的分支，和本篇描述一致。
+- ✅ [TEST] 用 patch 過的 UELib 重新編譯 `tools/uetool`（Release）後重測：`Engine.u get Console ConsoleHotKey` 輸出 `ConsoleHotKey=135`；`ZBase.u decompile DefaultPlayerController` 沒有 `Bad expression`／exception，能讀出 defaultproperties。
+- 注意：`tools/uetool/bin` 要重新 `dotnet build -c Release`，才會拿到新的 `Eliot.UELib.dll`（舊的 bin 會留著舊版 DLL，出現和 07 篇一樣的錯誤）。
+- 補充：`ConsoleHotKey=135`＝`0x87`，在 UE2 的 `EInputKey` 中是 `IK_F24`，一般鍵盤按不到，所以不能靠 console 做執行期觀察。
+- 審查結論：本篇的「待審」解除，結論成立。`class decompile` 目前輸出 class 宣告與 defaultproperties；函式本體是否完整反編譯尚未驗證。
+- 流程：本篇 commit 在 `flash-wip`，審查後 fast-forward 合併回 `reverse-work`。
