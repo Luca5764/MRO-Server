@@ -1,0 +1,28 @@
+thunk -> 0x107c4f90
+type register: eax
+
+handler                            opcode(s)
+------------------------------------------------------------
+ZDispatchAccount::Login_Account_SA 0x00110102
+ZDispatchAccount::Login_GameHi_SA  0x00110114
+ZDispatchAccount::Login_Netmarble_SA 0x00110123
+ZDispatchAccount::Login_Again_SA   0x00110125
+ZDispatchAccount::Wait_SN          0x00110131
+ZDispatchAccount::Login_GameYarou_SA 0x00110143
+ZDispatchAccount::Login_Wasabii_SA 0x00110152
+ZDispatchAccount::Login_NexonJapan_SA 0x00110155
+ZDispatchAccount::Login_Member_SA  0x001101d2
+ZDispatchAccount::DefaultInfo_SN   0x00210101
+ZDispatchAccount::PlayInfo_SN      0x00210102
+ZDispatchAccount::RecordInfo_SN    0x00210103
+ZDispatchAccount::MechLevel_SN     0x00210104
+ZDispatchAccount::Rank_SN          0x00210105
+ZDispatchAccount::ItemInfo_SN      0x00210111
+ZDispatchAccount::ExpirationItem_SN 0x00210112
+ZDispatchAccount::WearInfo_SN      0x00210113
+ZDispatchAccount::MapInfo_SN       0x00210115
+ZDispatchAccount::Complete_SN      0x00210121
+ZDispatchAccount::Create_SA        0x00210202
+ZDispatchAccount::LicenseInfo_SN   0x00260101
+
+21 handler(s)

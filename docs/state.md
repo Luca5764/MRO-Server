@@ -79,7 +79,7 @@
 | 項目 | 狀態 | 依據 |
 |---|---|---|
 | `ItemInfo_SN 0x00210111`：header 6 bytes，每筆 35 bytes；**單包最多 28 筆** | ✅ [DLL] | `ZDispatchAccount::ItemInfo_SN 0x107095c0`；`journal/2026-09-17-01-review-iteminfo-stall-root-cause.md` |
-| ItemInfo 分包送出會不會累加 | ⬜ 未查（handler 本身沒有清空動作） | 同上 |
+| ItemInfo 分包送出會不會累加 | ✅ [DLL] 有效物品不同實例 key 追加，同 key 替換單筆；斷線完成／初始化會清庫，未實測分包 | `0x10732616`、`0x1073262d`、`0x1073263e`；`journal/2026-09-17-03-iteminfo-accumulation.md`（待 Claude 審查） |
 | `WearInfo_SN 0x00210113`：每組是 `[itemIndex, uniqueKey]`，第二個值用來查庫存 | ✅ [DLL][TEST] 機庫點選後正常顯示 | `journal/2026-09-16-27-wearinfo-slot-key-misalignment-fixed.md` |
 | `Game_User_SN 0x00222112`：記錄 0x1E5 bytes；socket 從 `rec+0x6D` 起，main／left／right／booster／skin 各 u32 | ✅ [DLL] | `journal/2026-09-16-21-game-user-sn-record-layout-confirmed.md` |
 | `team=255` 的原因：玩家表只由 `Game_User_SN` 填入；已修成 team=0 | ✅ [DLL][LOG] | `journal/2026-09-16-19-team-255-root-cause-chain.md` |
