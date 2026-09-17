@@ -1,0 +1,72 @@
+================================================================================
+UZNetwork_DJ::Game_Action_Death (0x1072e120) & UZNetwork_DJ::Game_User_Battle_Set (0x1072d720)
+================================================================================
+
+[UZNetwork_DJ::Game_User_Battle_Set(this, userIndex, kills, deaths, exp, point) @ 0x1072d720]
+Arguments:
+  [esp + 0x0c]: userIndex
+  [esp + 0x14]: kills
+  [esp + 0x18]: deaths
+  [esp + 0x1c]: exp
+  [esp + 0x20]: point
+
+Disassembly:
+  0x1072d720  push esi
+  0x1072d721  mov esi, ecx                        ; esi = UZNetwork_DJ instance
+  0x1072d723  mov eax, dword ptr [esi + 0x1038]   ; player count
+  0x1072d729  push edi
+  0x1072d72a  xor edi, edi
+  0x1072d72c  test eax, eax
+  0x1072d72e  jle 0x1072d804
+  0x1072d734  mov ecx, dword ptr [esi + 0x1034]   ; player table
+  0x1072d73a  mov edx, dword ptr [esp + 0xc]      ; userIndex
+  0x1072d73e  mov eax, ecx
+  0x1072d740  push ebx
+  0x1072d741  cmp dword ptr [eax], edx            ; search for record with UserIndex == userIndex
+  0x1072d743  je 0x1072d75a
+  0x1072d745  mov ebx, dword ptr [esi + 0x1038]
+  0x1072d74b  inc edi
+  0x1072d74c  add eax, 0x80                       ; stride = 0x80 (128 bytes)
+  0x1072d751  cmp edi, ebx
+  0x1072d753  jl 0x1072d741
+  0x1072d755  jmp 0x1072d803                      ; NOT FOUND: safely returns without crash
+  0x1072d75a  mov eax, dword ptr [esi + 0xfcc]   ; Game Mode
+  0x1072d760  mov edx, dword ptr [esp + 0x1c]     ; exp
+  0x1072d764  cmp eax, 9                          ; mode == 9?
+  0x1072d767  lea eax, [edx + edx*4]              ; if mode 9, eax = exp * 5
+  0x1072d76a  je 0x1072d76e
+  0x1072d76c  mov eax, edx                        ; if not, eax = exp
+  0x1072d76e  shl edi, 7                          ; edi = index * 128
+  0x1072d771  sub eax, dword ptr [ecx + edi + 0x50] ; Battle score = eax - Mission - Assist
+  0x1072d775  sub eax, dword ptr [ecx + edi + 0x4c]
+  0x1072d779  mov dword ptr [ecx + edi + 0x48], eax ; record->Battle = eax
+  0x1072d77d  mov eax, dword ptr [esi + 0x1034]
+  0x1072d783  mov ecx, dword ptr [esp + 0x14]     ; kills
+  0x1072d787  mov dword ptr [edi + eax + 0x38], ecx ; record->Kills = kills
+  0x1072d78b  mov eax, dword ptr [esi + 0x1034]
+  0x1072d791  mov ecx, dword ptr [esp + 0x18]     ; deaths
+  0x1072d795  mov dword ptr [edi + eax + 0x40], ecx ; record->Deaths = deaths
+  0x1072d799  mov eax, dword ptr [esi + 0x1034]
+  0x1072d79f  mov dword ptr [edi + eax + 0x54], edx ; record->Exp = exp
+  0x1072d7a3  mov ecx, dword ptr [esi + 0x1034]
+  0x1072d7a9  mov edx, dword ptr [esp + 0x20]     ; point
+  0x1072d7ad  mov dword ptr [edi + ecx + 0x5c], edx ; record->Point = point
+
+--------------------------------------------------------------------------------
+[UZNetwork_DJ::Game_Action_Death @ 0x1072e120]
+Arguments:
+  param_2: DeathUserIndex
+  param_3: DeathType
+  param_4: KillUserIndex
+  param_5: KillWeaponIndex
+  param_6: KillWeaponType
+  param_7: CriticalHit
+
+Disassembly highlights:
+  - Iterates player table: increases killer kill count streak (record + 0x3c)
+    and resets victim streak (record + 0x3c = 0).
+  - If GIsClient:
+    Calls APlayerController::eventTreatKillMSG_UJ(this, DeathUserIndex, DeathType,
+      KillUserIndex, KillWeaponIndex, KillWeaponType, CriticalHit, KillCount);
+  - If (this->fac & 1):
+    Calls AGameInfo::eventMissionActionSuccess_BD(..., 2, DeathType, 0);

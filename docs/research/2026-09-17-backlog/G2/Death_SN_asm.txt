@@ -1,0 +1,83 @@
+================================================================================
+ZDispatchGame::Death_SN (0x107db4d0) Full Field & Assembly Analysis
+================================================================================
+
+Total packet frame: 0x10 header + 0x51 body = 0x61 (97 bytes).
+esi points to Format* (packet start). Body begins at esi + 0x10.
+
+[Header & Basic Validation]
+  0x107db4d6  mov al, byte ptr [ebx + 4]          ; Scene 6 check
+  ...
+  0x107db50f  mov esi, dword ptr [esp + 0x34]     ; esi = Format*
+  0x107db513  mov eax, dword ptr [esi + 0x21]     ; [body + 0x11] Kill Weapon (u32 LE)
+  0x107db516  movzx ebp, word ptr [esi + 0x1a]    ; [body + 0x0a] Kill User (u16 LE)
+  0x107db51a  movzx ecx, byte ptr [esi + 0x20]    ; [body + 0x10] Kill Type / WeaponPart (u8)
+  0x107db522  mov al, byte ptr [esi + 0x1f]       ; [body + 0x0f] Critical Hit flag (u8)
+  0x107db529  movzx eax, byte ptr [esi + 0x1e]    ; [body + 0x0e] Death Type wire byte (u8)
+  0x107db535  movzx edi, word ptr [esi + 0x1c]    ; [body + 0x0c] Death User / Victim (u16 LE)
+
+[Log String 0x1082be78]
+"Result : 0x%08X, Death User : %d, Death Type : %d, Kill User : %d, Kill Weapon : %d, Kill Type : %d, Critical : %d"
+Pushed arguments at 0x107db696..0x107db6b8:
+  Result = [esi + 0x12] (body + 0x02, u32 LE)
+  Death User = edi = [esi + 0x1c] (body + 0x0c, u16 LE)
+  Death Type = edx (mapped from [esi + 0x1e], body + 0x0e)
+  Kill User = ebp = [esi + 0x1a] (body + 0x0a, u16 LE)
+  Kill Weapon = [esi + 0x21] (body + 0x11, u32 LE)
+  Kill Type = [esi + 0x20] (body + 0x10, u8)
+  Critical = [esi + 0x1f] != 0 (body + 0x0f, u8 bool)
+
+[Status / Result Validation]
+  0x107db6c6  cmp word ptr [esi + 0x10], 0        ; [body + 0x00] Status (u16 LE) must be 0
+  0x107db6cb  jne 0x107db921                      ; Error branch -> SYNC_FAILED if client
+  0x107db6d1  mov eax, dword ptr [esi + 0x12]     ; [body + 0x02] Result (u32 LE) must be 0
+  0x107db6d4  test eax, eax
+  0x107db6d6  jne 0x107db921                      ; Error branch -> SYNC_FAILED if client
+
+[Team A Score Block (body + 0x15 .. +0x22)]
+  0x107db6e8  movzx ebx, word ptr [esi + 0x25]    ; [body + 0x15] Team ID (u16 LE)
+  0x107db6ec  movzx ebp, word ptr [esi + 0x27]    ; [body + 0x17] Score (u16 LE)
+  0x107db6dc  movzx eax, byte ptr [esi + 0x29]    ; [body + 0x19] Round (u8)
+  0x107db6e0  movzx ecx, byte ptr [esi + 0x2a]    ; [body + 0x1a] Alive (u8)
+  0x107db6e4  movzx edx, word ptr [esi + 0x2b]    ; [body + 0x1b] Try (u16 LE)
+  0x107db6fb  movzx eax, word ptr [esi + 0x2d]    ; [body + 0x1d] Goal (u16 LE)
+  0x107db6f4  mov ecx, dword ptr [esi + 0x2f]     ; [body + 0x1f] Exp (u32 LE)
+  0x107db778  call 0x10706e56                     ; UZNetwork_DJ::Game_Score_Set
+
+[Team B Score Block (body + 0x23 .. +0x30)]
+  0x107db789  movzx ebx, word ptr [esi + 0x33]    ; [body + 0x23] Team ID (u16 LE)
+  0x107db78d  movzx ebp, word ptr [esi + 0x35]    ; [body + 0x25] Score (u16 LE)
+  0x107db77d  movzx eax, byte ptr [esi + 0x37]    ; [body + 0x27] Round (u8)
+  0x107db781  movzx ecx, byte ptr [esi + 0x38]    ; [body + 0x28] Alive (u8)
+  0x107db785  movzx edx, word ptr [esi + 0x39]    ; [body + 0x29] Try (u16 LE)
+  0x107db79c  movzx eax, word ptr [esi + 0x3b]    ; [body + 0x2b] Goal (u16 LE)
+  0x107db795  mov ecx, dword ptr [esi + 0x3d]     ; [body + 0x2d] Exp (u32 LE)
+  0x107db819  call 0x10706e56                     ; UZNetwork_DJ::Game_Score_Set
+
+[Score Update & Local Victim Check]
+  0x107db82b  call 0x1070544d                     ; UZNetwork_DJ::Game_Score_Update()
+  0x107db83e  call 0x107070fe                     ; UZNetwork_DJ::Account_Index_Diff(edi)
+  0x107db859  call 0x10706f91                     ; UZNetwork_DJ::Game_Info_Kill_Set(ebp)
+  0x107db882  call 0x10706d25                     ; Game_Info_Mode_Get() -> if 6/7 state=0 else state=1
+  0x107db8a0  call 0x10709fb1                     ; UZNetwork_DJ::Game_User_State_Set(edi, state)
+
+[Killer Battle Stats (body + 0x31 .. +0x40)]
+  0x107db8af  movzx eax, word ptr [esi + 0x41]    ; [body + 0x31] Kills (u16 LE)
+  0x107db8a8  movzx ecx, word ptr [esi + 0x43]    ; [body + 0x33] Deaths (u16 LE)
+  ; [body + 0x35..0x38] unread
+  0x107db8ac  mov edx, dword ptr [esi + 0x49]     ; [body + 0x39] Exp (u32 LE)
+  0x107db8a5  mov ebx, dword ptr [esi + 0x4d]     ; [body + 0x3d] Point (u32 LE)
+  0x107db8c5  call 0x1070571d                     ; UZNetwork_DJ::Game_User_Battle_Set(ebp, eax, ecx, edx, ebx)
+
+[Victim Battle Stats (body + 0x41 .. +0x50)]
+  0x107db8ce  movzx eax, word ptr [esi + 0x51]    ; [body + 0x41] Kills (u16 LE)
+  0x107db8ca  movzx ecx, word ptr [esi + 0x53]    ; [body + 0x43] Deaths (u16 LE)
+  ; [body + 0x45..0x48] unread
+  0x107db8d2  mov edx, dword ptr [esi + 0x59]     ; [body + 0x49] Exp (u32 LE)
+  0x107db8d5  mov esi, dword ptr [esi + 0x5d]     ; [body + 0x4d] Point (u32 LE)
+  0x107db8ea  call 0x1070571d                     ; UZNetwork_DJ::Game_User_Battle_Set(edi, eax, ecx, edx, esi)
+
+[Kill Event & HUD Notification]
+  0x107db912  call 0x10706807                     ; UZNetwork_DJ::Game_Action_Death
+                                                   ; -> calls PlayerController.eventTreatKillMSG_UJ
+                                                   ;    (DeathUser, DeathType, KillUser, KillWeapon, KillWeaponType, CriticalHit, KillCount)
