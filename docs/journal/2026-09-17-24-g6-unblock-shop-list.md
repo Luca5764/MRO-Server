@@ -98,3 +98,11 @@ record 與 `<= 0x400` frame 限制；`ITEM_INFO_CHUNK=12` 也低於 DLL
 - `node --check` 與 `git diff --check` 已通過。
 - ⬜ 待高階核對 ShopList handler 的 DLL VA／原始 bytes；未將本輪結論標成
   `✅ 已確認`，也未進行實測。
+
+## 審查（Claude 高階，2026-09-18）：❌ IsShow 偏移假設不成立
+
+- ✅ [DLL] `ZDispatchHangar::ShopList_SN`（thunk `0x10702e5f` → `0x107e2890`）與 `CashShopList_SN`（thunk `0x107026b2` → `0x107e2ac0`）結構相同：每筆 `push 0x14` 複製 20 bytes 到堆疊（`0x107e2934`／`0x107e2b64`），log 字串 `0x10832a48`／`0x10832b98`：`ItemIndex : %d, DisPrice : %d, Price : %d, IsShow : %d, IsNew : %d, IsHot : %d`。
+- ✅ [DLL] `CashShopList_SN` 組語 `0x107e2baa`–`0x107e2bd2`（ShopList 在 `0x107e297a`–`0x107e29a2` 相同）：以 entry 起點為 +0 計算，**IsShow = +0x0D**、IsNew = +0x0E、IsHot = +0x0F；Price +0x08、DisPrice +0x04、ItemIndex +0x00。`0x107e2c08`–`0x107e2c2e` 傳給 `Item_CashShopList_Add` 的參數依序是 ItemIndex、DisPrice、Price、+0x0D、+0x0E、+0x0F、+0x10（u8）、以及 +0x11 起與 `"P"` 比較的結果；**+0x0C 沒有被讀**。
+- 所以伺服器**舊的**寫法（+0x0C 寫 0、+0x0D IsShow、+0x0E IsNew、+0x0F IsHot）與 DLL 相符。本篇依 `ZNetwork_DJ.uc` 的 script struct 推出的「整體右移一個 byte」不成立：script struct 的欄位順序不等於 wire 格式，bool 在 UnrealScript 裡也不是逐 byte 存放。**`SHOP_UNBLOCK_MODE` 的 ShopList 欄位修正不要打開。**
+- 商店空白的原因仍待查。🟡 候選：`Item_List_Check(ItemIndex)`（`0x107e2b89` 呼叫，失敗時整筆丟掉並記 log）、`ListLoad()` 的 `HighGroup`／`ItemSubordinateCheck` 篩選。
+- 購買後補送 ItemInfo（同一個開關的第二部分）方向合理，但要跟 ShopList 修正拆成獨立開關再測。
