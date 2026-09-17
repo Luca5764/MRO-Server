@@ -72,3 +72,4 @@
 | 2026-09-17 | `2026-09-17-05-test-a-no-effect.md` | `0x00020083` | ✅ [LOG]／[SHOT] | 測試 A 第一輪：開火、副武器、推進器都沒送出新封包，彈藥沒減少（文末更正：戰鬥中聊天有送出 `0x00220507`／`0x00220509`／`0x00360601`，所以不是整個輸入被擋）。 |
 | 2026-09-17 | `2026-09-17-06-fire-gate-weapon-state.md` | — | ✅ [DLL] 閘門；🟡 原因 | 開火要 `AWeapon+0x41c`=4/0x11（`0x10485563`）；原生碼只在彈藥 9↔4 切換，初始 ready 由讀不到的腳本設定；右鍵是瞄準，副武器是 2／3／4。 |
 | 2026-09-17 | `2026-09-17-06-fire-gate-weapon-state.md`（追加 A4） | `0x00230152` | ✅ [LOG]／[DLL] | A4：R、1、左右鍵、2／3／4、Space、F 全部沒反應，只有移動、視角、聊天可用；`BeginRound_SN` 在場景 6 無條件呼叫 `Game_Play_Start`。 |
+| 2026-09-17 | `2026-09-17-07-tzp-script-source-decrypted.md` | — | ✅ [DLL]／[TEST] | `.tzp` 以 Core.dll `0x101622d0` 的 XOR 表離線解密，內含 UnrealScript 原始碼（1539 class，不 commit）；開火與跳的閘門候選：`bSetWepComplete`、`bNoInputKey_JW`。 |
