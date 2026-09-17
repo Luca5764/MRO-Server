@@ -25,3 +25,12 @@
 
 - 建房時記下 `client.playRound_ = body[6]`，`session.js` 跨重連保存；`sendGameInfoSn` 在 `+0x15` 改送 `playRound_`（原本是 0）。其他欄位不變。
 - 伺服器 18:50 重啟（`session-20260917-185036.jsonl`）。待測：`docs/next-test.md` 測試 N。
+
+## 測試 N 結果（19:18–19:21，`session-20260917-185036.jsonl`）
+
+- ✅ [SHOT] `shots/testN-spawn.png`：畫面出現 **`ROUND 1`**、`Remaining core durability: 30%`、`RESPAWN 1 / KILL 7`、`SP 0135`、攻擊力／防禦力 LV 1。✅ [OBS] 操作者：「生怪了」，但打不過。
+- ✅ **結論：Round 送 0 就是 PvE 回合、AI、任務目標沒有啟動的原因；改送建房的 PlayRound（5）後，PvE 開始運作。**
+- [LOG] 戰鬥中客戶端新送出的封包：
+  - `0x00230123`（伺服器當成 Death CN 處理）×9：`01000000 0b...`（attacker=1 我、victim=0、type 0x0b，推測是我擊殺 AI）、`00000100 03...`／`...02...`（attacker=0、victim=1，我被打死）。伺服器對**每一筆**都回 `Death_SN 0x00230124`，而且 5 秒後送 `Respawn_SN 0x00230104`；**AI 被擊殺時也送了 `Respawn_SN`（userIndex=0）**，這很可能不對。
+  - `0x00230121` ×8，7 bytes：`0000 0100 04 01 xx`，最後一個 byte 依序是 0x50→0x14→0x00、0x50→0x3c→0x28→0x14→0x00，**每次降到 0 之後就出現我的死亡**，推測是本機玩家 HP／耐久的回報（🟡）。伺服器回的是 16 bytes 空的 `0x00230122`（客戶端名稱 `Assist_SN`），可能不對。
+- ⬜ 打不過的原因還沒判斷：可能是原廠設計（單人、LV1、初始機體），也可能是伺服器對上面兩個封包的錯誤回應造成的副作用。下一步先查 DLL，確認 `0x00230121`／`0x00230123` 的正確 CN 名稱與 SN 回應格式，再決定要不要改。
