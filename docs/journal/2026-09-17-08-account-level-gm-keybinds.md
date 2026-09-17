@@ -1,5 +1,7 @@
 # 按鍵沒反應的根因候選：帳號權限 4 讓客戶端套用 GM／觀戰按鍵（2026-09-17）
 
+> **已被 `2026-09-17-11-grade-info-sn-root-cause.md` 更正：** 本篇的「帳號權限」其實是 `DefaultInfo_SN` 的 UserType 欄位；真正的權限來自 `Grade_Info_SN 0x00510101`。
+
 原始碼來自 `~/mro-decrypted/src`（見 07 篇，不 commit）。以下 [SRC] 都是解密後的腳本原始碼。
 
 ## 證據鏈

@@ -204,7 +204,7 @@ class ZCommunityDispatch
         // Step 2: SN_GRADE_INFO
         {
             const [msg, respBody] = getExactMessageBuffer(0x00510101, 4);
-            respBody.writeUInt32LE(11, 0);
+            respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
             client.send(msg);
         }
 

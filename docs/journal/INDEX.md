@@ -73,6 +73,7 @@
 | 2026-09-17 | `2026-09-17-06-fire-gate-weapon-state.md` | — | ✅ [DLL] 閘門；🟡 原因 | 開火要 `AWeapon+0x41c`=4/0x11（`0x10485563`）；原生碼只在彈藥 9↔4 切換，初始 ready 由讀不到的腳本設定；右鍵是瞄準，副武器是 2／3／4。 |
 | 2026-09-17 | `2026-09-17-06-fire-gate-weapon-state.md`（追加 A4） | `0x00230152` | ✅ [LOG]／[DLL] | A4：R、1、左右鍵、2／3／4、Space、F 全部沒反應，只有移動、視角、聊天可用；`BeginRound_SN` 在場景 6 無條件呼叫 `Game_Play_Start`。 |
 | 2026-09-17 | `2026-09-17-07-tzp-script-source-decrypted.md` | — | ✅ [DLL]／[TEST] | `.tzp` 以 Core.dll `0x101622d0` 的 XOR 表離線解密，內含 UnrealScript 原始碼（1539 class，不 commit）；開火與跳的閘門候選：`bSetWepComplete`、`bNoInputKey_JW`。 |
-| 2026-09-17 | `2026-09-17-08-account-level-gm-keybinds.md` | `0x00210101` | ✅ [SRC]／[DLL]；待測 | 帳號權限 ≥1 會讓 `LevelInfo` 套用 `ApplyGMControl`（沒有 Fire，左右鍵與 Space 變成切換觀戰視角）；`lucas` 權限改成 0 待測試 C。 |
+| 2026-09-17 | `2026-09-17-08-account-level-gm-keybinds.md` | `0x00210101` | ✅ [SRC]／[DLL]；待測 |（已被 2026-09-17-11-grade-info-sn-root-cause.md 更正） 帳號權限 ≥1 會讓 `LevelInfo` 套用 `ApplyGMControl`（沒有 Fire，左右鍵與 Space 變成切換觀戰視角）；`lucas` 權限改成 0 待測試 C。 |
 | 2026-09-17 | `2026-09-17-09-uelib-class-deserialization-fixed.md` | — | ✅ [DLL]／[TEST]（Claude 已審） | UELib 無法讀取 class 物件根因修復：MRO v134/29 未被識別為 UE2_5 世代導致 CppText 多讀與 StructFlags 漏讀；補入 GameBuild.MetalRage 後 class defaultproperties 與屬性全部可讀。 |
 | 2026-09-17 | `2026-09-17-10-sol-review-input-failure.md` | — | ✅ 審查（Sol 高階）＋ Claude 抽查＋[OBS] 測試 F | 能用的鍵在 GM 和一般按鍵表都一樣；測試 F：PvE 內按鍵設定頁按儲存（重跑 ApplyControl）後全部按鍵恢復，確認是開局時按鍵表沒套上；`0x00221221`／`0x00221222`／`0x00221211` 格式。 |
+| 2026-09-17 | `2026-09-17-11-grade-info-sn-root-cause.md` | `0x00510101`、`0x00210101` | ✅ [DLL]／[OBS]；待測 M | 按鍵失效根因：伺服器送 `Grade_Info_SN`=11 → 客戶端權限 4（開發者）→ PvE 開局套用 GM 按鍵表；`DefaultInfo_SN` 那個欄位其實是 UserType（更正 08 篇）。改成送 0。 |

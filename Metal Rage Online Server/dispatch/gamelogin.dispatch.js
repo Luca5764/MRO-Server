@@ -13,7 +13,7 @@ const SA_GAME_LOGIN = 0x00110125;
 const SN_DEFAULT_INFO  = 0x00210101;
 const SN_RECORD_INFO   = 0x00210103;
 const SN_MECH_LEVEL    = 0x00210104;
-const SN_GRADE_INFO    = 0x00510101;   // ZDispatchCommunity::Grade_Info_SN → Account_Grade_Set → nMedalLevel
+const SN_GRADE_INFO    = 0x00510101;   // ZDispatchCommunity::Grade_Info_SN → Account_Grade_Set → account grade (0 normal … 4 dev)
 const SN_WEAR_INFO     = 0x00210113;   // DLL: WearInfo_SN (0x210112 = ExpirationItem_SN)
 const SN_COMPLETE      = 0x00210121;
 const SA_LOBBY_ENTER   = 0x00230112;
@@ -149,10 +149,10 @@ class ZGameLoginDispatch
                     client.send(msg);
                 }
 
-                // SN_GRADE_INFO (value=11 → grade 1)
+                // SN_GRADE_INFO: account grade (m_MyAccountLevel); 0 = normal player
                 {
                     const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-                    respBody.writeUInt32LE(11, 0);
+                    respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
                     client.send(msg);
                 }
 
@@ -309,10 +309,10 @@ class ZGameLoginDispatch
                     client.send(msg);
                 }
 
-                // SN_GRADE_INFO (value=11 → grade 1)
+                // SN_GRADE_INFO: account grade (m_MyAccountLevel); 0 = normal player
                 {
                     const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-                    respBody.writeUInt32LE(11, 0);
+                    respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
                     client.send(msg);
                 }
 
@@ -385,10 +385,10 @@ class ZGameLoginDispatch
                 respBody.writeUint32LE(1, 0);
                 client.send(msg);
             }
-            // SN_GRADE_INFO (value=11 → grade 1)
+            // SN_GRADE_INFO: account grade (m_MyAccountLevel); 0 = normal player
             {
                 const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-                respBody.writeUInt32LE(11, 0);
+                respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
                 client.send(msg);
             }
             {
@@ -434,7 +434,7 @@ class ZGameLoginDispatch
 
         {
             const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-            respBody.writeUInt32LE(11, 0);
+            respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
             client.send(msg);
             console.log(`[ZGameLoginDispatch] >> Sent SN_GRADE_INFO: value=11 (grade=1)`);
         }

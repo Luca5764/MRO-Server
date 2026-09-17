@@ -17,7 +17,7 @@ const SA_CREATE = 0x210202;
 const SN_WAIT = 0x110131;
 const SN_MAP_INFO = 0x210115;
 const SN_LICENSE_INFO = 0x260101;
-const SN_GRADE_INFO = 0x00510101;   // ZDispatchCommunity::Grade_Info_SN → calls Account_Grade_Set → sets nMedalLevel
+const SN_GRADE_INFO = 0x00510101;   // ZDispatchCommunity::Grade_Info_SN → calls Account_Grade_Set → account grade (0 normal … 4 dev)
 
 const SN_DEFAULT_INFO = 0x210101;
 const SN_PLAY_INFO = 0x210102;
@@ -245,7 +245,7 @@ class ZAccountDispatch
 
                 {
                     const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-                    respBody.writeUInt32LE(11, 0);
+                    respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
                     client.send(msg);
                 }
 
@@ -366,7 +366,7 @@ class ZAccountDispatch
 
                 {
                     const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-                    respBody.writeUInt32LE(11, 0);
+                    respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
                     client.send(msg);
                 }
 
@@ -515,7 +515,7 @@ class ZAccountDispatch
         // value 11 → grade 1 (lowest valid tier).
         {
             const [msg, body] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-            body.writeUInt32LE(11, 0);
+            body.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
             client.send(msg);
             console.log(`[ZDispatchAccount] >> Sent SN_GRADE_INFO: value=11 (grade=1)`);
         }
