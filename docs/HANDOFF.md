@@ -5,6 +5,24 @@
 
 ---
 
+## ⚡ 高階主力交接：Claude → Codex Sol（2026-09-17 21:55）
+
+Claude 額度用盡，操作者指定 **Codex Sol（`codex -m gpt-5.6-sol`，高階）接手高階主力**，依 `AGENTS.md` 權限表行事（可標 ✅、改 `state.md`、改預設行為、審查中階）。Sol 額度有限，**分析與實作盡量交給中階（Codex Luna、Gemini），Sol 只做審查、裁決、合併、標 ✅**。
+
+接手順序：讀本頁下方快照 → `docs/state.md` → `docs/journal/INDEX.md` 最後 25 行 → `docs/backlog.md`（G6、G7）。
+
+待辦（依序）：
+1. **審查 G6（Codex Luna，已提交）**：`flash-wip` 上的 `17b9cc8 wip: add opt-in hangar equipment persistence`、`1af0ffd docs: clarify hangar slot payload fields`（`flash-wip` 已合併 `reverse-work`）。核對：Slot_Change_CQ／SA 欄位是否有組語位址佐證、開關是否預設關閉、DB 變更是否寫成腳本、是否動到已實測通過的行為（ItemInfo 分包、`PVE_SLOT_SELECT_FLOW`、Grade_Info_SN、Death_SN 戰績）。若尚未實測，安排操作者在開關打開時測：換主武器 → 機庫顯示 → 重登保留 → PvE 出場武器。通過後把開關預設打開、合併回 `reverse-work`、更新 `state.md` 第 4 節。
+2. **G7（Gemini，進行中）**：在獨立 worktree `/home/lucas/mro-reverse-g7`（分支 `flash-wip-g7`）。完成後同樣審查、合併。**G6、G7 的實測不能同時跑**（伺服器、客戶端各一套）。
+3. 之後候選：結算細節（EndGame_SN 隊伍分數、exp／point 真實算法、遊戲結束後取消殘留重生）、`Assist_SN` 照 G1。寫成 backlog 契約交給中階。
+
+注意：
+- 主目錄 `/home/lucas/mro-reverse` 目前是 `flash-wip`（Codex 在用）。tmux `server` 的伺服器若重啟，會跑工作目錄當下分支的程式。
+- 解密後的客戶端原始碼在 `~/mro-decrypted/src`（不在 repo）；工具說明見快照第一列。
+- commit 最後一行 `Agent: codex-sol (高階)`；中階為 `Agent: codex (中階)`、`Agent: gemini (中階)`。
+
+---
+
 ## 目前交接快照（2026-09-17 21:30，Claude 高階，請以此段為準）
 
 ### 今天完成的（全部已實測，細節看各篇日誌）
