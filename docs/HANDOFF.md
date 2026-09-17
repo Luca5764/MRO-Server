@@ -5,6 +5,26 @@
 
 ---
 
+## 🟡 中階交接：Codex（2026-09-17，G6-unblock）
+
+- 工作區／分支：`/home/lucas/mro-reverse-g6-unblock`／`flash-wip-g6-unblock`。
+- 已完成靜態分析與預設關閉修正：`ZPanel_ShopItems.ListLoad()` 先檢查
+  `IsShow`，既有 `ShopList_SN` sender 把 `IsShow/IsNew/IsHot` 寫在
+  `+0x0d..+0x0f`，造成每列在 client 被丟棄；enabled path 改為
+  `+0x0c..+0x0e`，`IsSale=0` 在 `+0x0f`。
+- `Packege_Item_SN 0x00240131` 保持原本 `count + (serial,itemIndex)` 8-byte
+  rows，因目前 research 沒有它的 handler 組語，不猜格式。購買成功在
+  `SHOP_UNBLOCK_MODE='enabled'` 時重用既有 chunked `ItemInfo_SN` sender，並在
+  `0x00240202` 前送出，讓 `RecvItemBuy()` 的 `HaveList` 有新列。
+- 證據／差異：`docs/journal/2026-09-17-24-g6-unblock-shop-list.md`、
+  `Metal Rage Online Server/dispatch/room.dispatch.js`。`node --check`、
+  `git diff --check` 已過；未開 server、未啟用開關、未實測。
+- 下一步契約：高階核對 ShopList handler 的 DLL VA／原始 bytes；核對後才能在
+  客戶端手動實測多件主武器、購買後 selectable、再續 G6 換裝保存。不要改
+  `state.md`、G6 save handler 或資料庫 schema。
+
+---
+
 ## ⚡ 高階主力交接：Codex Sol（2026-09-17 22:30）
 
 - **G7 已完成並合併 `reverse-work`**：Gemini 實作，高階審查修正 disabled

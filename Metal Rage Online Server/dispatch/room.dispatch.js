@@ -85,6 +85,9 @@ const HANGAR_COUPON_BALANCE = 1000;
 // and cross-agent review are complete.
 const EQUIP_SAVE_MODE = 'disabled'; // 'disabled' | 'enabled'
 const SLOT_CHANGE_PART_NAMES = ['body', 'main', 'left', 'right', 'equipment', 'skin'];
+// G6 shop/inventory unblock is opt-in until the client is tested with the
+// corrected ShopList fields and post-purchase ItemInfo refresh.
+const SHOP_UNBLOCK_MODE = 'disabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
@@ -274,10 +277,20 @@ function writeShopListBody(body, shopItems, currencyCode) {
         body.writeInt32LE(itemIndex, off + 0x00);
         body.writeInt32LE(disc,      off + 0x04);
         body.writeInt32LE(gold,      off + 0x08);
-        body.writeUint8(0,           off + 0x0C);
-        body.writeUint8(isShow,      off + 0x0D);
-        body.writeUint8(isNew,       off + 0x0E);
-        body.writeUint8(isHot,       off + 0x0F);
+        if (SHOP_UNBLOCK_MODE === 'enabled') {
+            // ZNetwork_DJ::SHOP_ITEM_INFO: IsShow/IsNew/IsHot/IsSale follow
+            // the three 4-byte fields. The old path shifted all four flags
+            // by one byte, leaving IsShow false in the client ListLoad().
+            body.writeUint8(isShow,      off + 0x0C);
+            body.writeUint8(isNew,       off + 0x0D);
+            body.writeUint8(isHot,       off + 0x0E);
+            body.writeUint8(0,           off + 0x0F);
+        } else {
+            body.writeUint8(0,           off + 0x0C);
+            body.writeUint8(isShow,      off + 0x0D);
+            body.writeUint8(isNew,       off + 0x0E);
+            body.writeUint8(isHot,       off + 0x0F);
+        }
         body.writeUint8(1,           off + 0x10);
         body.writeUint8(currencyCode.charCodeAt(0), off + 0x11);
         body.writeUint8(0,           off + 0x12);
@@ -762,6 +775,20 @@ class ZRoomDispatch
             } catch (err) {
                 result = 1;
                 console.error(`[ZRoomDispatch] >> Shop Buy DB error:`, err.message);
+            }
+        }
+
+        if (result === 0 && SHOP_UNBLOCK_MODE === 'enabled') {
+            try {
+                const items = await db.getItems(client.accountId_);
+                require('./item-info.sender').sendItemInfo(
+                    client,
+                    items,
+                    client.accountId_,
+                    'shop-purchase'
+                );
+            } catch (err) {
+                console.error(`[ZRoomDispatch] >> Shop purchase ItemInfo refresh error:`, err.message);
             }
         }
 
