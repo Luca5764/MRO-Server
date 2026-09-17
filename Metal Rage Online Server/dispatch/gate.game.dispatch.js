@@ -292,7 +292,11 @@ function sendGameInfoSn(client, tag)
     body.writeUInt16LE(2, 0x0F);                // == 2 -> [0xfc4] bit1
     body.writeUInt16LE(mapId, 0x11);            // -> [0xfc8], MAP ID
     body.writeUInt16LE(timeLimitMinutes, 0x13); // -> [0xfd4], TimeLimit=%d
-    body.writeUInt8(goalScore, 0x15);           // -> [0xfd0], goal score 4/6/7
+    // [0xfd0] is GAME_INFO.MapInfo.Round (handler log string 0x1083a240 names body+0x15 "Round").
+    // ZModePve.ModeReset_BD returns without starting any round while CurrentRound >= Round,
+    // so 0 here meant the PvE round system (AI, objectives) never started.
+    const playRound = Number(client.playRound_) || 0;
+    body.writeUInt8(playRound & 0xFF, 0x15);    // -> [0xfd0], MapInfo.Round
     body.writeUInt16LE(goalScore, 0x16);        // -> [0xfd8], goal score 0/1
     body.writeUInt16LE(goalScore, 0x18);        // -> [0xfdc], goal score 5
 
@@ -300,7 +304,7 @@ function sendGameInfoSn(client, tag)
     console.log(
         `[ZGateGameDispatch] >> Sent Game_Info_SN 0x00222111 [${tag}] ` +
         `(battle=${battleIndex}, red=${redTeamIndex}, blue=${blueTeamIndex}, map=${mapId}, ` +
-        `clan=${clanFlag}, user=${userIndex}, timeLimit=${timeLimitMinutes}, goal=${goalScore}, ` +
+        `clan=${clanFlag}, user=${userIndex}, timeLimit=${timeLimitMinutes}, round=${playRound}, goal=${goalScore}, ` +
         `body=${body.toString('hex')})`
     );
 }
@@ -585,6 +589,10 @@ class ZGateGameDispatch
                 client.roomType_ = effectiveRoomType;
                 client.rawRoomType_ = roomType;
                 client.mapId_ = mapId;
+                // Lobby_Room_Create(..., MaxUser, MapIndex, PlayRound, PlayTime, PlayKill, PlayGoal)
+                // -> ZDispatchLobby::Create_CQ (0x107e5b60) puts PlayRound in body[6] (u8);
+                // the room UI fills it from MapInfoRecord.GoalDefault for campaign (ZPanel_RoomInfo.uc:984).
+                client.playRound_ = body.length > 6 ? body[6] : 0;
                 client.createByte1_ = createByte1;
                 client.createWord1_ = createWord1;
                 client.createWord2_ = createWord2;

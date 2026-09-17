@@ -29,6 +29,7 @@ const CARRIED = [
     'rawRoomType_',
     'roomName_',
     'mapId_',
+    'playRound_',
     'mapSeed_',
     'gameMode_',
     'maxPlayers_',

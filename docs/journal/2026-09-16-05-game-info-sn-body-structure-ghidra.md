@@ -2,6 +2,8 @@
 
 > 從 docs/opcode-ledger.md 第 950–1002 行原文搬遷（2026-09-17），內容未改動。之後的更正以追加方式寫在本檔末尾或新的日誌。
 
+> **部分已被 `2026-09-17-12-pve-round-zero.md` 更正：** `[0xfd4]`=Time（body+0x13）、`[0xfd8]`=Kill（+0x16）、`[0xfdc]`=Goal（+0x18）、`[0xfd0]`=Round（+0x15），Quater 布林寫進 `[0xfc4]` bit1。
+
 `[TEST]` 2026-09-16。已安裝 Ghidra 12.1.3，`ZDispatchWaiting::Game_Info_SN`（`0x107f0910`）反編譯結果：
 
 ```c
