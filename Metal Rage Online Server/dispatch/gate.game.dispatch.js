@@ -610,7 +610,16 @@ class ZGateGameDispatch
                 client.createdMapId_ = mapId;
                 // Real Cache.Bin map id, not an invented cache index — this
                 // value is what Game_Info_URL_Get matches entry[0] against.
-                client.campaignMapCacheKey_ = 9001; // Map_PC01, ZModePve.ZModePve
+                // Create_CQ body[2..3] is the MapIndex the room UI picked
+                // (ZDispatchLobby::Create_CQ 0x107e5cc0; campaign rooms default to
+                // DefaultMap==3, i.e. 9010 Map_PC04 easy). PvE map ids are
+                // 9001..9012, three difficulties per map ((index-9001)/3,
+                // ZPanel_PVE.uc:328). Anything else falls back to 9001.
+                {
+                    const pickedMap = body.length >= 4 ? body.readUInt16LE(2) : 0;
+                    client.campaignMapCacheKey_ = (pickedMap >= 9001 && pickedMap <= 9012)
+                        ? pickedMap : MAP_ID_DEFAULT_CAMPAIGN;
+                }
                 client.readyHostHandshakeSent_ = false;
                 client.gameUserBootstrapSent_ = false;
                 client.waitingGameInfoExperimentSent_ = false;
@@ -835,6 +844,13 @@ class ZGateGameDispatch
                 // When the body begins with zeroed status fields, the client-side
                 // SA path falls back to its retained room-map state and proceeds.
                 const incomingFields = parseMapChangeOneBody(body);
+                // Map_Change_One_CQ (ZDispatchRoom 0x107eec30): w1 = MapIndex,
+                // b5 = MapRound. Take the difficulty/map the player switched to,
+                // before the SA and the room map resend read campaignMapCacheKey_.
+                if (incomingFields.w1 >= 9001 && incomingFields.w1 <= 9012) {
+                    client.campaignMapCacheKey_ = incomingFields.w1;
+                    client.playRound_ = incomingFields.b5;
+                }
                 const outgoingFields = buildMapChangeOneSaFields(body, client);
                 console.log(
                     `[ZGateGameDispatch] >> Room Map_Change_One_CQ ` +
