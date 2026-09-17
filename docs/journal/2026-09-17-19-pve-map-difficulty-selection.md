@@ -17,3 +17,10 @@
 ## 待測
 
 見 `docs/next-test.md` 測試 R。
+
+## 測試 R 初步（20:31）
+
+- [LOG] 建房 `Create_CQ` MapIndex=9010 → 伺服器 `Game_Info_SN` 送 map=9010、round=5（`session-20260917-202852.jsonl` 12:31:26）。
+- [LOG] 12:31:32 客戶端送 `Map_Change_One_CQ w1=9001 b5=5` → 之後 `Game_Info_SN` 都是 9001，載入的是防禦（動力奪取戰）。
+- [OBS] 操作者澄清：那次是自己在房間裡改了選擇；**什麼都不動直接開始，載入的就是潛入作戰（9010）**。所以建房與改圖兩條路徑都照客戶端的選擇生效。
+- 🟡 仍待注意：`room.dispatch.js` `sendRoomState`（約 1198–1222 行）的房間資訊裡，地圖仍用 `MAP_ID_DEFAULT_PVE`（9001）與舊的 `CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[mapId]`（58）選 `SN_MAP_CHANGE_ONE`；目前沒看到影響，暫不改（一次一個變數）。
