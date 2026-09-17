@@ -133,3 +133,10 @@
 - [OBS]「被打死後是同一台重生」「理論上是要可以換的」。[LOG] 13:16:27 玩家陣亡（Death_CN type 2），伺服器仍在 5 秒後自動送 `Respawn_SN`，跳過了選機體畫面。
 - [LOG] 客戶端 log（Map_PC04）有 `MRNavigation ... CalcNodeSort_CoreEscort Accessed None 'NodeActor'` 警告，地圖導航資料相關，先記錄。
 - 改動（單一變數）：`PVE_SLOT_SELECT_FLOW === 'client'` 時，玩家陣亡**不再自動排程 `Respawn_SN`**，等客戶端走選機體 → ChangeSlot_CN → Respawn_CN。伺服器 21:2x 重啟。
+
+## 測試 T3 結果（21:19–21:22，`session-20260917-211810.jsonl`）
+
+- ✅ [LOG] 13:19:08 開局選 slot 7（`ChangeSlot_CN 010007` → `Respawn_CN` → `Respawn_SN`）；13:21:18 陣亡；13:21:31 **重新選 slot 8**（`010008` → `Respawn_CN` → `Respawn_SN`），伺服器沒有自動重生。
+- ✅ [OBS]「有成功切換到指定機體」。
+- ✅ [LOG] 13:22:12 再次陣亡後重生次數用完 → `Campaign_CN 01 00 02` → `EndGame_SN`，流程正常。
+- ✅ 結論：**PvE 開局與陣亡後都能透過選機體畫面選任一槽位出擊。** `PVE_SLOT_SELECT_FLOW = 'client'` 保留為預設。

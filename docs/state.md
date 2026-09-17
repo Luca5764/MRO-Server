@@ -88,6 +88,7 @@
 | 輕型機（Small）不能裝 `MOC_a 21100101`；1 號機正確主武器是 `22100101` | ✅ [LOG][SHOT] | `journal/2026-09-16-33-weapon-model-true-root-cause-verified.md`；`shots/current-mission.png` |
 | 「MOC_a 是中、重型機專用」 | 🟡 只證明了 Small 不能裝 | 同上 |
 | 主武器已掛上；開火、跳、推進器 | ✅ [OBS]／[SHOT] 進 PvE 就能用。根因：`Grade_Info_SN 0x00510101` 必須送 0（11＝開發者，會套 GM 按鍵表） | `journal/2026-09-17-11-grade-info-sn-root-cause.md` |
+| PvE 選機體出擊（開局與陣亡後）：ZSlotSelectPage → `ChangeSlot_CN 0x00230101`（user u16、slot u8 1..8）→ `ChangeSlot_SN 0x00230102`（+0x0A user、+0x0C slot）→ `Respawn_CN`；`Game_User_SN` 必須送 8 個槽位 | ✅ [DLL][LOG][OBS] 測試 T2／T3 | `journal/2026-09-17-22-pve-mech-slot-selection.md` |
 | 4、5 號機在 Table 4 沒有推進器，但 DB 有給 | ⚠️ 不一致，影響未測 | `journal/2026-09-17-01-review-iteminfo-stall-root-cause.md` |
 | `User_Default_SN 0x00220233`：2 bytes header ＋ 每筆 0x34；暱稱是 ASCII | 🟡 結構已反組譯，行為未全部驗證 | `journal/2026-09-15-13-user-default-sn-body-structure.md` |
 | `Map_Change_All_SN 0x00220226`：flag＋count＋每筆 9 bytes；要連送兩次清單才會顯示 | ✅ [DLL][TEST] | `journal/2026-09-15-20-map-change-all-sn-body-confirmed.md`、`journal/2026-09-16-11-room-map-list-shows-after-double-send.md` |
