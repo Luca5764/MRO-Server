@@ -63,3 +63,12 @@ decompile：`docs/research/2026-09-17-fire-gate/Option_Game.c`。
 - ✅ [DLL] `UInput::PreProcess`（Engine.dll `0x10466fe0`）：按下時若 `KeyDown[key]`（`+0xf6c`）已經是 1 就丟掉這次按下，放開時才清掉。decompile：`UInput_PreProcess.c`、`UInput_Process.c`。
 - [SRC] `OnNeedRawKeyPress`／`bRequireRawJoystick` 只有在按鍵設定頁點按鈕時才會被設定（`ZPanel_Option_KeySetting.uc:735`、`PadSetting.uc:485`、`GUI2K4/KeyBindMenu.uc:185`），開局不會自動設。
 - 下一步：測試 J，分辨是「任何 GUI 開關（Esc 選單）」就能修，還是只有選項頁才行。
+
+## 測試 J 與重新解讀測試 I（16:40 左右）
+
+- [OBS] 只開關 Esc 選單（GAME MENU）：**沒用**。
+- [OBS] 再做一次 Esc →「選項」→ **取消**：**有用**（跟測試 I 相同）。
+- ✅ [SRC] 測試 I 的解讀要更正：選項頁的「取消」**也會重新綁定**。`ZGameMainMenu/ZPopup_OptionInGame.uc` `OnClick_Main` 的 `b_Cancel` 分支會呼叫 `ApplyOption(false)`（第 221 行）→ `OptionAll.ApplyOption(Level)` → 結尾無條件呼叫 `ApplyControl(PC)`（`Engine/OptionAll.uc:756`），PvE 再加 `ApplyPveController`。
+- ✅ 所以 F、I、J 三個測試一致：**修好的是重新執行 `ApplyControl`**；單純開關 GUI（J）不會修好。「開局時 GUI／輸入狀態殘留」這個方向排除。測試 I 那段「不是 ApplyControl」的說法作廢。
+- ⬜ 仍然不知道：PvE 開局時為什麼綁定是錯的。權限寫入點只有 `DefaultInfo_SN`（`"0"`），照理 `LevelInfo.GetLocalPlayerController` 會走一般的 `ApplyControl`。
+- 下一個分辨實驗（測試 K）：`ApplyGMControl` 會把 ScrollLock 綁成 `ViewModeUIGM_BD`（`OptionAll.uc` GM 表），連按 4 次會依序設定 `bHideName_BD`、`DrawGmList_BD=false`、`bDrawTeamScore=false`、`hideBottomBar_Bd=true`（`DefaultPlayerController.uc:9569-9595`）；一般表**沒有**綁 ScrollLock。開局壞掉的狀態下，連按 ScrollLock，如果畫面底部 HUD 列消失，就證明開局套用的是 GM 表。
