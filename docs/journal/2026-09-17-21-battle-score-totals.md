@@ -16,3 +16,10 @@
   - 🟡 exp／point 每殺 10 是暫定值，不是原廠數值。
 - `EndGame_SN` 的隊伍分數塊這次**不改**。
 - 伺服器 21:01 重啟（`session-20260917-210116.jsonl`）。待測：`docs/next-test.md` 測試 S1。
+
+## S1 結果（21:0x，`session-20260917-210116.jsonl`）
+
+- ✅ [OBS] 操作者：「有分數了」。
+- ✅ [LOG] 最後幾筆 `Death_SN`：`attacker=1, victim=0, killer K/D=62/2`，接著玩家陣亡 `attacker=0, victim=1, K/D(對 AI index 0)=3/62`，然後 `Campaign_CN action=2 → EndGame_SN`。玩家本場 62 殺、3 死。
+- 備註：所有 AI 在 Death_CN 裡都是 index 0，伺服器把它們的累計合併在 `battleStats_[0]`；index 0 不是玩家，客戶端會跳過，無害。
+- 🟡 結算頁顯示了哪些欄位（擊殺、經驗、分數、隊伍分數）操作者沒細說，`EndGame_SN` 的隊伍分數塊仍全 0。
