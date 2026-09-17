@@ -39,11 +39,11 @@
 ### 協作狀態
 
 - 分支：`reverse-work`（主線）；中階成果應 commit 到 `flash-wip` 再由高階合併。
-- tmux：`server`（伺服器，Claude 控制）、`sol`（Codex reviewer，**不要關**，cache 會掉；額度約剩 30%，只留給重要審查）。
+- tmux：`server`（伺服器）、Codex session（操作者 2026-09-17 21:45 把原本的 `sol` 關掉，改開 Codex 主力做 backlog）。Sol（高階 reviewer）額度約剩 30%，只留給重要審查；已開的 Codex session 不要隨便關，cache 會掉。
 - `docs/backlog.md` 的 G1～G5 都已完成並審查。
 
 ### 下一步
 
 - **Claude 額度將盡**，操作者決定交給 Codex（Luna，中階）或 Gemini（中階）：做 `docs/backlog.md` 的 **G6（機庫換裝備存檔）**，有餘力再做 **G7（遊戲內聊天顯示）**。兩個都允許改伺服器，但新行為要放在預設關閉的開關後面、在 `flash-wip` 分支、實測時暫時打開，規則寫在 backlog「2026-09-17 21:40 新增」。
-- 審查：Codex reviewer Sol（tmux `sol`，額度約 30%）或下一個接手的 Claude。審過才把開關預設打開並合併回 `reverse-work`。
+- 審查：Codex reviewer Sol（需要時用 `codex -m gpt-5.6-sol` 另開，額度約 30%）或下一個接手的 Claude。審過才把開關預設打開並合併回 `reverse-work`。
 - 之後的候選：結算細節（EndGame_SN 隊伍分數、exp／point 真實算法、遊戲結束後取消殘留重生）、`Assist_SN` 照 G1 補格式。
