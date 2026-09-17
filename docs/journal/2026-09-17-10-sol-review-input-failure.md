@@ -54,3 +54,12 @@ decompile：`docs/research/2026-09-17-fire-gate/Option_Game.c`。
 - ✅ [LOG]／[SRC] 測試 C 的 `RadioChat_Sel 0` 只有在 `!PC.IsSpectating()` 時才會印（`DefaultHud.uc:4230`），而且 PvE 的 `PlayerSelectMech.BeginState` 遇到 GM 會轉 Spectating（`ZPvePlayercontroller.uc` 約 1447 行）；兩者都表示 PvE 執行時 `IsMeGM_BD()` 為 false。
 - 🟡 所以 Sol 說的「PvE 仍是 GM 按鍵表」要修正成「**開局套用的一般按鍵表沒有生效，或之後被弄壞**」。`LevelInfo.GetLocalPlayerController` 的 GM 分支（權限 0 時）應該不會走到。
 - ⬜ 還要分辨：到底是「重新執行 `ApplyControl`」修好的，還是「打開再關閉選項頁（GUI）」修好的。測試 I 用來分辨這兩者。
+
+## 測試 I：打開選項再取消也能修好（16:25 左右）
+
+- ✅ [OBS] PvE 內 Esc →「選項」→ **取消**（不儲存），回到遊戲後按鍵就能用。所以修好的不是 `ApplyControl` 重新綁定，而是**開關選項 GUI 的某個副作用**。前面「按鍵表沒套上」的結論要改成「輸入被某個 GUI／輸入狀態擋住，開關選項頁會把它清掉」。
+- [SRC] 選項頁（`ZGameMainMenu/ZPopup_OptionInGame.uc`，extract 時漏掉，已手動補抽到 `~/mro-decrypted/src`）的 `InternalOnClose`（第 255 行）會清 `Controller.OnNeedRawKeyPress = none` 和 `Controller.Master.bRequireRawJoystick = false`。另外 `XInterface/GUIController.uc` 的 `PushMenu`／`CloseMenu`／`RemoveMenu` 都會呼叫 native `ResetInput()`。
+- ✅ [DLL] `UGUIController::ResetInput`（XInterface.dll `0x100359c0`）：清掉 GUI 自己的按鍵表（`+0x25c`，255 bytes）、`+0x248`、`+0x144/+0x148`，再改 `+0x24c` 的旗標位元，並通知 active／focused 元件 `MenuStateChange`。decompile：`docs/research/2026-09-17-fire-gate/GUIController_ResetInput.c`。
+- ✅ [DLL] `UInput::PreProcess`（Engine.dll `0x10466fe0`）：按下時若 `KeyDown[key]`（`+0xf6c`）已經是 1 就丟掉這次按下，放開時才清掉。decompile：`UInput_PreProcess.c`、`UInput_Process.c`。
+- [SRC] `OnNeedRawKeyPress`／`bRequireRawJoystick` 只有在按鍵設定頁點按鈕時才會被設定（`ZPanel_Option_KeySetting.uc:735`、`PadSetting.uc:485`、`GUI2K4/KeyBindMenu.uc:185`），開局不會自動設。
+- 下一步：測試 J，分辨是「任何 GUI 開關（Esc 選單）」就能修，還是只有選項頁才行。
