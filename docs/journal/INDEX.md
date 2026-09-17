@@ -91,3 +91,4 @@
 | 2026-09-17 | `2026-09-17-23-g6-slot-change-save.md` | `0x00240107`、`0x00240108` | 🟡 高階靜態審查通過／實測阻塞／預設關閉 | G6：CQ／SA 欄位已由 DLL 位址核對；商店清單空白且購入物不顯示，客戶端沒有第二件裝備可選，待先修 ShopList／Packege_Item 顯示路徑。 |
 | 2026-09-17 | `2026-09-17-23-game-chat-echo-g7.md` | `0x00220507`、`0x00220509` | ✅ [DLL][LOG][OBS] V1 通過 | G7：遊戲內隊伍與全體聊天以相同 opcode／258-byte body 回送，兩頻道均在 HUD 顯示；高階審查修正 disabled fallback 後，預設 enabled。 |
 | 2026-09-17 | `2026-09-17-24-g6-unblock-shop-list.md` | `0x00240241`、`0x00240242`、`0x00240131`、`0x00210111` | 🟡 待審／預設關閉 | G6-unblock：定位 ShopList 四個旗標右移造成 `IsShow=false`；保留 Packege 格式，購買成功補送既有 chunked ItemInfo；未取得 Shop handler DLL VA，未實測。 |
+| 2026-09-18 | `2026-09-18-01-g6b-shop-list-filter-root-cause.md` | `0x00240241`、`0x00240242`、`0x00240131`、`0x00240102`、`0x00240113` | 🟡 待審／只分析 | G6b：`Item_List_Check` 先以 Cache record 通過；實際送出的 21x 主武器在 `ItemSubordinateCheck` 與 1 號小型機不相容，SQL slot=1 又排除官方 221 family；附完整 DLL 位址、封包 hex、最多兩個單變數實驗，未改程式／DB／未實測。 |

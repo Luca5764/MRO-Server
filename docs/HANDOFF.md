@@ -5,23 +5,22 @@
 
 ---
 
-## 🟡 中階交接：Codex（2026-09-17，G6-unblock）
+## 🟡 中階交接：Codex（2026-09-18，G6b 分析）
 
 - 工作區／分支：`/home/lucas/mro-reverse-g6-unblock`／`flash-wip-g6-unblock`。
-- 已完成靜態分析與預設關閉修正：`ZPanel_ShopItems.ListLoad()` 先檢查
-  `IsShow`，既有 `ShopList_SN` sender 把 `IsShow/IsNew/IsHot` 寫在
-  `+0x0d..+0x0f`，造成每列在 client 被丟棄；enabled path 改為
-  `+0x0c..+0x0e`，`IsSale=0` 在 `+0x0f`。
-- `Packege_Item_SN 0x00240131` 保持原本 `count + (serial,itemIndex)` 8-byte
-  rows，因目前 research 沒有它的 handler 組語，不猜格式。購買成功在
-  `SHOP_UNBLOCK_MODE='enabled'` 時重用既有 chunked `ItemInfo_SN` sender，並在
-  `0x00240202` 前送出，讓 `RecvItemBuy()` 的 `HaveList` 有新列。
-- 證據／差異：`docs/journal/2026-09-17-24-g6-unblock-shop-list.md`、
-  `Metal Rage Online Server/dispatch/room.dispatch.js`。`node --check`、
-  `git diff --check` 已過；未開 server、未啟用開關、未實測。
-- 下一步契約：高階核對 ShopList handler 的 DLL VA／原始 bytes；核對後才能在
-  客戶端手動實測多件主武器、購買後 selectable、再續 G6 換裝保存。不要改
-  `state.md`、G6 save handler 或資料庫 schema。
+- 本輪只分析，沒有改程式、資料庫、開關或 schema，沒有開 server，也沒有實測。
+- 新增 `docs/research/2026-09-18-shop-list/`：`Item_List_Check`、Shop/Cash
+  handler、Item Add 的完整相關 DLL 位址與組語，以及最近商店 frame 的完整 hex。
+- 新增 `docs/journal/2026-09-18-01-g6b-shop-list-filter-root-cause.md`：
+  `21100101` 可通過 Cache 存在性檢查，但在 `ListLoad()` 的
+  `ItemSubordinateCheck()` 被 1 號小型機相容性排除；SQL slot=1 的 21x
+  catalog rows 同時排除了官方第一槽 `22100101` family。所有新結論待高階審查，
+  沒有標 ✅。
+- 高階已確認的 `IsShow=+0x0D` 與舊 sender 寫法維持不變；不要開啟先前
+  `SHOP_UNBLOCK_MODE` 的欄位修正。
+- 下一步契約：高階審查本篇的 Cache/SubOrdination 解讀與兩個單變數實驗，再決定
+  是否做預設關閉的最小修正；在審查前不要改 G6 save handler、ItemInfo 分包、
+  PVE_SLOT_SELECT_FLOW、Grade_Info、Death_SN 或 G7。
 
 ---
 

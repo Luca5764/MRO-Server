@@ -1,0 +1,215 @@
+G6b shop-list analysis: raw disassembly excerpts
+DLL: /mnt/c/Games/MetalRage Online/data/System/ZNetwork.dll
+SHA256: 6b07758edf57adcce7c96adeccc015d7a30bb72ba67eb01ad8b84e3451cfea1b
+Image base: 0x10700000
+Disassembler: Metal Rage Online Server/tools/disasm.py
+
+Export thunks and resolved bodies
+---------------------------------
+0x107026b2  jmp 0x107e2ac0       ZDispatchHangar::CashShopList_SN
+0x10702a7c  jmp 0x10718040       UZNetwork_DJ::Item_List_Check
+0x10702e5f  jmp 0x107e2890       ZDispatchHangar::ShopList_SN
+0x10703102  jmp 0x10732f00       UZNetwork_DJ::Item_ShopList_Add
+0x10706780  jmp 0x107332e0       UZNetwork_DJ::Item_CashShopList_Add
+
+ShopList_SN body: packet loop and Item_List_Check call
+-------------------------------------------------------
+0x107e2930  test                     ebx, ebx
+0x107e2932  je                       0x107e2947
+0x107e2934  push                     0x14
+0x107e2936  lea                      eax, [esp + 0x1c]
+0x107e293a  push                     ebx
+0x107e293b  push                     eax
+0x107e293c  call                     0x10707568
+0x107e2941  add                      esp, 0xc
+0x107e2944  add                      ebx, 0x14
+0x107e2947  mov                      ecx, 0x108e9b70
+0x107e294c  call                     dword ptr [0x1091b990]
+0x107e2952  mov                      ecx, dword ptr [esp + 0x18]
+0x107e2956  push                     ecx
+0x107e2957  mov                      ecx, eax
+0x107e2959  call                     0x10702a7c
+0x107e295e  cmp                      al, 1
+0x107e2960  jne                      0x107e2a05
+0x107e297a  movzx                    eax, byte ptr [esp + 0x27]
+0x107e297f  movzx                    ecx, byte ptr [esp + 0x26]
+0x107e2984  movzx                    edx, byte ptr [esp + 0x25]
+0x107e2989  push                     eax
+0x107e298e  push                     ecx
+0x107e2993  push                     edx
+0x107e2998  push                     dword ptr [esp + 0x24]
+0x107e299e  push                     dword ptr [esp + 0x24]
+0x107e29a8  call                     0x10709156
+0x107e29d8  mov                      edx, dword ptr [esp + 0x28]
+0x107e29dc  push                     ecx
+0x107e29e1  push                     edx
+0x107e29e6  push                     ecx
+0x107e29eb  push                     edx
+0x107e29f0  push                     ecx
+0x107e29f5  push                     edx
+0x107e29fa  push                     ecx
+0x107e29fb  push                     edx
+0x107e29fc  mov                      ecx, eax
+0x107e29fe  call                     0x10703102
+
+CashShopList_SN body: same 20-byte loop and same gate
+------------------------------------------------------
+0x107e2b60  test                     ebx, ebx
+0x107e2b62  je                       0x107e2b77
+0x107e2b64  push                     0x14
+0x107e2b66  lea                      eax, [esp + 0x1c]
+0x107e2b6a  push                     ebx
+0x107e2b6b  push                     eax
+0x107e2b6c  call                     0x10707568
+0x107e2b71  add                      esp, 0xc
+0x107e2b74  add                      ebx, 0x14
+0x107e2b77  mov                      ecx, 0x108e9b70
+0x107e2b7c  call                     dword ptr [0x1091b990]
+0x107e2b82  mov                      ecx, dword ptr [esp + 0x18]
+0x107e2b86  push                     ecx
+0x107e2b87  mov                      ecx, eax
+0x107e2b89  call                     0x10702a7c
+0x107e2b8e  cmp                      al, 1
+0x107e2b90  jne                      0x107e2c35
+0x107e2baa  movzx                    eax, byte ptr [esp + 0x27]
+0x107e2baf  movzx                    ecx, byte ptr [esp + 0x26]
+0x107e2bb4  movzx                    edx, byte ptr [esp + 0x25]
+0x107e2bb9  push                     eax
+0x107e2bbe  push                     ecx
+0x107e2bc3  push                     edx
+0x107e2bc8  push                     dword ptr [esp + 0x24]
+0x107e2bce  push                     dword ptr [esp + 0x24]
+0x107e2bd8  call                     0x10709156
+0x107e2c08  mov                      edx, dword ptr [esp + 0x28]
+0x107e2c0c  push                     ecx
+0x107e2c11  push                     edx
+0x107e2c16  push                     ecx
+0x107e2c1b  push                     edx
+0x107e2c20  push                     ecx
+0x107e2c25  push                     edx
+0x107e2c2a  push                     ecx
+0x107e2c2b  push                     edx
+0x107e2c2c  mov                      ecx, eax
+0x107e2c2e  call                     0x10706780
+
+Item_List_Check body
+---------------------
+0x10718040  mov                      eax, dword ptr fs:[0]
+0x10718046  push                     -1
+0x10718048  push                     0x10801405
+0x1071804d  push                     eax
+0x1071804e  mov                      dword ptr fs:[0], esp
+0x10718055  sub                      esp, 0xe0
+0x1071805b  push                     esi
+0x1071805c  mov                      esi, dword ptr [esp + 0xf4]
+0x10718063  test                     esi, esi
+0x10718065  je                       0x10718123
+0x1071806b  xor                      eax, eax
+0x1071806d  mov                      dword ptr [esp + 4], eax
+0x10718071  mov                      dword ptr [esp + 8], eax
+0x10718075  mov                      dword ptr [esp + 0xc], eax
+0x10718079  mov                      dword ptr [esp + 0x10], eax
+0x1071807d  mov                      dword ptr [esp + 0x14], eax
+0x10718081  push                     edi
+0x10718082  lea                      ecx, [esp + 0x20]
+0x10718086  mov                      dword ptr [esp + 0x1c], eax
+0x1071808a  call                     dword ptr [0x1091b854]
+0x10718090  xor                      eax, eax
+0x10718092  mov                      ecx, 0x13
+0x10718097  lea                      edi, [esp + 0x2c]
+0x1071809b  mov                      dword ptr [esp + 0xf0], 0
+0x107180a6  rep stosd                dword ptr es:[edi], eax
+0x107180a8  call                     dword ptr [0x1091ba60]
+0x107180ae  test                     eax, eax
+0x107180b0  pop                      edi
+0x107180b1  je                       0x107180e6
+0x107180b3  push                     esi
+0x107180b4  lea                      ecx, [esp + 0x78]
+0x107180b8  push                     ecx
+0x107180b9  mov                      ecx, eax
+0x107180bb  call                     dword ptr [0x1091ba5c]
+0x107180c1  push                     eax
+0x107180c2  lea                      ecx, [esp + 8]
+0x107180c6  mov                      byte ptr [esp + 0xf0], 1
+0x107180ce  call                     dword ptr [0x1091ba58]
+0x107180d4  lea                      ecx, [esp + 0x74]
+0x107180d8  mov                      byte ptr [esp + 0xec], 0
+0x107180e0  call                     dword ptr [0x1091ba54]
+0x107180e6  mov                      eax, dword ptr [esp + 4]
+0x107180ea  test                     eax, eax
+0x107180ec  lea                      ecx, [esp + 4]
+0x107180f0  mov                      dword ptr [esp + 0xec], 0xffffffff
+0x107180fb  je                       0x1071811d
+0x107180fd  call                     dword ptr [0x1091ba54]
+0x10718103  mov                      al, 1
+0x10718105  pop                      esi
+0x10718106  mov                      ecx, dword ptr [esp + 0xe0]
+0x1071810d  mov                      dword ptr fs:[0], ecx
+0x10718114  add                      esp, 0xec
+0x1071811a  ret                      4
+0x1071811d  call                     dword ptr [0x1091ba54]
+0x10718123  mov                      ecx, dword ptr [esp + 0xe4]
+0x1071812a  xor                      al, al
+0x1071812c  pop                      esi
+0x1071812d  mov                      dword ptr fs:[0], ecx
+0x10718134  add                      esp, 0xec
+0x1071813a  ret                      4
+
+Item_ShopList_Add / Item_CashShopList_Add cache lookup
+-------------------------------------------------------
+0x10732f30  mov                      eax, dword ptr [esi + 0x844]
+0x10732f66  mov                      edi, dword ptr [esi + 0x840]
+0x10732fac  call                     dword ptr [0x1091b854]
+0x10732fc6  call                     dword ptr [0x1091ba60]
+0x10732fd0  mov                      ecx, dword ptr [esp + 0x124]
+0x10732fd7  push                     ecx
+0x10732fe0  mov                      ecx, eax
+0x10732fe2  call                     dword ptr [0x1091ba5c]
+0x10733010  mov                      eax, dword ptr [esp + 0x34]
+0x10733038  mov                      eax, dword ptr [esp + 0x78]
+0x1073303b  cmp                      eax, 2
+0x1073305f  mov                      eax, dword ptr [esp + 0x80]
+0x1073306c  mov                      ecx, dword ptr [esp + 0x7c]
+0x10733086  push                     1
+0x10733088  add                      esi, 0x840
+0x1073308e  push                     0x50
+0x10733090  mov                      ecx, esi
+0x10733092  call                     dword ptr [0x1091b8a0]
+0x107330a7  mov                      dword ptr [eax + ecx + 4], edx
+0x107330ab  mov                      dword ptr [eax + ecx + 8], ebx
+0x107330b1  mov                      dword ptr [eax + edx + 0xc], ecx
+0x1073311b  mov                      dword ptr [eax + edx + 0x38], ecx
+0x10733121  mov                      dword ptr [eax + edx + 0x3c], ecx
+0x10733125  mov                      dword ptr [eax + edx + 0x40], ecx
+0x107331e0  mov                      dword ptr [eax + ecx + 0x4c], ecx
+0x1073320f  ret                      0x20
+
+0x107332e0  mov                      eax, dword ptr fs:[0]
+0x10733311  mov                      eax, dword ptr [esi + 0x850]
+0x10733346  mov                      edi, dword ptr [esi + 0x84c]
+0x1073338a  call                     dword ptr [0x1091b854]
+0x107333a4  call                     dword ptr [0x1091ba60]
+0x107333ae  push                     ebx
+0x107333b7  mov                      ecx, eax
+0x107333b9  call                     dword ptr [0x1091ba5c]
+0x107333e7  cmp                      dword ptr [esp + 0x38], ebp
+0x10733432  mov                      dword ptr [esp + 0x1c], eax
+0x10733462  push                     1
+0x10733464  add                      esi, 0x84c
+0x1073346a  push                     0x50
+0x1073346c  mov                      ecx, esi
+0x1073346e  call                     dword ptr [0x1091b8a0]
+0x1073347c  mov                      dword ptr [eax + ecx + 4], ebx
+0x10733480  mov                      dword ptr [eax + edx + 8], ecx
+0x1073348a  mov                      dword ptr [eax + edx + 0xc], ecx
+0x107335bd  lea                      ecx, [esp + 0x38]
+0x107335ce  call                     dword ptr [0x1091ba54]
+0x107335ec  ret                      0x20
+
+Import targets used above
+-------------------------
+0x1091ba54 Engine.dll ??1FGameItemRecord@@QAE@XZ
+0x1091ba58 Engine.dll ??4FGameItemRecord@@QAEAAU0@ABU0@@Z
+0x1091ba5c Engine.dll ?GetGameItemRecord@UCacheManager@@QAE?AUFGameItemRecord@@H@Z
+0x1091ba60 Engine.dll ?GetCache@UCacheManager@@SAPAV1@XZ
+0x1091b854 FGameItemRecord constructor (import slot; symbol line not present in prior export excerpt)
