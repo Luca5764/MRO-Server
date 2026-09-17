@@ -88,6 +88,15 @@ const SLOT_CHANGE_PART_NAMES = ['body', 'main', 'left', 'right', 'equipment', 's
 // G6 shop/inventory unblock is opt-in until the client is tested with the
 // corrected ShopList fields and post-purchase ItemInfo refresh.
 const SHOP_UNBLOCK_MODE = 'disabled'; // 'disabled' | 'enabled'
+// G6c: item_catalog.mech_type is actually the weapon family, not the mech
+// that can equip it. Slot 1 (Small) cannot use the 21x main-weapon family
+// that the catalog filter selects for it; Cache.Bin's DefaultSetList shows
+// the Small mech's default main weapon is 22100101. See
+// docs/journal/2026-09-18-01-g6b-shop-list-filter-root-cause.md. When
+// enabled, this swaps ONLY the first 21100101 entry in the slot-1 general
+// ShopList_SN (0x00240241) main-weapon tab to 22100101; CashShopList_SN
+// (0x00240242) and every other field/order/timing stay untouched.
+const SHOP_COMPAT_EXPERIMENT = 'disabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
@@ -313,6 +322,27 @@ function catalogCategoryType(row)
         return fromDb >>> 0;
     const key = String(row.category || '').trim();
     return (SHOP_CATEGORY_TYPE[key] || 2) >>> 0;
+}
+
+// Client action: hangar Open_SA / DefaultSlot_Change_SA / shop tab load
+// trigger sendShopList(). Under SHOP_COMPAT_EXPERIMENT this patches only the
+// general ShopList_SN (0x00240241) payload for the slot-1 main-weapon tab;
+// the caller must NOT reuse the returned array for CashShopList_SN.
+function applyShopCompatExperiment(sendItems, cat, selectedSlot)
+{
+    if (SHOP_COMPAT_EXPERIMENT !== 'enabled') return sendItems;
+    if (Number(selectedSlot) !== 1 || Number(cat) !== SHOP_CATEGORY_TYPE.MainWeapon) return sendItems;
+
+    const idx = sendItems.findIndex(({ item }) => Number(item.item_id) === 21100101);
+    if (idx === -1) {
+        console.log(`[ZRoomDispatch] >> SHOP_COMPAT_EXPERIMENT: no 21100101 entry found in slot=1 main-weapon list, no swap`);
+        return sendItems;
+    }
+
+    const patched = sendItems.slice();
+    patched[idx] = { ...patched[idx], item: { ...patched[idx].item, item_id: 22100101 } };
+    console.log(`[ZRoomDispatch] >> SHOP_COMPAT_EXPERIMENT: swapped ShopList_SN entry[${idx}] item_id 21100101 -> 22100101`);
+    return patched;
 }
 
 function catalogGoldPrice(row)
@@ -931,10 +961,11 @@ class ZRoomDispatch
             for (const [cat, items] of [...groups.entries()].sort(([a],[b]) => a - b)) {
                 const count = Math.min(items.length, CAT_LIMIT[cat] || 25);
                 const sendItems = items.slice(0, count);
+                const generalItems = applyShopCompatExperiment(sendItems, cat, selectedSlot);
 
                 const [msg, respBody] = getExactMessageBuffer(SN_SHOP_LIST,
                     HEADER_SIZE + (ENTRY_SIZE * count));
-                writeShopListBody(respBody, sendItems, 'P');
+                writeShopListBody(respBody, generalItems, 'P');
                 client.send(msg);
 
                 const [msg2, body2] = getExactMessageBuffer(SN_CASH_SHOP,
