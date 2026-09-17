@@ -127,6 +127,9 @@ class ZLobbyDispatch
             // is the native path that calls AGameInfo::SelectUnitSlot_BD.
             case 0x00230151:
             {
+                // BeginRound_CN starts a battle: reset the per-player battle
+                // totals that Death_SN carries (see case 0x00230123).
+                client.battleStats_ = {};
                 const [beginMsg, beginBody] = client.getMessageBuffer(0x00230152, 0x06);
                 beginBody.writeUint16LE(0, 0);
                 beginBody.writeUint32LE(0, 2);
@@ -219,10 +222,37 @@ class ZLobbyDispatch
                 deathBody[0x0F] = specialFlag;
                 deathBody[0x10] = weaponPart;
                 deathBody.writeUint32LE(auxiliaryValue, 0x11);
+
+                // Killer / victim battle totals. Death_SN hands body+0x31 (killer)
+                // and body+0x41 (victim) to Game_User_Battle_Set (0x1072d720), which
+                // ASSIGNS them to the game-user record: +0x38 Kill, +0x40 Death,
+                // +0x54 Exp, +0x5c Point (u16 kills @+0, u16 deaths @+2, u32 exp
+                // @+8, u32 point @+0xC; asm 0x107db8a5 / 0x107db8ca). Sending zeros
+                // wiped the scoreboard on every death, so keep running totals.
+                // Records that are not game users (AI victims) are skipped by the
+                // client. Exp/point per kill are placeholders, not known values.
+                const EXP_PER_KILL = 10;
+                const POINT_PER_KILL = 10;
+                const stats = client.battleStats_ || (client.battleStats_ = {});
+                const statFor = (index) => stats[index] || (stats[index] = { kills: 0, deaths: 0 });
+                const killerStats = statFor(attackerIndex);
+                const victimStats = statFor(victimIndex);
+                if (attackerIndex !== victimIndex)
+                    killerStats.kills++;
+                victimStats.deaths++;
+                const writeBattle = (offset, st) => {
+                    deathBody.writeUint16LE(st.kills & 0xFFFF, offset + 0x00);
+                    deathBody.writeUint16LE(st.deaths & 0xFFFF, offset + 0x02);
+                    deathBody.writeUint32LE(st.kills * EXP_PER_KILL, offset + 0x08);
+                    deathBody.writeUint32LE(st.kills * POINT_PER_KILL, offset + 0x0C);
+                };
+                writeBattle(0x31, killerStats);
+                writeBattle(0x41, victimStats);
                 client.send(deathMsg);
                 console.log(
                     `[ZLobbyDispatch] >> Sent Death_SN 0x00230124 ` +
-                    `(attacker=${attackerIndex}, victim=${victimIndex}, type=${deathType})`
+                    `(attacker=${attackerIndex}, victim=${victimIndex}, type=${deathType}, ` +
+                    `killer K/D=${killerStats.kills}/${killerStats.deaths})`
                 );
 
                 // Death_CN (ZDispatchGame 0x107d98a0) writes body+0 = killer,

@@ -86,3 +86,4 @@
 | 2026-09-17 | `2026-09-17-18-create-cq-map-difficulty.md` | `0x00220201`、`0x00220221` | ✅ [DLL]（Claude 核對） | G4：Create_CQ（67b）與 Map_Change_One_CQ（26b）逐欄位組語核對；分析 PvE 難度計算公式與地圖選定傳遞機制。 |
 | 2026-09-17 | `2026-09-17-19-pve-map-difficulty-selection.md` | `0x00220201`、`0x00220221`、`0x00222111` | 待測 R | PvE 地圖改用客戶端選的 MapIndex（建房 body[2..3]、Map_Change_One_CQ w1/b5），不再寫死 9001；預設會變成 9010 Map_PC04（ZSetCoreModePve）。 |
 | 2026-09-17 | `2026-09-17-20-iteminfo-chunking.md` | `0x00210111` | ✅ [LOG][OBS] H1／H2：分包含機體列後機庫顯示機體；PvE 仍用 1 號機 | ItemInfo 改成共用 sender 並分包（先 12 筆一包、內容不變），驗證分包本身；下一步加入機體列讓機庫顯示機體。 |
+| 2026-09-17 | `2026-09-17-21-battle-score-totals.md` | `0x00230124` | ✅ [DLL]；待測 S1 | Game_User_Battle_Set 是直接指定 Kill/Death/Exp/Point，伺服器原本送 0 會清空戰績；改成送累計值（exp/point 暫定每殺 10）。 |
