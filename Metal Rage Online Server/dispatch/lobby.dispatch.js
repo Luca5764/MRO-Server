@@ -197,6 +197,14 @@ class ZLobbyDispatch
                     `(attacker=${attackerIndex}, victim=${victimIndex}, type=${deathType})`
                 );
 
+                // Death_CN (ZDispatchGame 0x107d98a0) writes body+0 = killer,
+                // body+2 = victim, body+4 = type. Types 1-4 are player victims
+                // (the victim index is checked with Game_User_Check); any other
+                // type (0x0b, 0x0c, 0x15, ...) is an AI or object kill, where
+                // body+2 is not a game user. Only player deaths get a respawn.
+                if (deathType < 1 || deathType > 4)
+                    return true;
+
                 // Some builds do not emit Respawn_CN after an environmental
                 // death. Match the visible respawn countdown, then revive the
                 // victim unless a client request has already done so.
