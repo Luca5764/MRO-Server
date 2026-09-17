@@ -117,3 +117,11 @@
 - 這是**兩個互相依賴的改動**（沒有自動重生就必須靠 ChangeSlot 路徑出場），無法拆成兩次測試；用旗標保留回退。
 - 玩家陣亡後的 5 秒自動重生**沒改**。
 - 伺服器 21:2x 重啟。
+
+## 測試 T 結果與修正（21:13–21:20）
+
+- ✅ [OBS] 開局**跳出選機體畫面**，可以選。
+- ✅ [LOG]（`session-20260917-211144.jsonl`）13:13:03 `ChangeSlot_CN 010003`（user 1、slot 3）→ 伺服器 `ChangeSlot_SN` → 客戶端立刻送 `Respawn_CN 0x00230103` → 伺服器 `Respawn_SN`；13:13:37 又重複一次。流程完全照 G5 的分析走。
+- [OBS] **選完之後機體沒有出來。**
+- ✅ 原因（[程式碼]＋[DLL] 2026-09-16-21）：伺服器 `Game_User_SN` 的記錄裡 `rec+0x6C` 槽位數只填 1，只送了 slot 1 的 `Game_Slot_Set` 資料。選 slot 3 時，客戶端沒有那個槽位的機體與武器，`RestartPlayer` 的 `mMechIndex != 0` 條件不成立（`ZBase/DefaultGameInfo.uc` 約 1068 行），所以不會生成機體。🟡 客戶端 log 還沒讀（要關閉客戶端才會寫出）。
+- 改動（單一變數：Game_User_SN 送 8 個槽位）：`dispatch/room/room-game-user.sender.js`，`rec+0x6C = 8`，`rec+0x6D + n×0x2F` 依序填 slot 1～8 的機體、主武器、左、右、推進器、skin（DB 有 equipped 資料就用 DB，否則用 `CANONICAL_LOADOUTS`）。記錄本來就是 0x1E5（8 槽）大小，封包長度不變。伺服器 21:2x 重啟。

@@ -120,12 +120,6 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     }
 
     const mechType = Math.max(Number(selectedMech) || 1, 1);
-    const bodyItem = equippedBySlot(items, mechType, 0);
-    const mainItem = equippedBySlot(items, mechType, 1);
-    const leftItem = equippedBySlot(items, mechType, 2);
-    const rightItem = equippedBySlot(items, mechType, 3);
-    const equipmentItem = equippedBySlot(items, mechType, 4);
-    const skinItem = equippedBySlot(items, mechType, 5);
 
     const [msg, body] = getExactMessageBuffer(SN_GAME_USER, GAME_USER_HEADER_SIZE + GAME_USER_RECORD_SIZE);
     body.writeUint8(0, 0x00);
@@ -156,47 +150,54 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     writeCString(body, '', rec + 0x37, 0x19);
 
     // rec+0x50-0x68: the seven u32 Game_Item_Add reads (all 0 = no bonus)
-    // rec+0x6C: slot count
-    body.writeUint8(1, rec + 0x6C);
+    // rec+0x6C: slot count. Send all eight mech slots: the in-battle slot
+    // select page (ZSlotSelectPage -> ChangeSlot_CN) can pick any of them, and
+    // ChangeSlot_SN / Respawn only switch to a slot whose Game_Slot_Set row
+    // came from this packet. With just the selected slot, picking another one
+    // spawned nothing (docs/journal/2026-09-17-22-pve-mech-slot-selection.md).
+    const SLOT_COUNT = 8;
+    const SLOT_RECORD_SIZE = 0x2F;
+    body.writeUint8(SLOT_COUNT, rec + 0x6C);
 
-    // Slot 0: rec+0x6D (slot+0x00..0x2E)
-    const socket = rec + GAME_USER_SOCKET_OFFSET;
-    const def = CANONICAL_LOADOUTS[mechType] || CANONICAL_LOADOUTS[1];
-    const bodyId = Number(bodyItem && bodyItem.item_id) || def.body;
-    const mainId = Number(mainItem && mainItem.item_id) || def.main;
-    const leftId = Number(leftItem && leftItem.item_id) || def.left;
-    // right/booster/skin may legitimately be 0 in Table 4, so only a missing
-    // row falls back; a present row is used as-is (NaN writes as 0).
-    const rightId = rightItem ? Number(rightItem.item_id) || 0 : def.right;
-    const boosterId = equipmentItem ? Number(equipmentItem.item_id) || 0 : def.booster;
-    const skinId = skinItem ? Number(skinItem.item_id) || 0 : def.skin;
+    const summary = [];
+    for (let slotNo = 1; slotNo <= SLOT_COUNT; slotNo++) {
+        const socket = rec + GAME_USER_SOCKET_OFFSET + (slotNo - 1) * SLOT_RECORD_SIZE;
+        const def = CANONICAL_LOADOUTS[slotNo] || CANONICAL_LOADOUTS[1];
+        const bodyItem = equippedBySlot(items, slotNo, 0);
+        const mainItem = equippedBySlot(items, slotNo, 1);
+        const leftItem = equippedBySlot(items, slotNo, 2);
+        const rightItem = equippedBySlot(items, slotNo, 3);
+        const equipmentItem = equippedBySlot(items, slotNo, 4);
+        const skinItem = equippedBySlot(items, slotNo, 5);
+        const bodyId = Number(bodyItem && bodyItem.item_id) || def.body;
+        const mainId = Number(mainItem && mainItem.item_id) || def.main;
+        const leftId = Number(leftItem && leftItem.item_id) || def.left;
+        // right/booster/skin may legitimately be 0 in Table 4, so only a missing
+        // row falls back; a present row is used as-is (NaN writes as 0).
+        const rightId = rightItem ? Number(rightItem.item_id) || 0 : def.right;
+        const boosterId = equipmentItem ? Number(equipmentItem.item_id) || 0 : def.booster;
+        const skinId = skinItem ? Number(skinItem.item_id) || 0 : def.skin;
 
-    // socket+0x00: u32 raw slot/mech selector (1..7 → 0..6; mechType=1 → slot 0)
-    body.writeUint32LE(mechType, socket + 0x00);
-    // socket+0x04: u32 body item
-    body.writeUint32LE(bodyId, socket + 0x04);
-    // slot+0x08: u8, unread by the handler — it is the byte that leaves every
-    // u32 after it unaligned, which is how the offsets below were confirmed.
-    body.writeUint8(0, socket + 0x08);
-    // slot+0x09/0x0D/0x11: the three Game_UserSocket_Set values (zeros for now)
-    // socket+0x15: u32 main weapon
-    body.writeUint32LE(mainId, socket + 0x15);
-    // socket+0x19: u32 left weapon
-    body.writeUint32LE(leftId, socket + 0x19);
-    // socket+0x1D: u32 right weapon
-    body.writeUint32LE(rightId, socket + 0x1D);
-    // socket+0x21: u32 equipment / booster
-    body.writeUint32LE(boosterId, socket + 0x21);
-    // socket+0x25: u32 skin
-    body.writeUint32LE(skinId, socket + 0x25);
-    // socket+0x29-0x2E: padding (zeros)
+        // slot+0x00: u32 raw slot (1..7 -> 0..6, anything else -> 7)
+        body.writeUint32LE(slotNo, socket + 0x00);
+        // slot+0x04: u32 body item
+        body.writeUint32LE(bodyId, socket + 0x04);
+        // slot+0x08: u8, unread by the handler (the byte that unaligns the rest)
+        body.writeUint8(0, socket + 0x08);
+        // slot+0x09/0x0D/0x11: the three Game_UserSocket_Set values (zeros for now)
+        body.writeUint32LE(mainId, socket + 0x15);
+        body.writeUint32LE(leftId, socket + 0x19);
+        body.writeUint32LE(rightId, socket + 0x1D);
+        body.writeUint32LE(boosterId, socket + 0x21);
+        body.writeUint32LE(skinId, socket + 0x25);
+        summary.push(`${slotNo}:${bodyId}/${mainId}`);
+    }
 
     client.send(msg);
     client.gameUserBootstrapSent_ = true;
     console.log(
         `[ZRoomDispatch] >> Sent Game_User_SN 0x00222112 ` +
-        `(userIndex=${accountIndex}, team=${teamIndex}, selectedMech=${mechType}, ` +
-        `body=${bodyId}, main=${mainId}, left=${leftId}, right=${rightId}, booster=${boosterId}, skin=${skinId})`
+        `(userIndex=${accountIndex}, team=${teamIndex}, selectedMech=${mechType}, slots=${summary.join(' ')})`
     );
 }
 
