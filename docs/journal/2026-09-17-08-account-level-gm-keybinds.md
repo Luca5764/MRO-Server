@@ -86,3 +86,12 @@
   (1) 武器停在 `WS_Select`（選武器動畫沒結束或沒觸發 AnimEnd），擋住 Fire、R、1～4；
   (2) `bJumppreparation_JW` 或 `bNoInputKey_JW` 的狀態不對，擋住 Space、Shift。
   兩者可能有共同上游（`InitializeMech()`／`SetMechWeapon()` 沒有正常跑完，`DefaultMech.uc:719`），還沒驗證。
+
+## 武器 ready 與跳躍旗標（子 agent 報告 + Claude 抽查，同日）
+
+- ✅ [SRC]（Claude 已核對）`ZBaseWeapon/BaseGun_Attachment.uc` `event AnimEnd`（約第 678 行）和 `ZBase/W_DefaultWeaponAttachment.uc:61` `CheckAmmoNChangeClientState()` 開頭都有 `if (!Instigator.IsLocallyControlled()) return;`。武器在 `PlaySelectAnim` 被設成 `Ws_Select`（`BaseGun_Attachment.uc` 約第 279 行），**只有**選武器動畫的 AnimEnd 跑到 `CheckAmmoNChangeClientState` 才會轉成 `WS_ReadyToFire`。
+- ✅ [SRC]（Claude 已核對）`ZBase/PawnSecond.uc:701` `IsLocallyControlled()`：Standalone 回傳 true；`Controller==None` 回傳 false；`PlayerController(Controller).Player` 是 `Viewport` 才回傳 true。
+- 🟡 [GUESS] 武器卡在 `Ws_Select` 的兩個候選：(1) `IsLocallyControlled()` 為 false（Pawn 的 Controller 不是本地有 Viewport 的 PC）；(2) 選武器動畫沒播放或沒觸發 AnimEnd（`if (HasAnim(AnimName_UJ)) PlayAnim(...)`，沒有這個動畫就永遠不會有 AnimEnd）。
+- 🟡 [SRC]（子 agent，待審）Space／Shift 的旗標：出生時 `InitializeMech()`（`DefaultMech.uc:752`）把 `bJumppreparation_JW` 設成 true，`bNoInputKey_JW` 只有在 booster 滑行或受傷滑行時才會被設成 true。照靜態程式碼看，兩者都應該能通過檢查，**讀程式碼找不出 Space／Shift 失效的原因**。另外，`DefaultPlayerController.uc:553–617`（先前引用的 593／600 行）整段被 `/* */` 註解掉，是死代碼。
+- 🟡（子 agent，待審）2／3／4 可能只是沒有裝副武器：`AllowChangeWeapon`（`W_DefaultMechForWeapon.uc:124`）遇到 `Weapons_UJ[f]==none`，或者要換的就是目前武器時，會回傳 false，不一定是同一個 bug。
+- 結論：靜態讀碼開始沒有進展，需要執行期的數值。`Engine/Hud.uc:248` `exec ShowDebug` 沒有任何限制，開啟後會畫出 `DefaultMech.DisplayDebug`（`DefaultMech.uc:4815`，含 `bJumppreparation_JW`、`MechSituation`、BoosterPower 等）。console 快捷鍵是 F24（09 篇），按不到；要用的話，得在 `System/User.ini` 加一個按鍵綁定，這需要操作者同意。
