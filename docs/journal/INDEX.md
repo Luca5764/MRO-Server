@@ -88,3 +88,4 @@
 | 2026-09-17 | `2026-09-17-20-iteminfo-chunking.md` | `0x00210111` | ✅ [LOG][OBS] H1／H2：分包含機體列後機庫顯示機體；PvE 仍用 1 號機 | ItemInfo 改成共用 sender 並分包（先 12 筆一包、內容不變），驗證分包本身；下一步加入機體列讓機庫顯示機體。 |
 | 2026-09-17 | `2026-09-17-21-battle-score-totals.md` | `0x00230124` | ✅ [DLL]／[OBS] S1 通過（有分數） | Game_User_Battle_Set 是直接指定 Kill/Death/Exp/Point，伺服器原本送 0 會清空戰績；改成送累計值（exp/point 暫定每殺 10）。 |
 | 2026-09-17 | `2026-09-17-22-pve-mech-slot-selection.md` | `0x00230101`、`0x00230102`、`0x00240111` | ✅ Claude 已審＋實作，測試 T2／T3 通過 | G5：確認 PvE `ZSlotSelectPage` 關閉後經 `Game_Slot` 送 `ChangeSlot_CN` 的 body 與時機；對照 hangar default-slot 路徑、目前 `Game_User_SN` 狀態缺口與跳過選擇頁的實測原因。 |
+| 2026-09-17 | `2026-09-17-23-game-chat-echo-g7.md` | `0x00220507`、`0x00220509` | 🟡 待審／待測 | G7：遊戲內隊伍（0x00220507）與全體（0x00220509）聊天回顯實作，以 GAME_CHAT_ECHO_MODE 開關保護（預設 disabled）。 |

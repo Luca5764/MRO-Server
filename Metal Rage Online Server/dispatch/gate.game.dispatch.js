@@ -1,4 +1,4 @@
-﻿const NetworkClient = require("../client");
+const NetworkClient = require("../client");
 const packetlog = require("../packetlog.js");
 const { sendGameUserBootstrap } = require('./room/room-game-user.sender');
 
@@ -23,6 +23,7 @@ const POST_GAME_WAIT_READY_HOST_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_INFO_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
+const GAME_CHAT_ECHO_MODE = 'disabled'; // 'disabled' | 'enabled'
 // When the room state block is re-sent after Create_SA, and why each entry
 // costs a room-master dialog. See the comment at the call site.
 // Send Game_Info_SN with the room state, so [this+0xfc8] holds the map before
@@ -923,6 +924,26 @@ class ZGateGameDispatch
                 client.send(msg);
                 console.log(`[ZGateGameDispatch] >> Sent Option_Change_SA 0x220216 (status=0, result=0)`);
                 resendRoomState(client, 'after option-change cq');
+                return true;
+            }
+
+            // ==========================================
+            // In-game Chat (0x00220507 Team / 0x00220509 All)
+            // ==========================================
+            case 0x00220507: // Chat_Game_Team_CN
+            case 0x00220509: // Chat_Game_All_CN
+            {
+                if (GAME_CHAT_ECHO_MODE !== 'enabled') {
+                    break;
+                }
+
+                const channelName = (type === 0x00220507) ? 'Team' : 'All';
+                const textPreview = body.length > 2 ? body.subarray(2).toString('latin1').split('\0')[0] : '';
+                console.log(`[ZGateGameDispatch] >> In-game chat ${channelName} (0x${type.toString(16).padStart(8, '0')}): "${textPreview}" (${body.length} bytes)`);
+
+                const [msg, respBody] = getExactMessageBuffer(type, body.length);
+                body.copy(respBody);
+                client.send(msg);
                 return true;
             }
 
