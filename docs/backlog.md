@@ -117,3 +117,26 @@
 - **限制**：同上方「新增」規則。只做 Team 與 All 兩個頻道；單人測試就回送給自己即可（多人廣播之後再做）。
 - **交付**：實作（開關預設關閉）＋實測日誌（開關打開時：戰鬥中打 Team、All 各一句，是否出現在畫面、有沒有亂碼或斷線）。
 - **完成條件**：兩個頻道都有 [OBS] 結果。
+
+---
+
+## G6b：商店清單為什麼是空的（指派：Codex Luna，2026-09-18）
+
+> 在 worktree `/home/lucas/mro-reverse-g6-unblock`（分支 `flash-wip-g6-unblock`）工作，**不要**在 `/home/lucas/mro-reverse` 切分支。commit 最後一行 `Agent: codex (中階)`。
+
+- **目標**：找出機庫商店（一般 `ShopList_SN 0x00240241`、現金 `CashShopList_SN 0x00240242`）顯示空白的真正原因，並提出最小修正。
+- **範圍**：
+  - ZNetwork.dll：`ZDispatchHangar::ShopList_SN`（`0x107e2890`）、`CashShopList_SN`（`0x107e2ac0`）；每筆呼叫的 `UZNetwork_DJ::Item_List_Check`（`0x107e2b89` 附近的 call）本體——它比對什麼（Cache.Bin item 表？已擁有物品？）、失敗時整筆被丟掉；`Item_ShopList_Add`／`Item_CashShopList_Add` 寫進哪個陣列。
+  - 腳本：`~/mro-decrypted/src/ZGameMainMenu/ZPanel_ShopItems.uc` `ListLoad()`（約 387–405 行）的所有篩選條件（`IsShow`、`HighGroup`、`ItemSubordinateCheck`、分頁／分類、授權、等級），以及它從哪個 native getter 取清單。
+  - 伺服器：`Metal Rage Online Server/dispatch/room.dispatch.js` 的 `writeShopListBody`、送出 ShopList 的時機（是否在客戶端開商店**之前／之後**、是否在正確場景），`item_catalog` 表內容（用 `database/db.js` 的 `getItemCatalog` 或唯讀查詢；不改 DB）。
+  - 實際封包：`Metal Rage Online Server/logs/` 最近幾個 session 裡的 `0x00240241`／`0x00240242` 送出 hex。
+- **背景**：
+  - `docs/journal/2026-09-17-24-g6-unblock-shop-list.md` 最後一節（Claude 審查）：**IsShow 在 entry +0x0D 已由組語確認，伺服器舊寫法正確；`SHOP_UNBLOCK_MODE` 的欄位修正不要打開**。每筆 20 bytes：+0x00 ItemIndex、+0x04 DisPrice、+0x08 Price、+0x0C 未讀、+0x0D IsShow、+0x0E IsNew、+0x0F IsHot、+0x10 u8、+0x11 起與 `"P"` 比較。
+  - `docs/journal/2026-09-17-23-g6-slot-change-save.md`：購買 `41200101` 有寫 DB（items 34→35）但 UI 不顯示；截圖 `shots/shot-221153.png`。
+  - Ghidra 參數順序常錯，偏移一律以組語為準（上面審查就是例子：script struct 順序 ≠ wire 格式）。
+- **限制**：只分析，**不改伺服器程式、不改 DB、不開伺服器、不要求操作者測試**。若結論需要實測才能確認，寫成「建議的單變數實驗」。不動 ItemInfo 分包、`PVE_SLOT_SELECT_FLOW`、Grade_Info_SN、Death_SN、G7。
+- **交付**：
+  1. 日誌 `docs/journal/2026-09-18-01-shop-list-empty-root-cause.md`（50–100 行），INDEX 標「待審」：`Item_List_Check` 的判斷條件（附組語位址）、`ListLoad()` 篩選鏈、目前送出的某幾筆實際 entry 逐條走過這些條件、在哪一關被丟掉。
+  2. 原始組語／decompile 存 `docs/research/2026-09-18-shop-list/`。
+  3. 最多兩個建議的單變數實驗（改哪個欄位／時機、預期結果），標「待審」。
+- **完成條件**：至少對一筆實際送出的商品，給出「在哪個條件被丟掉」並附組語或原始碼行號；或明確證明 ShopList 內容都通過、問題在別處（例如送出時機或場景）並附證據。遇到跟既有 ✅ 矛盾就停下來寫疑點。
