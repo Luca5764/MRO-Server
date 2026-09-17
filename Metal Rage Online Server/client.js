@@ -254,13 +254,13 @@ class NetworkClient
             if (this.recvbuf_.length < len)
                 return;
 
-            // Determine how many bytes to consume: use padded size if available
-            let consumeLen = len;
-            let paddedLen = len;
-            if (paddedLen % 0x10 !== 0)
-                paddedLen += 0x10 - (paddedLen % 0x10);
-            if (this.recvbuf_.length >= paddedLen)
-                consumeLen = paddedLen;
+            // Consume exactly the declared length. The client does not pad its
+            // frames: every recorded chunk that held one message was exactly
+            // `len` bytes (17, 21, 23, 27, ...). Rounding up to 16 swallowed the
+            // start of the next frame whenever two arrived in one TCP chunk
+            // (e.g. 23 + 27 bytes during PvE combat) and the connection dropped
+            // with "Invalid message length".
+            const consumeLen = len;
 
             // Use exact message length for CRC (client computes CRC over actual bytes, not padding)
             const msgBuf = Buffer.from(this.recvbuf_.subarray(0, len));

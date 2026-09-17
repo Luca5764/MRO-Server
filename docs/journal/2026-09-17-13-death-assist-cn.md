@@ -20,3 +20,12 @@ decompile：`docs/research/2026-09-17-fire-gate/Death_CN.c`、`Death_Assist_CN.c
 
 - `dispatch/lobby.dispatch.js` Death_CN handler：類型不在 1～4 時，只送 `Death_SN`，**不排程 `Respawn_SN`**，也不改 `respawnGeneration_`。
 - 伺服器 19:29 重啟（`session-20260917-192903.jsonl`）。待測：`docs/next-test.md` 測試 O。
+
+## 測試 O：打到一半斷線（19:34）——伺服器切封包的 bug
+
+- ✅ [SHOT] `shots/testO-disconnect.png`：`ROUND 1`、`Remaining core durability: 10%`、`RESPAWN 1 / KILL 29`，跳出「disconnected from the server.」。
+- ✅ [LOG] 伺服器 console：斷線前最後一個 TCP chunk 是 **50 bytes = 23（Assist_CN）+ 27（Death_CN）**，處理完第一個之後出現 `Invalid message length: 34759, disconnecting`。
+- ✅ 根因（`client.js` onData）：程式把每個 frame 的長度**補齊到 16 的倍數**才消耗（23→32），緩衝區裡還有下一個封包時，就多吃掉下一個封包開頭的 9 bytes，下一次讀到的長度就變成亂碼。
+- ✅ [LOG] 證據：比對 console 裡所有「單一 chunk vs 解出長度」，單一封包時 chunk 大小都**剛好等於**長度（16、17、20、21、23、24、27、67、274、517、913），客戶端從不補齊；只有一個 chunk 裡有多個封包時才會不同（32 vs 16、50 vs 23、69 vs 23）。
+- 改動：`client.js` 改成只消耗宣告的 `len`。伺服器 19:35 重啟（`session-20260917-193503.jsonl`）。這個 bug 跟 Death_CN 的修改無關，是戰鬥中封包變密集之後才顯現。
+- ✅ [LOG] 測試 O 前半：擊殺 AI 的 Death_CN（`01000000 15...`，類型 0x15）都只回 `Death_SN`，沒有再送 `Respawn_SN`。
