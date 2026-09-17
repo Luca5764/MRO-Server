@@ -140,3 +140,16 @@
   2. 原始組語／decompile 存 `docs/research/2026-09-18-shop-list/`。
   3. 最多兩個建議的單變數實驗（改哪個欄位／時機、預期結果），標「待審」。
 - **完成條件**：至少對一筆實際送出的商品，給出「在哪個條件被丟掉」並附組語或原始碼行號；或明確證明 ShopList 內容都通過、問題在別處（例如送出時機或場景）並附證據。遇到跟既有 ✅ 矛盾就停下來寫疑點。
+
+## G6c：商店相容性單變數實驗（指派：Codex Luna，2026-09-18）
+
+> 同一個 worktree `/home/lucas/mro-reverse-g6-unblock`（分支 `flash-wip-g6-unblock`）。commit 最後一行 `Agent: codex (中階)`。
+
+- **目標**：用一次實測確認「商店空白是因為伺服器送的商品全都過不了客戶端 `ItemSubordinateCheck`」。
+- **背景**：`docs/journal/2026-09-18-01-g6b-shop-list-filter-root-cause.md`（含 Claude 審查）。`item_catalog.mech_type` 其實是武器家族，slot 1 送出的 21x 主武器 Small 機不能裝；Cache 預設配裝 1 號機主武器是 `22100101`。
+- **範圍**：`Metal Rage Online Server/dispatch/room.dispatch.js` 的 `buildShopItems()`／ShopList 送出處。
+- **實作（開關預設關閉）**：新增 `const SHOP_COMPAT_EXPERIMENT = 'disabled'; // 'disabled' | 'enabled'`。enabled 時**只**把 slot 1 一般商店（`ShopList_SN 0x00240241`）主武器清單的**第一筆** `21100101` 換成 `22100101`，價格、旗標（IsShow 仍在 +0x0D）、筆數、送出時機全部不變。**不要**打開 `SHOP_UNBLOCK_MODE`。
+- **實測**（先問操作者、確認沒有別的實驗在跑）：暫時把開關改成 enabled，請操作者重啟 tmux `server`（要從 worktree 啟動：`cd "/home/lucas/mro-reverse-g6-unblock/Metal Rage Online Server" && npm start`，`node_modules` 用 symlink 指到主目錄），進機庫 1 號機 → 商店主武器頁。記錄：是否出現**恰好一件**商品、是哪件；截圖（`tools/win/shot.sh`）；伺服器 log 的 ShopList hex。測完開關改回 disabled、請操作者把 server 換回主目錄。
+- **限制**：一次只改這一個變數；不改 DB、不動 G6 save、ItemInfo、`PVE_SLOT_SELECT_FLOW`、Grade、Death_SN、G7。
+- **交付**：日誌 `docs/journal/2026-09-18-02-g6c-shop-compat-experiment.md`（標待審，附 [OBS]／[SHOT]／[LOG]）；commit。
+- **完成條件**：有「出現幾件、哪件」的實測結果；若 0 件，記錄完整 ShopList hex 與客戶端 log（關閉客戶端後的 `MetalRage.log`）並停下回報。
