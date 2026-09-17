@@ -81,6 +81,10 @@ const SN_SHOP_LIST     = 0x00240241;
 const SN_CASH_SHOP     = 0x00240242;
 const HANGAR_POINT_BALANCE = 100000;
 const HANGAR_COUPON_BALANCE = 1000;
+// G6 equipment persistence is deliberately opt-in until live client testing
+// and cross-agent review are complete.
+const EQUIP_SAVE_MODE = 'disabled'; // 'disabled' | 'enabled'
+const SLOT_CHANGE_PART_NAMES = ['body', 'main', 'left', 'right', 'equipment', 'skin'];
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
@@ -370,6 +374,11 @@ function needsPostSelectShopRefresh(slot)
     return false;
 }
 
+function readSlotChangeSerials(body)
+{
+    return Array.from({ length: 7 }, (_, index) => body.readUInt32LE(index * 4));
+}
+
 module.exports =
 class ZRoomDispatch
 {
@@ -618,13 +627,28 @@ class ZRoomDispatch
             case 0x00240107:
             {
                 if (body.length >= 0x1C) {
-                    const slot = body.readUInt32LE(0x00);
+                    const serials = readSlotChangeSerials(body);
+                    const slot = serials[0];
                     client.currentHangarSlot_ = slot; // 현재 선택 슬롯 기억 (remember current selected slot)
                     (async () => {
+                        let saveSucceeded = true;
+                        if (EQUIP_SAVE_MODE === 'enabled') {
+                            try {
+                                await db.saveEquippedLoadout(client.accountId_, slot, serials.slice(1));
+                                console.log(
+                                    `[ZRoomDispatch] >> Saved Slot_Change_CQ 0x00240107: ` +
+                                    `slot=${slot} ${SLOT_CHANGE_PART_NAMES.map((name, index) => `${name}=${serials[index + 1]}`).join(' ')}`
+                                );
+                            } catch (err) {
+                                saveSucceeded = false;
+                                console.error(`[ZRoomDispatch] >> Slot_Change_CQ save failed:`, err.message);
+                            }
+                        }
+
                         const slotPayload = await this.buildSlotChangePayload(client, body);
                         const [msg, respBody] = getExactMessageBuffer(0x00240108, 0x22);
-                        respBody.writeUInt16LE(0, 0x00);
-                        respBody.writeUInt32LE(0, 0x02);
+                        respBody.writeUInt16LE(saveSucceeded ? 0 : 1, 0x00);
+                        respBody.writeUInt32LE(saveSucceeded ? 0 : 1, 0x02);
                         slotPayload.copy(respBody, 0x06, 0x00, 0x1C);
                         if (needsPostSelectShopRefresh(slot)) {
                             client.send(msg);
