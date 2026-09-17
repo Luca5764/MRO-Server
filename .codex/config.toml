@@ -16,17 +16,19 @@
 #   agents.max_concurrent_threads_per_session
 
 # Root / orchestrator
-# 2026-09-17: switched from gpt-5.6-luna to gpt-6-astra at the user's request,
-# so the root counts as a high-tier model under AGENTS.md. Subagents stay on Luna.
-model = "gpt-6-astra"
-model_reasoning_effort = "max"
+# 2026-09-17: back to gpt-5.6-luna at the user's request (Astra used quota too fast).
+# The root is now mid-tier under AGENTS.md. Claude Code dispatches Codex runs via tmux;
+# when a review is needed, Claude starts a separate `codex -m gpt-5.6-sol` session.
+model = "gpt-5.6-luna"
+model_reasoning_effort = "high"
 
 # Safe interactive defaults. Change if your workflow needs otherwise.
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 
 [agents]
-enabled = true
+# Disabled 2026-09-17: Claude Code orchestrates; Codex runs single-threaded to save quota.
+enabled = false
 
 # Number of child agent threads Codex may keep open concurrently.
 # Keep this low on Plus: every concurrent subagent re-reads its own context.

@@ -52,8 +52,8 @@
 
 ### 等級與權限
 
-- **高階：** Claude 主力、Codex 主力（GPT-6 Astra）、Codex reviewer（Astra）
-- **中階：** Gemini（Antigravity）、Codex 的 Luna 子 agent、Claude 的 Sonnet 子 agent
+- **高階：** Claude 主力、Codex reviewer（GPT-5.6 Sol）
+- **中階：** Codex 主力（GPT-5.6 Luna）、Gemini（Antigravity）、Claude 的 Sonnet 子 agent
 
 | 動作 | 高階 | 中階 |
 |---|---|---|
@@ -114,7 +114,7 @@
 
 - 沒有自動化測試。真正的測試是操作者開遊戲；AI 的驗證是切 session 紀錄、對照客戶端 log、看截圖、讀組語、用舊封包離線比對。
 - 客戶端與伺服器只有一套，**實驗不能平行**，只有分析可以平行。
-- 分派子 agent 的機制各自實作：Codex 用 `.codex/agents/` 與 `.agents/skills/astra-orchestrator`；Claude Code 用 `.claude/agents/`（explorer、worker、verifier）；Antigravity 只擔任中階。
+- 分派子 agent 的機制各自實作：Codex 目前關閉子 agent（`.codex/config.toml`），由 Claude 主力在 tmux 開 Codex 派任務；Claude Code 用 `.claude/agents/`（explorer、worker、verifier）；Antigravity 只擔任中階。
 
 ## 參考文件
 

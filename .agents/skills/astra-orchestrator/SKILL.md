@@ -5,6 +5,8 @@ description: Orchestrate complex Codex coding work with GPT-6 Astra as planner/i
 
 # Astra Orchestrator — Plus Profile
 
+> **目前停用（2026-09-17）：** 主力改回 GPT-5.6 Luna，子 agent 已在 `.codex/config.toml` 關閉，調度由 Claude Code 負責。reviewer 改為 GPT-5.6 Sol。下文的 Astra 拓撲僅供之後恢復時參考。
+
 The user's explicit instructions take precedence over this skill.
 
 ## Goal
