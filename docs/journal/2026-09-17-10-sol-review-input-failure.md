@@ -46,3 +46,11 @@ decompile：`docs/research/2026-09-17-fire-gate/Option_Game.c`。
 - ✅ 所以每次 PvE 開局都會出現錯誤的按鍵表，儲存的效果不會延續到下一次啟動（即使本地 `OptionAll.ini` 已經是標準值）。
 - 🟡 [SRC] 可能的機制（未證實）：UInput 物件跨關卡沿用，綁定只在 `LevelInfo.GetLocalPlayerController()` 第一次找到 PC 時套用（`Engine/LevelInfo.uc:502-533`）；如果 `LocalPlayerController` 已經先被設定，或套用時機不對，PvE 就會沿用前一個關卡（Hangar／大廳）留下的綁定。
 - 下一個觀察（測試 H）：在 Hangar 開始 PvE **之前**先到按鍵設定按儲存，再進 PvE，看按鍵能不能用，藉此分辨「PvE 開局主動覆寫了綁定」還是「沿用了進 PvE 前的綁定」。
+
+## 測試 H 與權限寫入點（16:10 左右）
+
+- [OBS] 在 Hangar 先到按鍵設定按儲存，再開始 PvE：**還是不能用**。✅ 所以 PvE 載入時（或載入之後）按鍵綁定被弄壞了，不是沿用進場前的綁定。
+- ✅ [DLL] `Account_UserType_Set`（`0x10717240`，寫 `+0x4d0`／`+0x514`）只有一個呼叫點：`0x107c0e3c`，位於 `DefaultInfo_SN` 內。另一個存取點 `0x107f6b60` 在 `FUN_107f6700`，是整個物件的複製（operator=）。所以**只有 `DefaultInfo_SN` 會改變帳號權限**；測試 C 以後送的都是 `"0"`。
+- ✅ [LOG]／[SRC] 測試 C 的 `RadioChat_Sel 0` 只有在 `!PC.IsSpectating()` 時才會印（`DefaultHud.uc:4230`），而且 PvE 的 `PlayerSelectMech.BeginState` 遇到 GM 會轉 Spectating（`ZPvePlayercontroller.uc` 約 1447 行）；兩者都表示 PvE 執行時 `IsMeGM_BD()` 為 false。
+- 🟡 所以 Sol 說的「PvE 仍是 GM 按鍵表」要修正成「**開局套用的一般按鍵表沒有生效，或之後被弄壞**」。`LevelInfo.GetLocalPlayerController` 的 GM 分支（權限 0 時）應該不會走到。
+- ⬜ 還要分辨：到底是「重新執行 `ApplyControl`」修好的，還是「打開再關閉選項頁（GUI）」修好的。測試 I 用來分辨這兩者。
