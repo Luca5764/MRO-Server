@@ -42,3 +42,9 @@ PageDown=ShowDebug
 3. 按 Insert，再試 PageDown：有沒有除錯文字。
 
 判讀：End 沒有計分板 → User.ini 綁定根本沒讀，要換方法；End 有計分板但 Insert／PageDown 沒有除錯文字 → 綁定有效，問題在 debug 繪製。
+
+## E2 結果（14:45）
+
+- [OBS] End（ShowScores）、Insert、PageDown 全部沒反應。
+- ✅ **User.ini 的 `[Engine.Input]` 綁定這個客戶端不會讀**（至少不會生效），ShowDebug 這條路放棄。
+- `User.ini` 已經用 `User.ini.bak-20260917` 還原。

@@ -95,3 +95,10 @@
 - 🟡 [SRC]（子 agent，待審）Space／Shift 的旗標：出生時 `InitializeMech()`（`DefaultMech.uc:752`）把 `bJumppreparation_JW` 設成 true，`bNoInputKey_JW` 只有在 booster 滑行或受傷滑行時才會被設成 true。照靜態程式碼看，兩者都應該能通過檢查，**讀程式碼找不出 Space／Shift 失效的原因**。另外，`DefaultPlayerController.uc:553–617`（先前引用的 593／600 行）整段被 `/* */` 註解掉，是死代碼。
 - 🟡（子 agent，待審）2／3／4 可能只是沒有裝副武器：`AllowChangeWeapon`（`W_DefaultMechForWeapon.uc:124`）遇到 `Weapons_UJ[f]==none`，或者要換的就是目前武器時，會回傳 false，不一定是同一個 bug。
 - 結論：靜態讀碼開始沒有進展，需要執行期的數值。`Engine/Hud.uc:248` `exec ShowDebug` 沒有任何限制，開啟後會畫出 `DefaultMech.DisplayDebug`（`DefaultMech.uc:4815`，含 `bJumppreparation_JW`、`MechSituation`、BoosterPower 等）。console 快捷鍵是 F24（09 篇），按不到；要用的話，得在 `System/User.ini` 加一個按鍵綁定，這需要操作者同意。
+
+## ShowDebug 失敗，以及訓練場／PvE 的 NetMode 差異（同日）
+
+- [OBS]／[TEST] 在 User.ini 加 `[Engine.Input]` 綁定（`End=ShowScores`、`Insert=ShowDebug`、`PageDown=ShowDebug`）完全沒有作用，連已知會動的 ShowScores 都沒反應，所以是綁定沒被讀到。User.ini 已還原。
+- ✅ [LOG] `MetalRage.log`：訓練場的 URL 是 `Browse: Store_01?Game=ZModeHangar.HangarGameInfo?Team=0`（**沒有 `?Listen`**，應該是 `NM_Standalone`）；PvE 則是 `Browse: Map_PC01?Listen?LPort=30907?...Game=ZModePve.ZModePve...`（listen server）。
+- 🟡 [SRC] `ZBase/PawnSecond.uc:701` `IsLocallyControlled()` 在 Standalone 下**一律回傳 true**，在 listen server 下才要檢查 Controller 是不是有 Viewport 的 PlayerController。武器 ready（`BaseGun_Attachment.AnimEnd`、`W_DefaultWeaponAttachment.CheckAmmoNChangeClientState`）和 `DefaultMech.uc` 的許多本地邏輯都靠這個判斷。這能解釋「訓練場（Standalone）開火正常、PvE（Listen）不正常」，但還沒證實 PvE 裡 `IsLocallyControlled()` 真的是 false，Space／Shift 也還沒被這條解釋到。
+- ⬜ log 裡沒有看到 UE2 標準的 NetDriver／listen 訊息；`LPort=30907` 跟伺服器的遊戲埠相同，客戶端在 Windows 上 listen 時有沒有衝突，還不知道。
