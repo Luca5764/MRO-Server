@@ -169,6 +169,34 @@ class ZLobbyDispatch
             // may be zero while the score service is still unimplemented, but
             // the victim index must be present: Death_SN uses it to move the
             // game user from alive (2) to respawnable (1).
+            // Campaign_CN. ZDispatchGame::Campaign_CN (0x107dab70) is sent by
+            // the PvE host when the mission ends: body[0]=1, body[1]=0,
+            // body[2] = 1 objective achieved / 2 failed (script
+            // ZNetwork_DJ.Game_Campaign). Answer with EndGame_SN so the client
+            // leaves the battle for the result scene.
+            //
+            // EndGame_SN 0x00222213, ZDispatchGame::EndGame_SN (0x107d7ed0),
+            // offsets from the assembly and its log strings 0x1082e78c /
+            // 0x1082e7d0 / 0x1082e888:
+            //   +0x00 u16 WinTeamIndex  -> Game_End_Battle, then Scene_Change(5)
+            //   +0x02 u16 Team, +0x04 u16 Score, +0x06 u8 Round, +0x07 u8 Alive,
+            //   +0x08 u16 Try, +0x0A u16 Goal, +0x0C u32 Exp          (team A)
+            //   +0x10 .. +0x1D same layout                             (team B)
+            case 0x00230139:
+            {
+                const action = body.length >= 3 ? body[2] : 2;
+                // Player team is red (0) in Game_Info_SN; which value the result
+                // page expects for a PvE failure is not confirmed yet.
+                const winTeam = action === 1 ? 0 : 1;
+                const [msg, eb] = client.getMessageBuffer(0x00222213, 0x1E);
+                eb.writeUInt16LE(winTeam, 0x00);
+                eb.writeUInt16LE(0, 0x02);   // team A = red
+                eb.writeUInt16LE(1, 0x10);   // team B = blue
+                client.send(msg);
+                console.log(`[ZLobbyDispatch] >> Campaign_CN action=${action} -> Sent EndGame_SN 0x00222213 (winTeam=${winTeam})`);
+                return true;
+            }
+
             case 0x00230123:
             {
                 const attackerIndex = body.length >= 2 ? body.readUint16LE(0x00) : 0;
