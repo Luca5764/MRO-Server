@@ -50,3 +50,10 @@
 
 - [SRC] 同一個 state 顯示 PvE 的正常流程是：`PlayerSelectMech` → `Game_Play_Check()` 為真時 `OpenSlotSelectPage()`（`ZGameMidMenu.ZSlotSelectPage`，選機體）→ `LoadPlayers()` → 片頭影片結束（`bIsSendEndMovie`，約第 1035 行）→ 有 Pawn 就 `GotoState('PlayerWalking')`。這個 state 裡的 `exec function Fire` 是空的。
 - 🟡 [GUESS] 我們用 `Respawn_SN` 直接生出 Pawn，可能跳過了這個流程，controller 停在不能開火的 state。要查出實際停在哪個 state，以及哪個伺服器封包會推進它。
+
+## 狀態追查（子 agent 報告 + Claude 抽查，同日）
+
+- 🟡 [SRC] 子 agent（中階，待審）：`ZBase/DefaultHud.uc:4221` `RadioChat_Sel` 在 `PC==none || PC.IsSpectating() || PC.Pawn==None` 時會直接 return，不會印 `RadioChat_Sel 0`。所以測試 C 時本地 PC **有 Pawn、也不在 Spectating**。這跟「卡在 `PlayerSelectMech`」的猜測衝突（那個 state 通常沒有 Pawn）。它推論 PC 應該已經在 `PlayerWalking`（由 `Engine/PlayerController.uc` `Restart()`→`EnterStartState()` 進入），但在 `PlayerWalking` 的 Fire 流程裡**沒找到**會靜默擋掉輸入的程式碼。
+- ✅ [DLL] `RadioChat_Sel N` 是 `WinDrv.dll` 原生程式送出的：視窗程序 `0x11114bdf` 附近的 `WM_KEYDOWN`（case 0x100／0x104），先對所有 `< 0xff` 的鍵呼叫 `CauseInputEvent`，接著對數字鍵 `0x30–0x39`／`0x60–0x69` 額外執行 `RadioChat_Sel n`。decompile：`docs/research/2026-09-17-fire-gate/WinDrv_WndProc_keydown.c`。所以鍵盤事件確實有進到引擎的輸入系統，數字鍵觸發的 `RadioChat_Sel` 跟開火無關。
+- ✅ [檔案] `System/User.ini`、`DefUser.ini` 的 `[Engine.PlayerInput]` 是空的，**所有按鍵綁定都來自腳本執行時的 `setinput_BD`**（`Engine/OptionAll.uc`）。
+- ⬜ 仍然不知道：開火按鍵事件在哪裡被吃掉（綁定沒生效、GUI 攔截、還是 state）。
