@@ -93,6 +93,7 @@
 | `User_Default_SN 0x00220233`：2 bytes header ＋ 每筆 0x34；暱稱是 ASCII | 🟡 結構已反組譯，行為未全部驗證 | `journal/2026-09-15-13-user-default-sn-body-structure.md` |
 | `Map_Change_All_SN 0x00220226`：flag＋count＋每筆 9 bytes；要連送兩次清單才會顯示 | ✅ [DLL][TEST] | `journal/2026-09-15-20-map-change-all-sn-body-confirmed.md`、`journal/2026-09-16-11-room-map-list-shows-after-double-send.md` |
 | 選地圖彈窗的 `m_MapInfoList` 仍是 0／0，資料來源跟房間清單不同 | ⬜ | `journal/2026-09-16-11-room-map-list-shows-after-double-send.md` |
+| 遊戲內 Team／All 聊天：C→S 與 S→C 共用 `0x00220507`／`0x00220509`，258-byte body 原樣回送後 HUD 正常顯示 | ✅ [DLL][LOG][OBS] V1 | `journal/2026-09-17-23-game-chat-echo-g7.md` |
 
 ## 5. 程式碼裡已知錯誤的名稱與無效封包（尚未修正）
 
@@ -110,7 +111,7 @@
 | `game.dispatch.js` 對 C→S `0x00250102` 回 `0x00250103` | 客戶端確實會送 `0x00250102` ✅ [LOG] | `0x00250103` 不在 dispatch map，回應會被忽略 ✅ [DLL]；`0x00250102` 的真名 ⬜ | 回應無效果 |
 | `gate.game.dispatch.js` 約第 714 行 | 對 `0x00222101` 回 `0x00222102`，標為 `Room_Enter_SN` | `0x00222102` 是 `Game_Ready_SN`。✅ [DLL]；在該時機送出是否恰當 ⬜ | 可能是不該送的 Game_Ready |
 | 對 `0x00420117` 的 fallback 回 `0x00420118` | — | `0x00420118` 不在 dispatch map。✅ [DLL] | 回應無效果 |
-| 對聊天 `0x00220501`／`0x00220505` 回 `0x00220502`／`0x00220506` | — | 這兩個回應 opcode 客戶端都沒有 handler ✅ [DLL]。`0x00220501`／`0x00220505` 本身是 `Chat_*_All_SN`，推測伺服器應把同一個 opcode 廣播回去 🟡 | 聊天目前只當 marker 用，影響不大 |
+| 對大廳／房間聊天 `0x00220501`／`0x00220505` 回 `0x00220502`／`0x00220506` | — | 這兩個回應 opcode 客戶端都沒有 handler ✅ [DLL]。遊戲內 Team／All 已確認同 opcode回送有效，但大廳／房間尚未實作。 | 大廳／房間聊天仍只當 marker；遊戲內聊天已修 |
 
 ## 6. 待查（依優先順序）
 

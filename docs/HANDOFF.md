@@ -5,6 +5,21 @@
 
 ---
 
+## ⚡ 高階主力交接：Codex Sol（2026-09-17 22:30）
+
+- **G7 已完成並合併 `reverse-work`**：Gemini 實作，高階審查修正 disabled
+  fallback；Team／All `0x00220507`／`0x00220509` 均實測在 HUD 顯示，預設
+  已開啟。證據見 `2026-09-17-23-game-chat-echo-g7.md`。
+- **G6 靜態審查通過、實測阻塞**：CQ 本體 `0x107e0c50`、SA 本體
+  `0x107dde80` 已核對，開關維持預設關閉。主武器商店清單空白、購入物重登
+  後仍不顯示，客戶端沒有第二件裝備可選。先另案修正 `ShopList_SN`／
+  `Packege_Item_SN` 顯示路徑，再續測換裝、重登與 PvE 武器。G6 審查 commit
+  在 `flash-wip` 的 `6180060`，尚未合併 G6 程式到主線。
+- `server` tmux 目前跑 G7 worktree；後續工作前切回
+  `/home/lucas/mro-reverse/Metal Rage Online Server` 的 `reverse-work`。
+
+---
+
 ## 目前交接快照（2026-09-17 21:30，Claude 高階，請以此段為準）
 
 ### 今天完成的（全部已實測，細節看各篇日誌）
