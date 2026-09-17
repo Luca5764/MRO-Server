@@ -75,4 +75,4 @@
 | 2026-09-17 | `2026-09-17-07-tzp-script-source-decrypted.md` | — | ✅ [DLL]／[TEST] | `.tzp` 以 Core.dll `0x101622d0` 的 XOR 表離線解密，內含 UnrealScript 原始碼（1539 class，不 commit）；開火與跳的閘門候選：`bSetWepComplete`、`bNoInputKey_JW`。 |
 | 2026-09-17 | `2026-09-17-08-account-level-gm-keybinds.md` | `0x00210101` | ✅ [SRC]／[DLL]；待測 | 帳號權限 ≥1 會讓 `LevelInfo` 套用 `ApplyGMControl`（沒有 Fire，左右鍵與 Space 變成切換觀戰視角）；`lucas` 權限改成 0 待測試 C。 |
 | 2026-09-17 | `2026-09-17-09-uelib-class-deserialization-fixed.md` | — | ✅ [DLL]／[TEST]（Claude 已審） | UELib 無法讀取 class 物件根因修復：MRO v134/29 未被識別為 UE2_5 世代導致 CppText 多讀與 StructFlags 漏讀；補入 GameBuild.MetalRage 後 class defaultproperties 與屬性全部可讀。 |
-| 2026-09-17 | `2026-09-17-10-sol-review-input-failure.md` | — | ✅ 審查（Sol 高階）＋ Claude 抽查 | R／1／F 不能當探針；能用的鍵在 GM 和一般按鍵表都一樣，所以「權限 0 已套上一般按鍵」沒被證明；最可能是 PvE 仍套用 GM 按鍵表。 |
+| 2026-09-17 | `2026-09-17-10-sol-review-input-failure.md` | — | ✅ 審查（Sol 高階）＋ Claude 抽查＋[OBS] 測試 F | 能用的鍵在 GM 和一般按鍵表都一樣；測試 F：PvE 內按鍵設定頁按儲存（重跑 ApplyControl）後全部按鍵恢復，確認是開局時按鍵表沒套上；`0x00221221`／`0x00221222`／`0x00221211` 格式。 |
