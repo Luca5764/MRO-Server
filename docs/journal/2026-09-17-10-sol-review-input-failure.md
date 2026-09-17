@@ -39,3 +39,10 @@ decompile：`docs/research/2026-09-17-fire-gate/Option_Game.c`。
 - ✅ [DLL] `Option_Game_SA 0x00221222`（`0x107d10a0`）：**不檢查 body**，只把 header 的 status／result 丟給事件 `NETWORK_OPTION_GAME`；腳本端 `ZGameMainMenu/ZGUIController.uc:384` 對這個事件什麼都不做。
 - ✅ [DLL] `Option_Game_SN 0x00221211`（`0x107d1120`）：body+0 是 ANSI 字串（≤501）→ `Option_Server_Game_Set`（`0x10714f70`）：開頭不是 `\x05` 就改用 DLL 內建的預設字串（`0x108139e0`；`0x10813740`／`0x10813890` 也是同一份預設，滑鼠靈敏度 `2.50`），寫進 `+0x1674`，再複製到 `+0x1654`（`Option_Info_Get().GameOption`）。
 - ⬜ 伺服器從沒送過 `Option_Game_SN`。這跟「開局沒套上一般按鍵表」有沒有關係**還沒證實**：本地 ini 的按鍵值是正常的。為什麼開局會是 GM／錯誤的按鍵表，仍然待查。
+
+## 測試 G（15:50 左右）
+
+- [OBS] 測試 F 儲存過按鍵之後，完全重開客戶端再進 PvE，**不開**設定頁：左鍵、Space 還是不能用。
+- ✅ 所以每次 PvE 開局都會出現錯誤的按鍵表，儲存的效果不會延續到下一次啟動（即使本地 `OptionAll.ini` 已經是標準值）。
+- 🟡 [SRC] 可能的機制（未證實）：UInput 物件跨關卡沿用，綁定只在 `LevelInfo.GetLocalPlayerController()` 第一次找到 PC 時套用（`Engine/LevelInfo.uc:502-533`）；如果 `LocalPlayerController` 已經先被設定，或套用時機不對，PvE 就會沿用前一個關卡（Hangar／大廳）留下的綁定。
+- 下一個觀察（測試 H）：在 Hangar 開始 PvE **之前**先到按鍵設定按儲存，再進 PvE，看按鍵能不能用，藉此分辨「PvE 開局主動覆寫了綁定」還是「沿用了進 PvE 前的綁定」。
