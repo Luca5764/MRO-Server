@@ -42,13 +42,8 @@
 - tmux：`server`（伺服器，Claude 控制）、`sol`（Codex reviewer，**不要關**，cache 會掉；額度約剩 30%，只留給重要審查）。
 - `docs/backlog.md` 的 G1～G5 都已完成並審查。
 
-### 下一步（契約，操作者決定順序）
+### 下一步
 
-1. **換裝備存檔**
-   - 目標：機庫改武器／推進器後存進 DB，下一局 `Game_User_SN` 與 ItemInfo 反映新配裝。
-   - 範圍：`Slot_Change_CQ 0x00240107`（`room.dispatch.js` 約 618 行）、DB `items.equipped`、`ChangeSlot` 未完成分析 `-04`。
-   - 限制：先讀 DLL 確認 `Slot_Change_SA 0x00240108` 格式；DB 變更寫成腳本；一次一個變數。
-   - 完成條件：機庫換主武器 → 重登仍保留 → PvE 出場手上是新武器。
-2. **遊戲內聊天顯示**（小）：照 G3，`0x00220507`／`0x00220509` 同 opcode 原樣回送。完成條件：聊天出現在畫面上。
-3. **結算細節**：EndGame_SN 隊伍分數塊、exp／point 真實算法（查腳本 `ScoreBattle` 等）、遊戲結束後取消殘留重生。
-4. **Assist_SN** 照 G1 補格式。
+- **Claude 額度將盡**，操作者決定交給 Codex（Luna，中階）或 Gemini（中階）：做 `docs/backlog.md` 的 **G6（機庫換裝備存檔）**，有餘力再做 **G7（遊戲內聊天顯示）**。兩個都允許改伺服器，但新行為要放在預設關閉的開關後面、在 `flash-wip` 分支、實測時暫時打開，規則寫在 backlog「2026-09-17 21:40 新增」。
+- 審查：Codex reviewer Sol（tmux `sol`，額度約 30%）或下一個接手的 Claude。審過才把開關預設打開並合併回 `reverse-work`。
+- 之後的候選：結算細節（EndGame_SN 隊伍分數、exp／point 真實算法、遊戲結束後取消殘留重生）、`Assist_SN` 照 G1 補格式。

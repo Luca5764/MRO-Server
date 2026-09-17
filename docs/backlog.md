@@ -68,3 +68,40 @@
 - **限制**：同共通規則（只分析、不改程式、結論待審）。
 - **交付**：流程圖（文字即可）：玩家在機庫／房間／開局選機體 → 客戶端呼叫哪些函式 → 送出哪個 opcode（附組語位址與 body 欄位）→ 伺服器應該怎麼更新狀態與回應；列出本次實測「沒有送封包」的原因（例如只在某個按鈕、某個場景才送）。
 - **完成條件**：至少確認一條「客戶端把選擇的槽位送到伺服器」的路徑（opcode＋body 偏移＋組語位址），或明確證明原版是由伺服器在別處決定、客戶端不送。
+
+---
+
+## 2026-09-17 21:40 新增（Claude 額度將盡，交給 Codex Luna／Gemini）
+
+**這兩個任務允許改伺服器程式**，但依 `AGENTS.md` 中階規則：
+- 所有新行為都放在**預設關閉的開關**後面（例如檔案頂端 `const EQUIP_SAVE_MODE = 'disabled'; // 'disabled' | 'enabled'`），commit 時一定是關閉。
+- 在 `flash-wip` 分支工作；**實測時**可以在工作目錄暫時打開開關、請操作者重啟伺服器並測試，測完把開關改回關閉再 commit，並在日誌寫明「打開開關時的測試結果」。
+- 伺服器在 tmux `server` session 跑（`cd "Metal Rage Online Server" && npm start`），重啟前先跟操作者說一聲。
+- 資料庫變更寫成 `tools/` 下的腳本，不直接下 SQL。
+- 一次只改一個變數；每個實測寫一篇日誌、在 `INDEX.md` 標「待審」。
+- 審查：由 Codex reviewer（Sol，高階）或下一個接手的 Claude 審；審過才能把開關預設打開。
+
+## G6：機庫換裝備存檔
+
+- **目標**：在機庫替某台機換主武器／左右武器／推進器後，伺服器把新配裝存進 DB；重新登入仍保留；PvE 出場時手上是新武器。
+- **範圍**：
+  - 客戶端 → 伺服器：`Slot_Change_CQ 0x00240107`（`Metal Rage Online Server/dispatch/room.dispatch.js` 約 618 行 `case 0x00240107`，7 個 dword：slot、mech、main、left、right、equipment、skin——這些值是 item serial（`items.id`）還是 item index，**要先從 DLL 確認**）。腳本端 `~/mro-decrypted/src/ZGameMainMenu/ZPage_Hangar.uc`（`SlotChangeSend`、約 1860–1890 行）。
+  - 伺服器 → 客戶端：`Slot_Change_SA 0x00240108`（目前 `buildSlotChangePayload` 從 DB 讀 `equipped` 回填）；DLL handler 用 `tools/dispatch-map.py`／`docs/client-dispatch-map.md` 找。
+  - DB：`items` 表（`id, account_id, item_id, slot, mech_type, part_slot, quantity, equipped`），`database/db.js`。
+  - 之後會讀 DB 的地方：`dispatch/item-info.sender.js`（ItemInfo）、`dispatch/room/room-game-user.sender.js`（Game_User_SN 8 槽位，`equippedBySlot`）、WearInfo `0x00210113`。
+- **背景**：`docs/HANDOFF.md` 快照、`docs/journal/2026-09-17-20-iteminfo-chunking.md`（機庫已能顯示 8 台機）、`-22-pve-mech-slot-selection.md`（Game_User_SN 8 槽位）、`-04-changeslot-body-wip.md`（舊的未完成分析）、`2026-09-16-27-wearinfo-slot-key-misalignment-fixed.md`。注意 ItemInfo 單 frame ≤ 0x400 bytes（每包 ≤ 28 筆）。
+- **限制**：同上方「新增」規則。**不要動** `PVE_SLOT_SELECT_FLOW`、ItemInfo 分包、Grade_Info_SN 等已實測通過的行為。武器是否能裝在某台機（例如輕型機不能裝 `MOC_a 21100101`，`state.md` 第 4 節）由客戶端判斷，伺服器先照收。
+- **交付**：
+  1. 分析日誌：`Slot_Change_CQ` 7 個欄位的語意（附組語位址）、`Slot_Change_SA` 完整格式、客戶端換裝後期望伺服器回什麼。
+  2. 實作（開關預設關閉）：收到 CQ 時更新 DB `equipped`（同一台機同一 part_slot 只能一件 equipped=1），SA 回傳新配裝。
+  3. 實測日誌（開關打開時）：換一把主武器 → 機庫顯示 → 重登是否保留 → PvE 出場手上的武器。
+- **完成條件**：實測三項都有 [OBS]／[LOG] 證據；或明確寫出卡在哪（例如 CQ 欄位不是 serial、SA 格式不明）。
+
+## G7：遊戲內聊天顯示
+
+- **目標**：戰鬥中隊伍／全體聊天的訊息顯示在畫面上。
+- **範圍**：伺服器目前處理 `0x00220507`（Team）、`0x00220509`（All）、`0x00360601`（Clan）的地方（grep `0x00220507`、`0x00220508`、`0x0022050a` 於 `Metal Rage Online Server/dispatch/`；目前是 fallback 回客戶端不認得的 `0x00220508`／`0x0022050a`）。
+- **背景**：`docs/journal/2026-09-17-17-game-chat-broadcast-format.md`（G3，Claude 已抽查）：Team／All 用**同一個 opcode、同樣 258 bytes body** 原樣回送；Clan 回 `0x00360602`，文字從 body+0x1D 開始。
+- **限制**：同上方「新增」規則。只做 Team 與 All 兩個頻道；單人測試就回送給自己即可（多人廣播之後再做）。
+- **交付**：實作（開關預設關閉）＋實測日誌（開關打開時：戰鬥中打 Team、All 各一句，是否出現在畫面、有沒有亂碼或斷線）。
+- **完成條件**：兩個頻道都有 [OBS] 結果。
