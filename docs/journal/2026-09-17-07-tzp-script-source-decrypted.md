@@ -20,3 +20,9 @@
 - 🟡 [SRC] `ZBase/DefaultPlayerController.uc:1468` `Jump`：要 `bJumppreparation_JW` 為真，而且 `!bNoInputKey_JW`。`bNoInputKey_JW` 由 `SetNoInputState_JW`（第 545 行）設定，呼叫點在第 2317、5203、5343 行。
 - 🟡 [SRC] 腳本有用到 `Game_Play_Check()`：`ZPvePlayercontroller.uc:1426`、`:1463`，`DefaultPlayerController.uc:4236`、`:4280`，都在 `state PlayerSelectMech` 裡。
 - 下一步：從 `DefaultMech.uc:742` 往回追 `SetMechWeapon` 在我們的流程中有沒有被呼叫、卡在哪個條件；同時查 `bNoInputKey_JW` 在第 2317／5203／5343 行的觸發條件。
+
+## 其他檔案盤點（同日）
+
+- ✅ [TEST] `data/MUD` 共 445 個 `.tzp`，**全部**用同一種方式解開，包括地圖 `Map_PC01.tzp` 等 34 張、貼圖、模型、特效（`~/mro-decrypted/*.u`）。地圖包沒有原始碼文字，但擺放的 actor 和屬性（例如 `ZPveEvent`、重生點、AI）要用 UE2 工具讀。
+- ✅ [TEST] 以下本來就是明文，不用解密：`data/MUZ/*.mra`（186 個，開頭直接是 `C1832A9E`）、`Resource/**/*.sou`（RIFF／WAV）、`*.dds`／`*.c_dds`（DDS）、`System/*.twt`／`*.c_twt`（UTF-16 文字）、`Music/*.ogg`。
+- `System/*.xem` 是 PE 執行檔（反作弊相關模組），**不碰**。
