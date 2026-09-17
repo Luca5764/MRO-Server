@@ -137,3 +137,4 @@ Disassembly:
   0x1072d912  push 0x10814e08                     ; "UserIndex : %d, Battle : %d, Assist : %d, Mission : %d, Exp : %d, Point : %d"
   ...
   0x1072d921  or dword ptr [esi + 0x1030], 1      ; mark user table dirty
+

@@ -70,3 +70,4 @@ Disassembly highlights:
       KillUserIndex, KillWeaponIndex, KillWeaponType, CriticalHit, KillCount);
   - If (this->fac & 1):
     Calls AGameInfo::eventMissionActionSuccess_BD(..., 2, DeathType, 0);
+

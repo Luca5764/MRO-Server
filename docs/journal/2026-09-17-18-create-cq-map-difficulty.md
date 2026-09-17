@@ -66,3 +66,4 @@
   1. 建房處理（`0x00220201`）：取 `client.mapIndex_ = body.readUInt16LE(0x02)`、`client.playRound_ = body[6]`；PvE 房設 `client.campaignMapCacheKey_ = client.mapIndex_`。
   2. 改圖處理（`0x00220221`）：更新 `client.mapIndex_ = incomingFields.w1`、`client.playRound_ = incomingFields.b5`、`client.campaignMapCacheKey_ = incomingFields.w1`。
   3. 兩項變數透過 `session.js` 跨重連延續，`sendGameInfoSn` 即可將正確的選定地圖與回合數送進 `Game_Info_SN`。
+

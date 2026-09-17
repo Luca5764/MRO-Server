@@ -52,3 +52,4 @@ Remainder of body:
   body[39] (u8): HasPassword (0x1090f307, set to 1 if password given at 0x107e5c9d)
   body[40..50] (11 bytes): Password (ANSI string, copied at 0x107e5ca4)
 Total body = 51 bytes (0x33). 16 + 51 = 67 bytes (0x43).
+

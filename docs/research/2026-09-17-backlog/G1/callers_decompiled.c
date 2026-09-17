@@ -88,3 +88,4 @@ void FUN_1071ccf0(FFrame *Stack)
         ZDispatchGame::Assist_CN(&DAT_108e7e88, 0, 1, UserIndex, TargetHP, 0x16);
     }
 }
+

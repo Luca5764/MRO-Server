@@ -35,3 +35,4 @@ Handler in ZDispatchCommunity for opcode 0x00360602:
   0x107cfcb5  push 0
   0x107cfcb7  push 0x10829148                     ; L"NETWORK_COMMUNITY_CHAT"
   0x107cfcbc  call UZNetwork_DJ::Event_Call       ; fires UnrealScript event
+

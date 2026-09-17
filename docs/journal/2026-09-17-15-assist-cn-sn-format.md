@@ -54,3 +54,4 @@ log 字串 `0x1082c358`：`Result : 0x%08X, UserIndex : %d, Action : %d, HP : %d
    - 目前伺服器回 16 bytes 空包（實為長度不足、全 0 的包），客戶端雖未崩潰但無實質作用。
    - 正確的 `Assist_SN` 應至少為 25 bytes（建議 0x1A 或補齊 0x20），包含正確的雙方 UserIndex 與得分。
    - 亦可評估在 PvE 中不回送 `Assist_SN`（或僅在玩家造成助攻時廣播），待高階裁決。
+

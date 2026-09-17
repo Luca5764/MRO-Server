@@ -26,3 +26,4 @@ UnrealScript struct CHAT_INFO (ZNetwork_DJ.uc:649):
     AddTextMessage_BD(ChatList[i].SendUser, ChatList[i].Message, class'SayMessagePlus', ChatList[i].Alive);
   case 2 (Team):
     AddTextMessage_BD(ChatList[i].SendUser, ChatList[i].Message, class'TeamSayMessagePlus', ChatList[i].Alive);
+
