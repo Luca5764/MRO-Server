@@ -286,6 +286,12 @@ class ZLobbyDispatch
                 if (deathType < 1 || deathType > 4)
                     return true;
 
+                // In the original flow a dead player goes back to
+                // PlayerSelectMech, picks a slot on ZSlotSelectPage and the host
+                // sends ChangeSlot_CN + Respawn_CN; the server only answers.
+                if (PVE_SLOT_SELECT_FLOW === 'client')
+                    return true;
+
                 // Some builds do not emit Respawn_CN after an environmental
                 // death. Match the visible respawn countdown, then revive the
                 // victim unless a client request has already done so.

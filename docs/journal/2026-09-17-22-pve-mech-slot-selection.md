@@ -125,3 +125,11 @@
 - [OBS] **選完之後機體沒有出來。**
 - ✅ 原因（[程式碼]＋[DLL] 2026-09-16-21）：伺服器 `Game_User_SN` 的記錄裡 `rec+0x6C` 槽位數只填 1，只送了 slot 1 的 `Game_Slot_Set` 資料。選 slot 3 時，客戶端沒有那個槽位的機體與武器，`RestartPlayer` 的 `mMechIndex != 0` 條件不成立（`ZBase/DefaultGameInfo.uc` 約 1068 行），所以不會生成機體。🟡 客戶端 log 還沒讀（要關閉客戶端才會寫出）。
 - 改動（單一變數：Game_User_SN 送 8 個槽位）：`dispatch/room/room-game-user.sender.js`，`rec+0x6C = 8`，`rec+0x6D + n×0x2F` 依序填 slot 1～8 的機體、主武器、左、右、推進器、skin（DB 有 equipped 資料就用 DB，否則用 `CANONICAL_LOADOUTS`）。記錄本來就是 0x1E5（8 槽）大小，封包長度不變。伺服器 21:2x 重啟。
+
+## 測試 T2 結果（21:15–21:17，`session-20260917-211436.jsonl`）
+
+- ✅ [LOG] `Game_User_SN` 送出 8 個槽位（`slots=1:11100101/22100101 2:… 8:…`）；13:15:32 `ChangeSlot_CN 010004`（slot 4）→ `Respawn_CN`。
+- ✅ [OBS]（聊天 marker）「確實是我選的那台機體」。**PvE 選機體出擊可以用了。**
+- [OBS]「被打死後是同一台重生」「理論上是要可以換的」。[LOG] 13:16:27 玩家陣亡（Death_CN type 2），伺服器仍在 5 秒後自動送 `Respawn_SN`，跳過了選機體畫面。
+- [LOG] 客戶端 log（Map_PC04）有 `MRNavigation ... CalcNodeSort_CoreEscort Accessed None 'NodeActor'` 警告，地圖導航資料相關，先記錄。
+- 改動（單一變數）：`PVE_SLOT_SELECT_FLOW === 'client'` 時，玩家陣亡**不再自動排程 `Respawn_SN`**，等客戶端走選機體 → ChangeSlot_CN → Respawn_CN。伺服器 21:2x 重啟。
