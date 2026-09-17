@@ -5,27 +5,50 @@
 
 ---
 
-## 目前交接快照（2026-09-17 晚，請以此段為準）
+## 目前交接快照（2026-09-17 21:30，Claude 高階，請以此段為準）
 
-- **中階 Gemini（Antigravity）已完成 `docs/backlog.md` 契約任務 G1～G4（在 `flash-wip` 分支，全部標「待審」）：**
-  - **G1（Assist_CN / Assist_SN）**：`journal/2026-09-17-15-assist-cn-sn-format.md`。Assist_CN 7b（攻擊者、被擊者、型別、Action、HP% 0..100）；Assist_SN ≥25b。核對組語並定位腳本 `Game_Assist` 與 `Game_User_Assist_Set`。
-  - **G2（Death_SN 比對）**：`journal/2026-09-17-16-death-sn-format-verification.md`。Death_SN 0x51b 組語逐欄位核對；確認 `+0x15..+0x50` 全 0 會覆蓋擊殺者與受害者戰績；確認 AI 擊殺送 Death_SN 無害（觸發 HUD 擊殺廣播與任務目標），但切勿對 AI 排程 Respawn_SN。
-  - **G3（遊戲內聊天廣播）**：`journal/2026-09-17-17-game-chat-broadcast-format.md`。Team（`0x00220507`）與 All（`0x00220509`）客戶端 handler 組語核對；確認是同 opcode 對稱廣播（258b body、雙空格切分字串）；`0x00220508`/`0x0022050a` 不存在於客戶端 dispatch。
-  - **G4（Create_CQ 與地圖／難度機制）**：`journal/2026-09-17-18-create-cq-map-difficulty.md`。Create_CQ 67b 與 Map_Change_One_CQ 26b 組語逐欄位核對；分析 PvE 難度計算公式 `(MapIndex - 9001) / 3`；指出伺服器硬寫死 9001 導致選圖選難度失效之處與修改建議。
-- **G5（Codex 高階，待審）**：`journal/2026-09-17-22-pve-mech-slot-selection.md`。已由 `ZSlotSelectPage.InternalOnClose()` → `Game_Slot` → `ChangeSlot_CN 0x00230101` 確認 PvE 選機體送槽位的路徑；body 是 user u16 @+0、1-based slot u8 @+2、frame length 0x13。另記錄 `ChangeSlot_SN` 回應實際讀取欄位，以及目前 server-driven 流程直接 `Respawn_SN`、因此測試跳過選擇頁的原因。原始證據在 `docs/research/2026-09-17-backlog/G5/`。
-- **原始研究檔案**：存於 `docs/research/2026-09-17-backlog/{G1,G2,G3,G4}/`。
-- **日誌索引**：已追加至 `docs/journal/INDEX.md` 條目 15～18（標「待審」）。
-- **未改動任何伺服器程式與資料庫**；G1～G4 提交在 `flash-wip`，G5 分析提交 `bb034f4` 在目前 `reverse-work`。
+### 今天完成的（全部已實測，細節看各篇日誌）
 
-- **下一步（給高階 Claude 審查契約）：**
-  - 目標：審查 `flash-wip` 上的 G1～G4 與 `reverse-work` 上的 G5 分析結論及組語證據，決定是否採納建議。
-  - 範圍：`docs/journal/2026-09-17-15` 至 `21`、`docs/research/2026-09-17-backlog/`。
-  - 交付：由高階裁定後更新 `docs/state.md`，並將合適之修改套用至伺服器程式碼。
-  - G5 若採納，先單獨處理 `0x00230101` 的狀態保存／`ChangeSlot_SN` body，再做一次客戶端實驗。
+| 項目 | 日誌 |
+|---|---|
+| 客戶端腳本包 `.tzp` 離線解密，UnrealScript 原始碼可讀（`~/mro-decrypted/src`，**不 commit**，用 `tools/tzp-extract.py` 重建）；class 預設值用 `tools/uetool`（UELib 需套 `tools/uetool/uelib-metalrage.patch`） | `2026-09-17-07`、`-09` |
+| PvE 按鍵失效根因：`Grade_Info_SN 0x00510101` 送 11＝開發者權限 → 套 GM 按鍵表；改送 0。`DefaultInfo_SN` 那個欄位其實是 UserType（性別），不是權限 | `-11`（更正 `-08`） |
+| PvE 回合沒啟動：`Game_Info_SN` body+0x15 是 MapInfo.Round，原本送 0；改送建房的 PlayRound。附 GAME_INFO 完整偏移 | `-12` |
+| 伺服器切 frame bug（補齊到 16 吃掉下一個封包 → 戰鬥中斷線）已修 | `-13` |
+| Death_CN：body+0 擊殺者、+2 被擊殺者、+4 類型（1～4＝玩家）；AI 被殺不排程重生 | `-13` |
+| 任務結束：`Campaign_CN 0x00230139`（body[2] 1 成功／2 失敗）→ 伺服器回 `EndGame_SN 0x00222213` → 結算頁 → 回房間 | `-14` |
+| PvE 地圖／難度照客戶端選的（建房 body[2..3]、`Map_Change_One_CQ` w1/b5）| `-18`（G4）、`-19` |
+| ItemInfo 分包（每包 ≤28 筆，現在 12）並送機體本體列 → 機庫顯示機體 | `-20` |
+| Death_SN 戰績塊送累計值（`Game_User_Battle_Set` 是直接指定，送 0 會清空）→ 有分數 | `-16`（G2）、`-21` |
+| PvE 選機體：`PVE_SLOT_SELECT_FLOW='client'`，開局與陣亡後走 ZSlotSelectPage → `ChangeSlot_CN` → `ChangeSlot_SN` → `Respawn_CN`；`Game_User_SN` 送 8 個槽位 | `-22`（G5） |
 
-- ✅ 2026-09-16 21:57 實測：Vanguard 手上已是正確的主武器「輕型來福機槍」，`Cannot use MOC_a` 消失（`shots/current-mission.png`）。死亡／重生正常。
-- ✅ 2026-09-16 21:46 登入卡住已找到原因：客戶端拒收整包超過 **0x400 bytes** 的 frame（`ZNetwork.dll 0x107f8fad`）。36 筆 ItemInfo 是 1296 bytes，所以卡住。**不是**「只能有 24 個槽位」。`client.js` 現在遇到超大封包會警告並寫 marker。
-- ✅ Table 4 已獨立重新解析核對（`Cache.Bin` 0x37456，32 筆）。
-- ⬜ 待測：開火、副武器、推進器；以及大小和 slot 內容的單變數測試。步驟見 `docs/next-test.md`。
-- ⚠️ 設計任何新封包前先算大小：**header + body ≤ 1024 bytes**。
-- 已知不一致：4、5 號機在 Table 4 沒有推進器，但 DB 有給。見 `journal/2026-09-17-01-review-iteminfo-stall-root-cause.md`。
+### 目前可玩的範圍
+
+登入 → 機庫（看得到 8 台機）→ 建 PvE 房（選地圖／難度）→ 選機體出場 → 開火／跳／推進器 → 敵人與回合 → 擊殺計分 → 陣亡後重選機體 → 任務失敗／成功 → 結算頁 → 回房間。已實測地圖：9001 `Map_PC01`（動力奪取戰）、9010 `Map_PC04`（潛入作戰）。
+
+### 已知問題（未處理）
+
+- 結算頁隊伍分數塊全 0；exp／point 每殺 10 是暫定值（`lobby.dispatch.js`）。
+- `Assist_SN 0x00230122` 仍回 16 bytes 空包（正確格式見 G1 `-15`）。
+- 遊戲內聊天不顯示（伺服器回了客戶端不認得的 opcode；做法見 G3 `-17`）。
+- 機庫換裝備沒有存 DB；`room.dispatch.js` 把 `0x00240112` 當 CQ（DLL 的 DefaultSlot CQ 是 `0x00240111`）。
+- 間歇性卡頓，伺服器端看不出網路停頓，疑似客戶端本身。
+- `room.dispatch.js` `sendRoomState` 的房間資訊地圖仍固定 9001／舊 index 58，目前沒看到影響。
+- Map_PC04 客戶端 log 有 `MRNavigation ... Accessed None 'NodeActor'` 警告。
+
+### 協作狀態
+
+- 分支：`reverse-work`（主線）；中階成果應 commit 到 `flash-wip` 再由高階合併。
+- tmux：`server`（伺服器，Claude 控制）、`sol`（Codex reviewer，**不要關**，cache 會掉；額度約剩 30%，只留給重要審查）。
+- `docs/backlog.md` 的 G1～G5 都已完成並審查。
+
+### 下一步（契約，操作者決定順序）
+
+1. **換裝備存檔**
+   - 目標：機庫改武器／推進器後存進 DB，下一局 `Game_User_SN` 與 ItemInfo 反映新配裝。
+   - 範圍：`Slot_Change_CQ 0x00240107`（`room.dispatch.js` 約 618 行）、DB `items.equipped`、`ChangeSlot` 未完成分析 `-04`。
+   - 限制：先讀 DLL 確認 `Slot_Change_SA 0x00240108` 格式；DB 變更寫成腳本；一次一個變數。
+   - 完成條件：機庫換主武器 → 重登仍保留 → PvE 出場手上是新武器。
+2. **遊戲內聊天顯示**（小）：照 G3，`0x00220507`／`0x00220509` 同 opcode 原樣回送。完成條件：聊天出現在畫面上。
+3. **結算細節**：EndGame_SN 隊伍分數塊、exp／point 真實算法（查腳本 `ScoreBattle` 等）、遊戲結束後取消殘留重生。
+4. **Assist_SN** 照 G1 補格式。
