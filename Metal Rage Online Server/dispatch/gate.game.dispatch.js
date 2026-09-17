@@ -23,7 +23,7 @@ const POST_GAME_WAIT_READY_HOST_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_INFO_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
-const GAME_CHAT_ECHO_MODE = 'disabled'; // 'disabled' | 'enabled'
+const GAME_CHAT_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
 // When the room state block is re-sent after Create_SA, and why each entry
 // costs a room-master dialog. See the comment at the call site.
 // Send Game_Info_SN with the room state, so [this+0xfc8] holds the map before

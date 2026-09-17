@@ -64,3 +64,16 @@
 - [REVIEW] 原提交在 disabled 路徑使用 `break`，實際會離開 switch 而不會進
   `default:`，因此改為明確保留原 fallback 與空 `type+1` 回覆。修正後靜態
   審查通過，開關仍預設關閉；待 Team／All 各一次客戶端實測。
+
+## 5. 實測 V1（通過）
+
+- [TEST] 從 `/home/lucas/mro-reverse-g7/Metal Rage Online Server` 啟動伺服器，
+  `GAME_CHAT_ECHO_MODE='enabled'`；session：
+  `logs/session-20260917-222255.jsonl`。
+- [LOG] Team `0x00220507` 與 All `0x00220509` 均收到 258-byte body，server
+  分別印出 `In-game chat Team`／`In-game chat All`，沒有再走 `type+1`
+  fallback。
+- [OBS][LOG] 操作者在 Team 與 All 回顯後，各自再次輸入「有出現在畫面」，
+  兩句都由對應 opcode 收到，確認兩個頻道皆在 HUD 正常顯示。
+- ✅ G7 通過：Team／All 聊天以同 opcode、同 body 回送可正常顯示。開關改為
+  預設 `enabled`。
