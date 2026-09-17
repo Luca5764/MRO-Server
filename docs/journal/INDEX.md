@@ -69,3 +69,4 @@
 | 2026-09-16 | `2026-09-16-34-handoff-history.md` | — | — | 舊版 HANDOFF.md 的交接快照與狀態說明，2026-09-17 原文搬入。 |
 | 2026-09-17 | `2026-09-17-03-iteminfo-accumulation.md` | `0x00210111` | ✅ [DLL]；待 Claude 審查 | ItemInfo 依實例 key 追加或替換單筆；追到 Core 陣列增刪與斷線完成、初始化的整庫清空路徑，未改程式或實測。 |
 | 2026-09-17 | `2026-09-17-04-changeslot-body-wip.md` | `0x00230102` | 🟡 WIP／待 Claude 審查 | 保存已核對的 status、user、slot 與存入／後續呼叫位址；四個未讀 bytes、精確總長與腳本效果仍未知，未核對的子 agent 搜尋另標待審。 |
+| 2026-09-17 | `2026-09-17-05-test-a-no-effect.md` | `0x00020083` | ✅ [LOG]／[SHOT] | 測試 A 第一輪：開火、副武器、推進器都沒送出新封包，彈藥沒減少；戰鬥中打聊天也不會送出，marker 改用伺服器 console。 |
