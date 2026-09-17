@@ -81,7 +81,10 @@
 - 一次只改一個變數；每個實測寫一篇日誌、在 `INDEX.md` 標「待審」。
 - 審查：由 Codex reviewer（Sol，高階）或下一個接手的 Claude 審；審過才能把開關預設打開。
 
-## G6：機庫換裝備存檔
+## G6：機庫換裝備存檔（指派：Codex）
+
+> **注意**：`flash-wip` 分支停在 `cd7faf5`，**缺少 2026-09-17 下午之後所有伺服器修正**（Grade_Info_SN、Round、選機體、ItemInfo 分包、戰績等）。開工前先 `git merge reverse-work`（在 `flash-wip` 上），否則會在舊程式上改、而且重啟伺服器會跑舊程式。
+
 
 - **目標**：在機庫替某台機換主武器／左右武器／推進器後，伺服器把新配裝存進 DB；重新登入仍保留；PvE 出場時手上是新武器。
 - **範圍**：
@@ -97,7 +100,16 @@
   3. 實測日誌（開關打開時）：換一把主武器 → 機庫顯示 → 重登是否保留 → PvE 出場手上的武器。
 - **完成條件**：實測三項都有 [OBS]／[LOG] 證據；或明確寫出卡在哪（例如 CQ 欄位不是 serial、SA 格式不明）。
 
-## G7：遊戲內聊天顯示
+## G7：遊戲內聊天顯示（指派：Gemini）
+
+> **與 G6（Codex）同時進行的注意事項**
+> - **不要跟 Codex 共用工作目錄。** 請建獨立 worktree 與分支（從 `reverse-work` 開，不是舊的 `flash-wip`）：
+>   `git -C /home/lucas/mro-reverse worktree add /home/lucas/mro-reverse-g7 -b flash-wip-g7 reverse-work`，
+>   之後所有編輯與 commit 都在 `/home/lucas/mro-reverse-g7`。不要在 `/home/lucas/mro-reverse` 切分支。
+> - 解密原始碼、客戶端檔案路徑不變（`~/mro-decrypted`、`/mnt/c/Games/MetalRage Online/data/`）；工具用 worktree 內的 `Metal Rage Online Server/tools/`。worktree 需要 `node_modules`：`ln -s "/home/lucas/mro-reverse/Metal Rage Online Server/node_modules" "/home/lucas/mro-reverse-g7/Metal Rage Online Server/node_modules"`。
+> - **伺服器只有一個（tmux `server`）、客戶端只有一套，實驗不能跟 G6 同時跑。** 要實測時先問操作者；輪到你時由操作者在 tmux `server` 停掉伺服器，改從 worktree 啟動（`cd "/home/lucas/mro-reverse-g7/Metal Rage Online Server" && npm start`），測完換回。
+> - commit 訊息最後一行 `Agent: gemini (中階)`。
+
 
 - **目標**：戰鬥中隊伍／全體聊天的訊息顯示在畫面上。
 - **範圍**：伺服器目前處理 `0x00220507`（Team）、`0x00220509`（All）、`0x00360601`（Clan）的地方（grep `0x00220507`、`0x00220508`、`0x0022050a` 於 `Metal Rage Online Server/dispatch/`；目前是 fallback 回客戶端不認得的 `0x00220508`／`0x0022050a`）。
