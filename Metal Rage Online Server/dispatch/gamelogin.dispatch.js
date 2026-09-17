@@ -20,7 +20,7 @@ const SA_LOBBY_ENTER   = 0x00230112;
 const SN_LICENSE_INFO  = 0x00260101;   // must be sent before SN_COMPLETE / lobby enter
 const { MAX_MECH_COUNT, MAX_SLOT_COUNT } = require('../datatypes/enums');
 
-const ACCOUNT_LEVEL_STR = { 1: '1\0', 2: '2\0', 3: '3\0', 4: '4\0' };
+const ACCOUNT_LEVEL_STR = { 0: '0\0', 1: '1\0', 2: '2\0', 3: '3\0', 4: '4\0' };
 const BODY_CACHE_INDEX_BY_ITEM_ID = {
     11100101: 84,
     12100101: 97,

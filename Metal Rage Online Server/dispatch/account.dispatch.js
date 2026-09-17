@@ -37,7 +37,7 @@ const SN_CHANNEL_ADD = 0x220102;
 
 const SA_LEAVE = 0x220132;
 
-const ACCOUNT_LEVEL_STR = { 1: '1\0', 2: '2\0', 3: '3\0', 4: '4\0' };
+const ACCOUNT_LEVEL_STR = { 0: '0\0', 1: '1\0', 2: '2\0', 3: '3\0', 4: '4\0' };
 const BODY_CACHE_INDEX_BY_ITEM_ID = {
     11100101: 84,
     12100101: 97,
