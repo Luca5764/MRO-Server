@@ -97,6 +97,9 @@ const SHOP_UNBLOCK_MODE = 'disabled'; // 'disabled' | 'enabled'
 // ShopList_SN (0x00240241) main-weapon tab to 22100101; CashShopList_SN
 // (0x00240242) and every other field/order/timing stay untouched.
 const SHOP_COMPAT_EXPERIMENT = 'disabled'; // 'disabled' | 'enabled'
+// G6d: opt-in full catalog path. The client owns mech/item compatibility
+// filtering; disabled keeps the pre-G6d slot/family selection unchanged.
+const SHOP_FULL_CATALOG_MODE = 'disabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
@@ -959,21 +962,46 @@ class ZRoomDispatch
             }
 
             for (const [cat, items] of [...groups.entries()].sort(([a],[b]) => a - b)) {
-                const count = Math.min(items.length, CAT_LIMIT[cat] || 25);
-                const sendItems = items.slice(0, count);
-                const generalItems = applyShopCompatExperiment(sendItems, cat, selectedSlot);
+                if (SHOP_FULL_CATALOG_MODE !== 'enabled') {
+                    const count = Math.min(items.length, CAT_LIMIT[cat] || 25);
+                    const sendItems = items.slice(0, count);
+                    const generalItems = applyShopCompatExperiment(sendItems, cat, selectedSlot);
 
-                const [msg, respBody] = getExactMessageBuffer(SN_SHOP_LIST,
-                    HEADER_SIZE + (ENTRY_SIZE * count));
-                writeShopListBody(respBody, generalItems, 'P');
-                client.send(msg);
+                    const [msg, respBody] = getExactMessageBuffer(SN_SHOP_LIST,
+                        HEADER_SIZE + (ENTRY_SIZE * count));
+                    writeShopListBody(respBody, generalItems, 'P');
+                    client.send(msg);
 
-                const [msg2, body2] = getExactMessageBuffer(SN_CASH_SHOP,
-                    HEADER_SIZE + (ENTRY_SIZE * count));
-                writeShopListBody(body2, sendItems, 'C');
-                client.send(msg2);
+                    const [msg2, body2] = getExactMessageBuffer(SN_CASH_SHOP,
+                        HEADER_SIZE + (ENTRY_SIZE * count));
+                    writeShopListBody(body2, sendItems, 'C');
+                    client.send(msg2);
 
-                console.log(`[ZRoomDispatch] >> Sent ShopList_SN cat=${cat}: ${count} items`);
+                    console.log(`[ZRoomDispatch] >> Sent ShopList_SN cat=${cat}: ${count} items`);
+                    continue;
+                }
+
+                const MAX_ENTRIES_PER_FRAME = 45;
+                for (let start = 0; start < items.length; start += MAX_ENTRIES_PER_FRAME) {
+                    const sendItems = items.slice(start, start + MAX_ENTRIES_PER_FRAME);
+                    const count = sendItems.length;
+                    const generalItems = applyShopCompatExperiment(sendItems, cat, selectedSlot);
+
+                    const [msg, respBody] = getExactMessageBuffer(SN_SHOP_LIST,
+                        HEADER_SIZE + (ENTRY_SIZE * count));
+                    writeShopListBody(respBody, generalItems, 'P');
+                    client.send(msg);
+
+                    const [msg2, body2] = getExactMessageBuffer(SN_CASH_SHOP,
+                        HEADER_SIZE + (ENTRY_SIZE * count));
+                    writeShopListBody(body2, sendItems, 'C');
+                    client.send(msg2);
+
+                    console.log(
+                        `[ZRoomDispatch] >> Sent ShopList_SN cat=${cat}: ` +
+                        `${count} items (full catalog part ${Math.floor(start / MAX_ENTRIES_PER_FRAME) + 1})`
+                    );
+                }
             }
 
             console.log(`[ZRoomDispatch] >> Sent ShopList_SN 0x240241: ${allItems.length} total items in ${groups.size} tabs (rawItemId/show/P)`);
@@ -988,6 +1016,17 @@ class ZRoomDispatch
         const weaponItems = catalog
             .map((item, index) => ({ item, index }))
             .filter(({ item }) => Number(item.category_type) >= 2 && Number(item.category_type) <= 6);
+
+        if (SHOP_FULL_CATALOG_MODE === 'enabled') {
+            const uniqueItems = new Map();
+            for (const entry of weaponItems) {
+                const itemId = Number(entry.item.item_id) || 0;
+                if (!uniqueItems.has(itemId)) uniqueItems.set(itemId, entry);
+            }
+            return [...uniqueItems.values()].sort((a, b) =>
+                (Number(a.item.item_id) || 0) - (Number(b.item.item_id) || 0)
+            );
+        }
 
         if (!selectedSlot || !client.accountId_) {
             return weaponItems;

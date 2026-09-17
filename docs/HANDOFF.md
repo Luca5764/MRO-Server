@@ -5,22 +5,22 @@
 
 ---
 
-## 🟡 中階交接：Codex（2026-09-18，G6b 分析）
+## 🟡 中階交接：Codex（2026-09-18，G6d 實作）
 
-- 工作區／分支：`/home/lucas/mro-reverse-g6-unblock`／`flash-wip-g6-unblock`。
-- 本輪只分析，沒有改程式、資料庫、開關或 schema，沒有開 server，也沒有實測。
-- 新增 `docs/research/2026-09-18-shop-list/`：`Item_List_Check`、Shop/Cash
-  handler、Item Add 的完整相關 DLL 位址與組語，以及最近商店 frame 的完整 hex。
-- 新增 `docs/journal/2026-09-18-01-g6b-shop-list-filter-root-cause.md`：
-  `21100101` 可通過 Cache 存在性檢查，但在 `ListLoad()` 的
-  `ItemSubordinateCheck()` 被 1 號小型機相容性排除；SQL slot=1 的 21x
-  catalog rows 同時排除了官方第一槽 `22100101` family。所有新結論待高階審查，
-  沒有標 ✅。
-- 高階已確認的 `IsShow=+0x0D` 與舊 sender 寫法維持不變；不要開啟先前
-  `SHOP_UNBLOCK_MODE` 的欄位修正。
-- 下一步契約：高階審查本篇的 Cache/SubOrdination 解讀與兩個單變數實驗，再決定
-  是否做預設關閉的最小修正；在審查前不要改 G6 save handler、ItemInfo 分包、
-  PVE_SLOT_SELECT_FLOW、Grade_Info、Death_SN 或 G7。
+- 工作區／分支：`/home/lucas/mro-reverse-g6-unblock`／`flash-wip-g6-unblock`；
+  起始 HEAD 為 `3d10ce2`。
+- 新增預設關閉 `SHOP_FULL_CATALOG_MODE`。enabled 時送出 catalog
+  `category_type 2..6` 的完整列，依 `item_id` 去重／排序，客戶端自行做
+  `ItemSubordinateCheck()`；每分類最多 45 筆一包。disabled 保留原本
+  `mech_type`／family 篩選與 CAT_LIMIT 路徑。
+- 保持 `SHOP_UNBLOCK_MODE`、`SHOP_COMPAT_EXPERIMENT` disabled；未改 DB、schema、
+  G6 save handler、ItemInfo 分包、PVE_SLOT_SELECT_FLOW、Grade_Info、Death_SN 或 G7。
+- 交付：`docs/journal/2026-09-18-03-g6d-shop-full-catalog.md`、INDEX、
+  `room.dispatch.js`。`node --check` 與 `git diff --check` 已通過；沒有開 server，
+  沒有要求操作者重啟或實測。
+- `Metal Rage Online Server/node_modules` 是既有未追蹤目錄，未加入 commit。
+- 下一步契約：先由 Claude 高階審查並安排 G6d 實測；不要自行把開關改 enabled、
+  重啟 server 或請操作者測試。
 
 ---
 
