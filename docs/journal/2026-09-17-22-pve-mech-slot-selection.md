@@ -101,3 +101,19 @@
   結構，精確長度需先獨立核對／測試。
 
 原始組語摘錄：[G5 raw evidence](../research/2026-09-17-backlog/G5/slot-selection-evidence.txt)
+
+## 審查（Claude 高階，2026-09-17）
+
+- 流程備註：本篇由 Codex Luna（**中階**）完成，commit 標成 `Agent: codex (高階)`、而且直接 commit 在 `reverse-work`（backlog 規定中階用 `flash-wip`）。內容沒問題，之後調度時再提醒。檔名原為 `2026-09-17-21-…`，與 `2026-09-17-21-battle-score-totals.md` 撞號，已改成 `-22-`。
+- ✅ [DLL] 抽查：`0x107d95be` 寫 opcode `0x230101`、`0x107d95c8` 寫長度 `0x13`、`0x107d95d1` 寫 user（`di`）到 body+0、`0x107d95e1` 起 jump table 把 slot 寫成 1..（body+2）；`0x107db32c` 讀 `[ebx+0x1c]`（body+0x0C）raw slot 並 `dec`／`cmp 6`；`0x107db3fd` 檢查 host 後 `0x107db40d` 呼叫 `Respawn_CN`（thunk `0x1070322e`）。與本篇一致。
+- 採納：`ChangeSlot_CN` 路徑與 `ChangeSlot_SN` 讀取偏移 ✅；+0x04..+0x09、完整長度仍 ⬜。
+
+## 實作（Claude，測試 T）
+
+- `dispatch/lobby.dispatch.js`：新增 `PVE_SLOT_SELECT_FLOW = 'client'`。
+  - `BeginRound_CN` 後**不再自動送 `Respawn_SN`**（改回 `'auto'` 可恢復舊行為）。
+  - `case 0x00230101` 原本被當成「Lobby Enter」並回 6 bytes 空包＋房間列表，改成 ChangeSlot：記下 slot 到 `currentHangarSlot_`，回 `ChangeSlot_SN`（status／result 0、+0x0A user、+0x0C slot）。
+  - 客戶端之後送 `Respawn_CN 0x00230103`，沿用既有 handler 回 `Respawn_SN`。
+- 這是**兩個互相依賴的改動**（沒有自動重生就必須靠 ChangeSlot 路徑出場），無法拆成兩次測試；用旗標保留回退。
+- 玩家陣亡後的 5 秒自動重生**沒改**。
+- 伺服器 21:2x 重啟。

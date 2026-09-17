@@ -1,6 +1,16 @@
 const NetworkClient = require("../client");
 const packetlog = require("../packetlog.js");
 
+// How the PvE player's first mech gets spawned.
+//   'client': the original flow. After BeginRound_SN the client's
+//             ZPvePlayercontroller.PlayerSelectMech opens ZSlotSelectPage; the
+//             player's pick goes out as ChangeSlot_CN 0x00230101, the server
+//             answers ChangeSlot_SN 0x00230102, and the host then sends
+//             Respawn_CN (docs/journal/2026-09-17-22-pve-mech-slot-selection.md).
+//   'auto':   the older shortcut: send Respawn_SN 250 ms after BeginRound_CN,
+//             which spawns whatever slot Game_User_SN installed (always 1).
+const PVE_SLOT_SELECT_FLOW = 'client'; // 'client' | 'auto'
+
 // ZDispatchLobby - Handles lobby operations after entering a channel
 //
 // Known methods from ZNetwork.dll:
@@ -93,19 +103,29 @@ class ZLobbyDispatch
                 return true;
             }
 
-            //Enter might be 0x00230101/02 ?
+            // ChangeSlot_CN (ZDispatchGame::ChangeSlot_CN, built at 0x107d95be:
+            // opcode 0x230101, length 0x13). body+0 u16 user index, body+2 u8
+            // slot 1..8. Sent from ZSlotSelectPage via Game_Slot.
+            //
+            // ChangeSlot_SN 0x00230102 (handler 0x107db2f0) needs status u16 @+0
+            // and result u32 @+2 to be zero, then reads user u16 @+0x0A and raw
+            // slot u8 @+0x0C (1..7 -> internal 0..6, anything else -> 7). On
+            // success it calls Game_Slot_Selected_Set / Game_UserSocket_Selected_Set
+            // and the host sends Respawn_CN. Bytes +0x06..+0x09 and the exact
+            // length are not confirmed; they are sent as zero.
             case 0x00230101:
             {
-                console.log(`[ZLobbyDispatch] >> Possible Lobby Enter/Request CQ (0x230101)`);
-
-                {
-                    const [msg, respBody] = client.getMessageBuffer(0x00230102, 0x6);
-                    respBody.writeUint16LE(0x0000, 0);
-                    respBody.writeUint32LE(0x0000, 2);
-                    client.send(msg);
-                }
-
-                this.sendEmptyRoomList(client);
+                const userIndex = body.length >= 2 ? body.readUInt16LE(0) : Number(client.accountIndex_ || client.accountId_ || 1);
+                const slot = body.length >= 3 ? body[2] : 1;
+                if (slot >= 1 && slot <= 8)
+                    client.currentHangarSlot_ = slot;
+                const [msg, sb] = client.getMessageBuffer(0x00230102, 0x0E);
+                sb.writeUInt16LE(0, 0x00);
+                sb.writeUInt32LE(0, 0x02);
+                sb.writeUInt16LE(userIndex, 0x0A);
+                sb[0x0C] = slot;
+                client.send(msg);
+                console.log(`[ZLobbyDispatch] >> ChangeSlot_CN user=${userIndex} slot=${slot} -> Sent ChangeSlot_SN 0x00230102`);
                 return true;
             }
 
@@ -135,6 +155,9 @@ class ZLobbyDispatch
                 beginBody.writeUint32LE(0, 2);
                 client.send(beginMsg);
                 console.log(`[ZLobbyDispatch] >> Sent BeginRound_SN 0x00230152`);
+
+                if (PVE_SLOT_SELECT_FLOW === 'client')
+                    return true;   // wait for ZSlotSelectPage -> ChangeSlot_CN -> Respawn_CN
 
                 setTimeout(() => {
                     if (!client.gameStarted_)
