@@ -69,3 +69,20 @@
 - 🟡 [GUESS] 所以問題縮小成：「送到 PlayerController（或 Pawn）的 exec 呼叫沒有生效」。可能是呼叫被 exec 鏈中更前面的物件吃掉，或是 PlayerController 所在的 state 把這些函式覆寫成空的。
 - ✅ [DLL] exec 鏈在 `UPlayer::Exec` `0x104d8120`（decompile：`docs/research/2026-09-17-fire-gate/UPlayer_Exec.c`）：依序問 Actor+0xa0 物件、Level 的 +0x630、Actor+0x740／+0x8dc／+0x8ec、PlayerController 本身、+0x8e4、Pawn（+0x3c0）、Pawn+0x494／+0x49c，任何一個回傳非 0 就停止。各偏移分別是什麼物件還沒對應。
 - [SRC] 腳本裡在 controller 之外定義 `exec SwitchWeapon` 的只有 `ZBase/DefaultHud.uc:4259`（`state RadioMsgShow_Pressed`，無線電選單開著時擋住換武器），沒有找到其他物件定義 `exec Fire`／`Jump`。
+
+## 測試 D 不用做：操作者早就確認過 exec 探針有效（同日）
+
+- [OBS] 操作者：Q、E（`SideSearchL_JW`／`R`，PlayerController exec）、Tab（`ShowScores`，HUD exec）、G（`BackViewBtnClick_YC`，PlayerController exec）之前都按過，**有效**；F1（`PressGameGuide`）也能叫出按鍵教學。
+- ❌ 「所有送到 PlayerController 的 exec 都被擋」排除。
+- [SRC] 失效的按鍵各自需要的條件：
+  - Fire → `Pawn.Fire` → 武器 `ClientState` 要是 `WS_ReadyToFire`（原生 `AWeapon+0x41c`，06 篇）。
+  - R `ChangeKit`（`ZBase/W_DPCForWeapon.uc:894`）：`Pawn.Weapon.ClientState == WS_ReadyToFire`，不成立就直接不做事。
+  - Space `Jump`（`DefaultPlayerController.uc:1468`）：`bJumppreparation_JW && !bNoInputKey_JW && !bIsCrouched`。
+  - Shift `EventButtonDown_MH`（`:1220`）：`!bNoInputKey_JW`、booster 能量 ≥20、`bCapableBooster`、`Weapons_UJ[0] != none`、`bJumppreparation_JW`。
+  - 1～4 `SwitchWeapon`（`W_DPCForWeapon.uc:834`）：`bSetWepComplete` 且 `AllowChangeWeapon(F)`。
+  - 以上條件不成立時都**不會留 log**，跟 log 乾淨對得上。Q／E 只需要 `pawn != none`（和站著不動），所以有效。
+- [SRC] `ClientState = WS_ReadyToFire` 主要在 `ZBase/W_DefaultWeaponAttachment.uc` `CheckAmmoNChangeClientState()`（約第 47 行起），選武器動畫結束後才會從 `WS_Select` 轉成 ready。`BringUp`（`ZBase/W_DefaultWeapon.uc:864`）只負責播 `PlaySelectAnim()`。
+- 🟡 [GUESS] 兩個候選：
+  (1) 武器停在 `WS_Select`（選武器動畫沒結束或沒觸發 AnimEnd），擋住 Fire、R、1～4；
+  (2) `bJumppreparation_JW` 或 `bNoInputKey_JW` 的狀態不對，擋住 Space、Shift。
+  兩者可能有共同上游（`InitializeMech()`／`SetMechWeapon()` 沒有正常跑完，`DefaultMech.uc:719`），還沒驗證。
