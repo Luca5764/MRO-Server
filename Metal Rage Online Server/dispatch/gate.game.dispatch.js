@@ -934,7 +934,12 @@ class ZGateGameDispatch
             case 0x00220509: // Chat_Game_All_CN
             {
                 if (GAME_CHAT_ECHO_MODE !== 'enabled') {
-                    break;
+                    packetlog.fallback(client, 'ZGateGameDispatch', type, body, type + 1);
+                    const [msg, respBody] = client.getMessageBuffer(type + 1, 0x6);
+                    respBody.writeUint16LE(0x0000, 0);
+                    respBody.writeUint32LE(0x0000, 2);
+                    client.send(msg);
+                    return true;
                 }
 
                 const channelName = (type === 0x00220507) ? 'Team' : 'All';

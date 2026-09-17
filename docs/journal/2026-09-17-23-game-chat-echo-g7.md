@@ -43,7 +43,9 @@
   }
   ```
   - 當開關為 `enabled` 時，使用 `getExactMessageBuffer` 配置包含 16 bytes header 與 258 bytes body 的 exact buffer（總長 274 bytes / 0x112），原樣回顯給客戶端自己。
-  - 當開關為 `disabled` 時，`break` 落入既有 `default:` fallback 分支。
+  - 當開關為 `disabled` 時，明確執行既有 `default:` 的 fallback 記錄與
+    `type + 1` 空 `EVENT_INFO` 回覆後返回；JavaScript 的 `break` 不會落入
+    `default:`，此處由 Codex Sol 高階審查時修正。
 
 ## 3. 測試步驟（待實測）
 
@@ -52,3 +54,13 @@
 3. 進入 PvE 關卡。
 4. 輸入隊伍聊天與全體聊天，確認畫面是否正常顯示訊息。
 5. 實測完成後改回 `disabled` 並記錄結果。
+
+## 4. 高階靜態審查（Codex Sol）
+
+- [DLL] 沿用已由 Claude 高階抽查的 G3 證據：Team／All 的 C→S 與 S→C
+  分別共用 `0x00220507`／`0x00220509`，body 都是 258 bytes，可原樣回送。
+- [TEST] `node --check dispatch/gate.game.dispatch.js` 與 `git diff --check`
+  通過；diff 未改其他已實測流程。
+- [REVIEW] 原提交在 disabled 路徑使用 `break`，實際會離開 switch 而不會進
+  `default:`，因此改為明確保留原 fallback 與空 `type+1` 回覆。修正後靜態
+  審查通過，開關仍預設關閉；待 Team／All 各一次客戶端實測。
