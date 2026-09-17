@@ -1,0 +1,28 @@
+================================================================================
+UZNetwork_DJ::Community_Chat_Add (0x10734770) & Token Parsing
+================================================================================
+
+[Format of the chat payload]
+When typing in chat, client format string at 0x10815b7c is:
+  "%s  %s" (SenderNick + 2 spaces + Message)
+When whispering, client format string at 0x10815aec is:
+  "%s %s %s" (SenderNick + 1 space + TargetNick + 1 space + Message)
+
+[Token Splitting in Community_Chat_Add @ 0x10734770]
+  FUN_107280e0(local_1808, param_3, 0, 0, 0x400); // Token 0: up to 1st space -> SendUser
+  FUN_107280e0(local_808,  param_3, 1, 0, 0x400); // Token 1: between 1st & 2nd space -> RecvUser
+  FUN_107280e0(local_1008, param_3, 2, 1, 0x400); // Token 2: remainder after 2nd space -> Message
+
+[Storage into CHAT_INFO struct @ this + 0xde0]
+UnrealScript struct CHAT_INFO (ZNetwork_DJ.uc:649):
+  +0x00: int Type (0:system, 1:all, 2:team, 3:whisper, 4:clan, 5:clan manager, 6:server notice, 7:warning)
+  +0x04: string SendUser (FString from local_1808)
+  +0x10: string RecvUser (FString from local_808)
+  +0x1c: string Message  (FString from local_1008)
+  +0x28: int Alive       (0: normal, 1: ghost)
+
+[HUD Rendering in DefaultHud.uc:1129..1140]
+  case 1 (All):
+    AddTextMessage_BD(ChatList[i].SendUser, ChatList[i].Message, class'SayMessagePlus', ChatList[i].Alive);
+  case 2 (Team):
+    AddTextMessage_BD(ChatList[i].SendUser, ChatList[i].Message, class'TeamSayMessagePlus', ChatList[i].Alive);

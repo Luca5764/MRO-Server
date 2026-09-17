@@ -1,0 +1,37 @@
+================================================================================
+Clan Chat Disassembly Analysis
+================================================================================
+
+[1. Chat_Clan_All_CN (0x107d2200)]
+Sends C->S frame with opcode 0x00360601, total frame length 0x114 (276 bytes):
+  0x107d2200  mov al, byte ptr [ecx + 4]          ; Scene check
+  ... zeroes packet buffer DAT_108fb9c8 ...
+  0x107d2225  mov word ptr [0x108fb9ce], 0x114    ; Frame length = 276 bytes (16 header + 260 body)
+  0x107d222e  mov dword ptr [0x108fb9d4], 0x00360601 ; Opcode = 0x00360601
+  0x107d2238  xor eax, eax
+  0x107d223a  cmp dword ptr [esp + 4], 1          ; param_2 == 1 (Clan Manager)?
+  0x107d223f  sete al
+  0x107d2242  mov dword ptr [0x108fb9d8], eax     ; [body + 0x00] = (param_2 == 1) (u32 LE)
+  0x107d228c  call winToANSI                      ; convert to ANSI at &DAT_108fb9dc ([body + 0x04])
+                                                  ; max length 0x100 (256 bytes)
+  0x107d22c0  call ZNetworkManager::Send
+
+[2. Chat_Clan_All_SN (0x107cfbe0)]
+Handler in ZDispatchCommunity for opcode 0x00360602:
+  0x107cfbe0  push ebp
+  ...
+  0x107cfc35  mov ecx, dword ptr [ebp + 8]        ; ecx = Format*
+  0x107cfc38  mov eax, dword ptr [ecx + 0x10]     ; [body + 0x00] = Mode (u32 LE)
+  0x107cfc3b  dec eax
+  0x107cfc3c  mov ebx, 4                          ; default channel = 4 (Clan Member)
+  0x107cfc41  jne 0x107cfc48
+  0x107cfc43  mov ebx, 5                          ; if [body + 0x00] == 1, channel = 5 (Clan Manager)
+  0x107cfc48  lea edi, [ecx + 0x2d]               ; edi = [body + 0x1d] (ANSI text string)
+  0x107cfc56  call winGetSizeUNICODE
+  0x107cfc84  call winToUNICODE                   ; converts ANSI at [body + 0x1d] to Unicode
+  0x107cfc9e  push eax                            ; Unicode text
+  0x107cfc9f  push ebx                            ; channel = 4 or 5
+  0x107cfca0  call UZNetwork_DJ::Community_Chat_Add ; 0x10702072 -> 0x10734770
+  0x107cfcb5  push 0
+  0x107cfcb7  push 0x10829148                     ; L"NETWORK_COMMUNITY_CHAT"
+  0x107cfcbc  call UZNetwork_DJ::Event_Call       ; fires UnrealScript event

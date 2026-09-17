@@ -1,0 +1,54 @@
+================================================================================
+Game Chat Disassembly Analysis: Team & All Channels
+================================================================================
+
+[1. Chat_Game_All_CN (0x107d2000)]
+Sends C->S frame with opcode 0x00220509, total frame length 0x112 (274 bytes):
+  0x107d2000  mov al, byte ptr [ecx + 4]          ; Scene check
+  ... zeroes packet buffer DAT_108fb028 ...
+  0x107d2025  mov word ptr [0x108fb02e], 0x112    ; Frame length = 274 bytes (16 header + 258 body)
+  0x107d202e  mov dword ptr [0x108fb034], 0x00220509 ; Opcode = 0x00220509
+  0x107d2038  mov word ptr [0x108fb038], 0        ; [body + 0x00] = 0 (u16 LE)
+  0x107d2047  call winGetSizeANSI                 ; measure ANSI size of wide string param_2
+  0x107d2077  call winToANSI                      ; convert to ANSI at &DAT_108fb03a ([body + 0x02])
+                                                  ; max length 0x100 (256 bytes)
+  0x107d20ab  call ZNetworkManager::Send          ; send packet
+
+[2. Chat_Game_All_SN (0x107cf9a0)]
+Handler in ZDispatchCommunity for opcode 0x00220509:
+  0x107cf9a0  mov al, byte ptr [ecx + 4]          ; Scene check
+  ... clears local_208 (wchar_t buffer) ...
+  0x107cf9cb  lea eax, [esi + 0x12]               ; eax = [body + 0x02] (ANSI string)
+  ...
+  0x107cfa02  call winGetSizeUNICODE              ; measure string
+  0x107cfa30  call winToUNICODE                   ; convert ANSI at [body + 0x02] to Unicode in local_208
+  0x107cfa4b  push eax                            ; eax = local_208 (Unicode string)
+  0x107cfa4c  push 1                              ; channel = 1 (All Chat)
+  0x107cfa4e  call UZNetwork_DJ::Community_Chat_Add ; 0x10702072 -> 0x10734770
+  0x107cfa63  push 0
+  0x107cfa65  push 0x10829148                     ; L"NETWORK_COMMUNITY_CHAT"
+  0x107cfa6a  call UZNetwork_DJ::Event_Call       ; fires UnrealScript event
+
+[3. Chat_Game_Team_CN (0x107d2100)]
+Sends C->S frame with opcode 0x00220507, total frame length 0x112 (274 bytes):
+  0x107d2100  mov al, byte ptr [ecx + 4]          ; Scene check
+  ... zeroes packet buffer DAT_108fb4f8 ...
+  0x107d2125  mov word ptr [0x108fb4fe], 0x112    ; Frame length = 274 bytes (16 header + 258 body)
+  0x107d212e  mov dword ptr [0x108fb504], 0x00220507 ; Opcode = 0x00220507
+  0x107d2138  mov word ptr [0x108fb508], 0        ; [body + 0x00] = 0 (u16 LE)
+  0x107d2177  call winToANSI                      ; convert to ANSI at &DAT_108fb50a ([body + 0x02])
+  0x107d21ab  call ZNetworkManager::Send
+
+[4. Chat_Game_Team_SN (0x107cfac0)]
+Handler in ZDispatchCommunity for opcode 0x00220507:
+  0x107cfac0  mov al, byte ptr [ecx + 4]          ; Scene check
+  ... clears local_208 ...
+  0x107cfaeb  lea eax, [esi + 0x12]               ; eax = [body + 0x02] (ANSI string)
+  ...
+  0x107cfb50  call winToUNICODE                   ; convert ANSI at [body + 0x02] to Unicode in local_208
+  0x107cfb6b  push eax                            ; eax = local_208 (Unicode string)
+  0x107cfb6c  push 2                              ; channel = 2 (Team Chat)
+  0x107cfb6e  call UZNetwork_DJ::Community_Chat_Add ; 0x10702072 -> 0x10734770
+  0x107cfb83  push 0
+  0x107cfb85  push 0x10829148                     ; L"NETWORK_COMMUNITY_CHAT"
+  0x107cfb8a  call UZNetwork_DJ::Event_Call       ; fires UnrealScript event
