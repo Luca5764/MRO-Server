@@ -85,4 +85,4 @@
 | 2026-09-17 | `2026-09-17-17-game-chat-broadcast-format.md` | `0x00220507`、`0x00220509`、`0x00360601`、`0x00360602` | 🟡 [DLL]；Claude 已抽查 | G3：遊戲內聊天廣播格式組語核對；確認 All/Team 頻道為同 opcode 對稱廣播（258b body、雙空格切分），定位 HUD 顯示路徑。 |
 | 2026-09-17 | `2026-09-17-18-create-cq-map-difficulty.md` | `0x00220201`、`0x00220221` | ✅ [DLL]（Claude 核對） | G4：Create_CQ（67b）與 Map_Change_One_CQ（26b）逐欄位組語核對；分析 PvE 難度計算公式與地圖選定傳遞機制。 |
 | 2026-09-17 | `2026-09-17-19-pve-map-difficulty-selection.md` | `0x00220201`、`0x00220221`、`0x00222111` | 待測 R | PvE 地圖改用客戶端選的 MapIndex（建房 body[2..3]、Map_Change_One_CQ w1/b5），不再寫死 9001；預設會變成 9010 Map_PC04（ZSetCoreModePve）。 |
-| 2026-09-17 | `2026-09-17-20-iteminfo-chunking.md` | `0x00210111` | ✅ [LOG] H1 分包可用；待測 H2 | ItemInfo 改成共用 sender 並分包（先 12 筆一包、內容不變），驗證分包本身；下一步加入機體列讓機庫顯示機體。 |
+| 2026-09-17 | `2026-09-17-20-iteminfo-chunking.md` | `0x00210111` | ✅ [LOG][OBS] H1／H2：分包含機體列後機庫顯示機體；PvE 仍用 1 號機 | ItemInfo 改成共用 sender 並分包（先 12 筆一包、內容不變），驗證分包本身；下一步加入機體列讓機庫顯示機體。 |

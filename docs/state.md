@@ -22,8 +22,8 @@
 | 項目 | 狀態 | 依據 |
 |---|---|---|
 | 客戶端拒收整包超過 **0x400 bytes** 的 frame，這條連線之後的封包全部卡住 | ✅ [DLL][LOG] | `ZNetwork.dll 0x107f8fad`；`journal/2026-09-17-01-review-iteminfo-stall-root-cause.md` |
-| ItemInfo 卡住的原因是大小，不是 slot 3／5 的內容 | 🟡 強假設，待單變數測試 | 同上；`docs/next-test.md` 測試 B |
-| 「body rows（part_slot=0）放進 ItemInfo 會斷線」這條舊說法，可能也是大小問題（32 筆＝1142 bytes） | 🟡 未驗證 | 同上 |
+| ItemInfo 卡住的原因是大小，不是內容；分包（每包 ≤28 筆）後含機體本體列也正常 | ✅ [LOG][OBS] 測試 H1／H2 | `journal/2026-09-17-20-iteminfo-chunking.md` |
+| 「body rows（part_slot=0）放進 ItemInfo 會斷線」這條舊說法是大小問題；機庫要有機體本體列才會顯示機體 | ✅ [OBS] 測試 H2 | 同上 |
 | `ZDispatchGame` 的 handler 只在場景 6 生效，其他場景收到會直接丟棄 | ✅ [DLL] | `journal/2026-09-16-13-battle-start-is-scene-driven.md`；`Assist_SN 0x1070a425` 的 `this[4]` 檢查 |
 | `Game_Info_SN 0x00222111` 有兩個 handler（Waiting＝場景 1、Game＝場景 6） | ✅ [DLL] | `journal/2026-09-16-10-two-game-info-sn-handlers-diff.md` |
 | 客戶端換地圖時會斷線重連，連線上的狀態要靠 `session.js` 延續 | ✅ [TEST] | `journal/2026-09-15-02-state-lost-on-reconnect-blocks-game.md` |
