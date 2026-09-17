@@ -80,3 +80,4 @@
 | 2026-09-17 | `2026-09-17-12-pve-round-zero.md` | `0x00222111`、`0x00220201` | ✅ [DLL] 欄位；🟡 Create_CQ 順序；✅ [SHOT] 測試 N 通過（ROUND 1、生怪） | PvE 回合沒啟動：Game_Info_SN body+0x15 是 MapInfo.Round，我們送 0，`ModeReset_BD` 直接 return；改送建房 body[6]（PlayRound=5）。附 GAME_INFO 完整偏移並更正 2026-09-16-05。 |
 | 2026-09-17 | `2026-09-17-13-death-assist-cn.md` | `0x00230123`、`0x00230121`、`0x00230104` | ✅ [DLL]；測試 O 斷線→修 client.js；測試 P 未再斷線 ✅ [LOG] | Death_CN：body+0 擊殺者、body+2 被擊殺者、類型 1～4＝玩家；伺服器原本擊殺 AI 也送 Respawn_SN(0)，改成只對玩家死亡重生。Assist_CN 格式初步記錄。 |
 | 2026-09-17 | `2026-09-17-14-campaign-result.md` | `0x00230139`、`0x0023013a`、`0x00222213` | ✅ [DLL]／[LOG]；EndGame_SN 格式 ✅ [DLL]；待測 Q | 測試 P 沒斷線；任務失敗時客戶端送 Campaign_CN（body[2]=1 成功／2 失敗），伺服器沒回應，畫面停在遊戲中；Campaign_SN 只更新分數，結束遊戲推測要 EndGame_SN。 |
+| 2026-09-17 | `2026-09-17-15-assist-cn-sn-format.md` | `0x00230121`、`0x00230122` | 🟡 [DLL]；待審 | G1：Assist_CN（body 7 bytes）與 Assist_SN（body ≥25 bytes）完整欄位與組語位址核對；定位 Game_Assist/Game_User_Assist_Set 兩組得分更新。 |

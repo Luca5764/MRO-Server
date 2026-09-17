@@ -1,0 +1,139 @@
+================================================================================
+ZDispatchGame::Assist_SN (0x107d5fa0) & Game_User_Assist_Set (0x1072d860)
+================================================================================
+
+[Function 0x107d5fa0: Assist_SN(this, Format* pPacket, char* pParam)]
+Stack layout:
+  [esp + 0x04]: retaddr
+  [esp + 0x08]: pPacket (Format*)
+  [esp + 0x0c]: pParam
+
+Disassembly:
+  0x107d5fa0  push ecx
+  0x107d5fa1  mov al, byte ptr [ecx + 4]          ; Check Scene 6
+  0x107d5fa4  test al, al
+  0x107d5fa6  jne 0x107d5fd5
+  ... log "Failed - Active" and ret 8 ...
+  0x107d5fd5  push ebp
+  0x107d5fd6  push esi
+  0x107d5fd7  mov esi, dword ptr [esp + 0x10]     ; esi = pPacket (Format*)
+  0x107d5fdb  movzx eax, word ptr [esi + 0x1c]    ; [body + 0x0c] -> UserIndex (u16 LE)
+  0x107d5fdf  movzx ecx, byte ptr [esi + 0x20]    ; [body + 0x10] -> HP (u8)
+  0x107d5fe3  movzx ebp, word ptr [esi + 0x1a]    ; [body + 0x0a] -> AssistUserIndex (u16 LE)
+  0x107d5fe7  mov dword ptr [esp + 8], eax        ; save UserIndex to stack [esp+8]
+  0x107d5feb  movzx eax, byte ptr [esi + 0x1e]    ; [body + 0x0e] -> AssistType wire byte
+  0x107d5fef  dec eax
+  0x107d5ff0  cmp eax, 0x5a
+  0x107d5ff3  push edi
+  0x107d5ff4  mov dword ptr [esp + 0x14], ecx     ; save HP to stack [esp+0x14]
+  0x107d5ff8  ja 0x107d60e4                       ; if > 0x5a, edi = 5 (default)
+  0x107d5ffe  movzx edx, byte ptr [eax + 0x107d61f8] ; jump index
+  0x107d6005  jmp dword ptr [edx*4 + 0x107d6184]  ; switch table: wire byte -> internal AssistType
+  0x107d600c  mov edi, 1                          ; internal AssistType = 1
+  0x107d6011  jmp 0x107d60e9
+  0x107d6016  mov edi, 2                          ; internal AssistType = 2
+  0x107d601b  jmp 0x107d60e9
+  0x107d6020  mov edi, 3                          ; internal AssistType = 3
+  0x107d6025  jmp 0x107d60e9
+  0x107d602a  mov edi, 4                          ; internal AssistType = 4
+  0x107d602f  jmp 0x107d60e9
+  ...
+  0x107d60e4  mov edi, 5                          ; default = 5
+  0x107d60e9  movzx eax, byte ptr [esi + 0x1f]    ; [body + 0x0f] -> Action byte
+  0x107d60ed  dec eax
+  0x107d60ee  push ebx
+  0x107d60ef  mov ebx, 2                          ; if action != 1, ebx = 2 (repair)
+  0x107d60f4  jne 0x107d60fb
+  0x107d60f6  mov ebx, 1                          ; if action == 1, ebx = 1 (attack)
+  0x107d60fb  mov eax, dword ptr [0x1091ba40]
+  0x107d6100  mov ecx, dword ptr [eax]
+  0x107d6102  push 0x1082c33c
+  0x107d6107  push 2
+  0x107d6109  call 0x10703f4e                     ; Log_Set
+  0x107d610e  mov ecx, dword ptr [esp + 0x18]     ; ecx = HP
+  0x107d6112  mov edx, dword ptr [esi + 0x12]     ; edx = [body + 0x02] Result (u32 LE)
+  0x107d6115  mov eax, dword ptr [0x1091ba40]
+  0x107d611a  push edi                            ; arg6: AssistType
+  0x107d611b  push ebp                            ; arg5: AssistUserIndex
+  0x107d611c  push ecx                            ; arg4: HP
+  0x107d611d  mov ecx, dword ptr [eax]
+  0x107d611f  push ebx                            ; arg3: Action
+  0x107d6120  mov ebx, dword ptr [esp + 0x20]     ; ebx = UserIndex (from saved [esp+8])
+  0x107d6124  push ebx                            ; arg2: UserIndex
+  0x107d6125  push edx                            ; arg1: Result
+  0x107d6126  push 0x1082c358                     ; "Result : 0x%08X, UserIndex : %d, Action : %d, HP : %d, AssistUserIndex : %d, AssistType : %d"
+  0x107d612b  push ecx
+  0x107d612c  call 0x10709156                     ; Log_Write
+  0x107d6131  add esp, 0x20
+  0x107d6134  cmp word ptr [esi + 0x10], 0        ; [body + 0x00] Status (u16 LE) == 0?
+  0x107d6139  jne 0x107d617c                      ; if != 0, skip and return
+  0x107d613b  mov eax, dword ptr [esi + 0x12]     ; [body + 0x02] Result (u32 LE) == 0?
+  0x107d613e  test eax, eax
+  0x107d6140  jne 0x107d617c                      ; if != 0, skip and return
+  0x107d6142  movsx ecx, word ptr [esi + 0x23]    ; [body + 0x13] -> AssistUser_Point (i16 LE signed)
+  0x107d6146  movzx eax, word ptr [esi + 0x21]    ; [body + 0x11] -> AssistUser_Exp (u16 LE)
+  0x107d614a  movzx edi, word ptr [esi + 0x25]    ; [body + 0x15] -> User_Exp (u16 LE)
+  0x107d614e  movsx esi, word ptr [esi + 0x27]    ; [body + 0x17] -> User_Point (i16 LE signed)
+  0x107d6152  push ecx                            ; point
+  0x107d6153  push eax                            ; exp
+  0x107d6154  push ebp                            ; AssistUserIndex
+  0x107d6155  mov ecx, 0x108e9b70                 ; UZNetwork_DJ default object
+  0x107d615a  call dword ptr [0x1091b990]
+  0x107d6160  mov ecx, eax
+  0x107d6162  call 0x10707d56                     ; UZNetwork_DJ::Game_User_Assist_Set(AssistUserIndex, AssistUser_Exp, AssistUser_Point)
+  0x107d6167  push esi                            ; point
+  0x107d6168  push edi                            ; exp
+  0x107d6169  push ebx                            ; UserIndex
+  0x107d616a  mov ecx, 0x108e9b70                 ; UZNetwork_DJ default object
+  0x107d616f  call dword ptr [0x1091b990]
+  0x107d6175  mov ecx, eax
+  0x107d6177  call 0x10707d56                     ; UZNetwork_DJ::Game_User_Assist_Set(UserIndex, User_Exp, User_Point)
+  0x107d617c  pop ebx
+  0x107d617d  pop edi
+  0x107d617e  pop esi
+  0x107d617f  pop ebp
+  0x107d6180  pop ecx
+  0x107d6181  ret 8
+
+--------------------------------------------------------------------------------
+[Function 0x1072d860: UZNetwork_DJ::Game_User_Assist_Set(this, userIndex, exp, point)]
+--------------------------------------------------------------------------------
+  0x1072d860  push esi
+  0x1072d861  mov esi, ecx
+  0x1072d863  mov eax, dword ptr [esi + 0x1038]   ; user count
+  0x1072d869  push edi
+  0x1072d86a  xor edi, edi
+  0x1072d86c  test eax, eax
+  0x1072d86e  jle 0x1072d921
+  0x1072d874  mov eax, dword ptr [esi + 0x1034]   ; user record array (stride 0x80 bytes)
+  0x1072d87a  mov edx, dword ptr [esp + 0xc]      ; userIndex
+  0x1072d87e  mov ecx, eax
+  0x1072d880  push ebx
+  0x1072d881  cmp dword ptr [ecx], edx            ; record->UserIndex == userIndex?
+  0x1072d883  je 0x1072d89b
+  0x1072d885  mov ebx, dword ptr [esi + 0x1038]
+  0x1072d88b  inc edi
+  0x1072d88c  add ecx, 0x80
+  0x1072d892  cmp edi, ebx
+  0x1072d894  jl 0x1072d881
+  0x1072d896  jmp 0x1072d920
+  0x1072d89b  cmp dword ptr [esi + 0xfcc], 9      ; Game Mode == 9?
+  0x1072d8a2  mov ecx, dword ptr [esp + 0x14]     ; exp
+  0x1072d8a6  lea edx, [ecx + ecx*4]              ; edx = exp * 5
+  0x1072d8a9  je 0x1072d8ad
+  0x1072d8ab  mov edx, ecx                        ; if mode != 9, edx = exp
+  0x1072d8ad  shl edi, 7                          ; edi = user_index * 128
+  0x1072d8b0  add dword ptr [eax + edi + 0x4c], edx ; record->Assist += edx
+  0x1072d8b4  mov eax, dword ptr [esi + 0x1034]
+  0x1072d8ba  mov edx, dword ptr [edi + eax + 0x54]
+  0x1072d8be  lea eax, [edi + eax + 0x54]
+  0x1072d8c2  add edx, ecx
+  0x1072d8c4  mov dword ptr [eax], edx            ; record->Exp += exp
+  0x1072d8c6  mov ecx, dword ptr [esi + 0x1034]
+  0x1072d8cc  mov edx, dword ptr [esp + 0x18]     ; point
+  0x1072d8d0  lea eax, [edi + ecx + 0x5c]
+  0x1072d8d4  add dword ptr [eax], edx            ; record->Point += point
+  ...
+  0x1072d912  push 0x10814e08                     ; "UserIndex : %d, Battle : %d, Assist : %d, Mission : %d, Exp : %d, Point : %d"
+  ...
+  0x1072d921  or dword ptr [esi + 0x1030], 1      ; mark user table dirty

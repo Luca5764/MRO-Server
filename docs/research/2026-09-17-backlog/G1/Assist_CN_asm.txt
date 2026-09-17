@@ -1,0 +1,163 @@
+================================================================================
+ZDispatchGame::Assist_CN (0x107d9c60) & Allocator (0x107d87d0)
+================================================================================
+
+[Allocator 0x107d87d0] (Called from 0x107d9d8a via thunk 0x10701a0f)
+  0x107d87d0  mov eax, 0x10903250
+  ... zeroes 0x100 dwords ...
+  0x107d87e5  mov word ptr [0x10903256], 0x17   ; Total length = 0x17 (23 bytes: 16 header + 7 body)
+  0x107d87ee  mov dword ptr [0x1090325c], 0x00230121 ; Opcode = 0x00230121 (Assist_CN)
+  0x107d87f8  ret
+
+[Function 0x107d9c60: Assist_CN(this, param_2, param_3, param_4, param_5, param_6)]
+Stack on entry:
+  [esp + 0x04]: retaddr
+  [esp + 0x08]: param_2 (UserIndex / victim)
+  [esp + 0x0c]: param_3 (Action / 1=attack, 2=repair)
+  [esp + 0x10]: param_4 (AssistUserIndex / attacker / helper)
+  [esp + 0x14]: param_5 (HP / remaining HP percent)
+  [esp + 0x18]: param_6 (AssistType internal enum)
+
+Disassembly:
+  0x107d9c60  mov al, byte ptr [ecx + 4]          ; Check Scene 6
+  0x107d9c63  test al, al
+  0x107d9c65  jne 0x107d9c81
+  ... log error and return ...
+  0x107d9c81  ... Game_Host_Check ...
+  0x107d9c8e  call 0x10707630                     ; UZNetwork_DJ::Game_Host_Check
+  0x107d9c93  test al, al
+  0x107d9c95  jne 0x107d9cb1                      ; Only host sends Assist_CN
+  ...
+  0x107d9cb1  ... Game_Play_Check ...
+  0x107d9cbe  call 0x10703832                     ; UZNetwork_DJ::Game_Play_Check
+  0x107d9cc3  test al, al
+  0x107d9cc5  jne 0x107d9cf3                      ; Only in active play
+  ...
+  0x107d9cf3  push ebx
+  0x107d9cf4  mov ebx, dword ptr [esp + 8]        ; ebx = param_2 (UserIndex)
+  0x107d9cf8  push ebp
+  0x107d9cf9  mov ebp, dword ptr [esp + 0x1c]     ; ebp = param_6 (AssistType)
+  0x107d9cfd  cmp ebp, 2
+  0x107d9d00  push edi
+  0x107d9d01  je 0x107d9d4f
+  0x107d9d03  cmp ebp, 4
+  0x107d9d06  jg 0x107d9d4f
+  0x107d9d08  push ebx
+  0x107d9d09  mov ecx, 0x108e9b70
+  0x107d9d0e  call dword ptr [0x1091b990]
+  0x107d9d14  mov ecx, eax
+  0x107d9d16  call 0x107099fd                     ; Game_User_Check(param_2)
+  0x107d9d1b  test al, al
+  0x107d9d1d  jne 0x107d9d85
+  ...
+  0x107d9d4f  mov edi, dword ptr [esp + 0x18]     ; edi = param_4 (AssistUserIndex)
+  0x107d9d53  push edi
+  0x107d9d54  mov ecx, 0x108e9b70
+  0x107d9d59  call dword ptr [0x1091b990]
+  0x107d9d5f  mov ecx, eax
+  0x107d9d61  call 0x107099fd                     ; Game_User_Check(param_4)
+  0x107d9d66  test al, al
+  0x107d9d68  jne 0x107d9d89
+  ...
+  0x107d9d85  mov edi, dword ptr [esp + 0x18]     ; edi = param_4
+  0x107d9d89  push esi
+  0x107d9d8a  call 0x10701a0f                     ; allocate packet -> eax = Format* (0x10903250)
+  0x107d9d8f  mov esi, eax                        ; esi = packet Format*
+  0x107d9d91  mov al, byte ptr [esp + 0x20]       ; al = param_5 (HP)
+  0x107d9d95  mov byte ptr [esi + 0x16], al       ; [body + 0x06] = HP (u8)
+  0x107d9d98  lea eax, [ebp - 1]                  ; eax = AssistType - 1
+  0x107d9d9b  cmp eax, 0x1b
+  0x107d9d9e  mov word ptr [esi + 0x10], di       ; [body + 0x00] = AssistUserIndex (u16 LE)
+  0x107d9da2  mov word ptr [esi + 0x12], bx       ; [body + 0x02] = UserIndex (u16 LE)
+  0x107d9da6  mov cl, 1
+  0x107d9da8  ja 0x107d9e68                       ; default -> wire type 0x0b
+  0x107d9dae  jmp dword ptr [eax*4 + 0x107d9ecc]  ; switch table for AssistType -> wire byte
+  0x107d9db5  mov byte ptr [esi + 0x14], cl       ; [body + 0x04] = 1
+  0x107d9db8  jmp 0x107d9e6c
+  0x107d9dbd  mov byte ptr [esi + 0x14], 2        ; [body + 0x04] = 2
+  0x107d9dc1  jmp 0x107d9e6c
+  0x107d9dc6  mov byte ptr [esi + 0x14], 3        ; [body + 0x04] = 3
+  0x107d9dca  jmp 0x107d9e6c
+  0x107d9dcf  mov byte ptr [esi + 0x14], 4        ; [body + 0x04] = 4
+  0x107d9dd3  jmp 0x107d9e6c
+  ...
+  0x107d9de1  mov byte ptr [esi + 0x14], 0x15     ; [body + 0x04] = 0x15
+  0x107d9de5  jmp 0x107d9e6c
+  0x107d9dea  mov byte ptr [esi + 0x14], 0x16     ; [body + 0x04] = 0x16
+  0x107d9dee  jmp 0x107d9e6c
+  0x107d9df0  mov byte ptr [esi + 0x14], 0x17     ; [body + 0x04] = 0x17
+  0x107d9df4  jmp 0x107d9e6c
+  0x107d9df6  mov byte ptr [esi + 0x14], 0x1f     ; [body + 0x04] = 0x1f
+  0x107d9dfa  jmp 0x107d9e6c
+  0x107d9dfc  mov byte ptr [esi + 0x14], 0x20     ; [body + 0x04] = 0x20
+  0x107d9e00  jmp 0x107d9e6c
+  0x107d9e02  mov byte ptr [esi + 0x14], 0x21     ; [body + 0x04] = 0x21
+  0x107d9e06  jmp 0x107d9e6c
+  0x107d9e08  mov byte ptr [esi + 0x14], 0x29     ; [body + 0x04] = 0x29
+  0x107d9e0c  jmp 0x107d9e6c
+  0x107d9e0e  mov byte ptr [esi + 0x14], 0x2a     ; [body + 0x04] = 0x2a
+  0x107d9e12  jmp 0x107d9e6c
+  0x107d9e14  mov byte ptr [esi + 0x14], 0x2b     ; [body + 0x04] = 0x2b
+  0x107d9e18  jmp 0x107d9e6c
+  0x107d9e1a  mov byte ptr [esi + 0x14], 0x2c     ; [body + 0x04] = 0x2c
+  0x107d9e1e  jmp 0x107d9e6c
+  0x107d9e20  mov byte ptr [esi + 0x14], 0x2d     ; [body + 0x04] = 0x2d
+  0x107d9e24  jmp 0x107d9e6c
+  0x107d9e26  mov byte ptr [esi + 0x14], 0x2e     ; [body + 0x04] = 0x2e
+  0x107d9e2a  jmp 0x107d9e6c
+  0x107d9e2c  mov byte ptr [esi + 0x14], 0x33     ; [body + 0x04] = 0x33
+  0x107d9e30  jmp 0x107d9e6c
+  0x107d9e32  mov byte ptr [esi + 0x14], 0x34     ; [body + 0x04] = 0x34
+  0x107d9e36  jmp 0x107d9e6c
+  0x107d9e38  mov byte ptr [esi + 0x14], 0x35     ; [body + 0x04] = 0x35
+  0x107d9e3c  jmp 0x107d9e6c
+  0x107d9e3e  mov byte ptr [esi + 0x14], 0x3d     ; [body + 0x04] = 0x3d (Campaign obj dmg)
+  0x107d9e42  jmp 0x107d9e6c
+  0x107d9e44  mov byte ptr [esi + 0x14], 0x47     ; [body + 0x04] = 0x47
+  0x107d9e48  jmp 0x107d9e6c
+  0x107d9e4a  mov byte ptr [esi + 0x14], 0x51     ; [body + 0x04] = 0x51
+  0x107d9e4e  jmp 0x107d9e6c
+  0x107d9e50  mov byte ptr [esi + 0x14], 0x52     ; [body + 0x04] = 0x52
+  0x107d9e54  jmp 0x107d9e6c
+  0x107d9e56  mov byte ptr [esi + 0x14], 0x5b     ; [body + 0x04] = 0x5b
+  0x107d9e5a  jmp 0x107d9e6c
+  0x107d9e5c  mov byte ptr [esi + 0x14], 5        ; [body + 0x04] = 5
+  0x107d9e60  jmp 0x107d9e6c
+  0x107d9e62  mov byte ptr [esi + 0x14], 6        ; [body + 0x04] = 6
+  0x107d9e66  jmp 0x107d9e6c
+  0x107d9e68  mov byte ptr [esi + 0x14], 0xb      ; [body + 0x04] = 0xb (default)
+  0x107d9e6c  mov edi, dword ptr [esp + 0x18]     ; edi = param_3 (Action)
+  0x107d9e70  mov eax, edi
+  0x107d9e72  dec eax
+  0x107d9e73  je 0x107d9e7b
+  0x107d9e75  mov byte ptr [esi + 0x15], 2        ; [body + 0x05] = 2 (repair/heal)
+  0x107d9e79  jmp 0x107d9e7e
+  0x107d9e7b  mov byte ptr [esi + 0x15], cl       ; [body + 0x05] = 1 (attack/damage)
+  0x107d9e7e  mov ecx, dword ptr [0x1091ba40]
+  0x107d9e84  mov ecx, dword ptr [ecx]
+  0x107d9e86  push 0x1082c24c
+  0x107d9e8b  push 2
+  0x107d9e8d  call 0x10703f4e                     ; Log_Set
+  0x107d9e92  mov edx, dword ptr [esp + 0x1c]     ; edx = AssistUserIndex
+  0x107d9e96  mov eax, dword ptr [esp + 0x20]     ; eax = HP
+  0x107d9e9a  mov ecx, dword ptr [0x1091ba40]
+  0x107d9ea0  push ebp                            ; push AssistType
+  0x107d9ea1  push edx                            ; push AssistUserIndex
+  0x107d9ea2  mov edx, dword ptr [ecx]
+  0x107d9ea4  push eax                            ; push HP
+  0x107d9ea5  push edi                            ; push Action
+  0x107d9ea6  push ebx                            ; push UserIndex
+  0x107d9ea7  push 0x1082c268                     ; "UserIndex : %d, Action : %d, HP : %d, AssistUserIndex : %d, AssistType : %d"
+  0x107d9eac  push edx
+  0x107d9ead  call 0x10709156                     ; Log_Write
+  0x107d9eb2  mov eax, dword ptr [0x1091ba40]
+  0x107d9eb7  mov ecx, dword ptr [eax]
+  0x107d9eb9  add esp, 0x1c
+  0x107d9ebc  push 0
+  0x107d9ebe  push esi                            ; packet
+  0x107d9ebf  call 0x10701582                     ; ZNetworkManager::Send(packet, 0)
+  0x107d9ec4  pop esi
+  0x107d9ec5  pop edi
+  0x107d9ec6  pop ebp
+  0x107d9ec7  pop ebx
+  0x107d9ec8  ret 0x14
