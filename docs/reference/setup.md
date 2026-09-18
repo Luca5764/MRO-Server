@@ -162,3 +162,16 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 - Win10 用錯 exe 時的特徵：Windows 事件 ID 1000、錯誤代碼 `0xc0000005`、錯誤模組 unknown、`xigncode.log` 沒有更新。朋友那邊出事時，先拿這幾項比對。
 - Win7／Win8 完全沒有測過。
 - 詳情見 `journal/2026-09-19-0010-win10-exe-and-second-client.md`。
+
+### 讓第二台連進遊戲伺服器（publicHost）
+
+登入伺服器會在 `Server_Add_SN 0x00220101` 告訴客戶端遊戲伺服器的位址。預設是 `127.0.0.1`，只有同一台機器連得到。要讓區網或 VPN 上的其他機器連進來，在 `Metal Rage Online Server/config/server.json` 設定：
+
+```json
+{ "publicHost": "192.168.1.105" }
+```
+
+- 填 Windows 主機在區網（或 VPN）上的 IP，不是 WSL 的 IP。改完要完整重啟伺服器。
+- 設定之後，這台主機自己也會經過 portproxy 連進來。執行 `lan-close.ps1` 之前，要先刪掉 `server.json` 並重啟，否則連本機都連不上。
+- 白名單：`config/allowed-users.json`（格式見 `allowed-users.example.json`，範例檔本身不會被讀取）。開放區網之前一定要設定。
+- 測試 worktree 的這兩個檔案用 symlink 指到主目錄那份。

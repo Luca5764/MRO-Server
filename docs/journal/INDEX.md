@@ -122,3 +122,4 @@
 | 2026-09-18 | `2026-09-18-2350-game-login-token-chain.md` | `0x00110124`、`0x00220132` | — | 身分鏈：Gate Leave_SA body+0x06／+0x0A → Certify_Away_Set（`0x10715f70`）→ Login_Again_CQ 帶回；更正 I1「無寫入點」。 |
 | 2026-09-18 | `2026-09-18-2340-w1-whitelist.md` | `0x00110151`、`0x00110152` | — | W1：`config/allowed-users.json`（gitignored）擋 9211 的 `CQ_LOGIN_WASABII`，未列名帳號不會 `createAccount`；失敗 SA 用 DLL `Login_Wasabii_SA 0x10701717` 證實非零 code 會讓客戶端自行斷線；設定檔不存在時行為不變，`packetlog.recordBuild` 加 `whitelist` 欄位；新增 `test/whitelist.js`。 |
 | 2026-09-19 | `2026-09-19-0010-win10-exe-and-second-client.md` | — | — | Win10 要用原廠 exe（`419d9275…`），修改版會 0xc0000005；第二台啟動 log 跟主機一致；客戶端連不上時不寫 log；第二台 ip=.128 與主機 .105 不符。 |
+| 2026-09-19 | `2026-09-19-0030-second-host-first-login.md` | `0x00220101` | — | 第二台（dusk）第一次登入成功；Server_Add_SN 原本寫死 127.0.0.1，由 N1 publicHost 修正；三項檢查通過，但只是依序登入猜對。 |

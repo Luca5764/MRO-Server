@@ -135,6 +135,7 @@
 | 30907 登入的身分：Gate `Leave_SA 0x00220132` body+0x06／+0x0A 兩個 u32，客戶端透過 `Certify_Away_Set`（`0x10715f70`）存起來，再放進 `Login_Again_CQ 0x00110124` body+0／+4 原樣帶回。目前伺服器送 0，所以用 last_login 猜帳號 | ✅ [DLL] `0x107dc7d3`–`0x107dc846`、`0x107c3ef5`；[LOG] body 全 0 | `journal/2026-09-18-2350-game-login-token-chain.md` |
 | 房間聊天：客戶端送 `0x00220505`（258 bytes，與 SN 同 opcode），伺服器目前只回 ACK、不廣播 | ✅ [LOG] | `logs/session-20260918-225741.jsonl` |
 | 單人假設清單（M1 15 列、M2 8 列） | 🟡 [CODE] | `docs/reference/multiplayer-audit.md` |
+| 區網第二台可以登入並進大廳、商城：需要 portproxy（N0）＋ `publicHost`（N1，`Server_Add_SN 0x00220101` 原本寫死 127.0.0.1）＋白名單。經過 portproxy 後來源 IP 全是 `192.168.208.1`，不能用 IP 認人 | ✅ [LOG][OBS] | `journal/2026-09-19-0030-second-host-first-login.md` |
 
 ## 5. 程式碼裡已知錯誤的名稱與無效封包（尚未修正）
 
