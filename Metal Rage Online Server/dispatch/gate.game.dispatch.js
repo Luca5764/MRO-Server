@@ -321,13 +321,24 @@ function sendGameInfoSn(client, tag)
     // Triggered by the client pressing F5 to start the match (this handler
     // fires from the game-start sequence above and from the scene-6 map
     // resend timers). Default stays hardcoded 10; GAME_INFO_TIME_LIMIT_MODE
-    // 'room' switches it to the room's PlayTime, set on Map_Change_One_CQ
-    // 0x00220221 (see the case below). See "trap" comment on the switch decl.
+    // 'room' switches it to the room's PlayTime, preferring
+    // client.mapChangeOneTime_ (set if the player actually changed the map
+    // in-room via Map_Change_One_CQ 0x00220221, see the case below), then
+    // falling back to client.createPlayTime_ (the room's PlayTime as sent
+    // at Create_CQ 0x00220201, for the case where the room starts without
+    // ever touching the map/difficulty setting -- PM-F1 fix 2, same field
+    // and unit as mapChangeOneTime_, see the comment at CQ_CREATE), and only
+    // then the hardcoded 10. See "trap" comment on the switch decl.
     let timeLimitMinutes = 10;
     let timeLimitSource = 'hardcoded';
-    if (GAME_INFO_TIME_LIMIT_MODE === 'room' && client.mapChangeOneTime_) {
-        timeLimitMinutes = client.mapChangeOneTime_;
-        timeLimitSource = 'room';
+    if (GAME_INFO_TIME_LIMIT_MODE === 'room') {
+        if (client.mapChangeOneTime_) {
+            timeLimitMinutes = client.mapChangeOneTime_;
+            timeLimitSource = 'mapChangeOne';
+        } else if (client.createPlayTime_) {
+            timeLimitMinutes = client.createPlayTime_;
+            timeLimitSource = 'create';
+        }
     }
     const goalScore = 0;
 
@@ -663,6 +674,24 @@ class ZGateGameDispatch
                 client.createByte1_ = createByte1;
                 client.createWord1_ = createWord1;
                 client.createWord2_ = createWord2;
+                // PM-F1 fix 2: body[4..5] is PlayTime in minutes, same field
+                // semantics/type/position as Map_Change_One_CQ 0x00220221's
+                // MapTime (w2) -- see docs/journal/2026-09-17-18-create-cq-map-difficulty.md
+                // §1 (write [esp+0x30] -> 0x107e5cd7) and §2 (identical field
+                // order to Map_Change_One_CQ, [esp+0xc] -> 0x107eec96); neither
+                // write applies a *60/÷60 scale, and Game_Info_SN's TimeLimit
+                // (body+0x13, 0x107d4fa7) is minutes per
+                // docs/journal/2026-09-18-2334-t1-time-limit.md (DefaultGameInfo.uc
+                // RemainingTime = 60*TimeLimit) -- same unit, kept as its own
+                // named field distinct from the generic createWord2_ optionMask
+                // read by room-state.sender.js, which is a different consumer.
+                // Not added to session.js's CARRIED list: create and game-start
+                // happen on the same GameServer (30907) connection, no
+                // reconnect between them observed in any session log, so this
+                // does not need to survive a reconnect (per PM ruling; keep
+                // the CARRIED list from growing without a reconnect case that
+                // needs it).
+                client.createPlayTime_ = createWord2;
                 client.createWord3_ = createWord3;
                 client.createWord4_ = createWord4;
                 client.roomNumberFlag_ = roomNumberFlag;
