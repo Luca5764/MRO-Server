@@ -16,6 +16,27 @@ enough to catch an accidental change to packet layout/order/opcode from a
 refactor or a switch-default change; it is not a claim that the original
 session replays byte-identical.
 
+## Cache.Bin
+
+`dispatch/room.dispatch.js` reads the client's `MetalRage/Data/System/Cache.Bin`
+at module load (`loadCacheIndexByItemId()`) for item image indices and
+`represent`/period lookups. It is gitignored and not part of this repo. To
+get the real data instead of that loader's empty-map fallback, symlink it
+into the worktree the same way the test-server worktree does:
+
+```
+ln -s /home/lucas/mro-reverse/MetalRage <worktree>/MetalRage
+```
+
+(`/home/lucas/mro-reverse/MetalRage` is itself a symlink to the actual
+client install, e.g. `/mnt/c/Games/MetalRage Online`.) This symlink is not
+committed (`MetalRage` is gitignored at the repo root) -- recreate it in any
+new worktree before running `--record`. Without it, replay is still
+deterministic (the loader's try/catch falls back to empty maps every time),
+it just cannot catch a regression in the Cache.Bin-derived values
+themselves; run `node test/replay-golden.js --record-all` once after adding
+the symlink so the baselines reflect the real data.
+
 ## Usage
 
 ```
@@ -41,9 +62,8 @@ node test/replay-golden.js --record <name>
 nothing to regression-test there and it would need a real socket).
 `--until <op>` stops the slice after the first recv packet matching that
 opcode, for trimming a sample to a point before something not yet mocked
-(e.g. before hangar/shop, which needs `getItemCatalog` and transactional
-`pool.getConnection()` support `test/fixtures/fake-db.js` does not have
-yet -- it throws a clearly-labelled error instead of guessing).
+(`fake-db.js` throws a clearly-labelled error instead of guessing a shape
+when it hits a call site it does not cover, e.g. `saveEquippedLoadout`).
 
 Then `--record` once, read the console log to sanity-check the handlers
 did what you expected (nothing here proves the fixture data itself is
@@ -52,24 +72,38 @@ realistic, only that replay is deterministic), and commit `recv.jsonl`,
 
 ## What is and is not covered right now
 
-Covered (see `test/golden/`): dispatch-server login (`0x00110151`),
-game-server login + channel enter + card ack (`0x00110124`/`0x00220111`/
-`0x00250102`/`0x00320104`), PvE room create with both scheduled room-state
-resends (`0x00220201`, exercises `test/fixtures/fake-timers.js`), two
-lobby-chat fallback acks, and leaving the room back to the lobby
-(`0x00220234`).
+Covered (see `test/golden/`):
+- `login-dispatch`: dispatch-server login (`0x00110151`) through gate leave.
+- `login-room-game`: game-server login + channel enter + card ack
+  (`0x00110124`/`0x00220111`/`0x00250102`/`0x00320104`), PvE room create with
+  both scheduled room-state resends (`0x00220201`, exercises
+  `test/fixtures/fake-timers.js`), a lobby-chat fallback ack, and leaving the
+  room back to the lobby (`0x00220234`).
+- `login-room-shop-buy`: the same prefix as `login-room-game` (client state
+  has to build up naturally -- a fixture client that jumps straight to
+  Hangar Open would never have `campaignRoom_`/`accountId_` set, and
+  wouldn't exercise the real code path), then Hangar Open_CQ (`0x00240101`,
+  full shop bootstrap incl. `db.getItemCatalog()`), a lobby chat, and
+  Buy_PointItem_CQ (`0x00240201`) buying a real catalog item on credit
+  through the transactional `db.pool.getConnection()` path
+  (`MONEY_PERSIST_MODE`), including the post-purchase ItemInfo refresh, the
+  M3a `POST_BUY_SLOT_REFRESH_MODE` Slot_Change_SA resend, and the post-
+  purchase ShopList repaint (fires through `fake-timers.js` again).
+
+Switch coverage spot-checked for this pass (flip to `disabled`, confirm a
+FAIL with the right op/offset, flip back): `ROOM_TEAM_INDEX_MODE` (room
+default 0x00220203 +0x10 team indices), `ROOM_USER_NAME_ANSI_MODE`
+(0x00220421 name encoding), `ROOM_LEAVE_RESET_MODE` (no packet of its own --
+leaves `campaignRoom_` true after Leave_CQ, which then changes which branch
+Hangar Open_CQ takes; only `login-room-shop-buy` covers it, at send #51),
+`MONEY_PERSIST_MODE` (0x00210103 record-info layout), `POST_BUY_SLOT_REFRESH_MODE`
+(drops the post-buy 0x00240108 resend). This is not exhaustive -- see
+`docs/reference/switch-audit.md`'s full switch list for what else exists.
 
 Not covered yet, and why:
-- **Shop / hangar / buy** (`0x0024xxxx` past `Leave_CQ`): needs
-  `db.getItemCatalog()` and `db.pool.getConnection()` (transactional),
-  neither mocked. `fake-db.js` throws a labelled error if a sample reaches
-  them instead of guessing a shape.
 - **PvE match to completion** (`BeginRound_SN` / score / end-game): no
   session log in `logs/` at the time this was written reached that far
   (see A6 handback report); needs its own golden sample once one exists.
-- **Cache.Bin-dependent fields** (item image indices, `represent` lookups
-  in `dispatch/room.dispatch.js`'s `loadCacheIndexByItemId()`): this
-  sandbox has no `MetalRage/Data/System/Cache.Bin`, so that loader always
-  falls back to its empty-map catch path here. Replay is still
-  deterministic (same empty result every run), but it cannot catch a
-  regression in the Cache.Bin-derived values themselves.
+- **`saveEquippedLoadout`, `createAccount`, cash-currency purchases**: no
+  golden sample exercises these DB entry points yet; `fake-db.js` throws a
+  labelled "not mocked" error rather than guess a shape if one ever does.
