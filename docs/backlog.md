@@ -130,6 +130,26 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - **待確認：** 請操作者的哥哥描述更精確一點：是「換到另一台機時，清單裡看不到」，還是「看得到，但裝上去以後原本那台的就不見了」？
 - **完成條件：** 實測時，同一件共享物品可以同時裝在兩台機體上，重登之後都還在。
 
+## R-ROUND：PvE 回合推進（PM 開立 2026-09-19）
+
+> **狀態：分析已派出（唯讀）。實作與實測排在 M1 主測之後、D1 第 6 步之前**（第 6 步要廣播的就是這段開戰／結算流程，先把單人的流程弄對再廣播）。
+
+- **目標：** 清完一回合後進入下一回合，打滿 MapInfo.Round（初／中／高分別是 5／8／10）才結算。
+- **背景：**
+  - [LOG] 三份 log 裡的每一場都只有 1 次 `BeginRound_CN 0x00230151`，第一個 `Campaign_CN 0x00230139` 一來就結束（012749：1／1／1；002245：開戰 8、BeginRound 8、Campaign 3；205012：開戰 6、BeginRound 6、Campaign 4；高階 2026-09-19 重算）。不分難度、不分 Round 值。
+  - [SRC] `ZNetwork_DJ.uc:1903`：Game_Campaign(ActionType) 的 1＝목표달성（目標達成）、2＝실패（失敗，遊戲結束）。`ZModePve.uc:1155-1160`：進入下一回合時送 Game_Campaign(1)；`:1127-1129`：`MapInfo.Round == GetPveCurrentRound_BD()` 時才 EndGame；`:716-722` 的 `EndRound_BD()` 註解寫「回合結束時由 Network 呼叫」→ ModeReset_BD(true)；`:128` 則在 `CurrentRound >= MapInfo.Round` 時 return。
+  - 🟡 推論：伺服器對任何 `Campaign_CN` 都回 `EndGame_SN 0x00222213`（`lobby.dispatch.js:211-224`），所以每一場都在第一回合就結束。應該回一個「回合結束」的 SN（候選 `EndRound_SN 0x00222211`，state.md 列為未實作），只有最後一回合才回 EndGame。`Campaign_CN` 的 body[0..1]＝`0100` 可能就是目前回合數。
+- **範圍：** (1) DLL：哪個 SN handler 會呼叫腳本的 EndRound_BD（EndRound_SN `0x00222211`、EndQuater_SN `0x00222212`、Campaign_SN `0x0023013a`），body 格式逐欄附位址；(2) `Campaign_CN` body[0..1] 的來源；(3) [SRC] 誰遞增 CurrentRound；(4) `lobby.dispatch.js:211-224`。
+- **限制：** 先分析。實作放在預設關閉的開關後面（例如 `PVE_ROUND_ADVANCE_MODE`），只改「Campaign_CN 成功、但還沒到最後一回合時回什麼」這一個變數；失敗路徑不動；開關關閉時 pve-full-match 必須全綠；不動 Assist／Death／計分。
+- **實測：** 用初級（5 回合），或只看第二個 BeginRound_CN 有沒有出現。
+- **完成條件：** 指出觸發 EndRound_BD 的 opcode 和 body 格式（附位址），或者明確寫出卡在哪裡。
+
+## C2：收斂 T1 開關
+
+> **狀態：T1 2026-09-19 ✅；期限 2026-09-26。**
+
+- 刪掉 `GAME_INFO_TIME_LIMIT_MODE`，保留 'room' 路徑。**前提：** 這個開關翻掉要能讓回歸測試變紅；pve-full-match 樣本的 body+0x13 會從 0x0a 變成 0x3c（T1 worker 驗證過），所以收斂時要附理由重錄那個樣本。
+
 ## D1：多人房間模型設計稿（C 線，高階自己做）
 
 > **狀態：等 S1 交付。屬於「要重構先問」：PM 審查、操作者同意之後才能實作。**
@@ -384,6 +404,8 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 能逐一證明 body/main/left/right/equipment 從 CQ 到 PvE pawn 的值，定位第一個錯誤轉換；無法定位則列出必須再錄的單一機體／單一 part 測試。
 
 ## P3：困難潛入作戰實際仍走簡單流程
+
+> **2026-09-19 改指向 R-ROUND：** 「困難模式只打到簡單段落」的真正原因很可能是**每一場都只打一回合**（見下方 R-ROUND）；「547 秒停住」由 T1（時間上限寫死 10 分鐘）解釋。本節保留作歷史紀錄。
 
 > **狀態：分析已交付（`docs/journal/2026-09-18-18-pve-hard-flow.md`，🟡 高階初審／只分析），根因與修正仍未裁定，未指派後續**
 
