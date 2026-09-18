@@ -5,6 +5,70 @@
 
 ---
 
+## ⚡ 高階交接：Codex Sol → 下一位高階（2026-09-18 22:02，請以此段為準）
+
+### 接手規則已履行
+
+- Sol 已依序讀完交接／state／INDEX，並獨立重驗上一位兩條 ✅：
+  - `Map_Change_One_SA 0x00220222` 本體 `0x107eb510` 確實要求 body 前 6 bytes 全 0；非零跳 `0x107eb683` 直接返回。
+  - `Room_Name_SN 0x0022021A` 本體 `0x107ea7d0` 對 body 字串呼叫 `winToUNICODE`，欄位確為 ANSI。
+- 兩條都不需更正。下一位仍須照 `AGENTS.md`「接手時」再抽驗本段最新 ✅；不要只沿用結論。
+
+### 測試環境與分支（先看這裡）
+
+- 共用主工作目錄最後觀察在 `flash-wip-room-team`；Gemini 可能正在做 R12/R13。**提交前一定先 `git branch --show-current`，不要在主工作目錄直接寫高階文件。**
+- Sol 的文件 worktree：`/tmp/mro-sol-doc`，分支 `reverse-work`。
+- 隔離測試 worktree：`/tmp/mro-sol-test.eudtCb`，分支 `sol-test-room-money`；含 R11、M1、測試開關與已審 M2。
+- tmux `server` 現在由該測試 worktree 執行，監聽 `0.0.0.0:9211`、`0.0.0.0:30907`；目前 log 為 `logs/session-20260918-214305.jsonl`。
+- DB migration `tools/add-account-money.js` 已由 Sol 執行：accounts 新增 Point/Cash/Coupon，預設 `100000/0/0`。不要重做非冪等 SQL；資料庫變更仍須腳本。
+
+### R11 房間玩家槽：部分成功，拆成 R12/R13
+
+- [OBS][LOG] `ROOM_TEAM_INDEX_MODE` enabled 後玩家已進紅隊第一格，能看到 ID 第一字 `L` 與房主圖示；證明 Red=0／Blue=1 的核心修正生效。完整頭像尚未出現。
+- [DLL] `User_Name_SN 0x00220421` 本體 `0x107eb050`：`lea esi,[eax+0x2b]`＝body+0x1B，隨後呼叫 `winGetSizeUNICODE`／`winToUNICODE`。目前 sender 在該處送 UTF-16LE，恰好解釋只顯示 `L`；R12 已交 Gemini 做預設關閉的 ANSI 單變數修正。
+- [DLL] `User_Pilot_SN 0x00220402` export `0x10706866` → `0x1072c810`，會按 user index 將 pilot 寫入 room user record+0x38；wire layout 現行正確。
+- [SRC] 房間槽用 `CacheManager.GetImageIndex(PilotCode)` 畫頭像；此函式只有 HighGroup 5 查 pilot record。現行 `PilotCode=101/102` 是否是有效 Cache ItemIndex 尚未確認，R13 僅分析，禁止猜值修改。
+- 契約：`docs/backlog.md` R12、R13。Gemini 組語結論仍必須由高階重驗。
+
+### M1/M2 金錢與購買刷新
+
+- [OBS] G 幣已確實從 100000 扣成 99000；購買 transaction 與 DB 餘額路徑成立。
+- [OBS][LOG] 新物品購買當下未出現在庫存，離開再進格納庫後出現；舊 log 顯示含新 serial 的 `ItemInfo_SN 0x00210111` 先於 Buy ACK `0x00240202`。
+- Gemini commit `cc99bac` 將成功 ACK 移到 ItemInfo 前。Sol 已審：程式是純區塊搬移，成功／失敗分支和資料內容未變，`node --check`／`diff --check` 通過；已 cherry-pick 為測試分支 `0830b55` 並重啟 server。
+- **尚未實測 M2 後物品是否立即出現。** Gemini 日誌把時序假設寫成根因，證據過強；M2R 契約要求改回 🟡，不要先標 ✅。
+- 契約：`docs/backlog.md` M2R。
+
+### 2026-09-18 新玩家盲測：三個新問題
+
+一位完全不知道逆向進度的玩家實際操作，回報以下三點。這種盲測比熟悉 workaround 的操作者更容易抓到真實 UX 缺口；目前都只標 [OBS]。
+
+1. **基本主武器在庫存看起來有兩把。**
+   - [DB] account 1 的 mech 1／part 1 有多個不同武器，但沒有相同 item_id 重複；基礎 `22100101` 只有 serial `100155` 一筆。
+   - 因此不能先刪資料；要取得兩列各自 serial/item_id，排除不同 item 共用名稱／圖示或 WearInfo 重複列示。契約 P1。
+2. **其他機體換裝後，PvE 只有主武器保留，輔助武器與裝備回預設。**
+   - [LOG] 本場 slot 1 最終 CQ：`body=100154 main=200013 left=100219 right=200003 equipment=200005 skin=0`；slot 3：`body=100162 main=200010 left=200001 right=0 equipment=0 skin=0`。
+   - [DB] slot 1 五項非零都已保存；slot 3 保存 body/main/left，right/equipment 在 CQ 本來就是 0。故「saveEquippedLoadout 只存 main」已被排除。
+   - [LOG][CODE] 開戰 `Game_User_SN 0x00222112` 從 DB 組 main/left/right/booster/skin。下一步應追 `Game_Slot_Set` 到 `ServerMechWeaponSet_MH()` 的讀取端；三個 `Game_UserSocket_Set` 欄位是強化石 socket 候選，不要直接塞武器。契約 P2。
+3. **潛入作戰選困難，實戰仍只有三命且通關只到簡單段落。**
+   - [LOG] 最後 CQ `0034233c000a00000000`＝MapIndex 9012、Time 60、Round 10；SA／SN 也回 9012／10。
+   - [LOG] 開戰兩次 `Game_Info_SN` 都是 `map=9012 round=10`，body `010000000000010000000000000000020034230a000a00000000`。
+   - 所以**不是房間難度選擇沒保存，也不是 GameInfo 還送 9010**。不要回頭重做 R6/R7。
+   - [SRC] `ZModePve.ModeReset_BD()` 以 `GameInfo.MapInfo.Round` 判斷整場完成；命數由 map class 的 `DefNumLive + GAME_ITEM_INFO.PveRespawnAddCount` 設定，現行 bonus=0。要查 9010/9011/9012 Cache 差異、host round manager、Campaign／EndGame 時線與是否另有難度初始化。契約 P3，三案中優先最高。
+
+### 下一步優先序
+
+1. 審 Gemini 的 M2R → R12 → R13；R12 實測時只開名稱 ANSI，不同時動 pilot。
+2. 單獨重測 M2：買一件未持有物，確認 ACK 後是否立刻出現在庫存，並核對 Point 再扣一次及重登保留。
+3. 先做 P3（困難實戰仍簡單）的只讀時間線／Cache／SRC 分析；已有證據排除 map CQ、SA、SN、GameInfo 四層。
+4. 做 P2 的 Game_Slot_Set 讀取端重播；必須逐機體、逐 part，不要只看 summary log 的 body/main。
+5. P1 需要完整庫存截圖或能辨識兩列的操作紀錄後再判斷；目前 DB 不支持「同 item 重複」。
+
+### 已新增六項契約
+
+- `docs/backlog.md`：M2R、R12、R13、P1、P2、P3。P1～P3 都先分析、不改程式；若要實驗，另由高階裁成單變數、預設關閉任務。
+
+---
+
 ## ⚡ 高階交接：Claude → Codex Sol（2026-09-18 深夜，請以此段為準）
 
 Claude 主力額度將盡，高階位置交給 Sol。**接手第一件事：驗證下面標 ✅ 的其中一兩條**（規則見 `AGENTS.md`「接手時」）。

@@ -578,3 +578,115 @@
 ### 完成條件
 
 能用 DLL＋客戶端腳本＋Cache 證據說明 `PilotCode` 到 avatar atlas 座標的完整鏈，並指出現行 `101` 在鏈上成功或失敗的位置；若證據不足，明確列出缺的 record／映射，不改程式。
+
+## P1：基礎主武器在庫存顯示兩把
+
+> **狀態：2026-09-18 操作者回報，未指派；先分析**
+
+### 目標
+
+找出庫存中基礎主武器看似出現兩把，是資料重複、不同 item 共用名稱／圖示，或客戶端重複列示；先不修改資料。
+
+### 範圍
+
+- 對照 account 1 的 `ItemInfo_SN 0x00210111`、`WearInfo_SN 0x00210113`、Package item 與 DB rows。
+- 解析畫面上兩列對應的 serial、item_id、RepresentIndex、名稱與 ImageIndex；需要畫面辨識時請操作者提供完整截圖。
+- 檢查 starter loadout、購買 insert 與 ItemInfo refresh 是否可能各建立同一件基礎武器。
+
+### 背景
+
+- [OBS] 一位不熟悉逆向進度的實際玩家指出基本主武器在庫存顯示兩把。
+- [DB] account 1 的 mech 1／part 1 目前有七筆，但沒有相同 `item_id` 重複；`22100101` 只有 serial `100155` 一筆。
+- [LOG] 登入 ItemInfo 與 WearInfo 均引用實際 serial；僅憑畫面相同不能判定 DB 重複。
+
+### 限制
+
+- 只分析，不刪 DB row、不改 starter data、sender、開關或 Cache，不標 ✅。
+- 未取得兩列的 item_id／serial 前，不把「兩把」解讀成重複資料。
+- 不掃描整個 `static/`；只讀與候選 item 直接相關的 Cache record。
+
+### 交付
+
+- 一篇待審日誌與 INDEX 待審列，列出兩列從 UI 到 ItemInfo／DB／Cache 的映射。
+- 原始 packet／Cache 摘錄存 `docs/research/<日期>-duplicate-basic-main/`。
+- 若確認重複，只提出一個單變數、可回復的後續修正。
+
+### 完成條件
+
+能指出兩列各自的 serial 與 item_id，並以資料鏈判定是合法不同物品、顯示碰撞或真正重複；證據不足時明列缺少的截圖或欄位。
+
+## P2：PvE 只保留主武器、輔武與裝備回預設
+
+> **狀態：2026-09-18 操作者回報，未指派；先分析**
+
+### 目標
+
+找出機庫完整換裝已保存、但 PvE 出場只套用主武器的原因；區分 CQ 保存、DB、`Game_User_SN` 組包及遊戲生成機體四層。
+
+### 範圍
+
+- 以 `session-20260918-214305.jsonl` 的兩筆 `Slot_Change_CQ 0x00240107`、DB equipped rows與 `Game_User_SN 0x00222112` 做逐欄重播。
+- 追蹤 `GAME_ITEM_INFO.Slot[].Part[]` 到 `DefaultGameInfo.RestartPlayer()`／`ServerMechWeaponSet_MH()` 的讀取順序。
+- 核對 `Game_Slot_Set` 六個欄位的 part 語意與 sender 的 body/main/left/right/equipment/skin 對應。
+- `Game_UserSocket_Set` 是強化石 socket 候選，不得未經讀取端證據就改成武器欄位。
+
+### 背景
+
+- [OBS] 其他機體完成裝配後進 PvE，只有主武器保留，輔助武器與裝備回到預設。
+- [LOG] slot 1 CQ 最終送 `body=100154 main=200013 left=100219 right=200003 equipment=200005 skin=0`；slot 3 送 `body=100162 main=200010 left=200001 right=0 equipment=0 skin=0`。
+- [DB] slot 1 五個非零欄位皆已保存；slot 3 保存 body/main/left，CQ 對 right/equipment 本來就是 0。
+- [LOG][CODE] 開戰 `Game_User_SN` 從 DB 分別寫出 main／left／right／booster／skin，並非只組主武器。
+
+### 限制
+
+- 先分析，不改 DB、canonical defaults、`Game_User_SN` 或 slot change handler，不標 ✅。
+- 不用 slot 1 與 slot 3 的觀察互相代替；每台機體逐欄對照。
+- 若提出實驗，只能預設關閉且一次改一個 part offset／值。
+
+### 交付
+
+- 待審日誌、INDEX 待審列與一份 slot record 解碼表，附 DLL／SRC 位址及本場 hex。
+- 說明資料第一次偏離使用者選擇的位置；最多提出一個單變數實驗。
+- 原始重播資料放 `docs/research/<日期>-pve-loadout-parts/`。
+
+### 完成條件
+
+能逐一證明 body/main/left/right/equipment 從 CQ 到 PvE pawn 的值，定位第一個錯誤轉換；無法定位則列出必須再錄的單一機體／單一 part 測試。
+
+## P3：困難潛入作戰實際仍走簡單流程
+
+> **狀態：2026-09-18 操作者回報，未指派；優先分析**
+
+### 目標
+
+找出房間已選 `9012／Round 10`、開戰 GameInfo 也正確後，實際仍只有三命且通關只涵蓋簡單段落的原因。
+
+### 範圍
+
+- 從 `Map_Change_One_CQ 0x00220221`、`Game_Info_SN 0x00222111`、travel URL 到 `ZSetCoreModePve`／`PveRoundManager` 逐段追蹤難度資料。
+- 核對 `GameInfo.MapInfo.Round`、`DefNumLive`、`PveRespawnAddCount`、Campaign_CN／EndGame_SN 與主機端結束條件。
+- 比較同一 `Map_PC04` 的 9010／9011／9012 Cache records，找出除 MapIndex／GoalDefault 外是否還有難度欄位或 URL option。
+- 檢查是否由伺服器過早回 EndGame、客戶端 round manager 只建立五回合，或 map package 另需初始化資料；保留完整事件時間線。
+
+### 背景
+
+- [OBS] 玩家選困難後仍只有三條命，打通關內容只到簡單段落；中級／困難理應有後續階段與更多命。
+- [LOG] 最後選擇 CQ `0034233c000a00000000`＝MapIndex 9012、Time 60、Round 10；SA／SN 也回 9012／10。
+- [LOG] 開戰前兩次 `Game_Info_SN` body `010000000000010000000000000000020034230a000a00000000`＝map 9012、time 10、round 10。
+- [SRC] `ZModePve.ModeReset_BD()` 以 `GameInfo.MapInfo.Round` 判斷完成；命數由 `DefNumLive + GAME_ITEM_INFO.PveRespawnAddCount` 設定，現行 bonus 為 0。
+
+### 限制
+
+- 不回頭改已證明正確的 room map CQ／SA／SN 或把 9012 降回 9010；不標 ✅。
+- 先分析，不改 `Game_Info_SN`、Campaign handler、命數或 map package。
+- 不把三命單獨視為 map 載錯；必須同時對照 round manager 與結束事件。
+
+### 交付
+
+- 一篇待審日誌、INDEX 待審列與完整的選難度→開戰→通關時間線。
+- 9010／9011／9012 Cache 欄位差異表，以及 `DefNumLive`／round 上限來源說明。
+- 最多兩個互斥、單變數且預設關閉的實驗建議；原始資料放 `docs/research/<日期>-pve-hard-flow/`。
+
+### 完成條件
+
+能指出 9012／Round 10 在哪一層失去作用，並提出不破壞已驗證房間同步的最小實驗；若證據不足，明列需要補錄的 Campaign／round／client log。
