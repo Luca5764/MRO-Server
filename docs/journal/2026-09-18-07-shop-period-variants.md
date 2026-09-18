@@ -1,4 +1,4 @@
-# G6g：商店期限變體全送但只顯示代表項（待審）
+# G6g：商店期限變體全送但只顯示代表項（Claude 高階實測裁定）
 
 ## 目標與根因
 
@@ -33,7 +33,7 @@
 
 ## 實作
 
-- `room.dispatch.js:109` 新增 `SHOP_PERIOD_REPRESENTATIVE_MODE = 'disabled'`。
+- `room.dispatch.js:111` 的 `SHOP_PERIOD_REPRESENTATIVE_MODE` 經實測後固定為 enabled。
 - `loadCacheIndexByItemId()` 同一次讀檔保留原 `itemId -> cache index`，另以具名常數
   `0x2294`／`0x67`／`2112` 掃 GameItemRecord，建立 `CACHE_REPRESENT_INDEX_BY_ITEM_ID`。
 - 首筆 ItemIndex 必須是 `11100101`，否則整張代表對照表留空；Cache 讀取失敗或沒有某筆
@@ -44,12 +44,22 @@
 - 沒有改 `buildShopItems()` 的 item_id 去重／排序，也沒有少送任何期限變體。
 - `SHOP_UNBLOCK_MODE`、`SHOP_COMPAT_EXPERIMENT` 與其他 G6 開關值均未改動。
 
-## 靜態驗證與待審
+## 實測回填（Claude 高階執行）
 
 - `node --check Metal Rage Online Server/dispatch/room.dispatch.js` 通過。
-- [TEST] 尚未啟動伺服器或實測；待操作者在 enabled 開關下確認主列表只剩代表項、購買彈窗仍列全期限。
-- [⬜] 修正後 Cache sample 的實際啟動 log 與客戶端畫面結果留待實測回填。
-- 🟡 本篇只記錄 Cache／腳本證據與預設關閉修正，不標記客戶端實測通過。
+- [LOG] `logs/session-20260918-130902.jsonl` 啟動訊息抽樣為
+  `22100101->rep 22100101 period 0`、`22100102->rep 22100101 period 86400`、
+  `22100103->rep 22100101 period 604800`、`22100104->rep 22100101 period 1296000`，
+  後續 05–08 依序為 2592000、5184000、7776000、259200 秒。
+- [OBS][SHOT] `/home/lucas/mro-reverse/shots/s1-shop-period.png`：主武器頁每個代表家族只剩一列，
+  共顯示輕量型來福機槍、重型來福機槍、自動機槍、高速格林機槍、高級格林機槍砲、
+  颶風狙擊砲、暴風式連發機槍、量子雷射砲，不再出現 8 個同名項。
+- [OBS] 點選「高級格林機槍砲」後，`ZPopup_Buy` 仍列出 1group 1,000G、
+  1Day 1,150G、3Day 62,210G、7Day 7,660G、15Day 15,550G、30Day 27,650G。
+- Claude 高階裁定：整個期限家族確實送到客戶端，主列表只顯示共同 `RepresentIndex` 的代表項。
+- ✅ [CACHE][LOG][OBS][SHOT] item_id 末兩碼是持有期限變體，期限欄位為 `+0x43`；
+  先前「強化等級」推測排除，先前 `+0x4c` 欄位報告更正為錯誤（實測全為 0）。
+- [TEST] 本篇實測由 Claude 高階與操作者完成；Codex 未啟動伺服器或重啟。
 
 ## 交付邊界
 

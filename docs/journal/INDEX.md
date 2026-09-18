@@ -97,4 +97,4 @@
 | 2026-09-18 | `2026-09-18-04-g6e-purchase-inventory-classification.md` | `0x00240201`、`0x00240202`、`0x00210111` | ✅ Claude 高階審查＋實測 | G6e：W1 確認購買物寫入當下機庫 `mech_type=1`，購買後重送 37 筆 ItemInfo；庫存仍受 SerialIndex 保留區阻擋，後由 G6f/W2 解決。 |
 | 2026-09-18 | `2026-09-18-05-g6f-item-serial-reserved-range.md` | `0x00210111` | ✅ Claude 高階審查＋實測 | G6f：70 筆 `items.id` 由 154–223 搬至 100154–100223，AUTO_INCREMENT=200000；W2 重登後四個庫存面板正常顯示。 |
 | 2026-09-18 | `2026-09-18-06-g6-equip-save-verified.md` | `0x00240107`、`0x00240108`、`0x00210111`、`0x00240241`、`0x00240242`、`0x00222112`、`0x00230102` | ✅ Claude 高階審查＋實測 | G6 結案：四層阻塞解除；W3 換裝寫 DB、完全重登後保留 `22100301`，追加 W4 證明 PvE `Game_User_SN`／出場武器也是 `22100301`。 |
-| 2026-09-18 | `2026-09-18-07-shop-period-variants.md` | `0x00240241`、`0x00240242` | 🟡 待審／預設關閉 | G6g：Cache.Bin `RepresentIndex` 位於 record `+0x04`；enabled 時全送期限變體但只讓代表項 `IsShow=1`，未啟動伺服器／未實測。 |
+| 2026-09-18 | `2026-09-18-07-shop-period-variants.md` | `0x00240241`、`0x00240242` | ✅ Claude 高階審查＋實測 | G6g：Cache.Bin `RepresentIndex` 位於 `+0x04`、期限位於 `+0x43`；全送期限變體但主列表只顯示代表項，購買彈窗仍列完整期限選單。 |

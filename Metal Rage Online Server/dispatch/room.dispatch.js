@@ -106,9 +106,10 @@ const SHOP_COMPAT_EXPERIMENT = 'disabled'; // 'disabled' | 'enabled'
 // G6d: full catalog path passed the high-level shop display test; the client
 // owns mech/item compatibility filtering. Evidence: docs/journal/2026-09-18-03-g6d-shop-full-catalog.md.
 const SHOP_FULL_CATALOG_MODE = 'enabled'; // 'disabled' | 'enabled'
-// G6g: keep every period variant in ShopList, but only show Cache.Bin's
-// RepresentIndex entry in the main shop list. Off preserves current output.
-const SHOP_PERIOD_REPRESENTATIVE_MODE = 'disabled'; // 'disabled' | 'enabled'
+// G6g: verified—keep every period variant in ShopList, but only show
+// Cache.Bin's RepresentIndex entry in the main shop list.
+// Evidence: docs/journal/2026-09-18-07-shop-period-variants.md.
+const SHOP_PERIOD_REPRESENTATIVE_MODE = 'enabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
