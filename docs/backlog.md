@@ -690,3 +690,34 @@
 ### 完成條件
 
 能指出 9012／Round 10 在哪一層失去作用，並提出不破壞已驗證房間同步的最小實驗；若證據不足，明列需要補錄的 Campaign／round／client log。
+
+## P1b：預設武器不發實體物品（不急）
+
+> **狀態：2026-09-18 Claude 高階新增；操作者同意可改但不急。未指派。**
+
+### 目標
+
+新帳號不再把官方預設配裝（DefaultSetList）發成 `items` 實體列，改由客戶端自己合成的 `SerialIndex=0` 預設項承擔，消除庫存中同名預設武器重複（例如 1～5 號機各一把 `32100101`，共五把）。
+
+### 範圍
+
+- `database/db.js` `createAccount()` 的 `starterLoadouts`；WearInfo／`Game_User_SN 0x00222112`／`Slot_Change_SA 0x00240108` 中 part serial 為 0 時的語意。
+- 先確認：WearInfo 送 serial 0 時，客戶端是否把它當成「裝備預設武器」並正確顯示與出場（`ZPanel_InvenItems.uc:338-383` 會合成 serial 0 項；`SlotInfo.Part[].SerialIndex == 0` 會標成 SORT_WEAR）。
+
+### 背景
+
+- [DB][LOG] P1 調查（2026-09-18）：帳號 1 的 `32100101` ×5 分別對應 mech 1～5 的 SubLeft，符合 DefaultSetList（`journal/2026-09-16-33`）。每筆 DB 列只送一次。
+- [SRC] `ZPanel_InvenItems.uc:338-383`：客戶端依 DefaultSetList 為目前機體強制加入 `SerialIndex=0` 的預設項；伺服器送的 `HaveList` 另外列出，不依 `items.mech_type` 篩選。
+- 另有舊測試殘留：`22100201`（serial 100221 mech 2、100222 mech 1）、`24100301`（200011、200012），另案清理。
+
+### 限制
+
+- 單變數：先只做「serial 0 能否代表預設武器」的離線／實測驗證，不動既有帳號資料；DB 變更一律寫成腳本；新行為放在預設關閉的開關後。
+
+### 交付
+
+- 待審日誌，含 serial 0 路徑的 SRC／DLL 證據；一個預設關閉的實驗開關提案。
+
+### 完成條件
+
+能證明（或否定）serial 0 足以讓預設武器顯示、裝備、出場；否定時寫明原因。
