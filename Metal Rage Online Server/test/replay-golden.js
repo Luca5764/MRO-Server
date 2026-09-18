@@ -52,12 +52,21 @@ const { installFakeTimers } = require('./fixtures/fake-timers.js');
 const authTokens = require(path.join(ROOT, 'auth-tokens.js'));
 
 const DB_PATH = require.resolve(path.join(ROOT, 'database', 'db.js'));
+const ROOMS_PATH = require.resolve(path.join(ROOT, 'rooms.js'));
 
 /**
  * Replaces database/db.js in the module cache with a fresh fixture, and
  * drops every dispatch module so module-level state (e.g. nextRoomIndex in
  * gate.game.dispatch.js) starts clean for this sample, matching a freshly
  * started server rather than carrying state from a previous sample's run.
+ *
+ * D1 step 1: rooms.js deliberately lives outside dispatch/ (so a live
+ * server's rooms survive a dispatch/ /reload -- see its header comment),
+ * which means the dispatch-dir cache wipe below does not touch it. Call its
+ * test-only _resetForTests() here instead, at the same "start of sample"
+ * point, so each sample still gets a room registry that starts empty with
+ * the room-id counter back at 1, same as before the counter moved out of
+ * gate.game.dispatch.js and into rooms.js.
  */
 function resetModulesWithFixtureDb(fixtureDb)
 {
@@ -78,6 +87,8 @@ function resetModulesWithFixtureDb(fixtureDb)
             delete require.cache[file];
         }
     }
+
+    require(ROOMS_PATH)._resetForTests();
 }
 
 function loadServicesForPort(port)

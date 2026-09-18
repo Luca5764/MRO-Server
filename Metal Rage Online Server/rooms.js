@@ -156,6 +156,24 @@ function listRooms() {
     return Array.from(rooms.values());
 }
 
+/**
+ * Test-only reset: clears every room and index, and resets the room-id
+ * counter back to 1. Not called anywhere in the real dispatch/server path —
+ * this module intentionally lives outside dispatch/ so a live server's
+ * rooms survive a dispatch/ /reload (see header comment), and that same
+ * persistence means test/replay-golden.js's per-sample module-cache reset
+ * (which only drops dispatch/*.js) does not touch this module's state on
+ * its own. Call this from the harness at the same point it resets the
+ * fixture DB, so each golden sample starts from a fresh registry, matching
+ * a freshly started server, the same as it always did back when the room-id
+ * counter was a local variable inside gate.game.dispatch.js.
+ */
+function _resetForTests() {
+    rooms.clear();
+    byAccount.clear();
+    nextRoomId = 1;
+}
+
 module.exports = {
     allocateRoomId,
     createRoom,
@@ -164,4 +182,5 @@ module.exports = {
     removeMember,
     setMemberClient,
     listRooms,
+    _resetForTests,
 };
