@@ -95,3 +95,4 @@
 | 2026-09-18 | `2026-09-18-02-g6c-shop-compat-experiment.md` | `0x00240241`、`0x00240242` | ✅ Claude 高階裁定＋實測 | G6c：把 slot=1 主武器清單第一筆由 `21100101` 換成 `22100101` 後該筆立刻在客戶端顯示，其餘 21x 家族仍不顯示，證實商店空白是伺服器 `mech_type` 篩選送出客戶端相容性檢查會擋掉的商品；IsShow 偏移／送出時機／`Item_List_Check` 均排除；開關已還原為 disabled，下一步為 G6d。 |
 | 2026-09-18 | `2026-09-18-03-g6d-shop-full-catalog.md` | `0x00240241`、`0x00240242` | ✅ Claude 高階審查／裁定＋實測 | G6d：enabled 送出 1541 筆完整 catalog、每分類最多 45 筆分包後，1 號機主武器商城正常顯示相容商品；G6b/G6c 根因成立。`27430`、強化品同價與購入物未進庫存列 🟡／⬜ 另案。 |
 | 2026-09-18 | `2026-09-18-04-g6e-purchase-inventory-classification.md` | `0x00240201`、`0x00240202`、`0x00210111` | 🟡 待審／預設關閉 | G6e：新增 `PURCHASE_MECH_SLOT_MODE` 與 `PURCHASE_ITEMINFO_REFRESH`；分離購買物 `mech_type` 分類與既有分包 ItemInfo 重送，未實測。 |
+| 2026-09-18 | `2026-09-18-05-g6f-item-serial-reserved-range.md` | `0x00210111` | 🟡 待審／腳本待高階執行 | G6f：客戶端 `ZPanel_InvenItems.uc:408-411` 丟棄 SerialIndex 101–999；新增搬移 `items.id`、AUTO_INCREMENT 與全新安裝 SQL 說明，未執行腳本／未實測。 |
