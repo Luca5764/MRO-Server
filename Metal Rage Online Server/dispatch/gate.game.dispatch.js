@@ -1,6 +1,10 @@
 const NetworkClient = require("../client");
 const packetlog = require("../packetlog.js");
 const { sendGameUserBootstrap } = require('./room/room-game-user.sender');
+// D1 step 1 (docs/design/d1-multiplayer-room.md §6 step 1): write-only Room
+// registry, dual-written alongside the existing client.xxx_ fields below.
+// Lives outside dispatch/ on purpose — see rooms.js header comment.
+const rooms = require('../rooms.js');
 
 // ZGateGameDispatch - Handles Gate-range (0x22XXXX) messages on the GAME server
 //
@@ -77,7 +81,10 @@ const ROOM_STATE_RETRY_SCHEDULE = [
     [1200, 'retry after scene change'],
 ];
 
-let nextRoomIndex = 1;
+// D1 step 1: room id generation moved into rooms.js (rooms.allocateRoomId,
+// below at CQ_CREATE) so the counter survives a dispatch/ /reload the same
+// way the Room object it now tags does. Same rule as before: increments
+// from 1, never reused.
 
 // 0x220221 carries a 10-byte payload. For 0x220222, the enabled path adds
 // the 6-byte zero success header required by ZDispatchRoom::Map_Change_One_SA
@@ -585,7 +592,7 @@ class ZGateGameDispatch
             {
                 console.log(`[ZGateGameDispatch] >> Room Create request (${body.length} bytes)`);
 
-                const roomIndex = nextRoomIndex++;
+                const roomIndex = rooms.allocateRoomId();
                 const enterRoomIndex = 0;
                 const nickname = client.nickname_ || 'Player';
 
@@ -664,6 +671,39 @@ class ZGateGameDispatch
                 client.waitingGameInfoExperimentSent_ = false;
                 client.gameWaitExperimentSent_ = false;
                 client.postGameWaitReadyHostSent_ = false;
+
+                // D1 step 1 [design docs/design/d1-multiplayer-room.md §2, §6
+                // step 1]: dual-write into the shared Room registry alongside
+                // the client.xxx_ fields above. Triggered by the same
+                // Create_CQ 0x00220201 that built those fields (client
+                // pressed "Create Room" in the lobby). Nothing reads from
+                // `rooms` yet, so this cannot change any byte sent below.
+                {
+                    const hostAccountId = Number(client.accountIndex_ || client.accountId_ || 1);
+                    const room = rooms.createRoom({
+                        id: roomIndex,
+                        name: roomName,
+                        mapId: client.campaignMapCacheKey_ || mapId,
+                        // Create_CQ's body does not carry a play-time field
+                        // (see body parsing above) — it only arrives later
+                        // via Map_Change_One_CQ (client.mapChangeOneTime_).
+                        // Mirrors client.mapChangeOneTime_'s own pre-set
+                        // value: undefined until that CQ arrives.
+                        playTime: client.mapChangeOneTime_ || 0,
+                        playRound: client.playRound_,
+                        maxPlayers,
+                        campaign: isCampaignLike,
+                        hostAccountId,
+                    });
+                    rooms.addMember(room.id, {
+                        accountId: hostAccountId,
+                        nickname,
+                        team: 0,
+                        slot: 0,
+                        ready: false,
+                        client,
+                    });
+                }
 
                 // ZDispatchLobby::Create_CQ sends 0x220201 with Send(..., 0x220202),
                 // so the matching success response is Create_SA 0x220202. The
@@ -953,6 +993,12 @@ class ZGateGameDispatch
                 // hangar is no longer treated as in-campaign-room.
                 require('./room.dispatch').resetRoomSessionState(client);
                 console.log(`[ZGateGameDispatch] >> Room state reset on Leave_CQ 0x220234`);
+                // D1 step 1 [design §4, §6 step 1]: mirror the leave into the
+                // Room registry too — same trigger (Leave_CQ) as the
+                // resetRoomSessionState() call above. Removes this account
+                // from whatever room it was in; deletes the room once empty.
+                // No broadcast yet (that is design step 2+).
+                rooms.removeMember(Number(client.accountIndex_ || client.accountId_ || 1));
                 return true;
             }
 

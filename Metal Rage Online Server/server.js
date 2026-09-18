@@ -2,6 +2,12 @@ const NetworkClient = require('./client.js');
 const { createServer } = require('net');
 const packetlog = require('./packetlog.js');
 const session = require('./session.js');
+// D1 step 1 (docs/design/d1-multiplayer-room.md §4, §6 step 1): record-only
+// disconnect hook. Client changing maps always reconnects (session.js
+// header comment), so a closed socket does not mean the player left the
+// room — just note the client went away; step 5 adds the grace-period
+// timeout that turns a stale disconnect into an actual removeMember().
+const rooms = require('./rooms.js');
 
 const SERVER_PORT = 9211;
 const GAME_PORT = 30907;
@@ -148,6 +154,16 @@ class DispatchServer
             // that set game state and then sat idle until close would
             // otherwise lose exactly the state this is meant to preserve.
             session.save(client);
+
+            // D1 step 1 [design §4]: this socket is gone (map-change
+            // reconnect or real disconnect — session.js can't tell them
+            // apart either, see its header comment). Only clear the
+            // member's client reference and stamp disconnectedAt; do not
+            // remove membership. A no-op if this account was never tracked
+            // in rooms.js (e.g. closed before CQ_CREATE).
+            if (client.accountId_) {
+                rooms.setMemberClient(Number(client.accountId_), null);
+            }
         });
     }
 
