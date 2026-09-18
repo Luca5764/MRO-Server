@@ -113,6 +113,15 @@ const SHOP_FULL_CATALOG_MODE = 'enabled'; // 'disabled' | 'enabled'
 // Cache.Bin's RepresentIndex entry in the main shop list.
 // Evidence: docs/journal/2026-09-18-07-shop-period-variants.md.
 const SHOP_PERIOD_REPRESENTATIVE_MODE = 'enabled'; // 'disabled' | 'enabled'
+// M3a: opt-in resend of Slot_Change_SA 0x00240108 after a successful hangar
+// shop purchase (client action: Buy_PointItem_CQ 0x00240201 success branch),
+// sent after every existing post-purchase packet including ItemInfo. Per
+// docs/journal/2026-09-18-19-m3-inventory-refresh.md, ItemInfo_SN does not
+// fire a client UI event but Slot_Change_SA drives
+// ZPage_Hangar.SlotChangeRecv() -> InvenUpdate(), so this should make a
+// purchased item show up in the hangar inventory without a manual mech
+// switch. Untested; keep disabled until verified against the client.
+const POST_BUY_SLOT_REFRESH_MODE = 'disabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
@@ -973,6 +982,31 @@ class ZRoomDispatch
             // 현재 슬롯 상점도 갱신해서 구매한 아이템 반영 (also refresh the current slot shop to reflect the purchased item)
             const currentSlot = client.currentHangarSlot_ || 1;
             this.scheduleShopListRepaint(client, currentSlot, 100, 'post purchase');
+
+            // M3a: triggered by the same Buy_PointItem_CQ 0x00240201 success
+            // branch as everything above; resend Slot_Change_SA for the
+            // current slot after all other post-purchase packets (including
+            // ItemInfo, sent earlier in this function) have gone out, so the
+            // client's InvenUpdate() picks up the new item without a manual
+            // mech switch. Reuses the same producer and wire format as the
+            // 0x00240107 handler above (0x22 bytes: u16 0 + u32 0 + 0x1C
+            // payload, payload leading u32 is the slot).
+            if (POST_BUY_SLOT_REFRESH_MODE === 'enabled') {
+                try {
+                    const refreshSlot = Number(client.currentHangarSlot_) || 1;
+                    const slotRequest = Buffer.alloc(0x1C);
+                    slotRequest.writeUInt32LE(refreshSlot, 0);
+                    const slotPayload = await this.buildSlotChangePayload(client, slotRequest);
+                    const [msg, respBody] = getExactMessageBuffer(0x00240108, 0x22);
+                    respBody.writeUInt16LE(0, 0x00);
+                    respBody.writeUInt32LE(0, 0x02);
+                    slotPayload.copy(respBody, 0x06, 0x00, 0x1C);
+                    client.send(msg);
+                    console.log(`[ZRoomDispatch] >> Sent post-buy Slot_Change_SA 0x240108: slot=${refreshSlot}`);
+                } catch (err) {
+                    console.error(`[ZRoomDispatch] >> Post-buy Slot_Change_SA resend error:`, err.message);
+                }
+            }
         }
     }
 
