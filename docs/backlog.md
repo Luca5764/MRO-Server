@@ -467,3 +467,114 @@
 ### 完成條件
 
 程式碼構造上保證成功的 `Buy_PointItem_SA 0x00240202` 先於購買後 `ItemInfo_SN 0x00210111` 發送，失敗購買仍不送 ItemInfo，disabled 行為與資料內容不變；提交保持待審，等待 Codex Sol 與操作者實測。
+
+## M2R：修正購買刷新日誌的因果措辭
+
+> **狀態：2026-09-18 Codex Sol 高階審查提出，交給 Gemini 中階**
+
+### 目標
+
+修正 M2 日誌把尚未實測的時序假設寫成既定根因的問題；不改已通過程式審查的封包順序。
+
+### 範圍
+
+- 在 `flash-wip-money` 分支只改 `docs/journal/2026-09-18-16-money-persistence.md` 與必要的 `docs/journal/INDEX.md` 文字。
+- 保留已存在的 [OBS] 與 [LOG]；把「問題為客戶端在 ACK 前尚未準備好」改成「現象與 ACK／ItemInfo 先後順序相關的待驗假設」。
+- 明記 M2 程式碼已由 Codex Sol 靜態審查通過，但購買後立即出現仍待操作者實測。
+
+### 背景
+
+- [LOG] 舊順序確實是 `ItemInfo_SN 0x00210111` 先於 `Buy_PointItem_SA 0x00240202`。
+- [OBS] 離開再進格納庫後物品出現，只證明 DB 與後續完整清單可讀到物品，不能單獨證明客戶端在 ACK 前拒收 ItemInfo。
+- [REVIEW] commit `cc99bac` 的程式 diff 是純區塊搬移，成功／失敗分支與資料內容未變；`node --check`、`git diff --check` 通過。
+
+### 限制
+
+- 不改任何 `.js`、資料庫、開關、封包格式或順序，不標 ✅。
+- 不改 `docs/state.md`／`docs/HANDOFF.md`，不重寫 M1 的 DLL 證據。
+- 先執行 `git branch --show-current`；只能留在 `flash-wip-money`。
+
+### 交付
+
+- 一個 docs-only commit，最後一行寫 `Agent: gemini (中階)`。
+- 回報修正的句子與 `git diff --check` 結果，不貼整篇日誌。
+
+### 完成條件
+
+所有因果敘述都與現有證據強度一致，M2 維持 🟡 待審，沒有暗示即時刷新已經實測成功。
+
+## R12：User_Name_SN 改送 ANSI 名稱
+
+> **狀態：2026-09-18 Codex Sol 高階新增，交給 Gemini 中階；M2R 完成後再做**
+
+### 目標
+
+修正房間玩家槽只顯示暱稱第一個字 `L` 的問題；只把 `User_Name_SN 0x00220421` 的名稱欄位由 UTF-16LE 改為 ANSI，供下一輪單變數實測。
+
+### 範圍
+
+- 在 `flash-wip-room-team` 分支修改 `Metal Rage Online Server/dispatch/room/room-user.sender.js`。
+- 保持 exact body 長度 `0x4E`、body+0x00 的 user index 與名稱起點 body+0x1B 不變。
+- 新增一個語意明確、預設 `disabled` 的獨立開關；enabled 時才把 `User_Name_SN` 名稱寫成與既有 ANSI helper 相同的窄字串與 NUL／截斷規則。
+- 執行 `node --check`、最小 sender 離線檢查與 `git diff --check`，不啟動伺服器。
+
+### 背景
+
+- [OBS] R11 後玩家已進入正確隊伍槽，房主圖示顯示，但 ID 只顯示第一字 `L`。
+- [LOG] `User_Name_SN 0x00220421` 目前 78-byte body 從 body+0x1B 寫入 `4c 00 75 00 63 00 61 00 73 00...`。
+- [DLL] handler 本體 `0x107eb050`：`0x107eb09b` 取得 wrapper，`lea esi,[eax+0x2b]` 對應 body+0x1B，隨後呼叫 `winGetSizeUNICODE(const char*)` 與 `winToUNICODE`；因此該欄位是 ANSI 輸入，不是 UTF-16LE。
+- [DLL] `User_Pilot_SN 0x00220402` 另有獨立正確解析路徑，本任務不處理頭像。
+
+### 限制
+
+- 一次只改名稱編碼；不改 user index、pilot、team、state、master、封包順序或任何既有開關預設值。
+- 不改資料庫、`docs/state.md`／`docs/HANDOFF.md`，不標 ✅；新行為必須預設關閉。
+- 先執行 `git branch --show-current`，只能在 `flash-wip-room-team` 工作；若該分支有未預期變更，停下回報。
+
+### 交付
+
+- 一個最小程式 commit，最後一行寫 `Agent: gemini (中階)`。
+- 新增 50–100 行以內的待審日誌與 INDEX 待審列，附上述 DLL 位址、舊／新欄位 hex 與離線檢查結果。
+- 回報開關名稱、檔案／行號與檢查結果，不貼大段反組譯。
+
+### 完成條件
+
+開關 disabled 時 byte-for-byte 保持舊 `User_Name_SN`；enabled 時 body+0x1B 為 `Lucas\0` 的 ANSI bytes、body 仍為 `0x4E`，且沒有改動任何頭像相關值。
+
+## R13：確認房間頭像需要的 PilotCode
+
+> **狀態：2026-09-18 Codex Sol 高階新增，交給 Gemini 中階；R12 提交後再做，僅分析**
+
+### 目標
+
+確認房間玩家槽沒有頭像是因 `PilotCode=101` 無法映射到 Cache 圖片、封包更新時機，或其他欄位造成；提出一個可驗證的最小單變數實驗，不直接改程式。
+
+### 範圍
+
+- 追蹤 `User_Default_SN 0x00220233` 與 `User_Pilot_SN 0x00220402` 寫入 `ROOM_USER_INFO.PilotCode` 的 DLL 路徑。
+- 對照 `ZPage_Room.uc:2455`、`ZPanel_TeamMember.uc:228-288`、`Engine/CacheManager.uc:1267`，確認 UI 以 `GetImageIndex(PilotCode)` 查哪張圖。
+- 從 Cache.Bin 的 pilot records 找出有效 ItemIndex／ImageIndex，核對帳號欄位 `101/102` 到底是正式 pilot ItemIndex、簡碼，或舊假設。
+- 核對 `User_Pilot_SN` 相對 `User_Default_SN` 與 UI refresh 的先後是否會觸發重繪；原始資料放 `docs/research/`。
+
+### 背景
+
+- [OBS] 玩家槽、ID 第一字與房主圖示已出現，但完整頭像沒有顯示。
+- [DLL] `User_Pilot_SN` export `0x10706866` 跳到 `0x1072c810`；函式按 user index 尋找 0x50-byte room user record，將第二參數寫入 record+0x38，即 `PilotCode`。
+- [SRC] `ZPage_Room.uc:2455` 直接把 `PlayerList[Count].PilotCode` 傳給槽位；`ZPanel_TeamMember.uc:276` 呼叫 `CacheManager.GetImageIndex(m_Avatar)`。
+- [SRC] `CacheManager.GetImageIndex` 只有 `GetItemHighGroup(ItemIndex)==5` 才查 `GetSpecPilotRecord`；現行伺服器與帳號工具使用 `101/102`，是否符合該分類尚未確認。
+
+### 限制
+
+- 本任務只分析與留證據，不改 `.js`、資料庫、帳號值、開關或封包，不標 ✅。
+- 不把 `101` 無法查圖寫成事實，除非有 Cache record／函式結果證據；不得直接猜一個 5xxxxxxx 值。
+- 不啟動或重啟伺服器、不請操作者測試；遇到 Cache parser 不足，只記錄缺口與所需高階決策。
+
+### 交付
+
+- 一篇 50–100 行待審日誌與 INDEX 待審列；原始 Cache／DLL 證據放 `docs/research/<日期>-room-pilot-avatar/`。
+- 列出候選根因、支持與反證；最多提出一個預設關閉、只改單一值或單一時序的後續實驗。
+- 一個 docs-only commit，最後一行寫 `Agent: gemini (中階)`。
+
+### 完成條件
+
+能用 DLL＋客戶端腳本＋Cache 證據說明 `PilotCode` 到 avatar atlas 座標的完整鏈，並指出現行 `101` 在鏈上成功或失敗的位置；若證據不足，明確列出缺的 record／映射，不改程式。
