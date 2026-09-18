@@ -72,6 +72,66 @@ node tools/create-account.js <username> <nickname> [pilot]   # pilot 101 或 102
 
 > **`accounts` 表沒有密碼欄位。** 登入只需要一個存在的 username。這是目前伺服器的設計而非疏漏，但意味著**不要把這個伺服器暴露在你無法控制的網路上**。
 
+## 讓區網第二台主機連進來（N0）
+
+只給**同一個區網**的第二台主機用，不是對外開放。硬性約束第 2 條仍然適用：不要把伺服器暴露到不信任的網路。
+
+### 方案：Windows `netsh interface portproxy` + 防火牆規則（選這個，不用 mirrored networking）
+
+WSL2 預設 NAT 模式下，Windows 只會把 `127.0.0.1` 轉發進 WSL2；區網另一台主機連 Windows 的區網 IP 是連不到 WSL2 裡的伺服器的（這是 NAT 轉發的限制，跟本檔前面 `0.0.0.0` 那個綁定問題是兩回事，`0.0.0.0` 解決的是「Windows 本機連不到」，這裡要解決的是「區網其他機器連不到 Windows」）。
+
+兩個候選方案：
+
+| 方案 | 優點 | 缺點 |
+|---|---|---|
+| `netsh interface portproxy`（採用） | 不用重啟 WSL，不影響正在跑的伺服器 tmux session；[TEST] 這台機器（Windows 11 build 26200、WSL 2.6.3.0）實測腳本邏輯可行 | WSL2 的 IP（`ip addr` 的 `eth0`，這台機器目前是 `192.168.217.8/20`）每次 WSL 重啟都會變，portproxy 規則指向舊 IP 就失效，要重新執行腳本 |
+| WSL2 mirrored networking（`.wslconfig` 加 `networkingMode=mirrored`） | 不會有 IP 漂移問題，區網主機直接連 Windows 的區網 IP | 改 `.wslconfig` 後**要 `wsl --shutdown` 才生效**，會把現在跑著的伺服器 tmux session 一起殺掉；本機另外裝了一張 VPN Client 虛擬網卡（`ipconfig /all` 可見，目前未連線），mirrored 模式下 VPN／虛擬網卡是否會被一併鏡像進 WSL、造成路由或防火牆規則意外命中，沒有把握，需要額外驗證 |
+
+選 portproxy：因為不能重啟 WSL（會中斷伺服器），且「開一次區網、關掉」本來就是 per-session 的操作，重新查詢當下的 WSL IP 並不是額外負擔——腳本本來就會在每次執行時重新偵測 IP。
+
+### 開（`lan-open.ps1`）／關（`lan-close.ps1`）
+
+兩支腳本都在 `tools/win/`，**都要用系統管理員權限的 PowerShell 執行**（腳本開頭會檢查，不是管理員會直接報錯結束）。因為要系統管理員權限，**一律由操作者手動執行，AI 不要跑**。
+
+```powershell
+# 開（第二台主機要連進來之前跑一次；WSL 重啟過也要重跑一次）
+cd '\\wsl.localhost\Ubuntu\home\lucas\mro-reverse\Metal Rage Online Server\tools\win'
+.\lan-open.ps1
+
+# 關（不需要區網存取時跑，會把 portproxy 規則和防火牆規則整個移除）
+.\lan-close.ps1
+```
+
+`lan-open.ps1` 會自動抓 WSL2 目前的 IP（`wsl hostname -I`）和 Windows 這台機器的區網網段（排除 WSL 的 `vEthernet`、VPN、loopback 等虛擬介面），對 9211 與 30907 各建一條 `netsh interface portproxy` 轉發規則，並且各加一條 Windows 防火牆 inbound 規則（名稱前綴 `MRO-LAN-`，`RemoteAddress` 限制在偵測到的區網網段、`Profile` 限制在 Private/Domain，不含 Public）。自動偵測抓錯網段時可以用 `-Subnet 192.168.1.0/24` 這種參數覆寫。
+
+`lan-close.ps1` 會刪掉 9211／30907 的 portproxy 規則，以及所有 `MRO-LAN-*` 開頭的防火牆規則，兩支腳本互為還原。
+
+### 第二台主機怎麼驗證
+
+在第二台主機（同一個區網）上，先確認能連到 Windows 主機的區網 IP：
+
+```powershell
+Test-NetConnection <Windows 主機的區網 IP> -Port 9211
+Test-NetConnection <Windows 主機的區網 IP> -Port 30907
+```
+
+兩個都要 `TcpTestSucceeded : True`。
+
+客戶端連線位址由命令列參數和兩個 ini 檔共同決定（見 `docs/reference/client.md`）：
+
+- 啟動參數的 `ip=` 要改成 Windows 主機的區網 IP（不是 `127.0.0.1`）：`MetalRage.exe -globalid=TW&ip=<區網IP>&port=9211&age=30`
+- `MetalRage.ini` 與 `Default.ini` 的 `ServerIP` **兩個檔案都要改**成同一個區網 IP。
+
+### 怎麼在 session log 確認連線來源
+
+`server.js` 每條連線建立時會呼叫 `packetlog.connection('connect', connId, { port, peer })`，`peer` 就是 `socket.remoteAddress:remotePort`，session log 裡看得到：
+
+```
+{"ev":"connect","conn":1,"port":9211,"peer":"127.0.0.1:32888"}
+```
+
+[GUESS]／⬜ 未驗證：`netsh interface portproxy` 在 Windows 上的實作是「代理」（proxy），不是單純的 NAT 轉發；沒有實測過它會不會保留原始來源 IP。如果 WSL 這邊的 `peer` 顯示的是 Windows 那張 WSL 專用虛擬網卡的 IP（這台機器是 `192.168.208.0/20` 網段），而不是第二台主機真正的區網 IP，代表 portproxy 沒有保留來源位址——這不算 bug，只是這個轉發方式的已知限制，不要因此去改 `server.js`。第一次用兩台機器測試時，操作者請截圖或貼 `peer` 欄位的值，確認是哪一種情況。
+
 ## 資料庫
 
 MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`items`、`tutorials`、`maps`、`friends`。
