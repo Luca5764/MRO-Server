@@ -20,11 +20,14 @@ void __thiscall FUN_107e4080(int param_1,int param_2,int param_3)
 
   if (((param_3 != 0) && (*(short *)(param_2 + 0x10) == 0)) && (*(int *)(param_2 + 0x12) == 0)) {
       // local_34: 52-byte (26 x u16) 緩衝區，先清零 — 房名暫存
-      uVar3 = (uint)*(ushort *)(param_3 + 0x10);      // == body+0x00，還是同一個「必須是0」的狀態欄
-      RoomList_Name_Get(pUVar1, uVar3);                // 用「房間索引」在本地 m_LobbyRoomList 查房名
+      uVar3 = (uint)*(ushort *)(param_3 + 0x10);      // param_3（=edx）自己的 body+0x00，跟 param_2
+                                                         // （=esi，成功判斷讀的那個）不是同一個欄位；
+                                                         // 已更正，見下方 2026-09-19 說明：param_3 是
+                                                         // 客戶端剛送出的 Enter_CQ，這裡讀的是 RoomIndex
+      RoomList_Name_Get(pUVar1, uVar3);                // 用 Enter_CQ 的 RoomIndex 在本地 m_LobbyRoomList 查房名
       FUN_107e3780();                                  // 房名字串複製到 local_34，上限 25（notes.md 已知）
-      FUN_107e3840();                                  // 另一段字串複製，上限 11，來源是連線物件自己的欄位
-                                                         // （[esp+0x64]+0x12），不是封包
+      FUN_107e3840();                                  // 另一段字串複製，上限 11，來源是 param_3（Enter_CQ）
+                                                         // body+2（密碼欄位），不是連線物件欄位，已更正
       Lobby_Data_Clear(pUVar1);        // ← 0x1070192e
       Room_Data_Clear(pUVar1);         // ← 0x10709bbf
       Community_Chat_Clear(pUVar1);    // ← 0x107080d0
@@ -60,6 +63,46 @@ body 起點——和這個 repo 的 `getExactMessageBuffer`/`client.getMessageBu
 概念（單一 room slot），`RoomList_Name_Get(0)`／`Room_Open(0, ...)` 用的 0 不是「陣列第 0 筆」，
 是「這個連線的房間 slot」固定代號。
 
+> **2026-09-19 中階更正（🟡，待審）：** 以上這一段錯了，原因是把 `edx` 和 `esi` 當成同一個指標。
+> 本次用 `python3 tools/disasm.py at 0x107e4080 120` 與 `tools/ghidra/decompile.sh 0x107e4080` 逐條
+> 核對（兩者一致）：這個函式是 `ret 8`（兩個顯式參數）。`0x107e40b9 mov edx,[esp+0x54]`
+> （在 `sub esp,0x4c` 之後、任何 `push` 之前）→ `edx` = 第二個參數，之後沒有任何指令改寫它。
+> `0x107e40bf push esi` 之後 `0x107e40c0 mov esi,[esp+0x54]`（`push esi` 已讓 `esp` 少 4，所以這個
+> `[esp+0x54]` 指到另一個位置）→ `esi` = 第一個參數，就是收到的 `Enter_SA` 本身
+> （`esi+0x10`／`esi+0x12` 是成功判斷讀的 status/result，Ghidra 標成 `param_2`）。也就是說 `edx`
+> 和 `esi` 是**兩個不同的參數**，`edx` 從未被成功判斷（`0x107e40cb`／`0x107e40d6`，讀的是 `esi`）
+> 動過，「index 恆為 0」的推論不成立。
+>
+> `0x107e40fc movzx ebp, word ptr [edx+0x10]` 讀的是 `edx`（第二個參數）的 body+0，不是 `esi`。
+> `edx` 是什麼：`0x107e4134 mov edi,[esp+0x64]` 這行，把 esp 相對位移換算回去正好等於函式一開始
+> `mov edx,[esp+0x54]` 讀的同一個記憶體位址——也就是重新把 `edx` 的原始值讀回 `edi`，再
+> `add edi,0x12`（body+2），配上 `0x107e3840` 複製 0xb（11）字元。對照 `notes.md`：
+> `Enter_CQ 0x00220231`（`0x107e5d90`）body 固定 0x1D，+0x00 u16 RoomIndex、+0x02 起 UTF-16
+> 密碼——body+2 正好是密碼欄位起點，長度上限也對得上剩餘 body 長度。**結論：`edx`＝客戶端自己
+> 剛送出的 `Enter_CQ`（RoomIndex＋密碼），`esi`＝伺服器回的 `Enter_SA`。`Room_Open`/
+> `Location_Room_Set` 的 `index`＝`Enter_CQ` 裡玩家選的 `RoomIndex`，不是常數 0。**
+>
+> **`0x107086c5` 是什麼：** `tools/ghidra/decompile.sh` 把它解成
+> `UZNetwork_DJ::RoomList_Name_Get`（thunk `0x107086c5` → `jmp 0x1072c010`；真正函式本體在
+> `0x1072c010`，AGENTS.md 提醒過的「匯出表位址是 thunk」在這裡再次成立）。`0x1072c010` 的組語：
+> `edx=[ecx+0xe8c]`（筆數）、`esi=[ecx+0xe88]`（陣列起點，元素大小 `0x4c`＝76 bytes），逐筆
+> `cmp dword[entry],edi`——`edi` 是呼叫端傳進來的索引，也就是上面確認的 `Enter_CQ` `RoomIndex`。
+> 對照 `~/mro-decrypted/src/ZNetwork/ZNetwork_DJ.uc` 的 `ROOM_SIMPLE_INFO`（欄位順序
+> `RoomIndex`／`RoomNumber`／`RoomType`／`RoomName`／...），第一個欄位就是 `RoomIndex`，所以比對
+> 用的是 **`RoomIndex`**，不是 `RoomNumber`。找到就回傳 `entry+0xc`（`RoomName` 在欄位順序上正好
+> 是第 4 個 4-byte 欄位，offset 0xc）；找不到就回傳指向一段全零靜態資料（`0x10814584`，反組譯出來
+> 是連續 `00 00` 位元組）的指標，`0x107e3780` 拿它當來源字串複製，效果是房名複製成空字串（不是
+> `edi==0`／NULL，是指到一段空字串資料）。
+>
+> **對 D1-4 實作的意義：** 加入房間時 `Room_Open` 能不能顯示正確房名，取決於客戶端「自己本地」的
+> `m_LobbyRoomList` 快取（由 `Room_List_SN 0x00220204` 填入，見 `notes.md`）裡有沒有一筆
+> `RoomIndex` 等於這次 `Enter_CQ` 送的 `RoomIndex`，而且那筆的 `RoomName`（ANSI，`0x107e3840`）
+> 已經正確送過——目前 `LOBBY_ROOM_LIST_MODE`／`room-list.sender.js` 送的正是這兩個欄位。
+> `Room_List_SN` 的 `RoomNumber`（`UpdateType=1` 才送）與 `RoomNameIndex`（bit8）目前只是回填
+> `RoomIndex` 的值（`journal/2026-09-19-0330-d1-step4-room-join.md`「不確定／待審處」），這次沒有
+> 找到任何客戶端讀取路徑用到它們兩個，**仍是 ⬜**，跟 `RoomList_Name_Get` 用的
+> `RoomIndex`／`RoomName` 是兩組不同欄位，不要互相替代驗證。
+
 ## 對 D1-4 實作的意義
 
 - **Enter_SA 不需要額外欄位。** 6-byte 0/0（跟現有 `sendOkSa`/`getExactMessageBuffer` 用的所有其他
@@ -80,6 +123,8 @@ body 起點——和這個 repo 的 `getExactMessageBuffer`/`client.getMessageBu
 
 ## 沒有解決、留給高階或後續任務的
 
-- `FUN_107e3840()`（上限 11 字元那段）來源是 `[esp+0x64]+0x12`，不是封包，這次沒有繼續追是什麼
-  欄位（大概率是連線物件自己記的某個簡短字串，例如 IP 片段或縮寫），跟 Enter_SA 的實作無關，未追。
-- Event_Call 的數字→錯誤字串對照表沒有找到，見上面「失敗分支」。
+- ~~`FUN_107e3840()`（上限 11 字元那段）來源是 `[esp+0x64]+0x12`，不是封包，這次沒有繼續追是什麼
+  欄位（大概率是連線物件自己記的某個簡短字串，例如 IP 片段或縮寫），跟 Enter_SA 的實作無關，未追。~~
+  **已更正（2026-09-19）：** 來源就是 `param_3`（客戶端自己送的 `Enter_CQ`）body+2，即密碼欄位，
+  詳見上方「2026-09-19 中階更正」。這是封包資料，不是連線物件欄位。
+- Event_Call 的數字→錯誤字串對照表沒有找到，見上面「失敗分支」。這個仍未解決。

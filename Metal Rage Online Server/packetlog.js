@@ -319,7 +319,14 @@ function currentPath()
 // /reload, capturing git identity plus the current value of every switch in
 // dispatch/, so a log can always be traced back to the code that made it.
 
-const SWITCH_RE = /^\s*const\s+([A-Z][A-Z0-9_]*_MODE)\s*=\s*(['"])([^'"]*)\2/;
+// D1-4 修正 2 (docs/backlog.md): originally `const`-only and upper-snake-case
+// only, so it never saw `let ROOM_TEAM_CHAT_MODE` (dispatch/gate.game.dispatch.js,
+// changed to `let` so test/room-chat.js can flip it) or rooms.js's
+// `roomJoinMode`/`lobbyRoomListMode` (`let`, camelCase, needed by
+// test/room-join.js's per-test setter -- same reason). Widened to accept
+// `let` and either naming convention, still string-literal-only so it can't
+// pick up arbitrary non-switch assignments.
+const SWITCH_RE = /^\s*(?:const|let)\s+([A-Z][A-Z0-9_]*_MODE|[a-z][a-zA-Z0-9]*Mode)\s*=\s*(['"])([^'"]*)\2/;
 const DEFAULT_REF = 'reverse-work';
 
 /**
@@ -378,15 +385,24 @@ function listJsFiles(dir)
 }
 
 /**
- * Scans dispatch/ (recursively) for `const XXX_MODE = '...'` /
- * `const XXX_EXPERIMENT_MODE = '...'` declarations and reads back the value
- * currently sitting in the file on disk — this is a text scan, not a
- * require(), so it never runs dispatch code as a side effect.
+ * Scans dispatch/ (recursively), plus rooms.js, for `const XXX_MODE = '...'`
+ * / `let XXX_MODE = '...'` / `let xxxMode = '...'` declarations and reads
+ * back the value currently sitting in the file on disk — this is a text
+ * scan, not a require(), so it never runs dispatch code as a side effect.
+ *
+ * rooms.js is added explicitly (not by widening the scan root) because it
+ * deliberately lives outside dispatch/ for an unrelated reason (its own
+ * header comment: `/reload` only re-requires dispatch/*.js, and a live room
+ * must survive that) -- the switch scanner still needs to see it even
+ * though the hot-reload story does not apply here.
  * @returns {Object<string, {value: string, file: string}>}
  */
 function scanSwitches()
 {
     const files = listJsFiles(path.join(__dirname, 'dispatch'));
+    const roomsJs = path.join(__dirname, 'rooms.js');
+    if (fs.existsSync(roomsJs))
+        files.push(roomsJs);
     const switches = {};
 
     for (const file of files)
