@@ -135,3 +135,7 @@ ledger 裡有一條方法學紀錄,是因為曾經一輪改兩處,症狀變了�
 ### ledger 的證據標記（已被 AGENTS.md「證據標籤」取代）
 `✅ 已確認` / `🟡 假設` / `⬜ 未知` / `❌ 已排除`,來源標 `[DLL]` `[OBS]` `[TEST]` `[GUESS]`。
 **推翻自己的結論也要寫進去**(用追加更正的方式),舊 ledger 裡已經有好幾條是我自己的錯誤更正——那些比正確答案更省時間。
+
+## 黃金樣本回歸測試
+
+`node test/replay-golden.js`（在 `Metal Rage Online Server/` 底下）：把已驗證 session 的 C→S 封包餵給目前的 dispatch 程式，逐位元組比對輸出與存下的基準。DB 用固定的假資料（`test/fixtures/fake-db.js`），不連正式 DB。`--record <樣本>` 重建基準，只有在**有意改變行為**時才能這樣做，而且要在 commit 訊息寫明原因。worktree 要先 `ln -s /home/lucas/mro-reverse/MetalRage <worktree>/MetalRage`，否則讀不到 Cache.Bin。細節見 `test/README.md`。重構、開關收斂、改名，都要先跑它全綠。

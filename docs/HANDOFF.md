@@ -30,12 +30,11 @@ R11 紅隊槽、R12 暱稱 ANSI、L1 離開房間重設狀態、M1 G 幣持久�
 
 ### 進行中
 
-- A6 黃金樣本回歸測試：worker 在 `~/mro-wt/replay`（`flash-wip-replay`）。驗收條件：未改動的程式要全綠，故意改一個 byte 要變紅，兩者都要有。
-- 合併 A6 之後才能做 C1（開關收斂，期限 2026-09-25）。
+- 無。A6 黃金樣本回歸測試已合併：`node test/replay-golden.js`（在 `Metal Rage Online Server/` 底下，worktree 要先 symlink `MetalRage`，見 `test/README.md`）。3 個樣本全綠；C1 的五個開關各自翻掉都會變紅（高階抽驗過 M3a、L1）。還沒涵蓋 PvE 戰鬥到結算、換裝存檔、現金購買。
 
 ### 下一步（依序）
 
-1. 審 A6 並合併 → 指派 C1。
+1. 指派 C1（開關收斂，期限 2026-09-25）。每個 commit 都要跑回歸測試。
 2. P2（PvE 只保留主武器）：先做只讀分析。
 3. 困難模式時間上限寫死 10 分鐘（`gate.game.dispatch.js` 的 `timeLimitMinutes`）：開一個單變數任務，改成跟隨房間的 PlayTime。
 4. P1b 預設武器不發實體物品（不急）；H1、H3、H6、H7 維持原狀。
