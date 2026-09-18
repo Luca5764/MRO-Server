@@ -196,7 +196,7 @@ function makeFixtureDb(overrides = {})
         pool: {
             execute: poolExecute,
             // Backs the transactional path in room.dispatch.js
-            // handleShopPurchase() (MONEY_PERSIST_MODE === 'enabled'): a
+            // handleShopPurchase(): a
             // SELECT ... FOR UPDATE, then either an UPDATE+INSERT+commit or a
             // rollback if funds are short. This fixture has no real
             // transaction isolation -- there is only ever one caller in a
