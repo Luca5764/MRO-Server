@@ -3,3 +3,6 @@ logs/
 MetalRage
 shots/
 __pycache__/
+
+# Pico 的實際 WiFi 設定（只 commit settings.toml.example）
+Metal Rage Online Server/tools/pico/settings.toml

@@ -1,0 +1,7 @@
+# Raspberry Pi Pico 2 W - WiFi and Network Configuration
+# Copy this file to CIRCUITPY/settings.toml on your Pico 2 W
+
+WIFI_SSID = "Your_WiFi_SSID"
+WIFI_PASSWORD = "Your_WiFi_Password"
+HTTP_PORT = 8080
+

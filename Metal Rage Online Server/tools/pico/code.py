@@ -1,0 +1,350 @@
+"""
+Raspberry Pi Pico 2 W - Hardware USB HID Controller for Metal Rage Online Testing
+=================================================================================
+Presents physical USB Keyboard + Mouse to Windows host, eliminating anti-cheat /
+DirectInput injection blocks (LLKHF_INJECTED).
+
+Receives commands via:
+  1. WiFi HTTP REST API (port 8080 by default, configured via settings.toml)
+  2. USB CDC Serial (COM port, 115200 baud)
+
+Author: mro-reverse testing harness
+"""
+
+import gc
+import os
+import sys
+import time
+import supervisor
+import usb_hid
+
+from adafruit_hid.keyboard import Keyboard
+from adafruit_hid.keycode import Keycode
+from adafruit_hid.mouse import Mouse
+
+# ---------------------------------------------------------------------------
+# Keycode Lookup Table
+# ---------------------------------------------------------------------------
+KEY_MAP = {
+    # Function keys
+    "F1": Keycode.F1, "F2": Keycode.F2, "F3": Keycode.F3, "F4": Keycode.F4,
+    "F5": Keycode.F5, "F6": Keycode.F6, "F7": Keycode.F7, "F8": Keycode.F8,
+    "F9": Keycode.F9, "F10": Keycode.F10, "F11": Keycode.F11, "F12": Keycode.F12,
+    # Navigation / Control
+    "ENTER": Keycode.ENTER, "RETURN": Keycode.RETURN, "ESC": Keycode.ESCAPE,
+    "ESCAPE": Keycode.ESCAPE, "TAB": Keycode.TAB, "SPACE": Keycode.SPACE,
+    "BACKSPACE": Keycode.BACKSPACE, "DELETE": Keycode.DELETE,
+    "UP": Keycode.UP_ARROW, "DOWN": Keycode.DOWN_ARROW,
+    "LEFT": Keycode.LEFT_ARROW, "RIGHT": Keycode.RIGHT_ARROW,
+    "HOME": Keycode.HOME, "END": Keycode.END,
+    "PAGE_UP": Keycode.PAGE_UP, "PAGE_DOWN": Keycode.PAGE_DOWN,
+    "CAPS_LOCK": Keycode.CAPS_LOCK,
+    # Modifiers
+    "SHIFT": Keycode.LEFT_SHIFT, "LSHIFT": Keycode.LEFT_SHIFT, "RSHIFT": Keycode.RIGHT_SHIFT,
+    "CTRL": Keycode.LEFT_CONTROL, "LCTRL": Keycode.LEFT_CONTROL, "RCTRL": Keycode.RIGHT_CONTROL,
+    "ALT": Keycode.LEFT_ALT, "LALT": Keycode.LEFT_ALT, "RALT": Keycode.RIGHT_ALT,
+}
+
+# Add standard A-Z, 0-9
+for char_code in range(ord('A'), ord('Z') + 1):
+    char = chr(char_code)
+    KEY_MAP[char] = getattr(Keycode, char)
+    KEY_MAP[char.lower()] = getattr(Keycode, char)
+
+for num in range(10):
+    attr = f"N{num}" if num != 0 else "ZERO"  # Keycode.ZERO or Keycode.ONE etc.
+    # Adafruit hid uses ONE, TWO, etc.
+    names = ["ZERO", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE"]
+    KEY_MAP[str(num)] = getattr(Keycode, names[num])
+
+# ---------------------------------------------------------------------------
+# Initialize USB HID
+# ---------------------------------------------------------------------------
+kbd = None
+mouse = None
+
+try:
+    kbd = Keyboard(usb_hid.devices)
+    mouse = Mouse(usb_hid.devices)
+    print("[HID] Initialized physical USB Keyboard and Mouse.")
+except Exception as e:
+    print(f"[HID] Error initializing USB HID devices: {e}")
+
+# ---------------------------------------------------------------------------
+# Mouse & Keyboard Dispatcher
+# ---------------------------------------------------------------------------
+def parse_key(key_name):
+    clean = key_name.strip().upper().replace("{", "").replace("}", "")
+    return KEY_MAP.get(clean, None)
+
+def mouse_click(button="left"):
+    if not mouse:
+        return
+    btn = Mouse.LEFT_BUTTON
+    b = button.lower()
+    if b == "right":
+        btn = Mouse.RIGHT_BUTTON
+    elif b == "middle":
+        btn = Mouse.MIDDLE_BUTTON
+    mouse.click(btn)
+
+def mouse_move(dx, dy):
+    if not mouse:
+        return
+    # Clamp in steps of 100 to avoid USB HID report overflow (-127 to +127)
+    step_x = 100 if dx > 0 else -100
+    step_y = 100 if dy > 0 else -100
+
+    rem_x = dx
+    rem_y = dy
+
+    while rem_x != 0 or rem_y != 0:
+        move_x = step_x if abs(rem_x) >= 100 else rem_x
+        move_y = step_y if abs(rem_y) >= 100 else rem_y
+        mouse.move(x=move_x, y=move_y)
+        rem_x -= move_x
+        rem_y -= move_y
+        time.sleep(0.005)
+
+def mouse_move_to(target_x, target_y):
+    """
+    Home the cursor to (0, 0) by pushing top-left boundary,
+    then step forward to (target_x, target_y).
+    """
+    if not mouse:
+        return
+    # Force cursor to (0,0) by moving -120 30 times
+    for _ in range(30):
+        mouse.move(x=-120, y=-120)
+        time.sleep(0.002)
+    time.sleep(0.02)
+    # Move forward to target
+    mouse_move(target_x, target_y)
+
+def key_press(key_name, duration_ms=50):
+    if not kbd:
+        return False
+    kc = parse_key(key_name)
+    if kc is None:
+        return False
+    kbd.press(kc)
+    time.sleep(duration_ms / 1000.0)
+    kbd.release(kc)
+    return True
+
+def type_text(text):
+    if not kbd:
+        return
+    for ch in text:
+        # If in keymap (A-Z, 0-9, space)
+        if ch == ' ':
+            kbd.send(Keycode.SPACE)
+        elif ch.upper() in KEY_MAP:
+            kc = KEY_MAP[ch.upper()]
+            if ch.isupper():
+                kbd.press(Keycode.LEFT_SHIFT)
+                kbd.press(kc)
+                kbd.release_all()
+            else:
+                kbd.send(kc)
+        time.sleep(0.02)
+
+def release_all():
+    if kbd:
+        kbd.release_all()
+    if mouse:
+        mouse.release_all()
+
+# ---------------------------------------------------------------------------
+# Command Executor
+# ---------------------------------------------------------------------------
+def execute_command(cmd_str):
+    """
+    Parse and run a single command string.
+    Returns: (status_code, response_text)
+    """
+    parts = cmd_str.strip().split()
+    if not parts:
+        return 200, "OK (empty)"
+
+    action = parts[0].upper()
+
+    try:
+        if action == "PING":
+            mem = gc.mem_free()
+            return 200, f"PONG uptime={time.monotonic():.1f}s mem_free={mem}B"
+
+        elif action == "CLICK":
+            btn = parts[1] if len(parts) > 1 else "left"
+            mouse_click(btn)
+            return 200, f"CLICK {btn}"
+
+        elif action == "MOVE":
+            if len(parts) < 3:
+                return 400, "ERR: MOVE requires dx dy"
+            dx = int(parts[1])
+            dy = int(parts[2])
+            mouse_move(dx, dy)
+            return 200, f"MOVE {dx} {dy}"
+
+        elif action == "MOVE_TO":
+            if len(parts) < 3:
+                return 400, "ERR: MOVE_TO requires x y"
+            x = int(parts[1])
+            y = int(parts[2])
+            mouse_move_to(x, y)
+            return 200, f"MOVE_TO {x} {y}"
+
+        elif action == "KEY":
+            if len(parts) < 2:
+                return 400, "ERR: KEY requires keyname"
+            k = parts[1]
+            if key_press(k):
+                return 200, f"KEY {k}"
+            else:
+                return 400, f"ERR: Unknown key '{k}'"
+
+        elif action == "PRESS":
+            if len(parts) < 3:
+                return 400, "ERR: PRESS requires keyname duration_ms"
+            k = parts[1]
+            dur = int(parts[2])
+            if key_press(k, dur):
+                return 200, f"PRESS {k} {dur}ms"
+            else:
+                return 400, f"ERR: Unknown key '{k}'"
+
+        elif action == "TYPE":
+            text = cmd_str.strip()[5:].strip()  # take rest of string
+            type_text(text)
+            return 200, f"TYPE len={len(text)}"
+
+        elif action == "RESET":
+            release_all()
+            return 200, "RESET released all keys"
+
+        else:
+            return 400, f"ERR: Unknown action '{action}'"
+
+    except Exception as ex:
+        release_all()
+        return 500, f"ERR: {ex}"
+
+# ---------------------------------------------------------------------------
+# WiFi Setup (Optional, graceful fallback)
+# ---------------------------------------------------------------------------
+wifi_ip = None
+http_server = None
+
+def setup_wifi():
+    global wifi_ip, http_server
+    ssid = os.getenv("WIFI_SSID")
+    pwd = os.getenv("WIFI_PASSWORD")
+    port = int(os.getenv("HTTP_PORT", "8080"))
+
+    if not ssid:
+        print("[WIFI] No WIFI_SSID in settings.toml; skipping WiFi initialization.")
+        return
+
+    try:
+        import wifi
+        import socketpool
+
+        print(f"[WIFI] Connecting to '{ssid}'...")
+        wifi.radio.connect(ssid, pwd)
+        wifi_ip = str(wifi.radio.ipv4_address)
+        print(f"[WIFI] Connected! IP: {wifi_ip}, HTTP port: {port}")
+
+        pool = socketpool.SocketPool(wifi.radio)
+        http_server = pool.socket(pool.AF_INET, pool.SOCK_STREAM)
+        http_server.setblocking(False)
+        http_server.bind(('0.0.0.0', port))
+        http_server.listen(2)
+        print(f"[HTTP] REST API listening on http://{wifi_ip}:{port}/")
+
+    except Exception as e:
+        print(f"[WIFI] Failed to initialize WiFi/HTTP: {e}")
+        wifi_ip = None
+        http_server = None
+
+# ---------------------------------------------------------------------------
+# Main Event Loop
+# ---------------------------------------------------------------------------
+def main():
+    setup_wifi()
+    print("[RUN] Pico 2 W ready. Awaiting commands via USB Serial or WiFi HTTP...")
+
+    serial_buf = ""
+
+    while True:
+        # 1. Process USB Serial
+        if supervisor.runtime.serial_bytes_available:
+            ch = sys.stdin.read(1)
+            if ch in ('\r', '\n'):
+                if serial_buf.strip():
+                    code, resp = execute_command(serial_buf)
+                    sys.stdout.write(f"[{code}] {resp}\n")
+                    serial_buf = ""
+            else:
+                serial_buf += ch
+
+        # 2. Process WiFi HTTP Request (Non-blocking)
+        if http_server:
+            try:
+                conn, addr = http_server.accept()
+                conn.setblocking(True)
+                req_bytes = conn.recv(1024)
+                req_text = req_bytes.decode('utf-8', 'ignore')
+
+                # Extract request line, e.g. "GET /cmd?c=KEY+F5 HTTP/1.1" or "POST /action"
+                lines = req_text.split('\r\n')
+                if lines:
+                    first_line = lines[0]
+                    parts = first_line.split()
+                    cmd_to_run = None
+
+                    if len(parts) >= 2:
+                        path = parts[1]
+                        if path == "/ping":
+                            cmd_to_run = "PING"
+                        elif path.startswith("/api/"):
+                            cmd_to_run = path[5:].replace("+", " ").replace("%20", " ")
+                        elif "c=" in path:
+                            param = path.split("c=")[1].split("&")[0]
+                            cmd_to_run = param.replace("+", " ").replace("%20", " ")
+
+                    # Check for POST body if not found in query string
+                    if not cmd_to_run and len(parts) >= 2 and parts[0] == "POST":
+                        # Body is after \r\n\r\n
+                        if '\r\n\r\n' in req_text:
+                            body = req_text.split('\r\n\r\n', 1)[1].strip()
+                            if body:
+                                cmd_to_run = body
+
+                    if cmd_to_run:
+                        status, msg = execute_command(cmd_to_run)
+                    else:
+                        status, msg = 200, f"Pico 2 W Online. IP={wifi_ip}"
+
+                    http_resp = (
+                        f"HTTP/1.1 {status} OK\r\n"
+                        "Content-Type: text/plain\r\n"
+                        "Access-Control-Allow-Origin: *\r\n"
+                        f"Content-Length: {len(msg)}\r\n"
+                        "Connection: close\r\n\r\n"
+                        f"{msg}"
+                    )
+                    conn.send(http_resp.encode('utf-8'))
+                conn.close()
+
+            except OSError:
+                # No incoming connection (EAGAIN)
+                pass
+            except Exception as ex:
+                print(f"[HTTP] Error handling request: {ex}")
+
+        time.sleep(0.005)
+
+if __name__ == "__main__":
+    main()
+
