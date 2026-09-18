@@ -1,0 +1,57 @@
+# Cache.Bin SpecPilotRecord & GameItemRecord Dump
+# Date: 2026-09-18
+# Target: /mnt/c/Games/MetalRage Online/data/System/Cache.Bin
+
+## 1. SpecPilotRecord Table (Cache.Bin Table 10, offset 0x44405, count=25 at 0x44404)
+Parsed using standard Unreal Engine FArchive serialization (FCompactIndex string lengths).
+
+[00] RepresentIndex: 51100101 | ImageIndex:  5 | Name: 瓦昆．貝斯
+[01] RepresentIndex: 51100201 | ImageIndex:  2 | Name: 魯卡斯．韋恩
+[02] RepresentIndex: 51100501 | ImageIndex:  6 | Name: 傑佛瑞．卡迪隆
+[03] RepresentIndex: 51100601 | ImageIndex: 12 | Name: 丹．維德
+[04] RepresentIndex: 51100701 | ImageIndex: 14 | Name: 詹姆士．布萊德
+[05] RepresentIndex: 51100801 | ImageIndex:  1 | Name: 亞歷山大．羅培茲
+[06] RepresentIndex: 51100901 | ImageIndex:  8 | Name: Rashid Tyron
+[07] RepresentIndex: 51500101 | ImageIndex:  9 | Name: 基本駕駛員  <-- 男生預設駕駛員（Dragonfly 頭像）
+[08] RepresentIndex: 51600101 | ImageIndex: 10 | Name: 基本駕駛員  <-- 女生預設駕駛員
+[09] RepresentIndex: 51800101 | ImageIndex: 18 | Name: 魯卡斯+10%EXP
+[10] RepresentIndex: 51800201 | ImageIndex: 19 | Name: 傑佛瑞+10%EXP
+[11] RepresentIndex: 51800301 | ImageIndex: 20 | Name: 丹．維德+10%EXP
+[12] RepresentIndex: 51800401 | ImageIndex: 22 | Name: 詹姆士+10%EXP
+[13] RepresentIndex: 51800501 | ImageIndex: 17 | Name: 亞歷山大+10%EXP
+[14] RepresentIndex: 52100101 | ImageIndex: 11 | Name: Tae Lim Lee
+[15] RepresentIndex: 52100201 | ImageIndex:  3 | Name: 凱拉．摩根
+[16] RepresentIndex: 52100401 | ImageIndex: 13 | Name: 瑞秋．貝斯
+[17] RepresentIndex: 52100501 | ImageIndex:  7 | Name: Rebecca Moceanu
+[18] RepresentIndex: 52100601 | ImageIndex: 15 | Name: Tae Lim Lee
+[19] RepresentIndex: 52100701 | ImageIndex: 16 | Name: Tae Lim Lee + 10%
+[20] RepresentIndex: 52100801 | ImageIndex: 16 | Name: Tae Lim Lee + 10%
+[21] RepresentIndex: 52800101 | ImageIndex: 21 | Name: 瑞秋+10%EXP
+[22] RepresentIndex: 53100101 | ImageIndex:  3 | Name: Rashid組合
+[23] RepresentIndex: 53100201 | ImageIndex:  2 | Name: Rebecca組合
+[24] RepresentIndex: 53100301 | ImageIndex:  1 | Name: Tae Lim Lee 組合
+
+## 2. GameItemRecord Entries for Default Pilots (Cache.Bin Table 2)
+Located in GameItemRecord binary search table:
+- 51500101 at cache offset 0x19184:
+  [ItemIndex: 51500101, RepresentIndex: 51500101, HighGroup: 5, MiddleGroup: 1, LowGroup: 5, DetailGroup: 0]
+- 51600101 at cache offset 0x19455:
+  [ItemIndex: 51600101, RepresentIndex: 51600101, HighGroup: 5, MiddleGroup: 1, LowGroup: 6, DetailGroup: 0]
+
+Note on 101 / 102:
+- 101 does NOT exist in GameItemRecord. Binary search returns null / all-zeros record.
+- GetItemHighGroup(101) evaluates to 0.
+
+## 3. Account Creation & BeginNumber Origin (ZPage_Account.uc:239-247)
+```unrealscript
+switch( m_PilotNumber )
+{
+case 1:    BeginNumber = 102;   break;
+default:   BeginNumber = 101;   break;
+}
+
+class'ZNetwork.ZNetwork_DJ'.static.Account_Create( BeginNumber, NickName );
+```
+- BeginNumber 101 is Male starter set, 102 is Female starter set (from [BeginSet] configuration).
+- The emulator server treated BeginNumber 101/102 as the pilot's ItemIndex and saved it into accounts.pilot.
+- When sent as PilotCode in room packets, 101 fails the CacheManager lookup.

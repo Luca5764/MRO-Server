@@ -112,3 +112,5 @@
 | 2026-09-18 | `2026-09-18-16-money-persistence.md` | `0x00210103`、`0x00240102`、`0x00240132`、`0x00240133`、`0x00240202` | ✅ M1 Claude 高階審查＋實測，預設 enabled；M2 ❌ | M1：以 DB 持久化 Point/Cash/Coupon；enabled 才改四類金錢封包與購買 transaction，Buy SA 擴為 14 bytes；migration 只寫入未執行。 |
 | 2026-09-18 | `2026-09-18-19-m3-inventory-refresh.md` | `0x00210111`、`0x00240202`、`0x00240108` | ✅ M3a 實測，預設 enabled | M3：ItemInfo_SN 不發 UI 事件；購買成功後補送目前槽位的 Slot_Change_SA，觸發 InvenUpdate，新物品立刻出現。 |
 | 2026-09-18 | `2026-09-18-2240-item-names.md` | — | 🟡 中階／待審 | N1：Cache.Bin `Spec*Record` 表獨立解析出 ItemIndex→顯示名稱對照（機體/主武器/副武器/推進器/駕駛員/塗裝），25 筆 pilot 逐字元覆核先前 dump；`tools/item-names.py`、`docs/reference/item-names.md`；順帶發現既有兩篇日誌對「Table 10」標號互相矛盾（內容本身沒錯）。 |
+| 2026-09-18 | `2026-09-18-2305-room-avatar-experiments.md` | `0x00220233`、`0x00220402` | 房間頭像：改送 51500101／51100801 實測都無頭像，PilotCode 值不是唯一關卡；暫停，R14 不合併。 |
+| 2026-09-18 | `2026-09-18-18-room-pilot-avatar.md` | `0x00220233`、`0x00220402` | R13（Gemini）：101 是 BeginSet 編號不是駕駛員 ItemIndex；「預期」欄已被 2305 篇更正。 |

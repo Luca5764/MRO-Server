@@ -1,0 +1,119 @@
+# PilotCode Disassembly and Script Rendering Trace
+# Date: 2026-09-18
+
+## 1. User_Pilot_SN (0x00220402) in ZNetwork.dll (0x1072c810)
+Client writes arg2 (PilotCode) directly into ROOM_USER_INFO.PilotCode (record+0x38).
+Does not trigger any script callback or event.
+
+0x1072c810:  mov   edx, dword ptr [ecx + 0xf8c]       ; room user count
+0x1072c816:  xor   eax, eax                           ; loop index = 0
+0x1072c818:  test  edx, edx
+0x1072c81a:  jle   0x1072c851
+0x1072c81c:  push  esi
+0x1072c81d:  mov   esi, dword ptr [ecx + 0xf88]       ; RoomUserList array
+0x1072c823:  push  edi
+0x1072c824:  mov   edi, dword ptr [esp + 0xc]         ; arg1: UserIndex
+0x1072c828:  mov   ecx, esi
+0x1072c830:  cmp   dword ptr [ecx], edi               ; match UserIndex
+0x1072c832:  je    0x1072c841
+0x1072c834:  inc   eax
+0x1072c835:  add   ecx, 0x50                          ; stride 0x50 bytes
+0x1072c838:  cmp   eax, edx
+0x1072c83a:  jl    0x1072c830
+0x1072c83c:  pop   edi
+0x1072c83d:  pop   esi
+0x1072c83e:  ret   8
+0x1072c841:  mov   ecx, dword ptr [esp + 0x10]        ; arg2: PilotCode
+0x1072c845:  lea   eax, [eax + eax*4]
+0x1072c848:  shl   eax, 4                             ; eax * 80 (0x50)
+0x1072c84b:  pop   edi
+0x1072c84c:  mov   dword ptr [eax + esi + 0x38], ecx  ; record+0x38 = PilotCode
+0x1072c850:  pop   esi
+0x1072c851:  ret   8
+
+## 2. User_Default_SN (0x00220233) in ZNetwork.dll (0x107ee2d0)
+Dispatches room user default records (0x34 bytes each).
+- 0x107ee4be: mov ebx, dword ptr [esp + 0x5a] (reads entry+0x02 = PilotCode)
+- 0x107ee557: push ebx (passed as arg8)
+- 0x107ee57b: call 0x10708d14 -> jmp 0x107339e0 (UZNetwork_DJ::Room_User_Default_Add)
+- In 0x107339e0:
+  0x10733a89: mov dword ptr [esi + edx + 0x38], eax (writes arg8 to record+0x38 = PilotCode)
+
+## 3. Engine.dll GetItemHighGroup (0x10412bc0)
+Calls 0x10412690 (binary search in Cache.Bin Table 2 GameItemRecord by ItemIndex):
+- 0x10412bca: call 0x10412690
+- 0x10412bef: mov ecx, dword ptr [ebp - 0x84] (loads HighGroup from record offset +0x08)
+- 0x10412bf8: mov dword ptr [eax], ecx        (returns HighGroup to UnrealScript)
+When ItemIndex=101, binary search fails, returning an all-zero record -> HighGroup = 0.
+
+## 4. CacheManager.uc GetImageIndex (Engine/CacheManager.uc:1267)
+```unrealscript
+final static function int GetImageIndex( int ItemIndex )
+{
+    local int Result;
+
+    if( ItemIndex == 0 )
+        return Result;
+
+    switch( GetItemHighGroup(ItemIndex) )
+    {
+    case 1:    Result = GetSpecMechRecord(ItemIndex).ImageIndex;         break;
+    case 2:    Result = GetSpecWeaponMainRecord(ItemIndex).ImageIndex;   break;
+    case 3:    Result = GetSpecWeaponSubRecord(ItemIndex).ImageIndex;    break;
+    case 4:    Result = GetSpecBoosterRecord(ItemIndex).ImageIndex;      break;
+    case 6:    Result = GetSpecSkinRecord(ItemIndex).ImageIndex;         break;
+    case 5:    Result = GetSpecPilotRecord(ItemIndex).ImageIndex;        break;
+    case 8:    Result = GetSpecCardRecord(ItemIndex).ImageIndex;         break;
+    default:   Result = GetSpecEtcRecord(ItemIndex).ImageIndex;          break;
+    }
+
+    return Result;
+}
+```
+For ItemIndex=101:
+- GetItemHighGroup(101) == 0.
+- Falls into `default: Result = GetSpecEtcRecord(101).ImageIndex;`.
+- GetSpecEtcRecord(101) fails to find RepresentIndex (returns 0) -> ImageIndex = 0.
+
+For ItemIndex=51500101:
+- GetItemHighGroup(51500101) == 5.
+- Matches `case 5: Result = GetSpecPilotRecord(51500101).ImageIndex;`.
+- GetSpecPilotRecord(51500101) matches SpecPilotRecord #7 -> ImageIndex = 9.
+
+## 5. Avatar Texture Coordinates in ZPanel_TeamMember.uc (lines 272-292)
+Atlas texture: `mAvatar = StaticLoadTexture_MH("Room_04", false, true);`
+Dimensions: 11 rows per column, each portrait is 103 width x 93 height.
+
+```unrealscript
+ImageIndex = class'CacheManager'.static.GetImageIndex( m_Avatar );
+
+if( bTeamBlue == false )
+{
+    i_Avatar.X1 = 206*((ImageIndex-1)/11);
+    i_Avatar.X2 = i_Avatar.X1 + 103;
+    i_Avatar.Y1 = 93*((ImageIndex-1)%11);
+    i_Avatar.Y2 = i_Avatar.Y1+93;
+}
+else // Blue Team
+{
+    i_Avatar.X1 = 103 + 206*((ImageIndex-1)/11);
+    i_Avatar.X2 = i_Avatar.X1 + 103;
+    i_Avatar.Y1 = 93*((ImageIndex-1)%11);
+    i_Avatar.Y2 = i_Avatar.Y1+93;
+}
+```
+
+Evaluation:
+- When ImageIndex == 0 (m_Avatar = 101):
+  ImageIndex - 1 = -1
+  Y1 = 93 * (-1 % 11) = 93 * -1 = -93
+  Y2 = -93 + 93 = 0
+  Result: UV coordinates [X: 0..103, Y: -93..0] are outside the atlas, rendering nothing.
+
+- When ImageIndex == 9 (m_Avatar = 51500101, Male default pilot):
+  ImageIndex - 1 = 8
+  (8 / 11) = 0
+  X1 = 0, X2 = 103
+  (8 % 11) = 8
+  Y1 = 93 * 8 = 744, Y2 = 744 + 93 = 837
+  Result: Exactly points to row 8 (9th item) of the red team column on atlas "Room_04".
