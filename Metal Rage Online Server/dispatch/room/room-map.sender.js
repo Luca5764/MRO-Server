@@ -64,6 +64,35 @@ function sendMapChangeOnePacket(client, mapList, effectiveSelectedIdx, ctx, getE
     console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ONE 0x220223 (slot=0, cacheKey=${effectiveCacheKey}, time=${mapTime}, round=${mapRound}, kill=${mapKill}, goal=${mapGoal})`);
 }
 
+function sendMapChangeAllPacket(client, mapList, effectiveSelectedIdx, campaignMapCacheKey, getExactMessageBuffer, sendTwice)
+{
+    const count = mapList.length;
+    const bodySize = MAP_ALL_ENTRY_OFFSET + count * 9;
+    const [msgAll, bodyAll] = getExactMessageBuffer(SN_MAP_CHANGE_ALL, bodySize);
+    // byte[0]=0(flag), byte[1]=count — 클라이언트 파서 기대 포맷 (expected format by the client parser)
+    bodyAll.writeUint8(0, 0x00);
+    bodyAll.writeUint8(count, 0x01);
+    if (MAP_ALL_ENTRY_OFFSET === 0x06)
+        bodyAll.writeUint32LE(0, 0x02);
+    for (let i = 0; i < count; i++) {
+        const entryOffset = MAP_ALL_ENTRY_OFFSET + (i * 9);
+        const cacheIndex = mapList[i] >>> 0;
+        bodyAll.writeUint16LE(cacheIndex, entryOffset + 0x00);
+        bodyAll.writeUint16LE(0, entryOffset + 0x02);
+        bodyAll.writeUint8(i === effectiveSelectedIdx ? 1 : 0, entryOffset + 0x04);
+        bodyAll.writeUint16LE(0, entryOffset + 0x05);
+        bodyAll.writeUint16LE(0, entryOffset + 0x07);
+    }
+    client.send(msgAll);
+
+    if (sendTwice && MAP_ALL_SEND_TWICE === 'enabled') {
+        client.send(msgAll);
+        console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ALL 0x220226 again (NETWORK_ROOM_INFO fires before the write)`);
+    }
+
+    console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ALL 0x220226 (count=${count}, selectedIdx=${effectiveSelectedIdx}, mapId=${campaignMapCacheKey}, header=${MAP_ALL_HEADER_MODE}, body=0x${bodySize.toString(16)})`);
+}
+
 function sendRoomMapPackets(client, ctx, getExactMessageBuffer, options = {}) {
     if (!client.isTrueCampaign_) {  // isTrueCampaign_ → campaignRoom_
         return;
@@ -83,53 +112,21 @@ function sendRoomMapPackets(client, ctx, getExactMessageBuffer, options = {}) {
 
     const selectedIdx = mapList.indexOf(Number(campaignMapCacheKey));
     const effectiveSelectedIdx = selectedIdx >= 0 ? selectedIdx : 0;
-    const sendOneBeforeAll = MAP_CHANGE_ORDER_MODE === 'enabled' &&
+    const sendSupplementalAll = MAP_CHANGE_ORDER_MODE === 'enabled' &&
         options.mapChangeOneResponse === true;
 
-    if (sendOneBeforeAll) {
-        sendMapChangeOnePacket(client, mapList, effectiveSelectedIdx, ctx, getExactMessageBuffer);
-    }
-
-    const bodySize = MAP_ALL_ENTRY_OFFSET + count * 9;
-    {
-        const [msgAll, bodyAll] = getExactMessageBuffer(SN_MAP_CHANGE_ALL, bodySize);
-        // byte[0]=0(flag), byte[1]=count — 클라이언트 파서 기대 포맷 (expected format by the client parser)
-        bodyAll.writeUint8(0, 0x00);
-        bodyAll.writeUint8(count, 0x01);
-        if (MAP_ALL_ENTRY_OFFSET === 0x06)
-            bodyAll.writeUint32LE(0, 0x02);
-        for (let i = 0; i < count; i++) {
-            const entryOffset = MAP_ALL_ENTRY_OFFSET + (i * 9);
-            const cacheIndex = mapList[i] >>> 0;
-            bodyAll.writeUint16LE(cacheIndex, entryOffset + 0x00);
-            bodyAll.writeUint16LE(0, entryOffset + 0x02);
-            bodyAll.writeUint8(i === effectiveSelectedIdx ? 1 : 0, entryOffset + 0x04);
-            bodyAll.writeUint16LE(0, entryOffset + 0x05);
-            bodyAll.writeUint16LE(0, entryOffset + 0x07);
-        }
-        client.send(msgAll);
-
-        // Sent twice, deliberately.
-        //
-        // ZDispatchRoom::Map_Change_All_SN fires the script event
-        // NETWORK_ROOM_INFO *before* it writes the list into FROOM_INFO. So a
-        // script handler that reads the room info on that event sees whatever
-        // was there last time — on the first packet, nothing. That matches what
-        // the client reports: ZPopup_MapSelect walking m_MapInfoList and
-        // finding it 0/0.
-        //
-        // A second, identical packet fires the event again, and this time the
-        // list from the first one is already in place.
-        if (MAP_ALL_SEND_TWICE === 'enabled') {
-            client.send(msgAll);
-            console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ALL 0x220226 again (NETWORK_ROOM_INFO fires before the write)`);
-        }
-
-        console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ALL 0x220226 (count=${count}, selectedIdx=${effectiveSelectedIdx}, mapId=${campaignMapCacheKey}, header=${MAP_ALL_HEADER_MODE}, body=0x${bodySize.toString(16)})`);
-    }
-
-    if (!sendOneBeforeAll) {
-        sendMapChangeOnePacket(client, mapList, effectiveSelectedIdx, ctx, getExactMessageBuffer);
+    // Keep the established ALL×2 -> ONE order for both initial room state and
+    // map-change responses. R7b only adds one supplemental ALL after ONE.
+    sendMapChangeAllPacket(
+        client, mapList, effectiveSelectedIdx, campaignMapCacheKey,
+        getExactMessageBuffer, true
+    );
+    sendMapChangeOnePacket(client, mapList, effectiveSelectedIdx, ctx, getExactMessageBuffer);
+    if (sendSupplementalAll) {
+        sendMapChangeAllPacket(
+            client, mapList, effectiveSelectedIdx, campaignMapCacheKey,
+            getExactMessageBuffer, false
+        );
     }
 }
 
