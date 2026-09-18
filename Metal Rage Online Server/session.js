@@ -36,6 +36,7 @@ const CARRIED = [
     'campaignRoom_',
     'campaignMapCacheKey_',
     'currentHangarSlot_',
+    'mapChangeOneTime_',
 ];
 
 // Deliberately NOT carried, and the reason matters:

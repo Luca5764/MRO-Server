@@ -29,6 +29,12 @@ const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 // docs/journal/2026-09-18-20-room-leave-reset.md.
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
 const GAME_CHAT_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
+// T1 [DLL] 0x107d4fa7 movzx ebp, word ptr [eax+0x23] (handler body 0x107d4f50):
+// Game_Info_SN body+0x13 is TimeLimit in minutes. 'room' makes it follow the
+// room's PlayTime (Map_Change_One_CQ 0x00220221 w2, client.mapChangeOneTime_,
+// set at the case 0x00220221 handler below) instead of the hardcoded 10.
+// See docs/journal/2026-09-18-2334-t1-time-limit.md.
+const GAME_INFO_TIME_LIMIT_MODE = 'disabled'; // 'disabled' | 'room'
 // When the room state block is re-sent after Create_SA, and why each entry
 // costs a room-master dialog. See the comment at the call site.
 // Send Game_Info_SN with the room state, so [this+0xfc8] holds the map before
@@ -284,7 +290,17 @@ function sendGameInfoSn(client, tag)
     // Game_Play_Start runs at the end of the handler and copies [0xffc] and
     // [0x1000] into [0xff0] and [0xff4], which is what Game_User_Team_Get
     // compares a player's team against.
-    const timeLimitMinutes = 10;
+    // Triggered by the client pressing F5 to start the match (this handler
+    // fires from the game-start sequence above and from the scene-6 map
+    // resend timers). Default stays hardcoded 10; GAME_INFO_TIME_LIMIT_MODE
+    // 'room' switches it to the room's PlayTime, set on Map_Change_One_CQ
+    // 0x00220221 (see the case below). See "trap" comment on the switch decl.
+    let timeLimitMinutes = 10;
+    let timeLimitSource = 'hardcoded';
+    if (GAME_INFO_TIME_LIMIT_MODE === 'room' && client.mapChangeOneTime_) {
+        timeLimitMinutes = client.mapChangeOneTime_;
+        timeLimitSource = 'room';
+    }
     const goalScore = 0;
 
     body.writeUInt32LE(battleIndex, 0x00);      // -> [0xfc0]  battle index
@@ -308,7 +324,7 @@ function sendGameInfoSn(client, tag)
     console.log(
         `[ZGateGameDispatch] >> Sent Game_Info_SN 0x00222111 [${tag}] ` +
         `(battle=${battleIndex}, red=${redTeamIndex}, blue=${blueTeamIndex}, map=${mapId}, ` +
-        `clan=${clanFlag}, user=${userIndex}, timeLimit=${timeLimitMinutes}, round=${playRound}, goal=${goalScore}, ` +
+        `clan=${clanFlag}, user=${userIndex}, timeLimit=${timeLimitMinutes} (${timeLimitSource}), round=${playRound}, goal=${goalScore}, ` +
         `body=${body.toString('hex')})`
     );
 }
