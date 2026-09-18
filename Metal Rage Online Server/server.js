@@ -95,13 +95,63 @@ class DispatchServer
 
 // Dispatch server handles: Account login, Gate (server/channel selection)
 const dispatchServices = require('./dispatch.js');
-new DispatchServer('DispatchServer', SERVER_PORT, dispatchServices).start();
+const dispatchServer = new DispatchServer('DispatchServer', SERVER_PORT, dispatchServices);
+dispatchServer.start();
 
 // Game server handles: Lobby, Room, Game, Hangar, Community, etc.
 const gameServices = require('./game.js');
-new DispatchServer('GameServer', GAME_PORT, gameServices).start();
+const gameServer = new DispatchServer('GameServer', GAME_PORT, gameServices);
+gameServer.start();
+
+// Hot reload: typing /reload in the server console swaps in freshly loaded
+// dispatch code without closing sockets, so the client stays logged in and
+// the operator does not have to log in again after every handler change.
+// Handler state lives on the client objects and survives. What does not:
+// module-level variables in dispatch/ (currently only nextRoomIndex in
+// gate.game.dispatch.js restarts at 1), and timers already scheduled by the
+// old code, which finish running the old code. Anything outside dispatch/
+// (client.js, message.js, session.js, packetlog.js, database/) still needs a
+// full restart.
+function reloadServices()
+{
+    const path = require('path');
+    const root = __dirname + path.sep;
+    const isReloadable = (file) =>
+        file.startsWith(root + 'dispatch' + path.sep) ||
+        file === root + 'dispatch.js' ||
+        file === root + 'game.js';
+
+    const saved = {};
+    for (const file of Object.keys(require.cache))
+    {
+        if (isReloadable(file))
+        {
+            saved[file] = require.cache[file];
+            delete require.cache[file];
+        }
+    }
+
+    try
+    {
+        const nextDispatch = require('./dispatch.js');
+        const nextGame = require('./game.js');
+        dispatchServer.services = nextDispatch;
+        gameServer.services = nextGame;
+        console.log(`[reload] Dispatch code reloaded (${Object.keys(saved).length} modules); connections kept.`);
+        packetlog.marker('RELOAD: dispatch code reloaded', 'auto');
+    }
+    catch (err)
+    {
+        // Put the old modules back so a later require() of them does not pick
+        // up the broken files half-way; the running services never changed.
+        for (const file of Object.keys(require.cache))
+            if (isReloadable(file)) delete require.cache[file];
+        Object.assign(require.cache, saved);
+        console.error(`[reload] FAILED, still running the previous code:`, err);
+    }
+}
 
 // Lets the operator annotate the recording from the console while playing:
 // type what you just did in the client, press Enter, and it lands in the log
 // between the packets it caused.
-packetlog.listenForMarkers();
+packetlog.listenForMarkers({ '/reload': reloadServices });

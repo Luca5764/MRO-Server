@@ -258,20 +258,24 @@ function marker(text, src = 'console')
  * Silently does nothing when stdin is not an interactive terminal, so running
  * the server from a batch file or under a supervisor is unaffected.
  */
-function listenForMarkers()
+function listenForMarkers(commands = {})
 {
     if (!process.stdin.isTTY)
         return;
 
     open();
     console.log('[packetlog] Type a note + Enter at any time to drop a marker into the log.');
+    for (const name of Object.keys(commands))
+        console.log(`[packetlog] Command: ${name}`);
 
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', (chunk) => {
         for (const line of chunk.split('\n'))
         {
             const text = line.trim();
-            if (text.length > 0)
+            if (commands[text])
+                commands[text]();
+            else if (text.length > 0)
                 marker(text);
         }
     });
