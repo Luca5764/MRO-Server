@@ -105,3 +105,4 @@
 | 2026-09-18 | `2026-09-18-12-map-change-one-sn-settings.md` | `0x00220221`、`0x00220223` | ✅ Claude 高階審查＋實測 | R6：按初級／中級／高級後目標回合正確為 5／8／10，SN 不再洗成 0/1/0/0。 |
 | 2026-09-18 | `2026-09-18-13-map-change-order.md` | `0x00220221`、`0x00220222`、`0x00220223`、`0x00220226` | ❌ 實測未通過 | R7/R7b：ONE→ALL×2 與 ALL×2→ONE→ALL 都失敗；ALL 排在 ONE 後會覆蓋選擇，難度燈慢一拍另案，維持 disabled。 |
 | 2026-09-18 | `2026-09-18-14-map-info-sn-real-ids.md` | `0x00210115` | ❌ 實測未通過 | R9：count=12、9001–9012 已送出，但清單仍空、仍顯示 4 VS 4；m_MapList 不是唯一篩選關卡，維持 disabled。 |
+| 2026-09-18 | `2026-09-18-15-room-team-index.md` | `0x00220203`、`0x00220233` | 🟡 待審／預設關閉 | R11：Room_Default body+0x10/+0x12 原誤送建房選項；新增 `ROOM_TEAM_INDEX_MODE`，enabled 才送 Red=0／Blue=1；TeamIndex 無值域閘門，body 換算仍標待驗證，未實測。 |
