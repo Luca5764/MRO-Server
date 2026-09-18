@@ -119,3 +119,4 @@
 | 2026-09-18 | `2026-09-18-2330-lan-access.md` | — | — | N0：區網第二台主機連線選 portproxy＋防火牆（不用 mirrored，因為要重啟 WSL 會殺掉伺服器）；`lan-open.ps1`／`lan-close.ps1` 已寫好未執行，portproxy 是否保留來源 IP 待第一次實測確認。 |
 | 2026-09-18 | `2026-09-18-2330-x1-exception-guard.md` | — | — | X1：server.js dispatch 迴圈與 client.js onData 加 try/catch，例外只關掉肇事連線並留 hex/stack marker；process 層 uncaughtException/unhandledRejection 只記錄不 exit；新增 `test/exception-guard.js` 端對端驗證。 |
 | 2026-09-18 | `2026-09-18-2334-t1-time-limit.md` | `0x00222111`、`0x00220221` | — | T1（中階，待審）：新增 `GAME_INFO_TIME_LIMIT_MODE`（預設 disabled），`'room'` 時 TimeLimit 改採房間 PlayTime（`mapChangeOneTime_`，已加入 `session.js` CARRIED）；回歸 4 樣本全綠，暫開 `'room'` 使 pve-full-match 在 body+0x13 變紅後已還原；547 秒停住確認不是 TimeLimit 造成（547<600）。 |
+| 2026-09-18 | `2026-09-18-2350-game-login-token-chain.md` | `0x00110124`、`0x00220132` | — | 身分鏈：Gate Leave_SA body+0x06／+0x0A → Certify_Away_Set（`0x10715f70`）→ Login_Again_CQ 帶回；更正 I1「無寫入點」。 |

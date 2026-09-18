@@ -128,6 +128,14 @@
 | 離開房間是 `Leave_CQ 0x00220234`（回 `Leave_SA 0x00220235`）；要重設房間狀態，否則 `campaignRoom_` 殘留，大廳機庫會跳過初始化、商城空白（`ROOM_LEAVE_RESET_MODE`）。房內開機庫仍刻意被擋（原作者 `e01f1bb`） | ✅ [DLL][LOG][OBS] L1 | `journal/2026-09-18-20-room-leave-reset.md` |
 | 協力模式的**建房對話框沒有任務選項**，任務只能在房內改 | ✅ [SHOT] | `shots/create-room-dialog.png` |
 
+## 4c. 多人化
+
+| 項目 | 狀態 | 依據 |
+|---|---|---|
+| 30907 登入的身分：Gate `Leave_SA 0x00220132` body+0x06／+0x0A 兩個 u32，客戶端透過 `Certify_Away_Set`（`0x10715f70`）存起來，再放進 `Login_Again_CQ 0x00110124` body+0／+4 原樣帶回。目前伺服器送 0，所以用 last_login 猜帳號 | ✅ [DLL] `0x107dc7d3`–`0x107dc846`、`0x107c3ef5`；[LOG] body 全 0 | `journal/2026-09-18-2350-game-login-token-chain.md` |
+| 房間聊天：客戶端送 `0x00220505`（258 bytes，與 SN 同 opcode），伺服器目前只回 ACK、不廣播 | ✅ [LOG] | `logs/session-20260918-225741.jsonl` |
+| 單人假設清單（M1 15 列、M2 8 列） | 🟡 [CODE] | `docs/reference/multiplayer-audit.md` |
+
 ## 5. 程式碼裡已知錯誤的名稱與無效封包（尚未修正）
 
 這些是文件已經確認、但程式碼註解或行為還沒跟上的地方。**改之前要單獨測**，不要順手一起改。
