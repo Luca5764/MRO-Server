@@ -115,3 +115,4 @@
 | 2026-09-18 | `2026-09-18-2305-room-avatar-experiments.md` | `0x00220233`、`0x00220402` | — | 房間頭像：改送 51500101／51100801 實測都無頭像，PilotCode 值不是唯一關卡；暫停，R14 不合併。 |
 | 2026-09-18 | `2026-09-18-18-room-pilot-avatar.md` | `0x00220233`、`0x00220402` | — | R13（Gemini）：101 是 BeginSet 編號不是駕駛員 ItemIndex；「預期」欄已被 2305 篇更正。 |
 | 2026-09-18 | `2026-09-18-2330-a6b-pve-full-match-golden.md` | `0x00222112`、`0x00230139`、`0x00222213`、`0x00230123`、`0x00220234` | — | A6b：新增黃金樣本 `pve-full-match`（session-20260918-205012.jsonl conn 2，唯一有 Campaign_CN 的 log，三輪通關到 Leave_CQ 全包，因玩家中途未離房），全綠且 Game_User_SN／EndGame_SN 單 byte 改動均 FAIL；expected.jsonl ~13MB，待審是否收斂。 |
+| 2026-09-18 | `2026-09-18-2330-multiplayer-audit.md` | — | — | S1：`docs/reference/multiplayer-audit.md`，M1 15 列／M2 8 列盤點單人假設；最嚴重根因是遊戲伺服器登入用 `ORDER BY last_login` 抓帳號，且完全沒有跨連線廣播機制。 |
