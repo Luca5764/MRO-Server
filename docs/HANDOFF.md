@@ -32,7 +32,7 @@ C1 開關收斂、A6b PvE 黃金樣本、X1 例外防護、W1 白名單、N0／N
 ### 進行中（交接時還在跑）
 
 1. **D1 第 4 步修正：已完成，等 PM 核對後合併**（`~/mro-wt/d1s4`，分支 `flash-wip-d1s4`，`20c8707`）。兩項都修好了：`enter-sa.md` 已更正（Room_Open 的 index＝Enter_CQ 的 RoomIndex；`0x107086c5`＝`RoomList_Name_Get`）；build 事件的掃描器改成也認得 `let`、camelCase 寫法和 rooms.js。已知限制：`lobbyRoomListMode` 要等合併後、reverse-work 有了同名基準，才會出現在 nonDefault。worker 回報 8 組測試全綠。**下一位高階合併前要自己重跑一次測試。**
-2. **R-ROUND 分析**（explorer，唯讀，回報可能遺失）：每一場 PvE 都只打一回合，因為伺服器對任何 `Campaign_CN(1)` 都回 `EndGame_SN`。要找出觸發 `EndRound_BD` 的 SN（候選 `EndRound_SN 0x00222211`）。契約在 backlog R-ROUND。回報遺失的話，照契約重新派。
+2. **R-ROUND 分析：已完成**（`research/2026-09-19-r-round/notes.md`）。Campaign_CN 不帶回合數（✅ [DLL]），伺服器要自己記錄回合；候選回應是 EndRound_SN 0x00222211；它是否真的會觸發 EndRound_BD 還是 ⬜，要靠實驗確認。
 
 ### 下一步（照 PM 定的順序）
 
