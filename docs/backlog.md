@@ -363,6 +363,12 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 
 ## P2：PvE 只保留主武器、輔武與裝備回預設
 
+> **2026-09-19 PM 裁決：P2 停止靜態分析，改成重現協定。** 等操作者或 dusk 下次玩的時候順手做，不另外安排場次。
+> - 線索：[LOG] slot 3 的 `Slot_Change_CQ 0x00240107` 本身就是 right=0、equipment=0，代表至少 slot 3 在機庫階段、客戶端送出 CQ 時就已經掉了，跟 PvE 出場無關。玩家原話是「**其他機體**換裝後」。🟡 [GUESS]：客戶端對非目前機體的槽位資料不完整（`m_MySlot`／`WearInfo_SN 0x00210113`）。
+> - **協定：** 選 **3 號機**，依序換 main、left、right、equipment 四個部位，每換一個就在聊天或 console 留一筆 marker；接著進 PvE 選 3 號機出場，截圖武器列。
+> - **交付：** 逐步對照表，每一步都列出：Slot_Change_CQ 的七個欄位、Slot_Change_SA 回了什麼、DB 該槽位的 equipped、WearInfo_SN 送出的該槽位內容、Game_User_SN 該槽位的六個部位、畫面上實際的裝備。第一個出現 0 的那一步就是斷點。
+> - 待釐清：「slot 1 掉了 left／right／equipment」目前**沒有直接的 [OBS] 或 [SHOT]**，是從玩家口述和 log 推出來的，重現時一併確認 1 號機到底有沒有掉。
+
 > **2026-09-19 IS2（🟡）：** 客戶端出場配裝路徑對六個部位完全對稱：`Game_User_SN` handler（`0x107d8ae0`，`0x107d8e15`–`0x107d8ebe`）照 (body, main, left, right, equipment, skin) 的順序傳給 `Game_Slot_Set`（`0x1072de30`，六個部位同一套寫法、沒有任何條件判斷）→ `ServerMechWeaponSet_MH` 對 Part[1..4] 一視同仁。Part 1 跟 Part 2–4 之間找不到差別。還剩一個沒排除的候選：`m_MySlot`（`ZNetwork_DJ.uc:843`，型別 SLOT_DETAIL_INFO，可能綁在 `WearInfo_SN 0x00210113` 或本機的 `Game_Slot` 切換上）⬜。
 
 > **2026-09-19：** ❌ ShareType 單獨解釋 P2（[DB]＋[CACHE] +0x4F：left 33800101=1、right 33800201=1、equipment 41200201=**0** 也掉了；main 22600101=0 保留）。觀察：掉裝的範圍＝Part 2–4 全部，Part 1 保留（[LOG]／[DB]）。下一步的問題改成「Part 1 跟 Part 2–4 在出場配裝時走的路徑差在哪」。
