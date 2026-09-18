@@ -2,6 +2,7 @@ const NetworkClient = require("../client");
 const { MAX_MAP_COUNT, MAX_MECH_COUNT, MAX_SLOT_COUNT } = require('../datatypes/enums');
 const db = require('../database/db');
 const whitelist = require('../config/whitelist');
+const serverConfig = require('../config/server');
 const packetlog = require('../packetlog');
 
 const CQ_LOGIN_WASABII = 0x00110151;
@@ -737,7 +738,13 @@ class ZAccountDispatch
 
             let offset = 0x2;
             body.write('Dev0', offset + 0x0);
-            body.write('127.0.0.1', offset + 0x5);
+            // Backlog N1: game-server address the client connects to for
+            // 30907. Was hardcoded '127.0.0.1', which only works when the
+            // client is on the same host as this WSL2 server. Address field
+            // is 0x10 (0x5..0x15) bytes wide, next field 'Developer Gate'
+            // starts at offset+0x15 -- config/server.js caps publicHost at
+            // 15 chars so it can't overflow into it.
+            body.write(serverConfig.getPublicHost(), offset + 0x5);
             body.write('Developer Gate', offset + 0x15);
             body.write('GS', offset + 0xad);
 

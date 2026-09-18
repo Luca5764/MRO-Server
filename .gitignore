@@ -13,6 +13,9 @@ Metal Rage Online Server/database/config.json
 # 帳號白名單（本機專用，用 allowed-users.example.json 建立自己的；W1）
 Metal Rage Online Server/config/allowed-users.json
 
+# 對外公開位址（本機專用，用 server.example.json 建立自己的；N1）
+Metal Rage Online Server/config/server.json
+
 # AI 協作設定：本機專用，對其他人沒有用處
 AGENTS.md
 CLAUDE.md

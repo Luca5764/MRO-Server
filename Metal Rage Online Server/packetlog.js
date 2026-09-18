@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const whitelist = require('./config/whitelist.js');
+const serverConfig = require('./config/server.js');
 
 // Structured packet recorder.
 //
@@ -437,14 +438,17 @@ function recordBuild(reason)
     const nonDefault = nonDefaultSwitches(switches);
     // Backlog W1: 'off' or 'on(<n> users)' -- see config/whitelist.js.
     const whitelistStatus = whitelist.status();
+    // Backlog N1: address advertised in SN_SERVER_ADD -- see config/server.js.
+    const publicHost = serverConfig.getPublicHost();
 
-    write(Object.assign({ ev: 'build', reason }, identity, { switches, nonDefault, whitelist: whitelistStatus }));
+    write(Object.assign({ ev: 'build', reason }, identity, { switches, nonDefault, whitelist: whitelistStatus, publicHost }));
 
     const nonDefaultList = Object.keys(nonDefault);
     console.log(`[packetlog] build: ${identity.branch}@${identity.commit}`
         + ` dirty=${identity.dirty}`
         + (nonDefaultList.length > 0 ? ` nonDefault=[${nonDefaultList.join(', ')}]` : ' nonDefault=[]')
-        + ` whitelist=${whitelistStatus}`);
+        + ` whitelist=${whitelistStatus}`
+        + ` publicHost=${publicHost}`);
 }
 
 module.exports = {
