@@ -260,6 +260,17 @@ function marker(text, src = 'console')
  * Reads marker text from stdin, one per line, while the server runs.
  * Silently does nothing when stdin is not an interactive terminal, so running
  * the server from a batch file or under a supervisor is unaffected.
+ *
+ * Backlog K2: commands used to be matched by comparing the whole trimmed
+ * line, so a command function never received arguments (`/reload` was the
+ * only one, and it took none). `/drop <accountId>` needs an argument, so a
+ * command is now looked up by its first whitespace-separated token and gets
+ * everything after that token as a single string. `/reload` (and any other
+ * bare, no-argument command) is unaffected: with no space in the line, the
+ * first token equals the whole trimmed text, exactly like the old
+ * `commands[text]` check. Plain marker text is unaffected too: it only ever
+ * falls through to `marker(text)` when its first token is not a registered
+ * command name, same as before when the *whole line* had to match.
  */
 function listenForMarkers(commands = {})
 {
@@ -276,9 +287,16 @@ function listenForMarkers(commands = {})
         for (const line of chunk.split('\n'))
         {
             const text = line.trim();
-            if (commands[text])
-                commands[text]();
-            else if (text.length > 0)
+            if (text.length === 0)
+                continue;
+
+            const spaceIdx = text.indexOf(' ');
+            const name = spaceIdx === -1 ? text : text.slice(0, spaceIdx);
+            const args = spaceIdx === -1 ? '' : text.slice(spaceIdx + 1).trim();
+
+            if (commands[name])
+                commands[name](args);
+            else
                 marker(text);
         }
     });

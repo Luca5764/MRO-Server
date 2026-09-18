@@ -278,10 +278,70 @@ function main()
         }
     }
 
+    // Backlog K2: manual console commands to test D1 step 0 (does a
+    // reconnect keep the same accountId+key?) without waiting for the
+    // client to disconnect on its own. `journal/2026-09-19-0230-reconnect-
+    // was-frame-bug.md` established that a server-closed GameServer socket
+    // makes the client send a fresh Login_Again_CQ 0x00110124 by itself
+    // (the same path it already uses after Death_CN, see that journal), so
+    // dropping one account's 30907 connection from the console is enough to
+    // trigger it on demand.
+    //
+    // `/conns` lists every live connection on both servers so the operator
+    // can find which accountId to target.
+    function listConnections()
+    {
+        for (const server of [dispatchServer, gameServer])
+        {
+            for (const client of server.clients)
+            {
+                const peer = client.socket_
+                    ? `${client.socket_.remoteAddress}:${client.socket_.remotePort}`
+                    : '?';
+                console.log(`[conns] ${server.name} connId=${client.connId_} `
+                    + `accountId=${client.accountId_ ?? '-'} `
+                    + `nickname=${client.nickname_ ?? '-'} peer=${peer}`);
+            }
+        }
+    }
+
+    // `/drop <accountId>` destroys that account's GameServer (30907) socket
+    // only — the same `socket_.destroy()` onDispatchException already uses
+    // above, so the client sees an ordinary connection loss and runs its
+    // existing auto-reconnect. Does not touch DispatchServer (9211): that
+    // connection is not the one the client reconnects mid-session.
+    function dropAccount(argsText)
+    {
+        const accountId = Number.parseInt(argsText, 10);
+        if (!Number.isInteger(accountId))
+        {
+            console.log('[drop] Usage: /drop <accountId>');
+            return;
+        }
+
+        const target = gameServer.clients.find(
+            (client) => Number(client.accountId_) === accountId);
+        if (!target)
+        {
+            console.log(`[drop] No GameServer connection found for accountId=${accountId}`);
+            return;
+        }
+
+        console.log(`[drop] Dropping GameServer connId=${target.connId_} `
+            + `accountId=${accountId} — watch for a Login_Again_CQ reconnect.`);
+        packetlog.marker(`DROP: accountId=${accountId} connId=${target.connId_}`
+            + `（手動，用於測 token 重連）`);
+        target.socket_.destroy();
+    }
+
     // Lets the operator annotate the recording from the console while playing:
     // type what you just did in the client, press Enter, and it lands in the log
     // between the packets it caused.
-    packetlog.listenForMarkers({ '/reload': reloadServices });
+    packetlog.listenForMarkers({
+        '/reload': reloadServices,
+        '/conns': listConnections,
+        '/drop': dropAccount,
+    });
 }
 
 if (require.main === module)

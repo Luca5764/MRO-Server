@@ -19,6 +19,14 @@ Marker 有三個來源，紀錄裡會標明是哪一種。
 
 **2. 伺服器 console** — 直接在終端機打字按 Enter。非互動終端會自動略過，用 .bat 或背景跑不受影響。
 
+### Console 指令
+
+除了打字當 marker，`server.js` 在 console 也認得幾個帶 `/` 開頭的指令（第一個空白前的詞當指令名，其餘當參數，實作見 `packetlog.js` 的 `listenForMarkers`）：
+
+- `/reload` — 熱重載 `dispatch/` 程式碼，連線不斷。
+- `/conns` — 列出目前 9211（DispatchServer）與 30907（GameServer）上所有連線：伺服器名稱、`connId`、`accountId_`、`nickname_`、來源位址。用來找要 `/drop` 的 accountId。
+- `/drop <accountId>` — 只切斷該帳號在 GameServer（30907）的那條連線（`socket_.destroy()`），不動 9211。用途：D1 第 0 步——客戶端在 `Death_CN` 之後被伺服器動掉連線時，會自己用存起來的 token 重新送 `Login_Again_CQ 0x00110124`（`journal/2026-09-19-0230-reconnect-was-frame-bug.md`），這個指令讓高階不用等真的斷線，就能主動觸發同一條路徑，觀察重連時的 accountId／key 是否不變。找不到該帳號的連線只印訊息，不做事。
+
 **3. 自動（`src: auto`）** — 伺服器在自己看得到的狀態轉換時自行標記，操作者不用做任何事。戰鬥中根本沒空打字，所以這些邊界由伺服器自己劃：
 
 - `gameStarted_` 由 false 轉 true
