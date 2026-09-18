@@ -428,3 +428,42 @@
 ### 完成條件
 
 能以 DLL／腳本／實際 log 證明清單在哪一關被丟掉，並給出不影響現有房間地圖同步的最小預設關閉修正；若不能確認，不猜格式、不改程式。
+
+## M2：購買成功後 ItemInfo 改在 Buy SA 之後送出
+
+> **狀態：2026-09-18 Codex Sol 高階新增，交給 Gemini 中階；待審**
+
+### 目標
+
+修正購買成功當下新物品不會立即出現在庫存、必須離開再進格納庫才顯示的時序問題；只調整既有購買成功封包的送出順序，不改金錢或物品資料語意。
+
+### 範圍
+
+- 在 `flash-wip-money` 分支處理 `Metal Rage Online Server/dispatch/room.dispatch.js` 的 `handleShopPurchase()`。
+- 目前實測順序是 `Buy_PointItem_CQ 0x00240201` → transaction commit → `ItemInfo_SN 0x00210111`（已包含新 serial）→ `Buy_PointItem_SA 0x00240202`。
+- 最小候選是讓成功 ACK `0x00240202` 先送，再執行購買成功後既有的 ItemInfo refresh；保留其餘 Package／WearInfo／ShopList 流程。
+- 對修改檔執行 `node --check` 與 `git diff --check`，不自行啟動客戶端實測。
+
+### 背景
+
+- [OBS] 2026-09-18 第一輪 M1：G 幣由 100000 正常扣成 99000，但新物品未立即出現在庫存；離開再進格納庫後出現。
+- [LOG] `/tmp/mro-sol-test.eudtCb/Metal Rage Online Server/logs/session-20260918-205012.jsonl:308-313`：CQ 購買 `item_id=22100077`；四包 `0x00210111` 先送，其中最後一包已含新 serial `200000`，之後才送 14-byte `0x00240202`，body `000000000000b882010000000000`（Point=99000）。
+- [LOG] tmux server 顯示 transaction 已 commit；重新進格納庫時 `Packege_Item_SN` 有 39 筆並顯示該物品，故 DB insert 與 serial 保留區都不是本題根因。
+- [DLL] `Buy_PointItem_SA 0x00240202` 本體 `0x107dea70`；成功 gate 在 `0x107deacf-0x107deadb`，之後才讀 body+0x06 的 Point。客戶端在 ACK 前是否接受 ItemInfo 尚未由 DLL 確認，因此修正結論維持待審，實測由高階安排。
+
+### 限制
+
+- 一次只改送出順序；不改 transaction、價格、餘額、item_id、serial、`sendItemInfo()` 格式或任何開關值。
+- 不改資料庫、migration、`metalrageserver.sql`、`docs/state.md`、`docs/HANDOFF.md`；不標 ✅。
+- 不順手重排 `sendPackageMoney()`、`sendPackageItems()`、`sendHangarWearInfo()` 或 ShopList repaint；若認為必須改第二項，停下回報。
+- 先執行 `git branch --show-current`，只能在 `flash-wip-money` 工作；不要切換或提交到 `reverse-work`。
+
+### 交付
+
+- 一個只含最小時序修正的 commit，commit 最後一行寫 `Agent: gemini (中階)`。
+- 更新 `docs/journal/2026-09-18-16-money-persistence.md`，追加 M2 待審段落；`docs/journal/INDEX.md` 只更新既有 M1 那一行，不新增重複條目。
+- 回報修改後的精確封包順序、檔案與行號、`node --check`／`git diff --check` 結果；不要貼大段輸出。
+
+### 完成條件
+
+程式碼構造上保證成功的 `Buy_PointItem_SA 0x00240202` 先於購買後 `ItemInfo_SN 0x00210111` 發送，失敗購買仍不送 ItemInfo，disabled 行為與資料內容不變；提交保持待審，等待 Codex Sol 與操作者實測。
