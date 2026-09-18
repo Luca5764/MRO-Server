@@ -28,6 +28,9 @@ CREATE TABLE `accounts` (
     `pilot`           INT UNSIGNED    NOT NULL DEFAULT 101,
     `account_level`   TINYINT         NOT NULL DEFAULT 1,
     `gender`          TINYINT         NOT NULL DEFAULT 1,
+    `point`           BIGINT          NOT NULL DEFAULT 100000,
+    `cash`            BIGINT          NOT NULL DEFAULT 0,
+    `coupon`          BIGINT          NOT NULL DEFAULT 0,
     `created_at`      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `last_login`      TIMESTAMP       NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
