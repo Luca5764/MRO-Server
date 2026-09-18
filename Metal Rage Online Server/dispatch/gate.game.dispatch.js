@@ -22,10 +22,11 @@ const GAME_WAIT_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const POST_GAME_WAIT_READY_HOST_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_INFO_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
-// L1: 0x00220234 is Leave_CQ (reply 0x00220235 = ZDispatchRoom::Leave_SA per
-// dispatch map). Without clearing room state, campaignRoom_ survives the return
-// to lobby and the hangar bootstrap (ShopList etc.) stays suppressed.
-const ROOM_LEAVE_RESET_MODE = 'enabled'; // 'disabled' | 'enabled'
+// L1 verified [DLL][LOG][OBS]: 0x00220234 is Leave_CQ (reply 0x00220235 =
+// ZDispatchRoom::Leave_SA per dispatch map). Without clearing room state,
+// campaignRoom_ survives the return to lobby and the hangar bootstrap
+// (ShopList etc.) stays suppressed. See
+// docs/journal/2026-09-18-20-room-leave-reset.md.
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
 const GAME_CHAT_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
 // When the room state block is re-sent after Create_SA, and why each entry
@@ -944,10 +945,8 @@ class ZGateGameDispatch
                 packetlog.marker('EXPERIMENT: answered 0x00220234 with 0x00220235 (empty EVENT_INFO)', 'auto');
                 // Client pressed "back" in a room: drop room flags so the lobby
                 // hangar is no longer treated as in-campaign-room.
-                if (ROOM_LEAVE_RESET_MODE === 'enabled') {
-                    require('./room.dispatch').resetRoomSessionState(client);
-                    console.log(`[ZGateGameDispatch] >> Room state reset on Leave_CQ 0x220234`);
-                }
+                require('./room.dispatch').resetRoomSessionState(client);
+                console.log(`[ZGateGameDispatch] >> Room state reset on Leave_CQ 0x220234`);
                 return true;
             }
 
