@@ -1,0 +1,52 @@
+Log: Log file open, 09/18/26 23:59:32
+Init: Name subsystem initialized
+Init: Detected: Microsoft Windows NT 6.2 (Build: 9200)
+Init: Version: 3369 (134.29)
+Init: Compiled: Nov  8 2010 20:59:51
+Init: Command line:  -globalid=TW&ip=192.168.1.128&port=9211&age=30
+Init: Character set: Unicode
+Init: Base directory: C:\Games\MetalRage Online\data\System\
+Init: Ini:MetalRage.ini   UserIni:User.ini
+Init: Build label:  Build MR_Build_[2009-12-10_09.30]
+Init: Object subsystem initialized
+Log: Splash screen filename is '..\Help\MetalRageLogo.bmp'
+Log: Default_Set_Initialize_MH : C:\Games\MetalRage Online\data\System\MetalRage.exe
+Log:     nvldumd.dll/NVIDIA GeForce RTX 2070
+Log: Game class is 'GameInfo'
+Log: Bringing Level Entry.myLevel up for play (0) appSeconds: 1.230000...
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+Log: Browse: NoIntro.tzp
+Log: Garbage: objects: 18455->18455; refs: 155833
+Warning: Missing FinalBlend FinalBlend CYEffect.dust.Debris1_Final
+Log: Game class is 'CinematicGameInfo'
+Log: Bringing Level NoIntro.myLevel up for play (0) appSeconds: 1.348000...
+Log: Window Font Count=347
+Log: Not Register Font:MingLiu
+Error: m_PopupMessage::ImportText: Bad termination in: (Key="RAGEMODE_INTRUDE_ONLY",...)
+Error: m_PopupMessage::ImportText: Bad termination in: (Key="RETRY_INPUT_DELETE",...)
+Error: m_GiftMessage::ImportText: Bad termination in: (Key="191",...)
+ScriptLog: Style already registered 'GUI2K4.STY2TextButton'
+Log: ALAudio: Using DirectSound to record audio.
+Log: Couden't FuncInputWndProc
+Log: Opened viewport
+Log: Enter SetRes: 1152x864 Fullscreen 0
+Log: Using back-buffer format 22(32-bit)
+Log: Using depth-buffer format 77(32-bit)
+Log: Creating device
+Log: xD3D9Helper::Init (QuadEmulation)
+Log: Startup time: 1.877000 seconds
+Log: Browse: Index.tzp?disconnect
+Log: failed: return ENTRY.
+Log: GP=FALSE
+Log: Browse: Store_01?Game=ZModeHangar.HangarGameInfo?Team=0
+Warning: Missing MeshNormalShader MeshNormalShader ChibT02.IB02.IBT02B1
+Log: Game class is 'HangarGameInfo'
+Log: Bringing Level Store_01.myLevel up for play (0) appSeconds: 2.830000...
+Warning: NULL call failed ':can not find the packet name
+Warning: "Material''None 'call failed'
+ScriptLog: START MATCH
+Log: appRequestExit(0)
+Exit: Preparing to exit.
+Exit: Game engine shut down
+Exit: Exiting.
+Uninitialized: Log file closed, 09/19/26 00:00:21

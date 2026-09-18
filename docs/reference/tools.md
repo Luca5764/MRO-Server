@@ -139,3 +139,7 @@ ledger 裡有一條方法學紀錄,是因為曾經一輪改兩處,症狀變了�
 ## 黃金樣本回歸測試
 
 `node test/replay-golden.js`（在 `Metal Rage Online Server/` 底下）：把已驗證 session 的 C→S 封包餵給目前的 dispatch 程式，逐位元組比對輸出與存下的基準。DB 用固定的假資料（`test/fixtures/fake-db.js`），不連正式 DB。`--record <樣本>` 重建基準，只有在**有意改變行為**時才能這樣做，而且要在 commit 訊息寫明原因。worktree 要先 `ln -s /home/lucas/mro-reverse/MetalRage <worktree>/MetalRage`，否則讀不到 Cache.Bin。細節見 `test/README.md`。重構、開關收斂、改名，都要先跑它全綠。
+
+## 客戶端連不上伺服器時
+
+客戶端的 `MetalRage.log` 在連線失敗時**不會留下任何網路紀錄**（[LOG] `research/2026-09-19-second-client-win10/MetalRage.log`）。排查連線問題，要看伺服器 session log 有沒有那個來源 IP 的 `connect` 事件；沒有的話，問題在網路（IP、portproxy、防火牆），不在協定。

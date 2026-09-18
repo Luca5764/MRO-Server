@@ -132,6 +132,11 @@ Test-NetConnection <Windows 主機的區網 IP> -Port 30907
 
 [GUESS]／⬜ 未驗證：`netsh interface portproxy` 在 Windows 上的實作是「代理」（proxy），不是單純的 NAT 轉發；沒有實測過它會不會保留原始來源 IP。如果 WSL 這邊的 `peer` 顯示的是 Windows 那張 WSL 專用虛擬網卡的 IP（這台機器是 `192.168.208.0/20` 網段），而不是第二台主機真正的區網 IP，代表 portproxy 沒有保留來源位址——這不算 bug，只是這個轉發方式的已知限制，不要因此去改 `server.js`。第一次用兩台機器測試時，操作者請截圖或貼 `peer` 欄位的值，確認是哪一種情況。
 
+
+### 第二台主機的 log 與截圖
+
+第二台的 `data\Log\MetalRage.log` 和截圖，從 WSL 讀不到。建議在第二台把 `C:\Games\MetalRage Online\data\Log` 和一個截圖資料夾設成**只限區網**的共用資料夾（唯讀即可），主機就能從 `\\<第二台IP>\...` 讀取。第二台第一份啟動基準存在 `docs/research/2026-09-19-second-client-win10/`。
+
 ## 資料庫
 
 MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`items`、`tutorials`、`maps`、`friends`。
@@ -145,3 +150,15 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 - Ghidra 12.1.3 在 `~/tools/ghidra_12.1.3_PUBLIC`,專案在 `~/tools/mro-ghidra-proj`
 - `tools/win/shot.sh` 截圖**可用**;`tools/win/drive.sh` 送輸入**無效**(前景視窗與 IME 都試過了,
   點擊也不進去)。**遊戲操作一律請使用者手動執行**,你只能觀察。
+
+## 依作業系統選 exe
+
+| 作業系統 | 用哪個 exe | SHA256 |
+|---|---|---|
+| Win11 | `data\System\MetalRage.exe`（上游 Win11 修改版） | `487646b0aafb9f586126876ef483825f60053e0166f59b74a7ca86ac437021b4` |
+| Win10 | `data\System\_original_backup\MetalRage.exe`（原廠） | `419d927517e63fe73172840cf9b2237672b9890a590f16b334bf500d74da14a0` |
+
+- 兩個檔案的差異在 `0x160–0x161`、`0x19213–0x19214`、`0x19237–0x19238`。
+- Win10 用錯 exe 時的特徵：Windows 事件 ID 1000、錯誤代碼 `0xc0000005`、錯誤模組 unknown、`xigncode.log` 沒有更新。朋友那邊出事時，先拿這幾項比對。
+- Win7／Win8 完全沒有測過。
+- 詳情見 `journal/2026-09-19-0010-win10-exe-and-second-client.md`。

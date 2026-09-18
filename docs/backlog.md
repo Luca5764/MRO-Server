@@ -112,6 +112,9 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 
 - 寫一個 `set-server-ip.bat`：一次改掉客戶端的 `ip=` 啟動參數、`MetalRage.ini` 和 `Default.ini` 的 `ServerIP` 三處（見 `docs/reference/client.md`）。
 - 附一頁安裝說明。朋友遠端安裝時，不能指望他們自己手動改 ini。
+- **偵測作業系統版本**：Win10 的 build 號碼小於 22000。依結果自動選對應的 exe，至少要印出提示。安裝包要同時附上兩個版本的 exe（雜湊見 `reference/setup.md`「依作業系統選 exe」）。
+- **修掉 `Play Metal Rage Online.bat` 的 bug**：內層的 `if %ERRORLEVEL% NEQ 0` 包在 `if ( ... )` 區塊裡，`%ERRORLEVEL%` 在剖析整個區塊時就已經展開成外層的非零值，所以檢查 `reg add` 有沒有成功的那一行等於失效：永遠判斷成失敗、印出 FIRST RUN 然後離開。改用 `if errorlevel 1`，或開啟 delayed expansion 改用 `!ERRORLEVEL!`。
+- **字型檢查**：第二台的 `Window Font Count` 是 347，主機是 512。切中文介面前，要確認有安裝「繁體中文補充字型」（Windows「選用功能」）。
 
 ## D1：多人房間模型設計稿（C 線，高階自己做）
 
