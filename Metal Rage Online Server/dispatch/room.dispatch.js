@@ -106,6 +106,9 @@ const SHOP_COMPAT_EXPERIMENT = 'disabled'; // 'disabled' | 'enabled'
 // G6d: full catalog path passed the high-level shop display test; the client
 // owns mech/item compatibility filtering. Evidence: docs/journal/2026-09-18-03-g6d-shop-full-catalog.md.
 const SHOP_FULL_CATALOG_MODE = 'enabled'; // 'disabled' | 'enabled'
+// G6g: keep every period variant in ShopList, but only show Cache.Bin's
+// RepresentIndex entry in the main shop list. Off preserves current output.
+const SHOP_PERIOD_REPRESENTATIVE_MODE = 'disabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
@@ -176,10 +179,13 @@ const ROOM_DEFAULT_ENTRY_HINTS = [8, 37, 30, 34, 6, 2]; // mech slot entries for
 // have sent the packet into a discard. The live send is in
 // gate.game.dispatch.js, after Game_Wait_SN has moved the client to scene 6.
 const CAMPAIGN_GAME_USER_BOOTSTRAP_MODE = 'disabled'; // 'disabled' | 'enabled'
-const CACHE_INDEX_BY_ITEM_ID = loadCacheIndexByItemId();
+const CACHE_INDEX_DATA = loadCacheIndexByItemId();
+const CACHE_INDEX_BY_ITEM_ID = CACHE_INDEX_DATA.indexByItemId;
+const CACHE_REPRESENT_INDEX_BY_ITEM_ID = CACHE_INDEX_DATA.representByItemId;
 
 function loadCacheIndexByItemId() {
-    const map = {};
+    const indexByItemId = {};
+    const representByItemId = {};
     try {
         // Cache.Bin 탐색: 상위 디렉토리 순회 + 절대경로 폴백 (Cache.Bin search: traverse parent directories + absolute path fallback)
         let cachePath = null;
@@ -215,17 +221,25 @@ function loadCacheIndexByItemId() {
         const headerSize = 82;
         const entrySize = 103;
         const itemIdOffset = 96;
-        for (let i = 0; headerSize + (i * entrySize) + itemIdOffset + 4 <= bytes.length; i++) {
-            const itemId = bytes.readInt32LE(headerSize + (i * entrySize) + itemIdOffset);
-            if (itemId > 0 && map[itemId] == null) {
-                map[itemId] = i;
+        for (let i = 0; headerSize + (i * entrySize) + itemIdOffset + 8 <= bytes.length; i++) {
+            const recordOffset = headerSize + (i * entrySize) + itemIdOffset;
+            const itemId = bytes.readInt32LE(recordOffset);
+            const representIndex = bytes.readInt32LE(recordOffset + 4);
+            if (itemId > 0) {
+                if (indexByItemId[itemId] == null) indexByItemId[itemId] = i;
+                if (representIndex > 0 && representByItemId[itemId] == null) {
+                    representByItemId[itemId] = representIndex;
+                }
             }
         }
-        console.log(`[ZRoomDispatch] Loaded ${Object.keys(map).length} Cache.Bin item indexes`);
+        console.log(`[ZRoomDispatch] Loaded ${Object.keys(indexByItemId).length} Cache.Bin item indexes`);
+        const sampleIds = [22100101, 22100102, 22100103, 22100104, 22100105, 22100106, 22100107, 22100108];
+        const samples = sampleIds.map(itemId => `${itemId}->${representByItemId[itemId] ?? 'unknown'}`).join(', ');
+        console.log(`[ZRoomDispatch] Cache.Bin represent samples: ${samples}`);
     } catch (err) {
         console.warn(`[ZRoomDispatch] Cache.Bin index load failed: ${err.message}`);
     }
-    return map;
+    return { indexByItemId, representByItemId };
 }
 
 function getExactMessageBuffer(type, bodySize) {
@@ -288,7 +302,10 @@ function writeShopListBody(body, shopItems, currencyCode) {
         const disc = (Number.isFinite(discRaw) && discRaw > 0) ? (discRaw >>> 0) : gold;
         const itemId = Number(item.item_id) || 0;
         const itemIndex = itemId;
-        const isShow = 1;
+        const representIndex = CACHE_REPRESENT_INDEX_BY_ITEM_ID[itemIndex];
+        const isShow = SHOP_PERIOD_REPRESENTATIVE_MODE !== 'enabled' || representIndex == null
+            ? 1
+            : (Number(representIndex) === itemIndex ? 1 : 0);
         const isNew = item.is_new == null ? 0 : (Number(item.is_new) ? 1 : 0);
         const isHot = item.is_hot == null ? 0 : (Number(item.is_hot) ? 1 : 0);
 
