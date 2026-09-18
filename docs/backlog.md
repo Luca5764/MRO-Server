@@ -332,3 +332,29 @@
 ### 完成條件
 
 能證明（或否定）serial 0 足以讓預設武器顯示、裝備、出場；否定時寫明原因。
+
+## C1：收斂 2026-09-18 通過的開關（期限 2026-09-25）
+
+> **狀態：Claude 高階開立；前置條件 A6 黃金樣本回歸測試（`flash-wip-replay`）要先合併。未指派。**
+
+### 目標
+
+刪掉下列已 ✅ 的開關，只保留驗證過的那條路：`ROOM_TEAM_INDEX_MODE`（R11）、`ROOM_USER_NAME_ANSI_MODE`（R12）、`ROOM_LEAVE_RESET_MODE`（L1）、`MONEY_PERSIST_MODE`（M1）、`POST_BUY_SLOT_REFRESH_MODE`（M3a）。依據見 `docs/state.md` 第 4、4b 節。
+
+### 範圍
+
+- 只動這五個開關與它們的 disabled 分支；其他開關（含 `docs/reference/switch-audit.md` 裡確定不能開的）另開任務。
+- 在 `~/mro-wt/<名稱>` 開 worktree 做，不要在主目錄切分支。
+
+### 限制
+
+- 一個開關一個 commit。每個 commit 都要跑黃金樣本回歸，全綠才算數。
+- 不改任何行為。收斂後的輸出要跟開關為 enabled 時逐位元組相同。
+
+### 交付
+
+- 五個 commit，外加回歸測試輸出摘要。
+
+### 完成條件
+
+五個開關都從程式中移除；回歸測試全綠；`switch-audit.md` 對應列標為已收斂。
