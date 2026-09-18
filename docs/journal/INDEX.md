@@ -100,5 +100,5 @@
 | 2026-09-18 | `2026-09-18-07-shop-period-variants.md` | `0x00240241`、`0x00240242` | ✅ Claude 高階審查＋實測 | G6g：Cache.Bin `RepresentIndex` 位於 `+0x04`、期限位於 `+0x43`；全送期限變體但主列表只顯示代表項，購買彈窗仍列完整期限選單。 |
 | 2026-09-18 | `2026-09-18-08-room-map-sync.md` | `0x00220203`、`0x00220223`、`0x00220226`、`0x00222111` | 🟡 待審／預設關閉 | R1：房間狀態改以 `campaignMapCacheKey_` 同步實際 9001–9012 map ID；保留 `bodyCache` 的 Cache index 型別，未實測。 |
 | 2026-09-18 | `2026-09-18-09-room-string-encoding.md` | `0x0022021A`、`0x00220233`、`0x00220421` | 🟡 待審／預設關閉 | R2：房名加 ANSI 窄字串實驗，User_Default 以共用安全 ASCII 路徑重寫；保留 `0x00220421` 未確認的 UTF-16LE 路徑，未實測。 |
-| 2026-09-18 | `2026-09-18-10-map-change-one-sa.md` | `0x00220221`、`0x00220222`、`0x00220223`、`0x00220226` | 🟡 待審／預設關閉 | R3：以 DLL 確認 Map_Change_One_SA 的十 bytes 欄位，enabled 回送實際 map ID／回合；disabled 保留舊的 Cache index 58 實驗值，未實測。 |
+| 2026-09-18 | `2026-09-18-10-map-change-one-sa.md` | `0x00220221`、`0x00220222`、`0x00220223`、`0x00220226` | 🟡 待審／預設關閉 | R3b 更正 R3：`Map_Change_One_SA` enabled 為 6-byte 全零成功標頭＋10-byte payload（共 16 bytes）；disabled 保留舊 10-byte 路徑，未實測。 |
 | 2026-09-18 | `2026-09-18-11-room-default-map-entry.md` | `0x00220203` | 🟡 待審／預設關閉 | R4：首筆 entry `body+0x20+0x00` 由 Cache 列索引改為實際 map ID 的預設關閉實驗；與已修正的 `body+0x05 mapIndex` 分開，未實測。 |

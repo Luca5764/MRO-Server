@@ -68,14 +68,10 @@ const ROOM_STATE_RETRY_SCHEDULE = [
 
 let nextRoomIndex = 1;
 
-// 0x220221 / 0x220222 body layout (10 bytes total), confirmed in
-// ZDispatchRoom::Map_Change_One_SA at 0x107eb510:
-//   [0]    = b0
-//   [1..2] = w1
-//   [3..4] = w2
-//   [5]    = b5
-//   [6..7] = w6
-//   [8..9] = w8
+// 0x220221 carries a 10-byte payload. For 0x220222, the enabled path adds
+// the 6-byte zero success header required by ZDispatchRoom::Map_Change_One_SA
+// at 0x107eb510, then places the same payload at body+0x06. The disabled path
+// preserves the old 10-byte body with the payload at body+0x00.
 //
 // Change only one field at a time while testing difficulty buttons.
 const MAP_CHANGE_SA_ECHO_MODE = 'disabled'; // 'disabled' | 'enabled'
@@ -425,14 +421,14 @@ function resolveExperimentValue(value, client)
     return value;
 }
 
-function writeMapChangeOneBody(body, fields)
+function writeMapChangeOneBody(body, fields, offset = 0)
 {
-    body.writeUInt8(fields.b0 & 0xFF, 0);
-    body.writeUInt16LE(fields.w1 & 0xFFFF, 1);
-    body.writeUInt16LE(fields.w2 & 0xFFFF, 3);
-    body.writeUInt8(fields.b5 & 0xFF, 5);
-    body.writeUInt16LE(fields.w6 & 0xFFFF, 6);
-    body.writeUInt16LE(fields.w8 & 0xFFFF, 8);
+    body.writeUInt8(fields.b0 & 0xFF, offset + 0);
+    body.writeUInt16LE(fields.w1 & 0xFFFF, offset + 1);
+    body.writeUInt16LE(fields.w2 & 0xFFFF, offset + 3);
+    body.writeUInt8(fields.b5 & 0xFF, offset + 5);
+    body.writeUInt16LE(fields.w6 & 0xFFFF, offset + 6);
+    body.writeUInt16LE(fields.w8 & 0xFFFF, offset + 8);
 }
 
 function buildMapChangeOneSaFields(body, client)
@@ -860,10 +856,9 @@ class ZGateGameDispatch
             case 0x00220221:
             {
                 clearPendingRoomStateRetries(client, 'map-change-one cq');
-                // Static analysis for ZDispatchRoom::Map_Change_One_CQ/SA shows
-                // the SA uses a 0x1A packet (0x0A body), not the generic 6-byte OK.
-                // When the body begins with zeroed status fields, the client-side
-                // SA path falls back to its retained room-map state and proceeds.
+                // Static analysis for ZDispatchRoom::Map_Change_One_SA shows the
+                // enabled SA body is 6 zero status bytes followed by the 10-byte
+                // map payload. Keep the old 10-byte body only while disabled.
                 const incomingFields = parseMapChangeOneBody(body);
                 // Map_Change_One_CQ (ZDispatchRoom 0x107eec30): w1 = MapIndex,
                 // b5 = MapRound. Take the difficulty/map the player switched to,
@@ -878,12 +873,19 @@ class ZGateGameDispatch
                     `(b0=${incomingFields.b0}, w1=${incomingFields.w1}, w2=${incomingFields.w2}, ` +
                     `b5=${incomingFields.b5}, w6=${incomingFields.w6}, w8=${incomingFields.w8})`
                 );
-                const [msg, respBody] = getExactMessageBuffer(0x00220222, 0x0A);
-                writeMapChangeOneBody(respBody, outgoingFields);
+                const saHasSuccessHeader = MAP_CHANGE_SA_ECHO_MODE === 'enabled';
+                const saBodySize = saHasSuccessHeader ? 0x10 : 0x0A;
+                const saPayloadOffset = saHasSuccessHeader ? 0x06 : 0x00;
+                const [msg, respBody] = getExactMessageBuffer(0x00220222, saBodySize);
+                if (saHasSuccessHeader) {
+                    respBody.writeUInt16LE(0, 0x00);
+                    respBody.writeUInt32LE(0, 0x02);
+                }
+                writeMapChangeOneBody(respBody, outgoingFields, saPayloadOffset);
                 client.send(msg);
                 console.log(
                     `[ZGateGameDispatch] >> Sent Map_Change_One_SA 0x220222 ` +
-                    `(mode=${MAP_CHANGE_ONE_SA_EXPERIMENT.mode}, ` +
+                    `(mode=${MAP_CHANGE_ONE_SA_EXPERIMENT.mode}, bodySize=${saBodySize}, ` +
                     `b0=${outgoingFields.b0}, w1=${outgoingFields.w1}, w2=${outgoingFields.w2}, ` +
                     `b5=${outgoingFields.b5}, w6=${outgoingFields.w6}, w8=${outgoingFields.w8}, ` +
                     `hex=${respBody.toString('hex')})`
