@@ -110,3 +110,4 @@
 | 2026-09-18 | `2026-09-18-18-pve-hard-flow.md` | `0x00222111`、`0x00230139`、`0x00222213`、`0x00230123` | 🟡 高階初審／只分析 | P3：通關的是 9010 簡單房（205012），困難房（214305）送 9012／10 但 547 秒後停住、沒有 Campaign／EndGame；三命是 `DefNumLive=3` 全難度共用；另發現 TimeLimit 寫死 10 分鐘。 |
 | 2026-09-18 | `2026-09-18-20-room-leave-reset.md` | `0x00220234`、`0x00220235`、`0x00240101`、`0x00240241` | ✅ Claude 高階裁定＋實測，預設 enabled | L1：Leave_CQ 未重設房間狀態，`campaignRoom_` 殘留使大廳機庫跳過初始化、商城空白；改為收到 Leave_CQ 時重設。 |
 | 2026-09-18 | `2026-09-18-16-money-persistence.md` | `0x00210103`、`0x00240102`、`0x00240132`、`0x00240133`、`0x00240202` | ✅ M1 Claude 高階審查＋實測，預設 enabled；M2 ❌ | M1：以 DB 持久化 Point/Cash/Coupon；enabled 才改四類金錢封包與購買 transaction，Buy SA 擴為 14 bytes；migration 只寫入未執行。 |
+| 2026-09-18 | `2026-09-18-19-m3-inventory-refresh.md` | `0x00210111`、`0x00240202`、`0x00240108` | ✅ M3a 實測，預設 enabled | M3：ItemInfo_SN 不發 UI 事件；購買成功後補送目前槽位的 Slot_Change_SA，觸發 InvenUpdate，新物品立刻出現。 |

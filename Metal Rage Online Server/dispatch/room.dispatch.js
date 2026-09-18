@@ -121,7 +121,7 @@ const SHOP_PERIOD_REPRESENTATIVE_MODE = 'enabled'; // 'disabled' | 'enabled'
 // ZPage_Hangar.SlotChangeRecv() -> InvenUpdate(), so this should make a
 // purchased item show up in the hangar inventory without a manual mech
 // switch. Untested; keep disabled until verified against the client.
-const POST_BUY_SLOT_REFRESH_MODE = 'disabled'; // 'disabled' | 'enabled'
+const POST_BUY_SLOT_REFRESH_MODE = 'enabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
