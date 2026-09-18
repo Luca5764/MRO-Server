@@ -5,6 +5,8 @@ const SN_USER_NAME = 0x00220421;
 const SN_USER_PILOT = 0x00220402;
 const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
 
+const ROOM_USER_NAME_ANSI_MODE = 'enabled'; // 'disabled' | 'enabled'
+
 function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
     const {
         accountIndex,
@@ -53,7 +55,11 @@ function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
     {
         const [msg, respBody] = getExactMessageBuffer(SN_USER_NAME, 0x4E);
         respBody.writeUint16LE(accountIndex, 0x00);
-        respBody.write(nickname + '\0', 0x1B, 'utf16le');
+        if (ROOM_USER_NAME_ANSI_MODE === 'enabled') {
+            writeAnsiStringField(respBody, nickname, 0x1B, 0x4E - 0x1B);
+        } else {
+            respBody.write(nickname + '\0', 0x1B, 'utf16le');
+        }
         client.send(msg);
         console.log(`[ZRoomDispatch] >> Sent SN_USER_NAME 0x220421 ("${nickname}")`);
     }
@@ -97,5 +103,6 @@ function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
 }
 
 module.exports = {
+    ROOM_USER_NAME_ANSI_MODE,
     sendRoomUserPackets,
 };

@@ -5,6 +5,10 @@ const SN_ROOM_OPTION = 0x00220217;
 const SN_ROOM_NAME = 0x0022021A;
 const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
 
+const ROOM_TEAM_INDEX_MODE = 'enabled'; // 'disabled' | 'enabled'
+const ROOM_RED_TEAM_INDEX = 0;
+const ROOM_BLUE_TEAM_INDEX = 1;
+
 // R4 implemented but failed: using the real map id here had no observable
 // effect; the room-settings list remained empty and showed 4 VS 4.
 // See docs/journal/2026-09-18-11-room-default-map-entry.md.
@@ -58,8 +62,14 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         respBody.writeUint8(0, 0x0C);
         respBody.writeUint8(0, 0x0D);
         respBody.writeUint8(0, 0x0E);
-        respBody.writeUint16LE(client.createWord1_ || 0, 0x10);
-        respBody.writeUint16LE(client.createWord2_ || 0, 0x12);
+        const redTeamIndex = ROOM_TEAM_INDEX_MODE === 'enabled'
+            ? ROOM_RED_TEAM_INDEX
+            : (client.createWord1_ || 0);
+        const blueTeamIndex = ROOM_TEAM_INDEX_MODE === 'enabled'
+            ? ROOM_BLUE_TEAM_INDEX
+            : (client.createWord2_ || 0);
+        respBody.writeUint16LE(redTeamIndex, 0x10);
+        respBody.writeUint16LE(blueTeamIndex, 0x12);
         respBody.writeUint8(0, 0x1B);
         respBody.writeUint8(roomSettingGoal, 0x1C);
         respBody.writeUint8(roomSettingTime, 0x1D);
@@ -85,7 +95,7 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         respBody.writeUint8(roomDefaultEntryCount, 0x2F);
 
         client.send(msg);
-        console.log(`[ZRoomDispatch] >> Sent SN_ROOM_DEFAULT (${bodySize} bytes, account=${accountIndex}, room=${roomIndex}, link=${roomLinkIndex}, type=${roomType}, mapIndex=${mapIndex}, map=${mapId}, opt1=0x${(client.createWord1_ || 0).toString(16)}, opt2=0x${(client.createWord2_ || 0).toString(16)}, max=${maxPlayers}, mode=${gameMode}, goal=${roomSettingGoal}, time=${roomSettingTime}, round=${roomSettingRound}, entryCount=${roomDefaultEntryCount}, bodyCache=${primaryBodyCacheIndex})`);
+        console.log(`[ZRoomDispatch] >> Sent SN_ROOM_DEFAULT (${bodySize} bytes, account=${accountIndex}, room=${roomIndex}, link=${roomLinkIndex}, type=${roomType}, mapIndex=${mapIndex}, map=${mapId}, opt1=0x${(client.createWord1_ || 0).toString(16)}, opt2=0x${(client.createWord2_ || 0).toString(16)}, redTeam=${redTeamIndex}, blueTeam=${blueTeamIndex}, teamMode=${ROOM_TEAM_INDEX_MODE}, max=${maxPlayers}, mode=${gameMode}, goal=${roomSettingGoal}, time=${roomSettingTime}, round=${roomSettingRound}, entryCount=${roomDefaultEntryCount}, bodyCache=${primaryBodyCacheIndex})`);
     }
 
     {
