@@ -1463,3 +1463,5 @@ class ZRoomDispatch
         sendCampaignBootstrap(client, getExactMessageBuffer);
     }
 };
+
+module.exports.resetRoomSessionState = resetRoomSessionState;
