@@ -1,7 +1,7 @@
 const NetworkClient = require("../client");
 const db = require('../database/db');
 const session = require('../session.js');
-const { MONEY_PERSIST_MODE, clampMoney, moneyBigInt } = require('./money');
+const { clampMoney, moneyBigInt } = require('./money');
 
 // Game server login handler
 // After connecting to the game server (port 30907), the client sends
@@ -92,11 +92,9 @@ class ZGameLoginDispatch
                 client.accountId_ = account.id;
                 client.nickname_ = account.nickname;
                 client.pilot_ = Number(account.pilot) || 101;
-                if (MONEY_PERSIST_MODE === 'enabled') {
-                    client.point_ = clampMoney(account.point, 100000);
-                    client.cash_ = clampMoney(account.cash, 0);
-                    client.coupon_ = clampMoney(account.coupon, 0);
-                }
+                client.point_ = clampMoney(account.point, 100000);
+                client.cash_ = clampMoney(account.cash, 0);
+                client.coupon_ = clampMoney(account.coupon, 0);
 
                 // This is the first moment this connection knows who it is, so
                 // it is the moment to bring back what the previous connection
@@ -145,26 +143,14 @@ class ZGameLoginDispatch
                     const [msg, respBody] = client.getMessageBuffer(SN_RECORD_INFO, 0x60);
                     for (let i = 0; i < 0x60; i += 4) respBody.writeUint32LE(0, i);
                     respBody.writeUint32LE(record.level, 0x00);
-                    if (MONEY_PERSIST_MODE === 'enabled') {
-                        respBody.writeBigUint64LE(moneyBigInt(account.coupon, 0), 0x14);
-                        respBody.writeUint32LE(record.wins, 0x1C);
-                        respBody.writeUint32LE(record.draws, 0x20);
-                        respBody.writeUint32LE(record.losses, 0x24);
-                        respBody.writeUint32LE(record.kills, 0x28);
-                        respBody.writeUint32LE(record.deaths, 0x2C);
-                    } else {
-                        respBody.writeUint32LE(record.wins, 0x14);
-                        respBody.writeUint32LE(record.draws, 0x18);
-                        respBody.writeUint32LE(record.losses, 0x1C);
-                        respBody.writeUint32LE(record.kills, 0x20);
-                        respBody.writeUint32LE(record.deaths, 0x24);
-                    }
+                    respBody.writeBigUint64LE(moneyBigInt(account.coupon, 0), 0x14);
+                    respBody.writeUint32LE(record.wins, 0x1C);
+                    respBody.writeUint32LE(record.draws, 0x20);
+                    respBody.writeUint32LE(record.losses, 0x24);
+                    respBody.writeUint32LE(record.kills, 0x28);
+                    respBody.writeUint32LE(record.deaths, 0x2C);
                     respBody.writeBigUint64LE(BigInt(record.exp), 0x40);
-                    if (MONEY_PERSIST_MODE === 'enabled') {
-                        respBody.writeBigUint64LE(moneyBigInt(account.point, 100000), 0x48);
-                    } else {
-                        respBody.writeBigUint64LE(BigInt(record.exp_max), 0x48);
-                    }
+                    respBody.writeBigUint64LE(moneyBigInt(account.point, 100000), 0x48);
                     client.send(msg);
                 }
 
@@ -280,11 +266,9 @@ class ZGameLoginDispatch
                 // No DB record — fallback to minimal data so the client doesn't hang
                 console.log(`[ZGameLoginDispatch] >> No DB account found, sending defaults`);
                 client.nickname_ = 'Player';
-                if (MONEY_PERSIST_MODE === 'enabled') {
-                    client.point_ = 100000;
-                    client.cash_ = 0;
-                    client.coupon_ = 0;
-                }
+                client.point_ = 100000;
+                client.cash_ = 0;
+                client.coupon_ = 0;
 
                 {
                     const [msg, respBody] = client.getMessageBuffer(SN_DEFAULT_INFO, 0x1b);
@@ -306,10 +290,8 @@ class ZGameLoginDispatch
                 {
                     const [msg, respBody] = client.getMessageBuffer(SN_RECORD_INFO, 0x60);
                     respBody.writeUint32LE(1, 0);
-                    if (MONEY_PERSIST_MODE === 'enabled') {
-                        respBody.writeBigUint64LE(moneyBigInt(client.coupon_, 0), 0x14);
-                        respBody.writeBigUint64LE(moneyBigInt(client.point_, 100000), 0x48);
-                    }
+                    respBody.writeBigUint64LE(moneyBigInt(client.coupon_, 0), 0x14);
+                    respBody.writeBigUint64LE(moneyBigInt(client.point_, 100000), 0x48);
                     client.send(msg);
                 }
 
@@ -370,11 +352,9 @@ class ZGameLoginDispatch
         } catch (err) {
             console.error(`[ZGameLoginDispatch] >> DB Error:`, err.message);
             //Send minimal hardcoded data to prevent crash
-            if (MONEY_PERSIST_MODE === 'enabled') {
-                client.point_ = 100000;
-                client.cash_ = 0;
-                client.coupon_ = 0;
-            }
+            client.point_ = 100000;
+            client.cash_ = 0;
+            client.coupon_ = 0;
             {
                 const [msg, respBody] = client.getMessageBuffer(SN_DEFAULT_INFO, 0x1b);
                 respBody.write('4\0', 0);
@@ -392,10 +372,8 @@ class ZGameLoginDispatch
             {
                 const [msg, respBody] = client.getMessageBuffer(SN_RECORD_INFO, 0x60);
                 respBody.writeUint32LE(1, 0);
-                if (MONEY_PERSIST_MODE === 'enabled') {
-                    respBody.writeBigUint64LE(moneyBigInt(client.coupon_, 0), 0x14);
-                    respBody.writeBigUint64LE(moneyBigInt(client.point_, 100000), 0x48);
-                }
+                respBody.writeBigUint64LE(moneyBigInt(client.coupon_, 0), 0x14);
+                respBody.writeBigUint64LE(moneyBigInt(client.point_, 100000), 0x48);
                 client.send(msg);
             }
             // SN_GRADE_INFO: account grade (m_MyAccountLevel); 0 = normal player

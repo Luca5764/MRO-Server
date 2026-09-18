@@ -7,7 +7,7 @@ const { sendRoomUserPackets } = require('./room/room-user.sender');
 const { sendRoomMapPackets, sendCampaignBootstrap, ROOM_MAP_SYNC_MODE } = require('./room/room-map.sender');
 const { sendGameUserBootstrap } = require('./room/room-game-user.sender');
 const { MAX_SLOT_COUNT } = require('../datatypes/enums');
-const { MONEY_PERSIST_MODE, clampMoney, moneyBigInt } = require('./money');
+const { clampMoney, moneyBigInt } = require('./money');
 const fs = require('fs');
 const path = require('path');
 
@@ -80,10 +80,8 @@ const SN_PACKAGE_POINT = 0x00240132;
 const SN_PACKAGE_COUPON = 0x00240133;
 const SN_SHOP_LIST     = 0x00240241;
 const SN_CASH_SHOP     = 0x00240242;
-const HANGAR_POINT_BALANCE = 100000;
-const HANGAR_COUPON_BALANCE = 1000;
-// M1 money persistence is opt-in; disabled keeps the existing fixed balances
-// and six-byte purchase response unchanged.
+// M1 verified [DLL][LOG][DB][OBS]: accounts.point/cash/coupon persist across
+// login; see docs/journal/2026-09-18-16-money-persistence.md.
 // G6 equipment persistence passed change -> DB -> relog verification.
 // Evidence: docs/journal/2026-09-18-06-g6-equip-save-verified.md.
 const EQUIP_SAVE_MODE = 'enabled'; // 'disabled' | 'enabled'
@@ -521,12 +519,7 @@ class ZRoomDispatch
                     const [msg, respBody] = getExactMessageBuffer(0x00240102, 0x0E);
                     respBody.writeUint16LE(0x0000, 0);
                     respBody.writeUint32LE(0x00000000, 0x02);
-                    if (MONEY_PERSIST_MODE === 'enabled') {
-                        respBody.writeBigUint64LE(moneyBigInt(client.cash_, 0), 0x06);
-                    } else {
-                        respBody.writeUint32LE(0x00000000, 0x06);
-                        respBody.writeUint32LE(0x00000000, 0x0A);
-                    }
+                    respBody.writeBigUint64LE(moneyBigInt(client.cash_, 0), 0x06);
                     client.send(msg);
                     console.log(`[ZRoomDispatch] >> Suppressed Hangar bootstrap in campaign room (sent minimal 0x240102 only)`);
                     return true;
@@ -546,12 +539,7 @@ class ZRoomDispatch
                     respBody.writeUint32LE(0x00000000, 0x02);
                     // The client displays offsets 0x06/0x0A as one 64-bit cash
                     // value in this path.
-                    if (MONEY_PERSIST_MODE === 'enabled') {
-                        respBody.writeBigUint64LE(moneyBigInt(client.cash_, 0), 0x06);
-                    } else {
-                        respBody.writeUint32LE(0x00000000, 0x06);
-                        respBody.writeUint32LE(0x00000000, 0x0A);
-                    }
+                    respBody.writeBigUint64LE(moneyBigInt(client.cash_, 0), 0x06);
                     client.send(msg);
                     console.log(`[ZRoomDispatch] >> Sent Hangar Open_SA 0x240102 (14 bytes)`);
                 }
@@ -861,7 +849,7 @@ class ZRoomDispatch
         let responsePoint = clampMoney(client.point_, 100000);
         if (!client.accountId_) {
             result = 1;
-        } else if (MONEY_PERSIST_MODE === 'enabled') {
+        } else {
             let connection;
             try {
                 const catalog = await db.getItemCatalog();
@@ -924,31 +912,6 @@ class ZRoomDispatch
             } finally {
                 if (connection) connection.release();
             }
-        } else {
-            try {
-                const catalog = await db.getItemCatalog();
-                const item = catalog.find(row => Number(row.item_id) === Number(itemId));
-                if (!item) {
-                    result = 1;
-                } else {
-                    const catType = catalogCategoryType(item);
-                    // category_type → part_slot 매핑 (category_type → part_slot mapping)
-                    // 2=주무기→1, 3=보조무기→2, 4=부스터→4, 5=스킨→5, 6=장비→4, 7=부스터→4, 8=지원→5 (2=MainWeapon→1, 3=SubWeapon→2, 4=Booster→4, 5=Skin→5, 6=Equipment→4, 7=Booster→4, 8=Support→5)
-                    const partSlotMap = { 2: 1, 3: 2, 4: 4, 5: 4, 6: 4, 7: 4, 8: 4 };
-                    const partSlot = partSlotMap[catType] ?? 1;
-                    const mechType = PURCHASE_MECH_SLOT_MODE === 'enabled'
-                        ? (Number(client.currentHangarSlot_) || 1)
-                        : (Number(item.mech_type) || 0);
-                    await db.pool.execute(
-                        'INSERT INTO items (account_id, item_id, slot, mech_type, part_slot, quantity, equipped) VALUES (?, ?, ?, ?, ?, 1, 0)',
-                        [client.accountId_, itemId, partSlot, mechType, partSlot]
-                    );
-                    console.log(`[ZRoomDispatch] >> Shop Buy stored item: account=${client.accountId_} item_id=${itemId} mech=${mechType} part=${partSlot}`);
-                }
-            } catch (err) {
-                result = 1;
-                console.error(`[ZRoomDispatch] >> Shop Buy DB error:`, err.message);
-            }
         }
 
         if (result === 0 && (PURCHASE_ITEMINFO_REFRESH === 'enabled' || SHOP_UNBLOCK_MODE === 'enabled')) {
@@ -965,15 +928,12 @@ class ZRoomDispatch
             }
         }
 
-        const buyResponseBodySize = MONEY_PERSIST_MODE === 'enabled' ? 0x0E : 0x06;
-        const [msg, body] = getExactMessageBuffer(0x00240202, buyResponseBodySize);
+        const [msg, body] = getExactMessageBuffer(0x00240202, 0x0E);
         body.writeUInt16LE(0, 0x00);
         body.writeUInt32LE(result, 0x02);
-        if (MONEY_PERSIST_MODE === 'enabled') {
-            body.writeBigUint64LE(moneyBigInt(responsePoint, 100000), 0x06);
-        }
+        body.writeBigUint64LE(moneyBigInt(responsePoint, 100000), 0x06);
         client.send(msg);
-        console.log(`[ZRoomDispatch] >> Sent Shop Buy SA 0x240202: result=${result}${MONEY_PERSIST_MODE === 'enabled' ? ` point=${responsePoint}` : ''}`);
+        console.log(`[ZRoomDispatch] >> Sent Shop Buy SA 0x240202: result=${result} point=${responsePoint}`);
 
         if (result === 0) {
             this.sendPackageMoney(client);
@@ -1269,45 +1229,20 @@ class ZRoomDispatch
 
     sendPackageMoney(client)
     {
-        if (MONEY_PERSIST_MODE === 'enabled') {
-            const point = clampMoney(client.point_, 100000);
-            const coupon = clampMoney(client.coupon_, 0);
-
-            {
-                const [msg, body] = getExactMessageBuffer(SN_PACKAGE_POINT, 12);
-                body.writeUint32LE(1, 0x00);
-                body.writeBigUint64LE(moneyBigInt(point), 0x04);
-                client.send(msg);
-            }
-
-            {
-                const [msg, body] = getExactMessageBuffer(SN_PACKAGE_COUPON, 12);
-                body.writeUint32LE(1, 0x00);
-                body.writeBigUint64LE(moneyBigInt(coupon), 0x04);
-                client.send(msg);
-            }
-
-            console.log(`[ZRoomDispatch] >> Sent Packege_Point_SN 0x240132: point=${point}`);
-            console.log(`[ZRoomDispatch] >> Sent Packege_Coupon_SN 0x240133: coupon=${coupon}`);
-            return;
-        }
-
-        const point = HANGAR_POINT_BALANCE;
-        const coupon = HANGAR_COUPON_BALANCE;
+        const point = clampMoney(client.point_, 100000);
+        const coupon = clampMoney(client.coupon_, 0);
 
         {
             const [msg, body] = getExactMessageBuffer(SN_PACKAGE_POINT, 12);
-            body.writeUint32LE(point, 0x00);
-            body.writeUint32LE(point, 0x04);
-            body.writeUint32LE(0, 0x08);
+            body.writeUint32LE(1, 0x00);
+            body.writeBigUint64LE(moneyBigInt(point), 0x04);
             client.send(msg);
         }
 
         {
             const [msg, body] = getExactMessageBuffer(SN_PACKAGE_COUPON, 12);
-            body.writeUint32LE(coupon, 0x00);
-            body.writeUint32LE(coupon, 0x04);
-            body.writeUint32LE(0, 0x08);
+            body.writeUint32LE(1, 0x00);
+            body.writeBigUint64LE(moneyBigInt(coupon), 0x04);
             client.send(msg);
         }
 
