@@ -3,6 +3,7 @@ const SN_ROOM_BOUNDARY = 0x00220213;
 const SN_ROOM_STATE = 0x00220214;
 const SN_ROOM_OPTION = 0x00220217;
 const SN_ROOM_NAME = 0x0022021A;
+const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
 
 function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
     const {
@@ -70,7 +71,11 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
 
     {
         const [msg, respBody] = getExactMessageBuffer(SN_ROOM_NAME, 0x32);
-        respBody.write(roomName + '\0', 0x00, 'utf16le');
+        if (ROOM_STRING_ANSI_MODE === 'enabled') {
+            writeAnsiStringField(respBody, roomName, 0x00, 0x32);
+        } else {
+            respBody.write(roomName + '\0', 0x00, 'utf16le');
+        }
         client.send(msg);
         console.log(`[ZRoomDispatch] >> Sent SN_ROOM_NAME 0x22021A ("${roomName}")`);
     }
