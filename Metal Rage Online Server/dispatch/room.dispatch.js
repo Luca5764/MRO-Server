@@ -106,6 +106,10 @@ const SHOP_COMPAT_EXPERIMENT = 'disabled'; // 'disabled' | 'enabled'
 // G6d: full catalog path passed the high-level shop display test; the client
 // owns mech/item compatibility filtering. Evidence: docs/journal/2026-09-18-03-g6d-shop-full-catalog.md.
 const SHOP_FULL_CATALOG_MODE = 'enabled'; // 'disabled' | 'enabled'
+// G6g: verified—keep every period variant in ShopList, but only show
+// Cache.Bin's RepresentIndex entry in the main shop list.
+// Evidence: docs/journal/2026-09-18-07-shop-period-variants.md.
+const SHOP_PERIOD_REPRESENTATIVE_MODE = 'enabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
@@ -176,10 +180,21 @@ const ROOM_DEFAULT_ENTRY_HINTS = [8, 37, 30, 34, 6, 2]; // mech slot entries for
 // have sent the packet into a discard. The live send is in
 // gate.game.dispatch.js, after Game_Wait_SN has moved the client to scene 6.
 const CAMPAIGN_GAME_USER_BOOTSTRAP_MODE = 'disabled'; // 'disabled' | 'enabled'
-const CACHE_INDEX_BY_ITEM_ID = loadCacheIndexByItemId();
+// GameItemRecord table: static scan from Cache.Bin and
+// docs/research/2026-09-18-subordination/README.md. This is separate from
+// the 1268-entry body-index scan below; do not change that scan's parameters.
+// The last record starts at 0x373ed; the known DefaultSetList follows at 0x37456.
+const GAME_ITEM_RECORD_TABLE_START = 0x2294;
+const GAME_ITEM_RECORD_ENTRY_SIZE = 0x67;
+const GAME_ITEM_RECORD_COUNT = 2112;
+const CACHE_INDEX_DATA = loadCacheIndexByItemId();
+const CACHE_INDEX_BY_ITEM_ID = CACHE_INDEX_DATA.indexByItemId;
+const CACHE_REPRESENT_INDEX_BY_ITEM_ID = CACHE_INDEX_DATA.representByItemId;
 
 function loadCacheIndexByItemId() {
-    const map = {};
+    const indexByItemId = {};
+    const representByItemId = {};
+    const periodByItemId = {};
     try {
         // Cache.Bin 탐색: 상위 디렉토리 순회 + 절대경로 폴백 (Cache.Bin search: traverse parent directories + absolute path fallback)
         let cachePath = null;
@@ -215,17 +230,47 @@ function loadCacheIndexByItemId() {
         const headerSize = 82;
         const entrySize = 103;
         const itemIdOffset = 96;
+        // This original scan feeds CACHE_INDEX_BY_ITEM_ID for slot===0 body
+        // conversion. Its 1268-entry result is intentionally preserved.
         for (let i = 0; headerSize + (i * entrySize) + itemIdOffset + 4 <= bytes.length; i++) {
             const itemId = bytes.readInt32LE(headerSize + (i * entrySize) + itemIdOffset);
-            if (itemId > 0 && map[itemId] == null) {
-                map[itemId] = i;
+            if (itemId > 0 && indexByItemId[itemId] == null) {
+                indexByItemId[itemId] = i;
             }
         }
-        console.log(`[ZRoomDispatch] Loaded ${Object.keys(map).length} Cache.Bin item indexes`);
+        console.log(`[ZRoomDispatch] Loaded ${Object.keys(indexByItemId).length} Cache.Bin item indexes`);
+        const firstRecordItemId = bytes.readInt32LE(GAME_ITEM_RECORD_TABLE_START);
+        const tableEnd = GAME_ITEM_RECORD_TABLE_START
+            + (GAME_ITEM_RECORD_COUNT * GAME_ITEM_RECORD_ENTRY_SIZE);
+        if (firstRecordItemId !== 11100101 || tableEnd > bytes.length) {
+            console.warn(
+                `[ZRoomDispatch] Cache.Bin GameItemRecord table sanity failed: `
+                + `first=${firstRecordItemId} expected=11100101 end=0x${tableEnd.toString(16)} `
+                + `size=0x${bytes.length.toString(16)}`
+            );
+        } else {
+            for (let i = 0; i < GAME_ITEM_RECORD_COUNT; i++) {
+                const recordOffset = GAME_ITEM_RECORD_TABLE_START + (i * GAME_ITEM_RECORD_ENTRY_SIZE);
+                const itemId = bytes.readInt32LE(recordOffset);
+                const representIndex = bytes.readInt32LE(recordOffset + 0x04);
+                const periodSeconds = bytes.readInt32LE(recordOffset + 0x43);
+                if (itemId > 0) {
+                    if (representIndex > 0 && representByItemId[itemId] == null) {
+                        representByItemId[itemId] = representIndex;
+                    }
+                    periodByItemId[itemId] = periodSeconds;
+                }
+            }
+        }
+        const sampleIds = [22100101, 22100102, 22100103, 22100104, 22100105, 22100106, 22100107, 22100108];
+        const samples = sampleIds.map(itemId =>
+            `${itemId}->rep ${representByItemId[itemId] ?? 'unknown'} period ${periodByItemId[itemId] ?? 'unknown'}`
+        ).join(', ');
+        console.log(`[ZRoomDispatch] Cache.Bin represent samples: ${samples}`);
     } catch (err) {
         console.warn(`[ZRoomDispatch] Cache.Bin index load failed: ${err.message}`);
     }
-    return map;
+    return { indexByItemId, representByItemId };
 }
 
 function getExactMessageBuffer(type, bodySize) {
@@ -288,7 +333,10 @@ function writeShopListBody(body, shopItems, currencyCode) {
         const disc = (Number.isFinite(discRaw) && discRaw > 0) ? (discRaw >>> 0) : gold;
         const itemId = Number(item.item_id) || 0;
         const itemIndex = itemId;
-        const isShow = 1;
+        const representIndex = CACHE_REPRESENT_INDEX_BY_ITEM_ID[itemIndex];
+        const isShow = SHOP_PERIOD_REPRESENTATIVE_MODE !== 'enabled' || representIndex == null
+            ? 1
+            : (Number(representIndex) === itemIndex ? 1 : 0);
         const isNew = item.is_new == null ? 0 : (Number(item.is_new) ? 1 : 0);
         const isHot = item.is_hot == null ? 0 : (Number(item.is_hot) ? 1 : 0);
 
