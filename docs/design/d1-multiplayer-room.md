@@ -28,7 +28,7 @@ rooms.js（模組層級，同一個 Node 程序內共用；9211 和 30907 本來
 
 `room.sendAll(build)`、`room.sendOthers(except, build)`：`build(client)` 對每個成員的連線各自產生 buffer。不能共用同一個 buffer，因為 `client.getMessageBuffer` 是依連線做混淆。成員的連線是 null（換地圖中）就跳過。
 
-## 4. 斷線與重連（換地圖一定會斷）
+## 4. 斷線與身分（換地圖不會斷線；斷線＝離開）
 
 - **身分**：第 0 步先修。Gate `Leave_SA 0x00220132` 的 body+0x06 放 `accountId`、+0x0A 放每次登入隨機產生的 key；30907 收到 `Login_Again_CQ 0x00110124` 時用 (accountId, key) 查表，取代 `ORDER BY last_login`。[DLL] `0x107dc831`–`0x107dc846` → `Certify_Away_Set` `0x10715f70` → `0x107c3ef5`。key 查不到（例如舊客戶端狀態）就退回舊的 last_login 行為並寫 log。
 - **斷線即離開**（2026-09-19 PM 裁決，更正原本的寬限設計）：log 證明客戶端不會自動連回，也不會因換地圖重連（`journal/2026-09-19-0230` 更正段），所以斷線時直接移出房間、對其他人廣播 `Leave_SN`，必要時交接房主。不做寬限、不做綁回。
