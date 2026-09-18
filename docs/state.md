@@ -4,7 +4,7 @@
 > 上限約 300 行；超過就依命名空間拆成 `docs/state/<命名空間>.md`。
 > 每一條都附依據：日誌檔名或 DLL 位址。細節回日誌查，不要把細節搬進來。
 >
-> 最後整理：2026-09-18（第 2、4 節補 G6 結果），從凍結的 `opcode-ledger.md` 與 `research/2026-09-17-ledger-migration/opcode-inventory.md` 整理，並重跑 `tools/dispatch-map.py` 核對。
+> 最後整理：2026-09-18（第 2、4 節補 G6 結果，新增第 4b 節房間），從凍結的 `opcode-ledger.md` 與 `research/2026-09-17-ledger-migration/opcode-inventory.md` 整理，並重跑 `tools/dispatch-map.py` 核對。
 
 狀態：✅ 已確認／🟡 假設／⬜ 未知／❌ 已排除
 
@@ -103,6 +103,24 @@
 | G 幣扣款不持久化，重登回到初始值 | 🟡 未修 | backlog H2 |
 | `11100101`／`11200101` 這類配對是**塗裝變體**，HighGroup／MiddleGroup 相同、可裝武器相同 | 🟡 [CACHE] 靜態分析 | `research/2026-09-18-premium-mech/notes.md` |
 | Legend（時限）機體有授權機制 `Mech_License_Check`／`IsLicense`（0 無／1 教學／2 購買），對應 DB `mech_licenses`；**填這個欄位的封包未知** | ⬜ | `ZPage_Hangar.uc:1544-1552`、`ZNetwork_DJ.uc:234,1286` |
+
+## 4b. 房間（戰役房）
+
+依據：`journal/2026-09-18-08` ～ `-14`、`research/2026-09-18-room-*`。2026-09-18 實測。
+
+| 項目 | 狀態 | 依據 |
+|---|---|---|
+| 任務簡報、難度鈕、地圖下拉**全部是客戶端自己從 Cache 算的**，伺服器只要把 `MapInfo[0].Index` 送對 | ✅ [SRC][OBS] | `ZPanel_PVE.uc:216-309`、`ZPage_Room.uc:680` |
+| 房間面板的地圖要跟 `Game_Info_SN` 用同一個來源（`campaignMapCacheKey_`），否則面板顯示 A、實際打 B | ✅ [LOG][OBS][SHOT] | `journal/2026-09-18-08-room-map-sync.md` |
+| `Room_Name_SN 0x0022021A` 送 **ANSI**；送 UTF-16LE 只會顯示第一個字 | ✅ [DLL]（`0x107ea7d0` → `winToUNICODE`）[OBS] | `journal/2026-09-18-09-room-string-encoding.md` |
+| `Map_Change_One_SA 0x00220222` body 是 **16 bytes**：`u16 0` ＋ `u32 0` ＋ 10 bytes payload。標頭非 0 客戶端就靜默放棄（`0x107eb683`） | ✅ [DLL]（`0x107eb510`）[OBS] | `journal/2026-09-18-10-map-change-one-sa.md` |
+| `Map_Change_One_SN 0x00220223` **不需要**成功標頭；payload 從 body+0x00：b0 槽位／w1 MapIndex／w2 **MapTime**／b5 **MapRound**／w6 **MapKill**／w8 **Goal**，直接寫進 `MapInfo[b0]` | ✅ [DLL]（`0x107eb6f0`）[OBS] | `journal/2026-09-18-12`、`-13` |
+| **`Map_Change_All_SN 0x00220226` 會寫入選中狀態，不只是重繪**；排在 `Map_Change_One_SN` 之後（取代或補送都一樣）會覆蓋地圖選擇 | ✅ [OBS] R7／R7b 兩次實測 | `journal/2026-09-18-13-map-change-order.md` |
+| `Map_Change_All_SN` 每筆 9 bytes，record+0x04 是 **Round** 不是選中旗標；客戶端只存前 **6** 筆（`MAX_MAP_COUNT=6`，`0x107ebc1d`） | 🟡 [DLL] Gemini 分析，未實測 | `research/2026-09-18-map-list-zero/` |
+| 難度鈕的燈慢一拍（值正確、時機不對）。已排除送出順序 | ⬜ | backlog H6 |
+| 房間設定對話框地圖清單空、人數顯示 4VS4。已知鏈：`Account_MapList_Check`／`m_MapList`（送真 map id 仍不夠）→ 人數範圍篩選 → 要 `g_SelectMapInfo` 命中才切 PvE 人數陣列。缺「誰設定 `g_SelectMapInfo`」 | ⬜ | backlog H7；`research/2026-09-18-room-setting/` |
+| RED TEAM 槽位不顯示玩家。客戶端比對 `RoomInfo.RedTeamIndex／BlueTeamIndex`，我們從未送過這兩個欄位 | ⬜ | `research/2026-09-18-room-user/` |
+| 協力模式的**建房對話框沒有任務選項**，任務只能在房內改 | ✅ [SHOT] | `shots/create-room-dialog.png` |
 
 ## 5. 程式碼裡已知錯誤的名稱與無效封包（尚未修正）
 

@@ -5,43 +5,36 @@
 
 ---
 
-## ⚡ 交接快照（2026-09-18 08:5x，Claude 高階，請以此段為準）
+## ⚡ 交接快照（2026-09-18 晚，Claude 高階，請以此段為準）
 
-### 今天完成：G6 機庫換裝備存檔，全部實測通過
+### 今天完成並合併 `reverse-work`
 
-分支 `flash-wip-g6-unblock`（worktree `/home/lucas/mro-reverse-g6-unblock`），已由 Claude 高階審查、實測、合併回 `reverse-work`。
-一路拆掉**四層**阻塞，每層原因都不同（日誌 `2026-09-18-02` ～ `-06`）：
+1. **G6 機庫換裝備存檔**（merge `fb6c6ef`）：換裝 → 寫 DB → 完全重登保留 → PvE 出場帶入。拆掉四層阻塞，詳見 `journal/2026-09-18-02` ～ `-06`。最隱蔽的一層：客戶端 `ZPanel_InvenItems.uc:408-411` 把 **SerialIndex 101–999 當保留區整段跳過**，`items.id` 全落在裡面 → 用 `tools/renumber-item-serials.js` 把主鍵搬到 100000+（已執行，腳本冪等）。
+2. **商店一把一列＋期限選單**（merge `6b5e889`）：item_id 末兩碼是**持有期限**（`GameItemRecord +0x43`），同家族共用 `RepresentIndex`（+0x04）。全部送出、只讓代表項 `IsShow=1`，購買彈窗就能組出 1/3/7/15/30/60/90 天選單。
+3. **房間修正四項**（merge `315819c`）：面板地圖與實際開戰一致、房名改送 ANSI、`Map_Change_One_SA` 補 6-byte 成功標頭、`SN_MAP_CHANGE_ONE` 不再把房間設定洗成 0/1/0/0。
 
-1. **商店全空**：伺服器用 `item_catalog.mech_type` 依槽位篩商品，但那欄是**武器家族**，送出的武器該機體不能裝，全被客戶端 `ItemSubordinateCheck` 濾掉。→ 整批送出、交給客戶端過濾（`SHOP_FULL_CATALOG_MODE`）。
-2. **購入物歸錯機**：購買時把 catalog 的 `mech_type` 照抄進 `items`，應寫玩家當下的機庫槽位（`PURCHASE_MECH_SLOT_MODE`）。
-3. **買完不即時顯示**：購買後重送 ItemInfo 的程式被 `SHOP_UNBLOCK_MODE` 綁著（那個開關另含已被組語否決的 IsShow 欄位重排）→ 拆成 `PURCHASE_ITEMINFO_REFRESH`。
-4. **庫存永遠只有一格**（最隱蔽）：客戶端 `ZPanel_InvenItems.uc:408-411` 把 **SerialIndex 101–999** 當保留區整段跳過，而 `items.id` 全落在裡面。→ `tools/renumber-item-serials.js` 把主鍵搬到 100000+，程式不需做偏移。
+### 今天失敗的（實作保留、開關預設 disabled，不要直接打開）
 
-實測：換裝 → 寫 DB → **完全關閉客戶端重開**仍保留 → PvE 出場帶入（`Game_User_SN` slots 送出 `22100301`）。
-截圖 `shots/g6d-main.png`、`w1-after-buy.png`、`w2-inventory.png`、`w3-equipped.png`、`w4-pve-weapon.png`。
+- `MAP_CHANGE_ORDER_MODE`（R7／R7b）：換圖封包順序。**兩種做法都失敗**，並因此確認 `Map_Change_All_SN` 會寫入選中狀態，不能排在 `Map_Change_One_SN` 之後。
+- `ROOM_DEFAULT_MAP_ENTRY_MODE`（R4）、`MAP_INFO_REAL_ID_MODE`（R9）：都無可觀察效果，證明 `m_MapList` 不是地圖清單空白的唯一關卡。
 
-### 開關現況（`Metal Rage Online Server/dispatch/room.dispatch.js`）
+### 今天學到最重要的一件事
 
-預設 **enabled**：`EQUIP_SAVE_MODE`、`PURCHASE_MECH_SLOT_MODE`、`PURCHASE_ITEMINFO_REFRESH`、`SHOP_FULL_CATALOG_MODE`。
-維持 **disabled**：`SHOP_UNBLOCK_MODE`（含已被組語否決的 ShopList 欄位重排，不要打開）、`SHOP_COMPAT_EXPERIMENT`（一次性實驗）。
+今天六個 bug **全是同一個形狀**：不是邏輯錯，是**當初不知道欄位語意時填的佔位值沒跟著更新**（房間地圖寫死 9001、`isShow=1`、購買 `mech_type` 照抄 catalog、`items.id` 落在保留區、`MapTime=0/Round=1`、`MapInfo_SN` 送列索引 0..5）。程式裡用 `b0/w1/w2` 這種偏移當變數名的地方，就是「還沒查過語意」的記號。已開 backlog **H5：盤點所有 sender 的佔位常數**（Luna 執行中，交付 `docs/reference/placeholder-audit.md`）。
 
-### 環境注意
+### 下一步
 
-- 伺服器目前從 worktree 跑；合併後**要換回主目錄** `/home/lucas/mro-reverse/Metal Rage Online Server` 再 `npm start`。
-- worktree 原本缺 repo 根目錄的 `MetalRage` symlink，導致 Cache.Bin 讀不到（只影響 `CACHE_INDEX_BY_ITEM_ID`）。已補。
-- DB 已跑過 `tools/renumber-item-serials.js`（70 筆 154–223 → 100154–100223，AUTO_INCREMENT=200000）。腳本冪等，重跑無害。
+- **H5** 佔位常數盤點（進行中）→ 出來之後照影響面排序逐一處理，很可能是下一批「一改就好」的來源。
+- **RED TEAM 槽位不顯示玩家**：客戶端比對 `RoomInfo.RedTeamIndex／BlueTeamIndex`，我們從未送過。子 agent 調查中，原始資料會在 `research/2026-09-18-red-team-slot/`。
+- **H6** 難度燈慢一拍、**H7** 設定對話框地圖清單空：都需要反覆試假設，**建議等 Pico 2 W 到貨**（操作者 2026-09-18 下單）。`tools/pico/`、`tools/win/pico_drive.sh` 已經有人寫好但未 commit，能用真實 USB HID 驅動客戶端，硬性約束第 1 條明確允許。那之後「改開關 → 重啟 → 建房 → 點一下 → 截圖」可以自動化，實驗成本從十幾分鐘降到幾十秒。
+- 其他未動：**H1** 登入後預設機體商店漏接、**H2** G 幣不持久化、**H3** catalog 價格（3Day 比 30Day 貴）、Legend 機體授權封包、結算頁隊伍分數全 0、`Assist_SN` 格式、PvP 房完全沒碰過。
 
-### 下一步（`docs/backlog.md`）
+### 環境與協作
 
-- **H1** 登入後預設機體的 ShopList 漏接（切機再切回才出現；兩次封包逐位元組相同，是時機問題）
-- **H2** G 幣不持久化（重登回到初始值）
-- **H3** catalog 髒資料（`ItemIndex 27430`、強化等級 01–08 全部同價）
-- Legend（時限）機體授權：`Mech_License_Check`／`IsLicense`（0 無／1 教學／2 購買）對應 DB `mech_licenses`，**填這個欄位的封包還沒找到**。`11100101`／`11200101` 這類配對只是塗裝變體，可裝武器相同（`research/2026-09-18-premium-mech/notes.md`，🟡）。
-
-### 協作狀態
-
-- tmux：`server`（伺服器，Claude 高階自己控，不要請操作者代勞）、`codex`（Luna 中階）、`sol`、`antigravity`。**已開的 session 不要關**，cache 會掉。
-- 今天的中階產出全部由 Claude 高階審查過；`SHOP_UNBLOCK_MODE` 的 IsShow 欄位假設已被否決兩次，不要再提。
+- 伺服器在 tmux `server`，主目錄 `/home/lucas/mro-reverse/Metal Rage Online Server`，**由高階自己控，不要請操作者代勞**。
+- worktree `mro-reverse-g6-unblock`、`mro-reverse-g7` 已完成任務，分支都已合併。
+- tmux：`codex`（Luna 中階）、`sol`、`antigravity`（Gemini 中階，今天做了 `Map_Change_All_SN` 的組語分析，品質好；它唯一講錯的是「伺服器從未送 `0x00210115`」，log 證明有送）。**已開的 session 不要關。**
+- 操作者在 YouTube 留言聯繫原作者（repo 作者 moonlight776，今天仍在推進 P2P／TDM／爆破／佔領模式），等回覆。
 
 ---
 

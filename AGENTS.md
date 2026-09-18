@@ -34,7 +34,7 @@
 | 用 `metalrageserver.sql` 建資料庫，不要用 `database/schema.sql`（少兩張表） | `reference/setup.md` |
 | `Metal Rage Online Server/static/` 約 1.2GB，不要掃描或整包讀取 | `reference/setup.md` |
 | **客戶端拒收整包超過 0x400 bytes 的 frame**，而且之後的封包全部卡住，不報錯。清單類封包要算大小 | `docs/state.md` 第 2 節 |
-| header 是 BE，body 幾乎都是 LE；字串編碼因封包而異（房間名稱是 UTF-16LE，`User_Default_SN`／`Game_User_SN` 的暱稱是 ASCII），照 DLL 確認 | `reference/protocol.md` |
+| header 是 BE，body 幾乎都是 LE；字串編碼**一個封包一個樣，一律照 DLL 確認**。已知：`Room_Name_SN 0x0022021A` 是 **ANSI**（客戶端自己呼叫 `winToUNICODE` 轉；送 UTF-16LE 會只顯示第一個字，2026-09-18 實測更正），`User_Default_SN`／`Game_User_SN` 的暱稱是 ASCII，`User_Name_SN 0x00220421` 目前送 UTF-16LE ⬜ 未驗證 | `reference/protocol.md`；`journal/2026-09-18-*-room-string-encoding` |
 | `client.getMessageBuffer` 會補齊到 16 bytes，`getExactMessageBuffer` 不會。客戶端會嚴格檢查某些封包的長度，不要隨手替換 | `reference/protocol.md` |
 | dispatch 順序有意義：第一個回傳 true 的服務就結束處理 | `reference/protocol.md` |
 | `ZDispatchGame` 的 handler 只在場景 6 生效，送錯場景會被靜默丟棄 | `docs/state.md` 第 2 節 |
