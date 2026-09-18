@@ -24,18 +24,43 @@
 
 ---
 
-## ⚡ 高階主力交接：Codex Sol（2026-09-17 22:30）
+## ⚡ 交接快照（2026-09-18 08:5x，Claude 高階，請以此段為準）
 
-- **G7 已完成並合併 `reverse-work`**：Gemini 實作，高階審查修正 disabled
-  fallback；Team／All `0x00220507`／`0x00220509` 均實測在 HUD 顯示，預設
-  已開啟。證據見 `2026-09-17-23-game-chat-echo-g7.md`。
-- **G6 靜態審查通過、實測阻塞**：CQ 本體 `0x107e0c50`、SA 本體
-  `0x107dde80` 已核對，開關維持預設關閉。主武器商店清單空白、購入物重登
-  後仍不顯示，客戶端沒有第二件裝備可選。先另案修正 `ShopList_SN`／
-  `Packege_Item_SN` 顯示路徑，再續測換裝、重登與 PvE 武器。G6 審查 commit
-  在 `flash-wip` 的 `6180060`，尚未合併 G6 程式到主線。
-- `server` tmux 目前跑 G7 worktree；後續工作前切回
-  `/home/lucas/mro-reverse/Metal Rage Online Server` 的 `reverse-work`。
+### 今天完成：G6 機庫換裝備存檔，全部實測通過
+
+分支 `flash-wip-g6-unblock`（worktree `/home/lucas/mro-reverse-g6-unblock`），已由 Claude 高階審查、實測、合併回 `reverse-work`。
+一路拆掉**四層**阻塞，每層原因都不同（日誌 `2026-09-18-02` ～ `-06`）：
+
+1. **商店全空**：伺服器用 `item_catalog.mech_type` 依槽位篩商品，但那欄是**武器家族**，送出的武器該機體不能裝，全被客戶端 `ItemSubordinateCheck` 濾掉。→ 整批送出、交給客戶端過濾（`SHOP_FULL_CATALOG_MODE`）。
+2. **購入物歸錯機**：購買時把 catalog 的 `mech_type` 照抄進 `items`，應寫玩家當下的機庫槽位（`PURCHASE_MECH_SLOT_MODE`）。
+3. **買完不即時顯示**：購買後重送 ItemInfo 的程式被 `SHOP_UNBLOCK_MODE` 綁著（那個開關另含已被組語否決的 IsShow 欄位重排）→ 拆成 `PURCHASE_ITEMINFO_REFRESH`。
+4. **庫存永遠只有一格**（最隱蔽）：客戶端 `ZPanel_InvenItems.uc:408-411` 把 **SerialIndex 101–999** 當保留區整段跳過，而 `items.id` 全落在裡面。→ `tools/renumber-item-serials.js` 把主鍵搬到 100000+，程式不需做偏移。
+
+實測：換裝 → 寫 DB → **完全關閉客戶端重開**仍保留 → PvE 出場帶入（`Game_User_SN` slots 送出 `22100301`）。
+截圖 `shots/g6d-main.png`、`w1-after-buy.png`、`w2-inventory.png`、`w3-equipped.png`、`w4-pve-weapon.png`。
+
+### 開關現況（`Metal Rage Online Server/dispatch/room.dispatch.js`）
+
+預設 **enabled**：`EQUIP_SAVE_MODE`、`PURCHASE_MECH_SLOT_MODE`、`PURCHASE_ITEMINFO_REFRESH`、`SHOP_FULL_CATALOG_MODE`。
+維持 **disabled**：`SHOP_UNBLOCK_MODE`（含已被組語否決的 ShopList 欄位重排，不要打開）、`SHOP_COMPAT_EXPERIMENT`（一次性實驗）。
+
+### 環境注意
+
+- 伺服器目前從 worktree 跑；合併後**要換回主目錄** `/home/lucas/mro-reverse/Metal Rage Online Server` 再 `npm start`。
+- worktree 原本缺 repo 根目錄的 `MetalRage` symlink，導致 Cache.Bin 讀不到（只影響 `CACHE_INDEX_BY_ITEM_ID`）。已補。
+- DB 已跑過 `tools/renumber-item-serials.js`（70 筆 154–223 → 100154–100223，AUTO_INCREMENT=200000）。腳本冪等，重跑無害。
+
+### 下一步（`docs/backlog.md`）
+
+- **H1** 登入後預設機體的 ShopList 漏接（切機再切回才出現；兩次封包逐位元組相同，是時機問題）
+- **H2** G 幣不持久化（重登回到初始值）
+- **H3** catalog 髒資料（`ItemIndex 27430`、強化等級 01–08 全部同價）
+- Legend（時限）機體授權：`Mech_License_Check`／`IsLicense`（0 無／1 教學／2 購買）對應 DB `mech_licenses`，**填這個欄位的封包還沒找到**。`11100101`／`11200101` 這類配對只是塗裝變體，可裝武器相同（`research/2026-09-18-premium-mech/notes.md`，🟡）。
+
+### 協作狀態
+
+- tmux：`server`（伺服器，Claude 高階自己控，不要請操作者代勞）、`codex`（Luna 中階）、`sol`、`antigravity`。**已開的 session 不要關**，cache 會掉。
+- 今天的中階產出全部由 Claude 高階審查過；`SHOP_UNBLOCK_MODE` 的 IsShow 欄位假設已被否決兩次，不要再提。
 
 ---
 
