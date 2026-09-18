@@ -79,7 +79,17 @@ CRC32 計算範圍為 bytes[4 .. len-1]，以 BE 寫入 offset 0x00
 
 ### ⚠️ Header 是 BE，body 幾乎都是 LE
 
-這是最容易踩的雷。header 欄位用 `writeUint16BE`／`writeUint32BE`，但 body 內的欄位普遍是 `writeUint16LE`／`writeUint32LE`。字串則是 **UTF-16LE 且以 `\0` 結尾**（例如房間名稱）。
+這是最容易踩的雷。header 欄位用 `writeUint16BE`／`writeUint32BE`，但 body 內的欄位普遍是 `writeUint16LE`／`writeUint32LE`。字串編碼**每個封包各自不同**，不能類推（舊版這裡寫「字串是 UTF-16LE（例如房間名稱）」，已被實測推翻）。
+
+### 字串編碼（一律照 DLL 確認）
+
+| 封包 | 欄位 | 編碼 | 依據 |
+|---|---|---|---|
+| `Room_Name_SN 0x0022021A` | 房名 | **ANSI**，客戶端自己呼叫 `winToUNICODE` 轉換；送 UTF-16LE 只會顯示第一個字 | [DLL] `0x107ea7d0`；[TEST] `journal/2026-09-18-09` |
+| `User_Name_SN 0x00220421` | body+0x1B 暱稱 | **ANSI**，上限 25 字（`0x107eb0b6 cmp eax,0x19`） | [DLL] `0x107eb0ce` 呼叫 `Core.dll!winToUNICODE`；[TEST] `journal/2026-09-18-17` |
+| `User_Default_SN 0x00220233`、`Game_User_SN 0x00222112` | 暱稱 | ASCII | 既有實測 |
+
+新增一列時要附 DLL 位址，沒有位址的一律標 ⬜。
 
 ### 兩種 buffer 取得方式，行為不同
 
