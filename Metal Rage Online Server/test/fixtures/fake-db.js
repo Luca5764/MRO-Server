@@ -269,6 +269,13 @@ function makeFixtureDb(overrides = {})
             logCall('getAccountByNickname', { nickname });
             return nickname === account.nickname ? account : null;
         },
+        async getAccountById(accountId)
+        {
+            // D1 step 0 (auth-tokens.js): gamelogin.dispatch.js's Login_Again_CQ
+            // path looks the account up by the id the Gate-issued token named.
+            logCall('getAccountById', { accountId });
+            return Number(accountId) === account.id ? account : null;
+        },
         async getRecord(accountId)
         {
             logCall('getRecord', { accountId });

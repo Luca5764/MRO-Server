@@ -37,7 +37,15 @@ function makeFakeClient(connId, port)
 
     const client = {
         connId_: connId,
-        socket_: { localPort: port, remoteAddress: '127.0.0.1', remotePort: 0 },
+        socket_: {
+            localPort: port, remoteAddress: '127.0.0.1', remotePort: 0,
+            // D1 step 0 (dispatch/gamelogin.dispatch.js): an unverifiable
+            // Login_Again_CQ identity closes the raw socket via destroy(),
+            // matching client.js's own exception-guard path (client.js
+            // onData catch block) rather than the graceful disconnect()
+            // used elsewhere. See test/login-token.js.
+            destroy() { client.destroyed_ = true; },
+        },
 
         getMessageBuffer,
 

@@ -42,6 +42,14 @@ const GOLDEN_DIR = path.join(__dirname, 'golden');
 const { makeFixtureDb } = require('./fixtures/fake-db.js');
 const { makeFakeClient } = require('./fixtures/fake-client.js');
 const { installFakeTimers } = require('./fixtures/fake-timers.js');
+// D1 step 0: auth-tokens.js hands out a crypto-random key on Gate Leave_SA
+// 0x00220132 (dispatch/gate.dispatch.js). It is deliberately outside
+// dispatch/ so a real /reload does not wipe it (see server.js
+// reloadServices()), but that means it is NOT reset by
+// resetModulesWithFixtureDb() below. Pin its generator here so a sample that
+// reaches CQ_LEAVE records/compares a fixed key instead of a fresh random
+// one every run -- see the setKeyGenerator() call in replaySample().
+const authTokens = require(path.join(ROOT, 'auth-tokens.js'));
 
 const DB_PATH = require.resolve(path.join(ROOT, 'database', 'db.js'));
 
@@ -120,6 +128,12 @@ async function replaySample(name)
 
     const fixtureDb = makeFixtureDb();
     resetModulesWithFixtureDb(fixtureDb);
+    // Each golden sample models an independent server run, so start
+    // auth-tokens.js clean too and pin its key generator (see the top-of-file
+    // comment) -- a fixed value keeps a sample that hits Gate Leave_SA
+    // deterministic across --record and every later replay.
+    authTokens.resetForTest();
+    authTokens.setKeyGenerator(() => 0x11223344);
     const services = loadServicesForPort(meta.port);
     const client = makeFakeClient(meta.connId, meta.port);
     const timers = installFakeTimers();

@@ -45,6 +45,22 @@ async function getAccountByNickname(nickname)
 }
 
 /**
+ * Find an account by id. Returns null if not found.
+ * D1 step 0 (auth-tokens.js): 30907's Login_Again_CQ handler resolves the
+ * connection's account by id via the Gate-issued token instead of guessing
+ * the most-recently-logged-in row.
+ * @param {number} accountId
+ * @returns {Promise<object|null>}
+ */
+async function getAccountById(accountId)
+{
+    const [rows] = await pool.execute(
+        'SELECT * FROM accounts WHERE id = ?', [accountId]
+    );
+    return rows.length > 0 ? rows[0] : null;
+}
+
+/**
  * Get player record (level, W/L/K/D stats).
  * @param {number} accountId
  * @returns {Promise<object|null>}
@@ -386,6 +402,7 @@ module.exports = {
     pool,
     getAccountByUsername,
     getAccountByNickname,
+    getAccountById,
     getRecord,
     getMechLevels,
     getMechLicenses,

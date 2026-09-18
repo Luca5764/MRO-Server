@@ -2,6 +2,8 @@ const NetworkClient = require("../client");
 const db = require('../database/db');
 const session = require('../session.js');
 const { clampMoney, moneyBigInt } = require('./money');
+const authTokens = require('../auth-tokens');
+const packetlog = require('../packetlog');
 
 // Game server login handler
 // After connecting to the game server (port 30907), the client sends
@@ -75,16 +77,46 @@ class ZGameLoginDispatch
                 client.send(msg);
             }
 
-            // Load the most recently logged-in account
-            // The game server is a separate TCP connection from the dispatch server,
-            // Use last_login to find who just authenticated.
+            // D1 step 0: Login_Again_CQ body+0 (accountId) / +4 (key) is the pair
+            // the client got from Gate Leave_SA 0x00220132 and echoes back
+            // verbatim on this connection, including reconnects caused by a map
+            // travel. See auth-tokens.js for the DLL chain and
+            // docs/journal/2026-09-18-2350-game-login-token-chain.md.
+            const tokenAccountIdInBody = body.length >= 4 ? body.readUInt32LE(0) : 0;
+            const tokenKeyInBody = body.length >= 8 ? body.readUInt32LE(4) : 0;
+            const tokenAccountId = authTokens.lookup(tokenAccountIdInBody, tokenKeyInBody);
+
             let account = null;
             let tutorials = [];   // declared here so SN_COMPLETE can always access it
-            {
-                const [rows] = await db.pool.execute(
-                    'SELECT * FROM accounts ORDER BY last_login DESC LIMIT 1'
-                );
-                if (rows.length > 0) account = rows[0];
+
+            if (tokenAccountId !== null) {
+                account = await db.getAccountById(tokenAccountId);
+                if (!account) {
+                    console.error(`[ZGameLoginDispatch] Token named accountId #${tokenAccountId} but no such account row exists`);
+                }
+            } else {
+                // No usable token (all-zero body from a client that has not been
+                // through the patched Gate yet, or a stale/mismatched key). Falling
+                // back to "most recently logged-in account" only tells players
+                // apart correctly while at most one distinct account has ever
+                // completed a Gate login this process run — with two or more it
+                // silently hands someone the wrong account (the exact bug D1 step 0
+                // exists to remove; docs/design/d1-multiplayer-room.md §4). Refuse
+                // rather than guess once that stops being true.
+                const seenAccounts = authTokens.seenAccountCount();
+                if (seenAccounts <= 1) {
+                    console.warn(`[ZGameLoginDispatch] No valid Login_Again_CQ token (body=${body.toString('hex')}), falling back to last_login (${seenAccounts} distinct account(s) seen this run)`);
+                    packetlog.marker(`WARNING: Login_Again_CQ token missing/invalid (body=${body.toString('hex')}); falling back to ORDER BY last_login because only ${seenAccounts} distinct account(s) have logged in via Gate this run`, 'auto');
+                    const [rows] = await db.pool.execute(
+                        'SELECT * FROM accounts ORDER BY last_login DESC LIMIT 1'
+                    );
+                    if (rows.length > 0) account = rows[0];
+                } else {
+                    console.error(`[ZGameLoginDispatch] !!! REFUSING Login_Again_CQ: no valid token (body=${body.toString('hex')}) and ${seenAccounts} distinct accounts have logged in via Gate this run -- cannot guess identity. Closing connection.`);
+                    packetlog.marker(`!!! REFUSING Login_Again_CQ conn=${client.connId_}: no valid token (body=${body.toString('hex')}), ${seenAccounts} distinct accounts seen this run -- connection closed rather than guessing identity`, 'auto');
+                    client.socket_.destroy();
+                    return;
+                }
             }
 
             if (account) {

@@ -1,4 +1,5 @@
 const NetworkClient = require("../client");
+const authTokens = require("../auth-tokens");
 
 // ZDispatchGate - Handles server/channel gateway
 //
@@ -57,13 +58,25 @@ class ZGateDispatch
 
             case CQ_LEAVE:
             {
+                // Client leaving the Gate to connect to the game server (30907)
+                // after picking a server/channel. D1 step 0: body+0x06/+0x0A carry
+                // (accountId, key) so 30907's Login_Again_CQ 0x00110124 can prove
+                // which account this connection belongs to instead of guessing
+                // the most-recently-logged-in row. [DLL] ZDispatchGate::Leave_SA
+                // body 0x107dc7d3 reads these two u32 fields on success and hands
+                // them to Certify_Away_Set (0x10715f70, call site 0x107dc846);
+                // see docs/journal/2026-09-18-2350-game-login-token-chain.md and
+                // auth-tokens.js for the full chain.
                 console.log(`[ZGateDispatch] Gate leave request (${body.length} bytes)`);
+
+                const accountId = client.accountId_ || 0;
+                const key = accountId ? authTokens.issueKey(accountId) : 0;
 
                 const [msg, respBody] = client.getMessageBuffer(SA_LEAVE, 0xE);
                 respBody.writeUint16LE(0x0000, 0); // EventMessage = OK
                 respBody.writeUint32LE(0x0000, 2); // ErrorMessage = OK
-                respBody.writeUint32LE(0x0, 6);
-                respBody.writeUint32LE(0x0, 10);
+                respBody.writeUint32LE(accountId, 6);
+                respBody.writeUint32LE(key, 10);
                 client.send(msg);
 
                 return true;
