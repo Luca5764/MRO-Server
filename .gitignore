@@ -10,6 +10,9 @@ Metal Rage Online Server/tools/pico/settings.toml
 # 本機 DB 連線設定（用 config.example.json 建立自己的）
 Metal Rage Online Server/database/config.json
 
+# 帳號白名單（本機專用，用 allowed-users.example.json 建立自己的；W1）
+Metal Rage Online Server/config/allowed-users.json
+
 # AI 協作設定：本機專用，對其他人沒有用處
 AGENTS.md
 CLAUDE.md

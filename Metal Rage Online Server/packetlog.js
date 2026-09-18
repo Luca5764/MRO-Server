@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const whitelist = require('./config/whitelist.js');
 
 // Structured packet recorder.
 //
@@ -434,13 +435,16 @@ function recordBuild(reason)
     const identity = gitIdentity();
     const switches = scanSwitches();
     const nonDefault = nonDefaultSwitches(switches);
+    // Backlog W1: 'off' or 'on(<n> users)' -- see config/whitelist.js.
+    const whitelistStatus = whitelist.status();
 
-    write(Object.assign({ ev: 'build', reason }, identity, { switches, nonDefault }));
+    write(Object.assign({ ev: 'build', reason }, identity, { switches, nonDefault, whitelist: whitelistStatus }));
 
     const nonDefaultList = Object.keys(nonDefault);
     console.log(`[packetlog] build: ${identity.branch}@${identity.commit}`
         + ` dirty=${identity.dirty}`
-        + (nonDefaultList.length > 0 ? ` nonDefault=[${nonDefaultList.join(', ')}]` : ' nonDefault=[]'));
+        + (nonDefaultList.length > 0 ? ` nonDefault=[${nonDefaultList.join(', ')}]` : ' nonDefault=[]')
+        + ` whitelist=${whitelistStatus}`);
 }
 
 module.exports = {

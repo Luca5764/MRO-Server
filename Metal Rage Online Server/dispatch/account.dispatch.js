@@ -1,6 +1,8 @@
 const NetworkClient = require("../client");
 const { MAX_MAP_COUNT, MAX_MECH_COUNT, MAX_SLOT_COUNT } = require('../datatypes/enums');
 const db = require('../database/db');
+const whitelist = require('../config/whitelist');
+const packetlog = require('../packetlog');
 
 const CQ_LOGIN_WASABII = 0x00110151;
 const CQ_CREATE = 0x210201;
@@ -189,6 +191,37 @@ class ZAccountDispatch
 
             //Store username on client
             client.username_ = username;
+
+            // Backlog W1: account whitelist gate, triggered by this same
+            // CQ_LOGIN_WASABII. Checked before the success SA below so an
+            // unlisted username never reaches db.createAccount(). No-op
+            // (isAllowed() always true) when config/allowed-users.json does
+            // not exist -- see config/whitelist.js.
+            if (!whitelist.isAllowed(username)) {
+                const remoteAddress = client.socket_ && client.socket_.remoteAddress;
+                console.log(`[ZDispatchAccount::CQ_LOGIN_WASABII] Rejected "${username}" from ${remoteAddress} - not in config/allowed-users.json`);
+                packetlog.connection('whitelist_reject', client.connId_, {
+                    username,
+                    ip: remoteAddress,
+                });
+
+                // DLL evidence for the failure format: ZDispatchAccount::Login_Wasabii_SA
+                // (tools/ghidra/decompile.sh 0x10701717, confirmed as the 0x00110152
+                // handler via tools/dispatch-map.py 0x107039db) reads body+0x0 as a
+                // uint16 check code and body+0x2 as a uint32. When either is non-zero,
+                // the client calls ZNetworkManager::Disconnect() itself instead of
+                // transitioning to the gate (Location_Gate_Set only runs on the
+                // code==0 && reserved==0 branch). So a non-zero code here is enough to
+                // make the client disconnect on its own; client.disconnect() below is
+                // just server-side cleanup in case it doesn't.
+                const [msg, respBody] = client.getMessageBuffer(SA_LOGIN_WASABII, 0x6);
+                respBody.writeUint16LE(0x0001, 0);
+                respBody.writeUint32LE(0x0000, 2);
+                client.send(msg);
+
+                client.disconnect();
+                return;
+            }
 
             //SA_LOGIN_WASABII - always succeed (no auth)
             {
