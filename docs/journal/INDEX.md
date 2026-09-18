@@ -104,3 +104,4 @@
 | 2026-09-18 | `2026-09-18-11-room-default-map-entry.md` | `0x00220203` | 🟡 待審／預設關閉 | R4：首筆 entry `body+0x20+0x00` 由 Cache 列索引改為實際 map ID 的預設關閉實驗；與已修正的 `body+0x05 mapIndex` 分開，未實測。 |
 | 2026-09-18 | `2026-09-18-12-map-change-one-sn-settings.md` | `0x00220221`、`0x00220223` | 🟡 待審／預設關閉 | R6：依 DLL 交叉確認 Map_Change_One_SN 四個設定欄位；enabled 回送 CQ 採納／伺服器保存值，disabled 保留 0/1/0/0，未實測。 |
 | 2026-09-18 | `2026-09-18-13-map-change-order.md` | `0x00220221`、`0x00220222`、`0x00220223`、`0x00220226` | 🟡 待審／預設關閉 | R7b 更正 R7：ONE 先於 ALL 已被實測推翻；enabled 改為換圖回應在 ONE 後補送一次 ALL，初始進房不變，未實測。 |
+| 2026-09-18 | `2026-09-18-14-map-info-sn-real-ids.md` | `0x00210115` | 🟡 待審／預設關閉 | R9：MapInfo_SN 原本送 DB row 0..5，客戶端 m_MapList 檢查需要 Cache 的真實 PvE id；新增預設關閉開關，enabled 暫送 9001–9012 全清單，未實測。 |
