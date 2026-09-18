@@ -36,3 +36,9 @@ C→S `0x00222103`（按開始）→ S→C `Ready_Host_SQ 0x00420113`（6 bytes�
 - **結論（🟡，未經跨公司審查）：收到 `Ready_Host_SQ` 的客戶端就會當 P2P 房主。** 多人時只送給房主；加入者只收 `Ready_Host_SN`（房主的 IP／埠），走 `start IP:Port/Map` 那條路徑。`HostChange_SN` 用在中途換房主（→ `Game_Ready_Again`）。單人時兩個封包都送給同一個人，所以一直沒出問題。
 - LPort：`UZNetwork_DJ::System_Init`（`0x10739ad0`）讀 ini `[URL] ServerPort`（命令列可用 `-serverport:` 覆寫），在 `0x10739d0f` 寫入 `[this+0x388]`。所以房主監聽的是自己 ini 裡的 ServerPort（目前 30907）。另有 setter `Address_Local_Set`（`0x10715830`）也會寫這個欄位，但沒找到呼叫者 ⬜。
 - `Ready_Host_SN` 的 body 偏移已確認：`0x107d57b8` 讀 frame+0x10＝body+0x00 u16 Port；`0x107d575d` 從 frame+0x13＝body+0x03 開始是 ANSI，經 `winToUNICODE` 轉換。
+
+## PM 審查回覆（2026-09-19）
+
+- PM 問的「[+9]==0 之後的第二個分支」，在上面「D1-C2 補查」那一段已經寫了：`0x1091b884` 是 `Core.dll!GIsClient`（import 名 `?GIsClient@@3HA`）；非 0 → `0x107087bf` `Game_Ready_P2P`，0 → `0x107035ee` `Game_Ready_Dedi`（名稱取自 export 表，高階 2026-09-19 查過）。
+- 房主 IP：**PM 裁決走設定檔**（帳號 → host 位址，放進跟白名單同一份設定），不改用 mirrored networking。設定缺漏時，明確拒絕該帳號當房主開戰並寫 log，不可退回 localAddress。
+- 埠：還要實測補強。房主在戰鬥中，在那台 Windows 上執行 `netstat -ano | findstr <MetalRage PID>`，確認實際監聽的協定和埠。確認後開 N2（房主機器的防火牆輸入規則，只限 Private、遠端限區網網段）。

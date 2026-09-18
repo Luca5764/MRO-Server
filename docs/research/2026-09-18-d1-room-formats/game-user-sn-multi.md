@@ -8,3 +8,9 @@
 - 大小：2＋N×485，所以 N=1 是 487、N=2 是 972、N=3 是 1457，超過 0x400。
 - **建議送法：** 每個連線都送 N 包，每包 count=1，一人一筆（487 bytes）；而且要排在該連線的 `Game_Wait_SN`／`Game_Info_SN` 之後，不然會被清掉。
 - 矛盾：`room-game-user.sender.js:7-8` 的註解說 `Game_User_Team_Get` 查的是 `this+0x1034`、stride 0x80、由 `Game_User_Add` 寫入。但 `Game_User_Add` 實際寫的是 `+0x1040`，`+0x1034` 由誰寫入 ⬜。R11／team=0 的結論靠的是實測，所以不受影響。
+
+## PM 審查後補充（2026-09-19）
+
+- PM 機械核對了 `0x107343e0` 的 upsert，結果相符。
+- [DLL] `Game_User_SN` handler（`0x107d8ae0`–`0x107d8f6b`）**不會清空表**：`Game_Data_Clear`（thunk `0x10709917`）的呼叫點只有 `0x10730247`、`0x10730620`、`0x107ecde0`（Game_Wait_SN）、`0x107f09ae`（Waiting::Game_Info_SN）四處，全部不在 handler 範圍內（`tools/disasm.py xref 0x10709917`，高階 2026-09-19 重跑）。
+- UserIndex 的寬度：`Game_User_Add` 以 u32 的值比對（`cmp dword [edi], ebx`），不是陣列索引。其他封包裡最窄的是 **u16**：`User_Name_SN` body+0x00（`0x107eb09f movzx ebp, word`）、`Leave_SN` body+0x00（`0x107edb70`）、`User_Delete_SN` body+0x00、`Room_List_SN` 的 RoomIndex。所以 `accounts.id` 必須 < 65536，目前完全沒問題。

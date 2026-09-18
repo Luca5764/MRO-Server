@@ -31,7 +31,7 @@ rooms.js（模組層級，同一個 Node 程序內共用；9211 和 30907 本來
 ## 4. 斷線與重連（換地圖一定會斷）
 
 - **身分**：第 0 步先修。Gate `Leave_SA 0x00220132` 的 body+0x06 放 `accountId`、+0x0A 放每次登入隨機產生的 key；30907 收到 `Login_Again_CQ 0x00110124` 時用 (accountId, key) 查表，取代 `ORDER BY last_login`。[DLL] `0x107dc831`–`0x107dc846` → `Certify_Away_Set` `0x10715f70` → `0x107c3ef5`。key 查不到（例如舊客戶端狀態）就退回舊的 last_login 行為並寫 log。
-- **成員資格不跟著連線**：斷線時只把 `member.client = null`、記下 `disconnectedAt`，不移出房間。同一帳號重新連上時綁回原本的成員。超過寬限時間（預設 60 秒，要能設定）還沒回來，才當作離開（第 4 步）。
+- **斷線即離開**（2026-09-19 PM 裁決，更正原本的寬限設計）：log 證明客戶端不會自動連回，也不會因換地圖重連（`journal/2026-09-19-0230` 更正段），所以斷線時直接移出房間、對其他人廣播 `Leave_SN`，必要時交接房主。不做寬限、不做綁回。
 - `session.js` 繼續負責「每條連線自己的旗標」；房間層級的欄位（地圖、時間、回合、房主）改從 Room 讀。`campaignRoom_`、`mapChangeOneTime_` 這類欄位最後會從 session 的延續清單移除（第 5 步）。
 
 ## 5. 要改成廣播的封包
@@ -57,7 +57,7 @@ rooms.js（模組層級，同一個 Node 程序內共用；9211 和 30907 本來
 2. **廣播輔助＋房間聊天**：`0x00220505` 從「只 ACK」改成 `room.sendAll` 原樣回送。單人的行為會改變（多了一包自己的聊天回送），但這是 bug 修正，要單獨測試：房間聊天會出現在畫面上，要實測。
 3. **分析任務（2026-09-18 已完成大部分，見 `research/2026-09-18-d1-room-formats/`；剩下 Enter_SA 後段與 LPort）**：用 DLL 查出 `Room_List_SN 0x00220204`、加入房間 CQ／`Enter_SA 0x00220232`、`Leave_SN 0x00220236` 的 body 格式，以及 user index 的值域。
 4. **大廳房間清單＋加入房間＋離開房間**：用第 3 步的格式實作。單人：大廳會開始看到自己的房間（實測）。
-5. **房主與斷線寬限**：`User_Master_SN` 從 Room 讀；斷線寬限；房間欄位從 session 延續清單移除。
+5. **房主與斷線**：`User_Master_SN` 從 Room 讀；斷線即移出＋`Leave_SN`＋交接房主（用 console `/drop` 測試，留下被斷那台的截圖和 MetalRage.log）；`session.js` 的延續清單排進收斂任務，一項一項移除，每項都要跑回歸。
 6. **M2：開戰廣播**：Game_Start／Info／User 送給全房，Game_User_SN 每人一包；Death／EndGame 廣播。
 7. **M2：戰鬥主機（listen server）**：[DLL] 收到 `Ready_Host_SQ 0x00420113` 的客戶端就會走 `Game_Ready_P2P` 當房主（`research/2026-09-18-d1-room-formats/battle-host.md`）。所以伺服器**只送 Ready_Host_SQ 給房主**；其他成員只送 `Ready_Host_SN 0x00420115`（房主的 IP＋房主 ini 裡的 ServerPort，目前是 30907）。房主中途離開時用 `HostChange_SN 0x00420121`。房主的 IP 從哪裡來還沒定案（portproxy 會把來源 IP 蓋掉）：要嘛改用 WSL mirrored 網路，要嘛在設定檔手動對應帳號與 IP。房主那台要開 UDP 30907 inbound。
 
