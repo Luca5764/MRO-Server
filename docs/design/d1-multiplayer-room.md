@@ -59,7 +59,7 @@ rooms.js（模組層級，同一個 Node 程序內共用；9211 和 30907 本來
 4. **大廳房間清單＋加入房間＋離開房間**：用第 3 步的格式實作。單人：大廳會開始看到自己的房間（實測）。
 5. **房主與斷線寬限**：`User_Master_SN` 從 Room 讀；斷線寬限；房間欄位從 session 延續清單移除。
 6. **M2：開戰廣播**：Game_Start／Info／User 送給全房，Game_User_SN 每人一包；Death／EndGame 廣播。
-7. **M2 風險：主機（listen server）**：PvE 是其中一個客戶端開 `?Listen`，其他人直接連到它，走 UE2 的 P2P 連線，不經過我們的伺服器。`Ready_Host_SN 0x00420115` 目前送的是伺服器的 `socket.localAddress`（S1），多人時必須改成**房主客戶端的 IP**，而且其他人要連得到（區網或 VPN）。UE 的遊戲埠（預設 UDP 7777）也要開，⬜ 待查客戶端用哪個埠，這可能是 N0 還要補的防火牆規則。
+7. **M2：戰鬥主機（listen server）**：[DLL] 收到 `Ready_Host_SQ 0x00420113` 的客戶端就會走 `Game_Ready_P2P` 當房主（`research/2026-09-18-d1-room-formats/battle-host.md`）。所以伺服器**只送 Ready_Host_SQ 給房主**；其他成員只送 `Ready_Host_SN 0x00420115`（房主的 IP＋房主 ini 裡的 ServerPort，目前是 30907）。房主中途離開時用 `HostChange_SN 0x00420121`。房主的 IP 從哪裡來還沒定案（portproxy 會把來源 IP 蓋掉）：要嘛改用 WSL mirrored 網路，要嘛在設定檔手動對應帳號與 IP。房主那台要開 UDP 30907 inbound。
 
 ## 7. 不做的事
 

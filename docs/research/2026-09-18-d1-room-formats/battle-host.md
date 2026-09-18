@@ -25,3 +25,14 @@ C→S `0x00222103`（按開始）→ S→C `Ready_Host_SQ 0x00420113`（6 bytes�
 2. 把 WSL 改成 mirrored networking，伺服器就看得到真實來源 IP，房主的 IP＝房主那條 TCP 連線的 `remoteAddress`。缺點：要改 `.wslconfig` 並重啟 WSL（N0 當時因此沒選它）。
 3. 手動設定表：`config/server.json` 加一個 `hostAddresses: { "<帳號>": "<IP>" }`，跟 publicHost 同一種做法。適合少數固定的朋友。
 4. 房主的 UDP 監聽埠（LPort，實測 30907）要在房主那台機器的 Windows 防火牆開放 UDP inbound，VPN 也要讓它通。
+
+## D1-C2 補查：誰當房主由伺服器決定（2026-09-19）
+
+- [DLL] `Ready_Host_SQ` handler `0x107d5630`（高階親自讀了 `0x107d5686`–`0x107d56ce`）：
+  - `[this+9] != 0` → `Game_Ready_Again`（`0x107016fe`）
+  - 否則，若 `GIsClient` → **`Game_Ready_P2P`**（`0x107087bf`，設 IsHost，開 Listen）
+  - 否則 → `Game_Ready_Dedi`（`0x107035ee`）
+- this＝`ZDispatchGame` 本身（建構子 `0x107d8a90` 把 `[esi+9]` 設為 0，vtable `0x1081775c`）。`[this+9]` 唯一的寫入點是 **`HostChange_SN 0x00420121`**（`0x107d5a00`，`0x107d5a69` 寫 1）；`Ready_Host_SN` 會把它清回 0（`0x107d5819`）。
+- **結論（🟡，未經跨公司審查）：收到 `Ready_Host_SQ` 的客戶端就會當 P2P 房主。** 多人時只送給房主；加入者只收 `Ready_Host_SN`（房主的 IP／埠），走 `start IP:Port/Map` 那條路徑。`HostChange_SN` 用在中途換房主（→ `Game_Ready_Again`）。單人時兩個封包都送給同一個人，所以一直沒出問題。
+- LPort：`UZNetwork_DJ::System_Init`（`0x10739ad0`）讀 ini `[URL] ServerPort`（命令列可用 `-serverport:` 覆寫），在 `0x10739d0f` 寫入 `[this+0x388]`。所以房主監聽的是自己 ini 裡的 ServerPort（目前 30907）。另有 setter `Address_Local_Set`（`0x10715830`）也會寫這個欄位，但沒找到呼叫者 ⬜。
+- `Ready_Host_SN` 的 body 偏移已確認：`0x107d57b8` 讀 frame+0x10＝body+0x00 u16 Port；`0x107d575d` 從 frame+0x13＝body+0x03 開始是 ANSI，經 `winToUNICODE` 轉換。
