@@ -1,0 +1,383 @@
+# Raw disasm/data captured for 0x00220233 (User_Default_SN) and 0x0022021A (Room_Name_SN)
+# ZNetwork.dll, ImageBase 0x10700000. Captured Fri Sep 18 05:33:15 UTC 2026 via tools/disasm.py and pefile.
+
+## Export resolution
+ZDispatchRoom::Room_Name_SN     export thunk 0x10705326 -> jmp 0x107ea7d0 (real body)
+ZDispatchRoom::User_Default_SN  export thunk 0x1070979b -> jmp 0x107ee2d0 (real body)
+
+## Imports referenced
+0x1091b830 Core.dll   ?winToUNICODE@@YAPAGPAGPBDH@Z      -> WCHAR* winToUNICODE(WCHAR* dst, const char* src, int maxChars)
+0x1091b834 Core.dll   ?winGetSizeUNICODE@@YAHPBD@Z        -> int winGetSizeUNICODE(const char* src)
+0x1091b990 Core.dll   ?GetDefaultObject@UClass@@QAEPAVUObject@@XZ
+0x1091ba40 Engine.dll ?GZNetworkManager@@3PAVZNetworkManagerInterface@@A
+0x1091bda4 MSVCR71.dll atoi
+
+## Trace format string at 0x10836a08 (UTF-16LE)
+"UserIndex : %d, UserLevel : %d, UserName : %s, TeamIndex : %d, , Pilot : %d, State : %d, IP : %s"
+
+## Room_Name_SN body (0x107ea7d0..0x107ea89c)
+  0x107ea7d0  mov                      al, byte ptr [ecx + 4]
+  0x107ea7d3  sub                      esp, 0x34
+  0x107ea7d6  test                     al, al
+  0x107ea7d8  jne                      0x107ea809
+  0x107ea7da  mov                      eax, dword ptr [0x1091ba40]
+  0x107ea7df  mov                      ecx, dword ptr [eax]
+  0x107ea7e1  push                     0x108366a0
+  0x107ea7e6  push                     1
+  0x107ea7e8  call                     0x10703f4e
+  0x107ea7ed  mov                      ecx, dword ptr [0x1091ba40]
+  0x107ea7f3  mov                      edx, dword ptr [ecx]
+  0x107ea7f5  push                     0x108366bc
+  0x107ea7fa  push                     edx
+  0x107ea7fb  call                     0x10709156
+  0x107ea800  add                      esp, 8
+  0x107ea803  add                      esp, 0x34
+  0x107ea806  ret                      8
+  0x107ea809  push                     edi
+  0x107ea80a  xor                      eax, eax
+  0x107ea80c  mov                      ecx, 0xc
+  0x107ea811  lea                      edi, [esp + 4]
+  0x107ea815  rep stosd                dword ptr es:[edi], eax
+  0x107ea817  stosw                    word ptr es:[edi], ax
+  0x107ea819  mov                      edi, dword ptr [esp + 0x3c]
+  0x107ea81d  add                      edi, 0x10
+  0x107ea820  je                       0x107ea868
+  0x107ea822  push                     esi
+  0x107ea823  mov                      esi, dword ptr [0x1091b834]
+  0x107ea829  push                     edi
+  0x107ea82a  call                     esi
+  0x107ea82c  add                      esp, 4
+  0x107ea82f  cmp                      eax, 0x19
+  0x107ea832  jge                      0x107ea859
+  0x107ea834  push                     edi
+  0x107ea835  call                     esi
+  0x107ea837  mov                      esi, eax
+  0x107ea839  add                      esp, 4
+  0x107ea83c  test                     esi, esi
+  0x107ea83e  jle                      0x107ea860
+  0x107ea840  push                     esi
+  0x107ea841  lea                      eax, [esp + 0xc]
+  0x107ea845  push                     edi
+  0x107ea846  push                     eax
+  0x107ea847  call                     dword ptr [0x1091b830]
+  0x107ea84d  add                      esp, 0xc
+  0x107ea850  mov                      word ptr [esp + esi*2 + 6], 0
+  0x107ea857  jmp                      0x107ea867
+  0x107ea859  mov                      esi, 0x19
+  0x107ea85e  jmp                      0x107ea840
+  0x107ea860  mov                      word ptr [esp + 8], 0
+  0x107ea867  pop                      esi
+  0x107ea868  lea                      ecx, [esp + 4]
+  0x107ea86c  push                     ecx
+  0x107ea86d  mov                      ecx, 0x108e9b70
+  0x107ea872  call                     dword ptr [0x1091b990]
+  0x107ea878  mov                      ecx, eax
+  0x107ea87a  call                     0x107044df
+  0x107ea87f  push                     0
+  0x107ea881  push                     0x108366dc
+  0x107ea886  mov                      ecx, 0x108e9b70
+
+## User_Default_SN body (0x107ee2d0..0x107ee5cb)
+  0x107ee2d0  sub                      esp, 0xb0
+  0x107ee2d6  push                     ebp
+  0x107ee2d7  mov                      ebp, ecx
+  0x107ee2d9  mov                      al, byte ptr [ebp + 4]
+  0x107ee2dc  test                     al, al
+  0x107ee2de  mov                      dword ptr [esp + 0x20], ebp
+  0x107ee2e2  jne                      0x107ee317
+  0x107ee2e4  mov                      eax, dword ptr [0x1091ba40]
+  0x107ee2e9  mov                      ecx, dword ptr [eax]
+  0x107ee2eb  push                     0x108369a8
+  0x107ee2f0  push                     1
+  0x107ee2f2  call                     0x10703f4e
+  0x107ee2f7  mov                      ecx, dword ptr [0x1091ba40]
+  0x107ee2fd  mov                      edx, dword ptr [ecx]
+  0x107ee2ff  push                     0x108369c8
+  0x107ee304  push                     edx
+  0x107ee305  call                     0x10709156
+  0x107ee30a  add                      esp, 8
+  0x107ee30d  pop                      ebp
+  0x107ee30e  add                      esp, 0xb0
+  0x107ee314  ret                      8
+  0x107ee317  mov                      edx, dword ptr [esp + 0xb8]
+  0x107ee31e  xor                      eax, eax
+  0x107ee320  push                     ebx
+  0x107ee321  push                     esi
+  0x107ee322  push                     edi
+  0x107ee323  mov                      ecx, 0xc
+  0x107ee328  lea                      edi, [esp + 0x8c]
+  0x107ee32f  rep stosd                dword ptr es:[edi], eax
+  0x107ee331  stosw                    word ptr es:[edi], ax
+  0x107ee333  xor                      eax, eax
+  0x107ee335  mov                      dword ptr [esp + 0x38], eax
+  0x107ee339  mov                      dword ptr [esp + 0x3c], eax
+  0x107ee33d  mov                      dword ptr [esp + 0x40], eax
+  0x107ee341  mov                      dword ptr [esp + 0x44], eax
+  0x107ee345  mov                      dword ptr [esp + 0x48], eax
+  0x107ee349  mov                      dword ptr [esp + 0x4c], eax
+  0x107ee34d  xor                      ebx, ebx
+  0x107ee34f  test                     edx, edx
+  0x107ee351  mov                      dword ptr [esp + 0x50], eax
+  0x107ee355  mov                      dword ptr [esp + 0x1c], edx
+  0x107ee359  mov                      byte ptr [esp + 0x13], 0
+  0x107ee35e  mov                      dword ptr [esp + 0x54], eax
+  0x107ee362  je                       0x107ee3a2
+  0x107ee364  lea                      eax, [edx + 0x10]
+  0x107ee367  test                     eax, eax
+  0x107ee369  mov                      dword ptr [esp + 0x1c], eax
+  0x107ee36d  je                       0x107ee3a2
+  0x107ee36f  push                     1
+  0x107ee371  mov                      esi, eax
+  0x107ee373  lea                      ecx, [esp + 0x17]
+  0x107ee377  push                     esi
+  0x107ee378  push                     ecx
+  0x107ee379  call                     0x10707568
+  0x107ee37e  add                      esp, 0xc
+  0x107ee381  inc                      esi
+  0x107ee382  mov                      dword ptr [esp + 0x1c], esi
+  0x107ee386  je                       0x107ee3a2
+  0x107ee388  push                     1
+  0x107ee38a  lea                      edx, [esp + 0x1f]
+  0x107ee38e  push                     esi
+  0x107ee38f  push                     edx
+  0x107ee390  call                     0x10707568
+  0x107ee395  movzx                    ebx, byte ptr [esp + 0x27]
+  0x107ee39a  add                      esp, 0xc
+  0x107ee39d  inc                      esi
+  0x107ee39e  mov                      dword ptr [esp + 0x1c], esi
+  0x107ee3a2  test                     ebx, ebx
+  0x107ee3a4  jle                      0x107ee58e
+  0x107ee3aa  mov                      dword ptr [esp + 0x24], ebx
+  0x107ee3ae  mov                      edi, edi
+  0x107ee3b0  mov                      esi, dword ptr [esp + 0x1c]
+  0x107ee3b4  test                     esi, esi
+  0x107ee3b6  je                       0x107ee3cf
+  0x107ee3b8  push                     0x34
+  0x107ee3ba  lea                      eax, [esp + 0x5c]
+  0x107ee3be  push                     esi
+  0x107ee3bf  push                     eax
+  0x107ee3c0  call                     0x10707568
+  0x107ee3c5  add                      esp, 0xc
+  0x107ee3c8  add                      esi, 0x34
+  0x107ee3cb  mov                      dword ptr [esp + 0x1c], esi
+  0x107ee3cf  movzx                    ecx, word ptr [esp + 0x58]
+  0x107ee3d4  lea                      edx, [esp + 0x5e]
+  0x107ee3d8  push                     edx
+  0x107ee3d9  mov                      dword ptr [esp + 0x2c], ecx
+  0x107ee3dd  call                     dword ptr [0x1091bda4]
+  0x107ee3e3  mov                      dword ptr [esp + 0x34], eax
+  0x107ee3e7  mov                      eax, dword ptr [esp + 0x64]
+  0x107ee3eb  mov                      dword ptr [esp + 0x24], eax
+  0x107ee3ef  movzx                    eax, byte ptr [esp + 0x68]
+  0x107ee3f4  add                      eax, -2
+  0x107ee3f7  add                      esp, 4
+  0x107ee3fa  cmp                      eax, 6
+  0x107ee3fd  ja                       0x107ee44c
+  0x107ee3ff  jmp                      dword ptr [eax*4 + 0x107ee5d0]
+  0x107ee406  mov                      dword ptr [esp + 0x14], 2
+  0x107ee40e  jmp                      0x107ee454
+  0x107ee410  mov                      dword ptr [esp + 0x14], 3
+  0x107ee418  jmp                      0x107ee454
+  0x107ee41a  mov                      dword ptr [esp + 0x14], 4
+  0x107ee422  jmp                      0x107ee454
+  0x107ee424  mov                      dword ptr [esp + 0x14], 5
+  0x107ee42c  jmp                      0x107ee454
+  0x107ee42e  mov                      dword ptr [esp + 0x14], 6
+  0x107ee436  jmp                      0x107ee454
+  0x107ee438  mov                      dword ptr [esp + 0x14], 7
+  0x107ee440  jmp                      0x107ee454
+  0x107ee442  mov                      dword ptr [esp + 0x14], 8
+  0x107ee44a  jmp                      0x107ee454
+  0x107ee44c  mov                      dword ptr [esp + 0x14], 1
+  0x107ee454  mov                      ecx, dword ptr [esp + 0x65]
+  0x107ee458  mov                      esi, dword ptr [0x1091b834]
+  0x107ee45e  lea                      edx, [esp + 0x73]
+  0x107ee462  push                     edx
+  0x107ee463  mov                      dword ptr [esp + 0x38], ecx
+  0x107ee467  call                     esi
+  0x107ee469  add                      esp, 4
+  0x107ee46c  cmp                      eax, 0x19
+  0x107ee46f  jge                      0x107ee4a4
+  0x107ee471  lea                      eax, [esp + 0x73]
+  0x107ee475  push                     eax
+  0x107ee476  call                     esi
+  0x107ee478  mov                      esi, eax
+  0x107ee47a  add                      esp, 4
+  0x107ee47d  test                     esi, esi
+  0x107ee47f  jle                      0x107ee4ab
+  0x107ee481  push                     esi
+  0x107ee482  lea                      ecx, [esp + 0x77]
+  0x107ee486  push                     ecx
+  0x107ee487  lea                      edx, [esp + 0x94]
+  0x107ee48e  push                     edx
+  0x107ee48f  call                     dword ptr [0x1091b830]
+  0x107ee495  add                      esp, 0xc
+  0x107ee498  mov                      word ptr [esp + esi*2 + 0x8a], 0
+  0x107ee4a2  jmp                      0x107ee4b5
+  0x107ee4a4  mov                      esi, 0x19
+  0x107ee4a9  jmp                      0x107ee481
+  0x107ee4ab  mov                      word ptr [esp + 0x8c], 0
+  0x107ee4b5  mov                      eax, dword ptr [esp + 0x6b]
+  0x107ee4b9  movzx                    ebp, word ptr [esp + 0x69]
+  0x107ee4be  mov                      ebx, dword ptr [esp + 0x5a]
+  0x107ee4c2  add                      eax, -2
+  0x107ee4c5  cmp                      eax, 6
+  0x107ee4c8  ja                       0x107ee4f4
+  0x107ee4ca  jmp                      dword ptr [eax*4 + 0x107ee5ec]
+  0x107ee4d1  mov                      edi, 1
+  0x107ee4d6  jmp                      0x107ee4f6
+  0x107ee4d8  mov                      edi, 2
+  0x107ee4dd  jmp                      0x107ee4f6
+  0x107ee4df  mov                      edi, 3
+  0x107ee4e4  jmp                      0x107ee4f6
+  0x107ee4e6  mov                      edi, 4
+  0x107ee4eb  jmp                      0x107ee4f6
+  0x107ee4ed  mov                      edi, 5
+  0x107ee4f2  jmp                      0x107ee4f6
+  0x107ee4f4  xor                      edi, edi
+  0x107ee4f6  mov                      eax, dword ptr [esp + 0x6f]
+  0x107ee4fa  push                     eax
+  0x107ee4fb  lea                      esi, [esp + 0x3c]
+  0x107ee4ff  call                     0x107ea2d0
+  0x107ee504  mov                      ecx, dword ptr [0x1091ba40]
+  0x107ee50a  mov                      ecx, dword ptr [ecx]
+  0x107ee50c  add                      esp, 4
+  0x107ee50f  push                     0x108369e8
+  0x107ee514  push                     2
+  0x107ee516  call                     0x10703f4e
+  0x107ee51b  mov                      ecx, dword ptr [esp + 0x20]
+  0x107ee51f  mov                      edx, esi
+  0x107ee521  mov                      esi, dword ptr [esp + 0x28]
+  0x107ee525  push                     edx
+  0x107ee526  mov                      edx, dword ptr [0x1091ba40]
+  0x107ee52c  push                     edi
+  0x107ee52d  push                     ebx
+  0x107ee52e  push                     ebp
+  0x107ee52f  lea                      eax, [esp + 0x9c]
+  0x107ee536  push                     eax
+  0x107ee537  mov                      eax, dword ptr [edx]
+  0x107ee539  push                     ecx
+  0x107ee53a  push                     esi
+  0x107ee53b  push                     0x10836a08
+  0x107ee540  push                     eax
+  0x107ee541  call                     0x10709156
+  0x107ee546  mov                      eax, dword ptr [esp + 0x58]
+  0x107ee54a  add                      esp, 0x24
+  0x107ee54d  lea                      ecx, [esp + 0x38]
+  0x107ee551  push                     ecx
+  0x107ee552  mov                      ecx, dword ptr [esp + 0x18]
+  0x107ee556  push                     edi
+  0x107ee557  push                     ebx
+  0x107ee558  push                     ebp
+  0x107ee559  lea                      edx, [esp + 0x9c]
+  0x107ee560  push                     edx
+  0x107ee561  mov                      edx, dword ptr [esp + 0x34]
+  0x107ee565  push                     eax
+  0x107ee566  mov                      eax, dword ptr [esp + 0x48]
+  0x107ee56a  push                     ecx
+  0x107ee56b  push                     edx
+  0x107ee56c  push                     eax
+  0x107ee56d  push                     esi
+  0x107ee56e  mov                      ecx, 0x108e9b70
+  0x107ee573  call                     dword ptr [0x1091b990]
+  0x107ee579  mov                      ecx, eax
+  0x107ee57b  call                     0x10708d14
+  0x107ee580  dec                      dword ptr [esp + 0x24]
+  0x107ee584  jne                      0x107ee3b0
+  0x107ee58a  mov                      ebp, dword ptr [esp + 0x2c]
+  0x107ee58e  mov                      al, byte ptr [esp + 0x13]
+  0x107ee592  test                     al, al
+  0x107ee594  pop                      edi
+  0x107ee595  pop                      esi
+  0x107ee596  pop                      ebx
+  0x107ee597  jne                      0x107ee5c4
+  0x107ee599  mov                      al, byte ptr [ebp + 8]
+  0x107ee59c  test                     al, al
+  0x107ee59e  mov                      ecx, 0x108e9b70
+  0x107ee5a3  push                     0
+  0x107ee5a5  je                       0x107ee5b2
+  0x107ee5a7  mov                      byte ptr [ebp + 8], 0
+  0x107ee5ab  push                     0x10836acc
+  0x107ee5b0  jmp                      0x107ee5b7
+  0x107ee5b2  push                     0x10836af0
+  0x107ee5b7  call                     dword ptr [0x1091b990]
+  0x107ee5bd  mov                      ecx, eax
+  0x107ee5bf  call                     0x107097ff
+  0x107ee5c4  pop                      ebp
+  0x107ee5c5  add                      esp, 0xb0
+  0x107ee5cb  ret                      8
+  0x107ee5ce  mov                      edi, edi
+  0x107ee5d0  push                     es
+  0x107ee5d1  in                       al, 0x7e
+  0x107ee5d3  adc                      byte ptr [eax], dl
+  0x107ee5d5  in                       al, 0x7e
+  0x107ee5d7  adc                      byte ptr [edx], bl
+  0x107ee5d9  in                       al, 0x7e
+  0x107ee5db  adc                      byte ptr [esp], ah
+  0x107ee5de  jle                      0x107ee5f0
+  0x107ee5e0  in                       al, 0x7e
+  0x107ee5e3  adc                      byte ptr [eax], bh
+  0x107ee5e5  in                       al, 0x7e
+  0x107ee5e7  adc                      byte ptr [edx - 0x1c], al
+  0x107ee5ea  jle                      0x107ee5fc
+  0x107ee5ec  shl                      esp, 1
+  0x107ee5ee  jle                      0x107ee600
+  0x107ee5f0  fsub                     st(4)
+  0x107ee5f2  jle                      0x107ee604
+  0x107ee5f4  hlt
+  0x107ee5f5  in                       al, 0x7e
+  0x107ee5f7  adc                      bh, bl
+  0x107ee5f9  in                       al, 0x7e
+  0x107ee5fb  adc                      bh, bl
+  0x107ee5fd  in                       al, 0x7e
+  0x107ee5ff  adc                      dh, ah
+  0x107ee601  in                       al, 0x7e
+  0x107ee603  adc                      ch, ch
+  0x107ee605  in                       al, 0x7e
+  0x107ee607  adc                      ah, cl
+  0x107ee609  int3
+  0x107ee60a  int3
+  0x107ee60b  int3
+
+## ROOM_USER_INFO struct (client UC source, ZNetwork_DJ.uc:404-427)
+struct ROOM_USER_INFO
+{
+	var int					UserIndex;
+
+	var string				UserName;
+
+	var int					UserType;	// 유저타입 ( 1:남자, 2:여자 )
+	var int					UserLevel;	// 유저레벨
+
+	var int					MechType;	// 병과타입 ( 1:소형, 2:돌격, 3:중형, 4:저격, 5:화력, 6:공병, 7:정비, 8:관측 )
+	var int					MechLevel;	// 병과레벨
+
+	var CLAN_SIMPLE_INFO	ClanInfo;
+
+	var int					TeamIndex;
+
+	var int					PilotCode;
+
+	var int					State; // 방일때( 0:대기중, 1:레디, 2:게임중, 3:격납고, 4:카드, 5:클랜 ) , 게임중일때( 0:죽은상태, 1:리스폰대기중, 2:살아있는상태 )
+
+	var string				IP;
+
+	var bool                IsDelete;
+};
+
+## Team-slot assignment logic, ZPage_Room.uc UpdateTeamMember() (excerpt)
+        nMainMechType = class'ZGUIController'.static.GetDrawMechType( PlayerList[Count].MechType );
+        nMainMechLevel = PlayerList[Count].MechLevel;
+
+        if( PlayerList[Count].TeamIndex == TempRoomInfo.RedTeamIndex ) //Red Team
+        {
+            if( bCaptain == true && p_Red[0].m_UserIndex != nUserIndex ) //방장이 레드팀에 있고, 첫번째위치가 아닐경우 =>   레드팀 첫번째 데이터와 Swap
+            {
+                p_Red[ nRedPos ].RefreshData( p_Red[0].m_UserIndex, p_Red[0].m_UserSex, p_Red[0].m_UserName, p_Red[0].l_UserID.Caption, p_Red[0].m_ClanMarkIndex[0], p_Red[0].m_ClanMarkIndex[1], p_Red[0].m_LevelIndex, p_Red[0].m_MainMechType, p_Red[0].m_MainMechLevel, p_Red[0].m_bReady, false, p_Red[0].m_RoomState, p_Red[0].m_bGamePlaying, p_Red[0].m_bMyPosition, p_Red[0].m_Avatar, p_Red[0].m_ClanName );
+                p_Red[ 0 ].RefreshData( nUserIndex, UserSex, strUserName, strCutName, nClanMarkIndex[0], nClanMarkIndex[1], nLevelIndex, nMainMechType, nMainMechLevel, bReady, bCaptain, RoomState, bGamePlaying, bMyPosition, nAvatar, strClanName );
+
+                p_Red[ nRedPos ].UpdateData();
+                p_Red[ 0 ].UpdateData();
+                nRedPos++;
+                continue;
+            }

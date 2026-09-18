@@ -28,9 +28,9 @@ const SN_WEAR_INFO = 0x210113;         // DLL: WearInfo_SN
 const SN_EXPIRATION_ITEM = 0x210112;   // DLL: ExpirationItem_SN
 const SN_COMPLETE = 0x210121;
 
-// R9: MapInfo_SN currently carries the DB's legacy row ids (0..5).  The
-// client-side Account_MapList_Check compares these values with Cache.Bin map
-// ids (9001..9012), so keep the real-id path opt-in until tested.
+// R9 implemented but failed: real PvE ids did not fill the room-settings list;
+// another filter, including the PvE user-count range, remains unresolved.
+// See docs/journal/2026-09-18-14-map-info-sn-real-ids.md.
 const MAP_INFO_REAL_ID_MODE = 'disabled'; // 'disabled' | 'enabled'
 const MAP_INFO_REAL_IDS = [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012];
 

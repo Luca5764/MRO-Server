@@ -1,0 +1,84 @@
+; ZDispatchAccount::MapInfo_SN (0x107c4c00 - 0x107c4cdf)
+; Export: ?MapInfo_SN@ZDispatchAccount@@QAEXPAUFormat@System@Share@@PAD@Z (thunk: 0x10704d04)
+
+  0x107c4c00:  51                   push       ecx
+  0x107c4c01:  8a 41 04             mov        al, byte ptr [ecx + 4]
+  0x107c4c04:  84 c0                test       al, al
+  0x107c4c06:  75 2d                jne        0x107c4c35
+  0x107c4c08:  a1 40 ba 91 10       mov        eax, dword ptr [0x1091ba40]
+  0x107c4c0d:  8b 08                mov        ecx, dword ptr [eax]
+  0x107c4c0f:  68 28 40 82 10       push       0x10824028
+  0x107c4c14:  6a 01                push       1
+  0x107c4c16:  e8 33 f3 f3 ff       call       0x10703f4e
+  0x107c4c1b:  8b 0d 40 ba 91 10    mov        ecx, dword ptr [0x1091ba40]
+  0x107c4c21:  8b 11                mov        edx, dword ptr [ecx]
+  0x107c4c23:  68 48 40 82 10       push       0x10824048
+  0x107c4c28:  52                   push       edx
+  0x107c4c29:  e8 28 45 f4 ff       call       0x10709156
+  0x107c4c2e:  83 c4 08             add        esp, 8
+  0x107c4c31:  59                   pop        ecx
+  0x107c4c32:  c2 08 00             ret        8
+  0x107c4c35:  53                   push       ebx
+  0x107c4c36:  57                   push       edi
+  0x107c4c37:  8b 7c 24 10          mov        edi, dword ptr [esp + 0x10]
+  0x107c4c3b:  85 ff                test       edi, edi
+  0x107c4c3d:  74 30                je         0x107c4c6f
+  0x107c4c3f:  83 c7 10             add        edi, 0x10
+  0x107c4c42:  74 2b                je         0x107c4c6f
+  0x107c4c44:  6a 01                push       1
+  0x107c4c46:  8d 44 24 0f          lea        eax, [esp + 0xf]
+  0x107c4c4a:  57                   push       edi
+  0x107c4c4b:  50                   push       eax
+  0x107c4c4c:  e8 17 29 f4 ff       call       0x10707568
+  0x107c4c51:  83 c4 0c             add        esp, 0xc
+  0x107c4c54:  47                   inc        edi
+  0x107c4c55:  74 18                je         0x107c4c6f
+  0x107c4c57:  6a 01                push       1
+  0x107c4c59:  8d 4c 24 14          lea        ecx, [esp + 0x14]
+  0x107c4c5d:  57                   push       edi
+  0x107c4c5e:  51                   push       ecx
+  0x107c4c5f:  e8 04 29 f4 ff       call       0x10707568
+  0x107c4c64:  0f b6 5c 24 1c       movzx      ebx, byte ptr [esp + 0x1c]
+  0x107c4c69:  83 c4 0c             add        esp, 0xc
+  0x107c4c6c:  47                   inc        edi
+  0x107c4c6d:  eb 04                jmp        0x107c4c73
+  0x107c4c6f:  8b 5c 24 10          mov        ebx, dword ptr [esp + 0x10]
+  0x107c4c73:  85 db                test       ebx, ebx
+  0x107c4c75:  7e 65                jle        0x107c4cdc
+  0x107c4c77:  56                   push       esi
+  0x107c4c78:  8b 74 24 14          mov        esi, dword ptr [esp + 0x14]
+  0x107c4c7c:  8d 64 24 00          lea        esp, [esp]
+  0x107c4c80:  85 ff                test       edi, edi
+  0x107c4c82:  74 17                je         0x107c4c9b
+  0x107c4c84:  6a 04                push       4
+  0x107c4c86:  8d 54 24 18          lea        edx, [esp + 0x18]
+  0x107c4c8a:  57                   push       edi
+  0x107c4c8b:  52                   push       edx
+  0x107c4c8c:  e8 d7 28 f4 ff       call       0x10707568
+  0x107c4c91:  8b 74 24 20          mov        esi, dword ptr [esp + 0x20]
+  0x107c4c95:  83 c4 0c             add        esp, 0xc
+  0x107c4c98:  83 c7 04             add        edi, 4
+  0x107c4c9b:  a1 40 ba 91 10       mov        eax, dword ptr [0x1091ba40]
+  0x107c4ca0:  8b 08                mov        ecx, dword ptr [eax]
+  0x107c4ca2:  68 68 40 82 10       push       0x10824068
+  0x107c4ca7:  6a 02                push       2
+  0x107c4ca9:  e8 a0 f2 f3 ff       call       0x10703f4e
+  0x107c4cae:  8b 0d 40 ba 91 10    mov        ecx, dword ptr [0x1091ba40]
+  0x107c4cb4:  8b 11                mov        edx, dword ptr [ecx]
+  0x107c4cb6:  56                   push       esi
+  0x107c4cb7:  68 88 40 82 10       push       0x10824088
+  0x107c4cbc:  52                   push       edx
+  0x107c4cbd:  e8 94 44 f4 ff       call       0x10709156
+  0x107c4cc2:  83 c4 0c             add        esp, 0xc
+  0x107c4cc5:  b9 70 9b 8e 10       mov        ecx, 0x108e9b70
+  0x107c4cca:  ff 15 90 b9 91 10    call       dword ptr [0x1091b990]
+  0x107c4cd0:  56                   push       esi
+  0x107c4cd1:  8b c8                mov        ecx, eax
+  0x107c4cd3:  e8 24 cc f3 ff       call       0x107018fc
+  0x107c4cd8:  4b                   dec        ebx
+  0x107c4cd9:  75 a5                jne        0x107c4c80
+  0x107c4cdb:  5e                   pop        esi
+  0x107c4cdc:  5f                   pop        edi
+  0x107c4cdd:  5b                   pop        ebx
+  0x107c4cde:  59                   pop        ecx
+  0x107c4cdf:  c2 08 00             ret        8

@@ -5,8 +5,9 @@ const SN_ROOM_OPTION = 0x00220217;
 const SN_ROOM_NAME = 0x0022021A;
 const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
 
-// SN_ROOM_DEFAULT entry[0].Index is a client MapIndex, not a Cache.Bin row.
-// Keep the correction opt-in until the room-settings path is tested.
+// R4 implemented but failed: using the real map id here had no observable
+// effect; the room-settings list remained empty and showed 4 VS 4.
+// See docs/journal/2026-09-18-11-room-default-map-entry.md.
 const ROOM_DEFAULT_MAP_ENTRY_MODE = 'disabled'; // 'disabled' | 'enabled'
 const MAP_ID_DEFAULT_PVE = 9001;
 const MAP_ID_PVE_MIN = 9001;

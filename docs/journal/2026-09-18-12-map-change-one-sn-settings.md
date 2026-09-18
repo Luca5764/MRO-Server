@@ -1,6 +1,6 @@
-# R6 Map_Change_One_SN 房間設定回送（待審）
+# R6 Map_Change_One_SN 房間設定回送（已確認）
 
-狀態：🟡 待審；新增預設關閉的設定回送路徑，未啟動伺服器、未要求操作者實測。
+狀態：✅ Claude 高階審查＋實測。
 
 ## 目標與證據
 
@@ -48,3 +48,9 @@
 - [TEST] 待執行 `node --check` 與 `git diff --check`；本分支不啟動伺服器。
 - ⬜ 是否足以解除 `shots/r5-state.png` 的畫面不動，留待高階實測；本日誌不標示為已確認。
 - R1/R2/R3/R4 開關、`SN_MAP_CHANGE_ALL`、`SN_ROOM_DEFAULT` 與資料庫均未改動。
+
+## 收尾實測
+
+- [OBS] 啟用 R6 後按初級／中級／高級，目標回合分別正確顯示 5／8／10。
+- [OBS] `SN_MAP_CHANGE_ONE` 不再把房間設定洗成 0/1/0/0；CQ 採納的設定值能留在回送 SN。
+- [TEST] Claude 高階已完成伺服器與客戶端驗證；本篇由待審改為 ✅，開關固定為 enabled。

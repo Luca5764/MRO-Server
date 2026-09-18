@@ -1,8 +1,8 @@
-# R9：MapInfo_SN 改送真實 PvE map id（待審）
+# R9：MapInfo_SN 改送真實 PvE map id（實測未通過）
 
 - 日期：2026-09-18
 - 分析／實作者：Codex（中階）
-- 狀態：🟡 待審；預設開關關閉，未啟動伺服器、未實測
+- 狀態：❌ 實測未通過；預設開關維持關閉。
 
 ## 觀察到的封包
 
@@ -52,3 +52,12 @@
 - [🟡] `Account_Map_Add` 唯一外部呼叫者、m_MapList 過濾鏈與 row/id 不匹配是靜態證據；尚未宣稱 UI 實測通過。
 - [TEST] `node --check 'Metal Rage Online Server/dispatch/account.dispatch.js'` 通過。
 - [TEST] `git diff --check` 通過；本任務沒有啟動伺服器，也沒有要求操作者實測。
+
+## 收尾實測
+
+- [LOG] 開啟 R9 時確實送出 `0x00210115 count=12`，ids 為 9001–9012；hex 為 `000c29230000 2a230000 ... 34230000`。
+- [OBS] 設定對話框仍顯示 4 VS 4，地圖清單仍空；只補齊 m_MapList 並不足以通過完整篩選鏈。
+- [OBS] Claude 高階判定 m_MapList 不是唯一關卡；後續還有人數範圍篩選，而 PvE 人數陣列要等 `g_SelectMapInfo` 命中才會切換。
+- [OBS] 缺口是誰設定 `g_SelectMapInfo`，相關研究在 `docs/research/2026-09-18-room-setting/` 與 `docs/research/2026-09-18-map-list-zero/`。
+- [OBS] Gemini「伺服器從未送出 `0x00210115`」仍是錯誤；本次 log 再次證明伺服器確實送出，錯的是後續篩選未完成。
+- [TEST] Claude 高階已完成實測；R9 維持 disabled，未把靜態假設寫成成功。

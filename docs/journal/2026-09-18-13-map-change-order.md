@@ -1,6 +1,6 @@
-# R7/R7b Map_Change_One 回應順序（待審）
+# R7/R7b Map_Change_One 回應順序（實測未通過）
 
-狀態：🟡 待審；R7 原始順序假設已被實測推翻，R7b 改為 ONE 後補送一次 ALL；未啟動伺服器、未要求操作者實測。
+狀態：❌ 實測未通過；R7 與 R7b 均失敗，開關維持 disabled。
 
 ## 實測與根因假設
 
@@ -65,3 +65,11 @@
 - `mapChangeOneResponse=true` 仍只由 `gate.game.dispatch.js:525` 的 map-only 換圖回應路徑傳入；`room.dispatch.js:1447` 初始進房不傳 options，不會補送。
 - disabled 時 `sendSupplementalAll` 為 false，完整維持原本 ALL×2→ONE。
 - 🟡 新做法的目標是讓 ONE 寫入後再觸發一次 ALL 重繪，但是否能解除燈號／清單問題仍待單變數實測。
+
+## 收尾實測與新確認行為
+
+- [OBS] R7（ONE→ALL×2）與 R7b（ALL×2→ONE→ALL）兩種做法症狀完全相同：按初級時，潛入作戰又變成動力奪取戰，但難度燈仍維持高級。
+- [OBS] 之後客戶端固定送 `Map_Change_One_CQ`，w1=`9002`，換圖狀態卡死。
+- [LOG] 實測證明只要 `SN_MAP_CHANGE_ALL` 排在 `SN_MAP_CHANGE_ONE` 之後，不論取代或補送，都會覆蓋地圖選擇。
+- [OBS] 原順序 ALL×2→ONE 才是可工作的基線；難度燈慢一拍是另一個尚未定位的原因。
+- [TEST] Claude 高階已完成兩輪實測；R7/R7b 假設均標為 ❌，`MAP_CHANGE_ORDER_MODE` 維持 disabled。

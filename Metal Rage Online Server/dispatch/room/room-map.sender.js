@@ -13,8 +13,14 @@
 const MAP_ALL_HEADER_MODE = 'compact'; // 'compact' | 'padded'
 const MAP_ALL_SEND_TWICE = 'enabled'; // 'disabled' | 'enabled'
 const MAP_ALL_ENTRY_OFFSET = MAP_ALL_HEADER_MODE === 'compact' ? 0x02 : 0x06;
-const ROOM_MAP_SYNC_MODE = 'disabled'; // 'disabled' | 'enabled'
-const MAP_CHANGE_ONE_SETTINGS_MODE = 'disabled'; // 'disabled' | 'enabled'
+// R1 verified: the room panel follows the selected real PvE map id.
+// Evidence: docs/journal/2026-09-18-08-room-map-sync.md.
+const ROOM_MAP_SYNC_MODE = 'enabled'; // 'disabled' | 'enabled'
+// R6 verified: difficulty changes preserve the requested round settings.
+// Evidence: docs/journal/2026-09-18-12-map-change-one-sn-settings.md.
+const MAP_CHANGE_ONE_SETTINGS_MODE = 'enabled'; // 'disabled' | 'enabled'
+// R7/R7b implemented but failed: ONE-after-ALL supplemental ordering still
+// overwrote the selection. See docs/journal/2026-09-18-13-map-change-order.md.
 const MAP_CHANGE_ORDER_MODE = 'disabled'; // 'disabled' | 'enabled'
 
 const SN_MAP_CHANGE_ALL = 0x00220226;

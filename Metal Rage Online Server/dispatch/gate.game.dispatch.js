@@ -73,8 +73,9 @@ let nextRoomIndex = 1;
 // at 0x107eb510, then places the same payload at body+0x06. The disabled path
 // preserves the old 10-byte body with the payload at body+0x00.
 //
-// Change only one field at a time while testing difficulty buttons.
-const MAP_CHANGE_SA_ECHO_MODE = 'disabled'; // 'disabled' | 'enabled'
+// R3b verified: the 6-byte zero success header prevents the client error.
+// Evidence: docs/journal/2026-09-18-10-map-change-one-sa.md.
+const MAP_CHANGE_SA_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
 const MAP_CHANGE_ONE_SA_EXPERIMENT = {
     mode: 'manual',  // SA에 현재 선택된 맵 캐시키를 반환 (returns the currently selected map cache key in the SA)
     manual: {

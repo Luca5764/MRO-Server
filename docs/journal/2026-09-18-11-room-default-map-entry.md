@@ -1,6 +1,6 @@
-# R4 SN_ROOM_DEFAULT 首筆 MapInfo entry（待審）
+# R4 SN_ROOM_DEFAULT 首筆 MapInfo entry（實測未通過）
 
-狀態：🟡 待審；本次只加預設關閉的單欄位修正，未啟動伺服器、未要求操作者實測。
+狀態：❌ 實測未通過；開關維持 disabled。
 
 ## 目標與根因鏈
 
@@ -55,3 +55,9 @@ R1 的 log 曾同時出現 `mapIndex=9010` 與 `bodyCache=58`；本次只改後�
 
 - 🟡 上表是靜態封包預期，不是實測結果；R4 仍需操作者單變數開關實測後由高階審查。
 - [TEST] `node --check room-state.sender.js` 與 `git diff --check` 已通過；未變更工作樹中 R1/R2/R3 的開關值。
+
+## 收尾實測
+
+- [OBS] 啟用 R4 將 `SN_ROOM_DEFAULT` 首筆 entry 改成真實 map id 後，設定對話框仍顯示「4 VS 4」。
+- [OBS] 地圖清單仍為空，沒有可觀察的 UI 改善；因此 R4 的單欄位修正未解除阻塞。
+- [TEST] Claude 高階已完成實測；R4 維持 disabled，未把無效果路徑標成成功。

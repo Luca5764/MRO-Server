@@ -1,0 +1,36 @@
+; UZNetwork_DJ::Account_Map_Add (0x107323e0 - 0x10732431)
+; Export: ?Account_Map_Add@UZNetwork_DJ@@QAEXH@Z (thunk: 0x107018fc)
+
+  0x107323e0:  53                   push       ebx
+  0x107323e1:  8b 5c 24 08          mov        ebx, dword ptr [esp + 8]
+  0x107323e5:  56                   push       esi
+  0x107323e6:  8b f1                mov        esi, ecx
+  0x107323e8:  8b 96 a4 0e 00 00    mov        edx, dword ptr [esi + 0xea4]
+  0x107323ee:  33 c0                xor        eax, eax
+  0x107323f0:  85 d2                test       edx, edx
+  0x107323f2:  7e 24                jle        0x10732418
+  0x107323f4:  57                   push       edi
+  0x107323f5:  8b be a0 0e 00 00    mov        edi, dword ptr [esi + 0xea0]
+  0x107323fb:  8d 8e a0 0e 00 00    lea        ecx, [esi + 0xea0]
+  0x10732401:  39 1f                cmp        dword ptr [edi], ebx
+  0x10732403:  74 0a                je         0x1073240f
+  0x10732405:  40                   inc        eax
+  0x10732406:  83 c7 04             add        edi, 4
+  0x10732409:  3b c2                cmp        eax, edx
+  0x1073240b:  7c f4                jl         0x10732401
+  0x1073240d:  eb 08                jmp        0x10732417
+  0x1073240f:  6a 01                push       1
+  0x10732411:  50                   push       eax
+  0x10732412:  e8 a7 ec fc ff       call       0x107010be
+  0x10732417:  5f                   pop        edi
+  0x10732418:  6a 01                push       1
+  0x1073241a:  81 c6 a0 0e 00 00    add        esi, 0xea0
+  0x10732420:  6a 04                push       4
+  0x10732422:  8b ce                mov        ecx, esi
+  0x10732424:  ff 15 a0 b8 91 10    call       dword ptr [0x1091b8a0]
+  0x1073242a:  8b 0e                mov        ecx, dword ptr [esi]
+  0x1073242c:  5e                   pop        esi
+  0x1073242d:  89 1c 81             mov        dword ptr [ecx + eax*4], ebx
+  0x10732430:  5b                   pop        ebx
+  0x10732431:  c2 04 00             ret        4
+  0x10732434:  cc                   int3

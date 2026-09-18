@@ -356,3 +356,75 @@
 - `placeholder-audit.md` 涵蓋 `dispatch/` 下所有 sender 與 dispatch 組包處，沒有只抽查房間 sender 的缺口。
 - 每個候選常數都有 (a)/(b)/(c) 分類與可追溯依據；無法確認語意的項目明確列為 (c)。
 - (c) 類至少有前 10 名的影響面說明，並清楚列出需要補查的組語、schema、session log 或客戶端反應。
+
+## H6：房間難度燈慢一拍
+
+> **狀態：2026-09-18 Claude 高階新增，未指派**
+
+### 目標
+
+找出房間設定中難度燈慢一拍的真正原因，讓第一次按初級／中級／高級後，燈號立即對應所選 PvE map 的 `PlayPve` 值；只提出最小修正，先不擴大到其他房間 UI。
+
+### 範圍
+
+- 追蹤 `ZPage_Room.uc:680`、`ZPanel_PVE.uc` 的難度燈讀值，以及 `SN_MAP_CHANGE_ALL 0x00220226`／`SN_MAP_CHANGE_ONE 0x00220223` 到 `MapInfoList` 的寫入與事件觸發順序。
+- 對照 `docs/journal/2026-09-18-13-map-change-order.md` 的 ALL／ONE 實測 frame、客戶端 log 與既有 `room-map.sender.js` 順序。
+- 查明值已正確但畫面更新延遲一個選擇的原因；必要時保存完整 frame 與事件 log。
+
+### 背景
+
+- [OBS] R6 後目標回合已正確顯示 5／8／10，但難度燈仍慢一拍。
+- [OBS][LOG] R7 與 R7b 都證明只要 ALL 排在 ONE 後就會覆蓋地圖選擇；因此送出順序不是可直接採用的修正，R7 開關維持 disabled。
+- [SRC] 難度燈由 `MapInfoList[j].PlayPve` 驅動；目前缺的是事件、寫入與重繪之間的精確先後。
+
+### 限制
+
+- 先做 DLL／腳本／session 分析，不直接改程式、不改資料庫、不改 `docs/state.md` 或 `docs/HANDOFF.md`。
+- 不把 R7/R7b 的失敗再標成成功；不得把 `MAP_CHANGE_ORDER_MODE` 打開。
+- 不啟動或重啟伺服器，不請操作者測試；若提出實驗，最多兩個單變數、預設關閉。
+
+### 交付
+
+- 50–100 行日誌與 INDEX 待審列，列出難度燈讀值、ALL／ONE 完整封包與事件順序證據。
+- 原始組語、腳本摘錄、完整相關 hex 存入 `docs/research/` 對應目錄。
+- 最多兩個單變數修正／實驗建議；若無法定位，明確列出缺失證據，不猜時序。
+
+### 完成條件
+
+能以客戶端腳本或 DLL 證明燈號慢一拍的具體觸發點，並提出不改地圖選擇語意的最小預設關閉修正；否則只交分析與阻塞。
+
+## H7：房間設定對話框地圖清單為空
+
+> **狀態：2026-09-18 Claude 高階新增，未指派**
+
+### 目標
+
+找出 `ZPopup_RoomSet`／地圖選擇對話框清單仍為空的最後一個篩選關卡，讓 PvE 地圖可列出且人數控制切換到 PvE 版本；提出最小修正，不重做已驗證的房間同步路徑。
+
+### 範圍
+
+- 追蹤 `Account_MapList_Check`／`m_MapList`、人數範圍篩選與 `g_SelectMapInfo` 設定者的完整鏈。
+- 對照 `docs/research/2026-09-18-room-setting/`、`docs/research/2026-09-18-map-list-zero/`，以及 R4／R9 日誌與實測結果。
+- 查明 `g_SelectMapInfo` 何時、由哪個 Cache record 或事件設定；保留 `MapIndex < 1000`、人數陣列與 map type 的原始證據。
+
+### 背景
+
+- [OBS] R4 把 `SN_ROOM_DEFAULT` 首筆 entry 改成真實 map id 後仍是 4 VS 4、清單空；R9 已送 `MapInfo_SN 0x00210115` 的 9001–9012 十二筆仍無效果。
+- [DLL][SRC] `Account_MapList_Check`／`m_MapList` 只是其中一關；完整鏈還包含人數範圍，而只有 `g_SelectMapInfo` 命中才切 PvE 人數陣列。
+- [OBS] Gemini「伺服器從未送出 `0x00210115`」已由 session log 推翻；不要回到該錯誤前提。
+
+### 限制
+
+- 只做分析與最小方案，不改資料庫、不改 `state.md`／`HANDOFF.md`，不先動已驗證的四個 enabled 開關。
+- 不重開伺服器、不請操作者測試；未知封包保留完整 hex，不猜 `g_SelectMapInfo` 的寫入格式。
+- 若需修正，只提出預設關閉單變數開關；不得修改 `PVE_SLOT_SELECT_FLOW`、ItemInfo、G6、G7 或 `Grade_Info`。
+
+### 交付
+
+- 50–100 行日誌與 INDEX 待審列，逐關列出 `m_MapList`、人數範圍、`g_SelectMapInfo` 與清單生成條件。
+- 原始反組譯、腳本摘錄、Cache／封包資料存入 `docs/research/` 對應目錄。
+- 最多兩個單變數實驗建議；若無法確認最後關卡，只交分析及需要高階裁決的阻塞。
+
+### 完成條件
+
+能以 DLL／腳本／實際 log 證明清單在哪一關被丟掉，並給出不影響現有房間地圖同步的最小預設關閉修正；若不能確認，不猜格式、不改程式。

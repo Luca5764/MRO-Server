@@ -1,7 +1,7 @@
-// Client-side room strings are converted from narrow input by ZNetwork.dll
-// when the ANSI experiment is enabled. Keep the switch in one shared module
-// so both room-state and room-user senders cannot drift apart.
-const ROOM_STRING_ANSI_MODE = 'disabled'; // 'disabled' | 'enabled'
+// R2 verified: the room-name path consumes ANSI/narrow input. This contradicts
+// the old AGENTS.md note for 0x0022021A; the high-level owner will update it.
+// Keep the switch shared so both room-state and room-user senders agree.
+const ROOM_STRING_ANSI_MODE = 'enabled'; // 'disabled' | 'enabled'
 const ROOM_STRING_MAX_CHARS = 25;
 
 function toSafeAscii(value) {
