@@ -114,3 +114,4 @@
 | 2026-09-18 | `2026-09-18-2240-item-names.md` | — | 🟡 中階／待審 | N1：Cache.Bin `Spec*Record` 表獨立解析出 ItemIndex→顯示名稱對照（機體/主武器/副武器/推進器/駕駛員/塗裝），25 筆 pilot 逐字元覆核先前 dump；`tools/item-names.py`、`docs/reference/item-names.md`；順帶發現既有兩篇日誌對「Table 10」標號互相矛盾（內容本身沒錯）。 |
 | 2026-09-18 | `2026-09-18-2305-room-avatar-experiments.md` | `0x00220233`、`0x00220402` | — | 房間頭像：改送 51500101／51100801 實測都無頭像，PilotCode 值不是唯一關卡；暫停，R14 不合併。 |
 | 2026-09-18 | `2026-09-18-18-room-pilot-avatar.md` | `0x00220233`、`0x00220402` | — | R13（Gemini）：101 是 BeginSet 編號不是駕駛員 ItemIndex；「預期」欄已被 2305 篇更正。 |
+| 2026-09-18 | `2026-09-18-2330-a6b-pve-full-match-golden.md` | `0x00222112`、`0x00230139`、`0x00222213`、`0x00230123`、`0x00220234` | — | A6b：新增黃金樣本 `pve-full-match`（session-20260918-205012.jsonl conn 2，唯一有 Campaign_CN 的 log，三輪通關到 Leave_CQ 全包，因玩家中途未離房），全綠且 Game_User_SN／EndGame_SN 單 byte 改動均 FAIL；expected.jsonl ~13MB，待審是否收斂。 |

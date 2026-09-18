@@ -90,6 +90,30 @@ Covered (see `test/golden/`):
   M3a `POST_BUY_SLOT_REFRESH_MODE` Slot_Change_SA resend, and the post-
   purchase ShopList repaint (fires through `fake-timers.js` again).
 
+- `pve-full-match`: a PvE mission from room create through three full
+  Campaign clears back to back on one connection (`session-20260918-205012.jsonl`
+  conn 2 -- see extraction notes below), covering `Game_User_SN`
+  (`0x00222112`), `Game_Info_SN`, `BeginRound_CN`/`BeginRound_SN`
+  (`0x00230151`/`0x00230152`), the client-driven `ChangeSlot_CN`/`_SN`
+  (`0x00230101`/`0x00230102`) mech-select path, many `Death_CN`/`Death_SN`
+  (`0x00230123`/`0x00230124`) exchanges, `Campaign_CN`/`EndGame_SN`
+  (`0x00230139`/`0x00222213`) three times, the post-match `Hangar Open_CQ`
+  return to the campaign room each time, and finally `Leave_CQ`
+  (`0x00220234`). This is the only session log under `logs/` that reaches
+  a completed Campaign_CN (`grep -c '"op":"0x00230139"'` is 0 in every other
+  log at the time this was extracted), and in it the player never leaves the
+  room between rounds -- Leave_CQ is sent only once, after the third clear --
+  so a single-round contiguous slice of this log cannot end in Leave_CQ; the
+  sample covers all three rounds rather than trim to one, per AGENTS.md's
+  "client behaviour over our assumptions" rule. That makes `expected.jsonl`
+  ~13MB (8383 send packets vs. dozens-to-hundreds in the other samples,
+  mostly from the ~350 `0x00230123` recv packets the client sends during
+  battle, each answered with a `Death_SN`) -- flagged here for a size-vs-
+  fidelity call the next reviewer may want to revisit; see the A6b handback
+  report for the alternatives considered (a shorter single-round slice would
+  not reach Leave_CQ; splicing two non-contiguous slices from the same log
+  was rejected as not "one segment" per the task contract).
+
 Switch coverage spot-checked for this pass (flip to `disabled`, confirm a
 FAIL with the right op/offset, flip back): `ROOM_TEAM_INDEX_MODE` (room
 default 0x00220203 +0x10 team indices), `ROOM_USER_NAME_ANSI_MODE`
@@ -101,9 +125,6 @@ Hangar Open_CQ takes; only `login-room-shop-buy` covers it, at send #51),
 `docs/reference/switch-audit.md`'s full switch list for what else exists.
 
 Not covered yet, and why:
-- **PvE match to completion** (`BeginRound_SN` / score / end-game): no
-  session log in `logs/` at the time this was written reached that far
-  (see A6 handback report); needs its own golden sample once one exists.
 - **`saveEquippedLoadout`, `createAccount`, cash-currency purchases**: no
   golden sample exercises these DB entry points yet; `fake-db.js` throws a
   labelled "not mocked" error rather than guess a shape if one ever does.
