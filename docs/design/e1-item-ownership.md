@@ -207,3 +207,14 @@ COMMIT;
 - `ItemInfo_SN` 的黃金樣本（35-byte record 逐欄位比對）如果之後真的要塞 `IsShare` 位元
   （§3 的阻塞項），會動到 wire record 本身的位元組內容，必須是完全獨立的一步、有自己的組語證據
   才能做，不能跟拆表合併成一個 commit。
+
+## 更正：IsShare 不需要由伺服器送（IS2，2026-09-19，🟡 未經跨公司審查）
+
+- [DLL] `Item_Add`（`0x10732450`，export `?Item_Add@UZNetwork_DJ@@QAEXHH_NHHHHHH@Z`）會用 record+0x04（item_id）自己查 Cache.Bin 的 GameItemRecord，再把 catalog 欄位跟 wire 欄位合起來寫進 `m_HaveList`（stride 0x50）。bool 欄位打包在 +0x4c 的一個 dword 裡：
+  - IsShare（bit5）＝catalog 值 > 0（`0x10732575`–`0x10732580`，高階抽驗過）
+  - IsMerge（bit6）＝catalog 值 == 1（`0x10732585`–`0x10732595`）
+  - IsCash（bit4）＝catalog 的 SellType 字串比對
+  - IsActive（bit7）＝wire record+0x08（我們送的 equipped）== 1
+  - IsNew 固定清成 0
+- **所以上面 §3「35-byte record 要補 IsShare 位元」這個阻塞項不成立**：`ZPage_Hangar.uc:471/671` 讀的 `ItemList[n].IsShare`，是客戶端收到 record 時自己從 Cache 算出來的。E1 只需要改 DB 這一層（擁有／裝備拆表）。
+- ⬜ record+0x10（我們送的 mech_type）與 +0x14 最後寫到哪裡還沒對出來；m_HaveList 的 MiddleGroup／LowGroup 位置看起來一直是 0。

@@ -363,6 +363,8 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 
 ## P2：PvE 只保留主武器、輔武與裝備回預設
 
+> **2026-09-19 IS2（🟡）：** 客戶端出場配裝路徑對六個部位完全對稱：`Game_User_SN` handler（`0x107d8ae0`，`0x107d8e15`–`0x107d8ebe`）照 (body, main, left, right, equipment, skin) 的順序傳給 `Game_Slot_Set`（`0x1072de30`，六個部位同一套寫法、沒有任何條件判斷）→ `ServerMechWeaponSet_MH` 對 Part[1..4] 一視同仁。Part 1 跟 Part 2–4 之間找不到差別。還剩一個沒排除的候選：`m_MySlot`（`ZNetwork_DJ.uc:843`，型別 SLOT_DETAIL_INFO，可能綁在 `WearInfo_SN 0x00210113` 或本機的 `Game_Slot` 切換上）⬜。
+
 > **2026-09-19：** ❌ ShareType 單獨解釋 P2（[DB]＋[CACHE] +0x4F：left 33800101=1、right 33800201=1、equipment 41200201=**0** 也掉了；main 22600101=0 保留）。觀察：掉裝的範圍＝Part 2–4 全部，Part 1 保留（[LOG]／[DB]）。下一步的問題改成「Part 1 跟 Part 2–4 在出場配裝時走的路徑差在哪」。
 
 > **2026-09-18 分析完成（🟡，高階初審）：** `Game_User_SN 0x00222112` 在 `session-20260918-214305.jsonl:522` 的 8 個 slot、6 個部位都送了非預設值；[SRC] `DefaultPlayerController.uc:874-907` 的 `ServerMechWeaponSet_MH` 會讀 Part[1..4] 全部武器欄位。伺服器端路徑沒找到錯誤。剩下沒排除的是「戰鬥中切換機體」（`Game_Slot` 由客戶端在本機切換，不經過伺服器）。**下一步：** 操作者在 PvE 裡切換到另一台已完整裝備的機體，截圖看武器，同時看 log 有沒有新封包。另外 `database/db.js:267` 的註解把 part 4／5 的標籤寫反了（數值沒錯），收斂時順手修正。
