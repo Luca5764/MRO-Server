@@ -53,6 +53,50 @@ const authTokens = require(path.join(ROOT, 'auth-tokens.js'));
 
 const DB_PATH = require.resolve(path.join(ROOT, 'database', 'db.js'));
 const ROOMS_PATH = require.resolve(path.join(ROOT, 'rooms.js'));
+// D1-1 review fix: config/server.js and config/whitelist.js each read a
+// per-operator, gitignored file from disk (config/server.json,
+// config/allowed-users.json) the first time they are require()d, then cache
+// the result for the life of the process (neither lives under dispatch/, so
+// resetModulesWithFixtureDb's cache wipe below never touches them either).
+// packetlog.js requires both at its own top level and keeps a direct
+// reference, and packetlog.js itself is loaded once and never reset the
+// same way. Net effect: this harness's output used to depend on whatever
+// happens to be sitting in the operator's local config/ directory -- e.g.
+// login-dispatch's SN_SERVER_ADD 0x00220101 body bakes in the literal
+// '127.0.0.1' (config/server.js's pre-N1 default), and goes red if a real
+// config/server.json with a different publicHost is present, even though
+// nothing about the code under test changed. Pin both to fixed values here,
+// the same require.cache-swap technique as DB_PATH, so a replay is
+// deterministic regardless of local config files (test/whitelist.js already
+// does this for config/whitelist.js on its own path; this applies the same
+// fix here since this harness loads dispatch/account.dispatch.js too).
+const CONFIG_SERVER_PATH = require.resolve(path.join(ROOT, 'config', 'server.js'));
+const CONFIG_WHITELIST_PATH = require.resolve(path.join(ROOT, 'config', 'whitelist.js'));
+
+function installFakeModule(resolvedPath, exportsObj)
+{
+    const mod = new Module(resolvedPath, null);
+    mod.filename = resolvedPath;
+    mod.loaded = true;
+    mod.exports = exportsObj;
+    require.cache[resolvedPath] = mod;
+}
+
+// Fixed publicHost -- matches config/server.js's own DEFAULT_PUBLIC_HOST,
+// which is what every existing golden sample's expected.jsonl was captured
+// against (no config/server.json in this repo/CI).
+function makeFixtureServerConfig()
+{
+    return { getPublicHost() { return '127.0.0.1'; } };
+}
+
+// Whitelist always off -- matches pre-W1 behaviour, what every existing
+// golden sample was captured against (no config/allowed-users.json in this
+// repo/CI).
+function makeFixtureWhitelist()
+{
+    return { isAllowed() { return true; }, status() { return 'off'; } };
+}
 
 /**
  * Replaces database/db.js in the module cache with a fresh fixture, and
@@ -76,10 +120,18 @@ function resetModulesWithFixtureDb(fixtureDb)
     dbModule.exports = fixtureDb;
     require.cache[DB_PATH] = dbModule;
 
+    // Must happen before the first require() of dispatch.js/game.js below
+    // (and therefore before packetlog.js's own first load, which is what
+    // actually reads these) -- resetModulesWithFixtureDb() always runs
+    // ahead of loadServicesForPort() in replaySample(), including on the
+    // very first sample, so this is early enough.
+    installFakeModule(CONFIG_SERVER_PATH, makeFixtureServerConfig());
+    installFakeModule(CONFIG_WHITELIST_PATH, makeFixtureWhitelist());
+
     const dispatchDir = path.join(ROOT, 'dispatch') + path.sep;
     for (const file of Object.keys(require.cache))
     {
-        if (file === DB_PATH) continue;
+        if (file === DB_PATH || file === CONFIG_SERVER_PATH || file === CONFIG_WHITELIST_PATH) continue;
         if (file.startsWith(dispatchDir) ||
             file === path.join(ROOT, 'dispatch.js') ||
             file === path.join(ROOT, 'game.js'))
