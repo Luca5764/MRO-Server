@@ -308,3 +308,123 @@
 有證據證明 PvE 出場時實際武器就是已保存的 `22100301`，或明確指出從 DB／`Game_User_SN`／客戶端戰鬥初始化哪一層開始分離，並保留完整未知資料供高階審查。
 
 - **待審價格資料**：`catalog` 表價格與 Cache.Bin `DisplayPoint` 不一致，趨勢同構但數字約差 10%；分析是否應改用 Cache 的數字，暫不修改資料或程式。
+
+## H5：盤點 sender 裡的過期佔位常數
+
+> **狀態：2026-09-18 Claude 高階新增，未指派**
+
+### 目標
+
+把所有 sender 與 dispatch 封包組裝處寫死的字面常數盤點、分類，找出仍可能代表「尚未查過語意」的佔位值；只做分析，不修改程式或資料。
+
+### 範圍
+
+- 涵蓋 `dispatch/` 底下所有 `*.sender.js`，以及 dispatch 檔案中直接組裝封包的地方。
+- 逐筆記錄檔案與行號、完整 opcode、body 欄位偏移、目前寫入值，判定為：(a) 有組語／日誌依據的確定值；(b) 保留欄位／成功碼而送 0 正確；(c) 尚未查過語意的佔位值。
+- 以 `grep -rn "write[A-Za-z0-9]*(\s*[0-9]" dispatch/room/*.js dispatch/*.sender.js` 等搜尋作為起點；若實際範圍比該搜尋更大，仍須涵蓋所有 sender 與 dispatch 組包路徑。
+- 對 (c) 類按影響面排序，優先檢查可能影響畫面、房間狀態、購買／庫存或存檔的欄位。
+
+### 背景
+
+2026-09-18 一天之內抓到的五個 bug 全是同一個形狀——**不是邏輯錯，是當初不知道欄位語意時填的佔位值沒有跟著更新**：
+
+- 房間面板地圖寫死 `9001`（實際開戰用 9010）→ 面板永遠顯示錯的任務（R1）。
+- `writeShopListBody` 的 `isShow` 無條件 `= 1` → 商店排出 8 把同名武器（G6g）。
+- 購買時 `mech_type` 照抄 catalog → 買的東西哪台機都看不到（G6e）。
+- `items.id` 落在客戶端保留區 101–999 → 整個庫存被濾掉（G6f）。
+- `SN_MAP_CHANGE_ONE` 的 `MapTime=0, MapRound=1, MapKill=0, Goal=0` → 每次換圖洗掉客戶端的房間設定（R6）。
+
+這些欄位當初都以 `b0 / w1 / w2 / b5 / w6 / w8` 這種「用偏移當名字」的方式命名，程式碼註解也自承 `We do not know the real semantics yet`。也就是說，**寫死的字面常數就是「還沒查過語意」的標記**。目前以 `grep` 搜尋房間相關 sender 約有 47 處候選。
+
+### 限制
+
+- 只盤點與分類，**不改任何程式、不改任何值、不改資料庫**；不改 `AGENTS.md`、`docs/state.md` 或既有開關。
+- 不確定就歸 (c)，不要為了讓表好看而猜成 (a)；所有未知封包保留完整 hex 與原始列值。
+- 不啟動或重啟伺服器，不請操作者測試；不要把分析任務擴大成修正任務。
+- 既有 ✅ 結論若與盤點衝突，只列疑點與證據，不自行推翻或標記狀態。
+
+### 交付
+
+- 建立可持續維護的 `docs/reference/placeholder-audit.md`（不是 journal）。
+- 每列包含：檔案:行號、opcode、欄位偏移、目前值、分類 (a)/(b)/(c)、依據（日誌檔名或完整 DLL 位址；(c) 依據留空）。
+- (c) 類按影響面排序，至少對前 10 名各寫出可能影響與缺少的證據。
+- 只新增／更新上述 docs；若有原始資料需要保存，放在 `docs/research/` 對應目錄並由表格或說明連結。
+- 交付前做 `git diff --check`；commit 只包含 docs，訊息最後一行依執行者等級填寫 `Agent: ... (中階)`。
+
+### 完成條件
+
+- `placeholder-audit.md` 涵蓋 `dispatch/` 下所有 sender 與 dispatch 組包處，沒有只抽查房間 sender 的缺口。
+- 每個候選常數都有 (a)/(b)/(c) 分類與可追溯依據；無法確認語意的項目明確列為 (c)。
+- (c) 類至少有前 10 名的影響面說明，並清楚列出需要補查的組語、schema、session log 或客戶端反應。
+
+## H6：房間難度燈慢一拍
+
+> **狀態：2026-09-18 Claude 高階新增，未指派**
+
+### 目標
+
+找出房間設定中難度燈慢一拍的真正原因，讓第一次按初級／中級／高級後，燈號立即對應所選 PvE map 的 `PlayPve` 值；只提出最小修正，先不擴大到其他房間 UI。
+
+### 範圍
+
+- 追蹤 `ZPage_Room.uc:680`、`ZPanel_PVE.uc` 的難度燈讀值，以及 `SN_MAP_CHANGE_ALL 0x00220226`／`SN_MAP_CHANGE_ONE 0x00220223` 到 `MapInfoList` 的寫入與事件觸發順序。
+- 對照 `docs/journal/2026-09-18-13-map-change-order.md` 的 ALL／ONE 實測 frame、客戶端 log 與既有 `room-map.sender.js` 順序。
+- 查明值已正確但畫面更新延遲一個選擇的原因；必要時保存完整 frame 與事件 log。
+
+### 背景
+
+- [OBS] R6 後目標回合已正確顯示 5／8／10，但難度燈仍慢一拍。
+- [OBS][LOG] R7 與 R7b 都證明只要 ALL 排在 ONE 後就會覆蓋地圖選擇；因此送出順序不是可直接採用的修正，R7 開關維持 disabled。
+- [SRC] 難度燈由 `MapInfoList[j].PlayPve` 驅動；目前缺的是事件、寫入與重繪之間的精確先後。
+
+### 限制
+
+- 先做 DLL／腳本／session 分析，不直接改程式、不改資料庫、不改 `docs/state.md` 或 `docs/HANDOFF.md`。
+- 不把 R7/R7b 的失敗再標成成功；不得把 `MAP_CHANGE_ORDER_MODE` 打開。
+- 不啟動或重啟伺服器，不請操作者測試；若提出實驗，最多兩個單變數、預設關閉。
+
+### 交付
+
+- 50–100 行日誌與 INDEX 待審列，列出難度燈讀值、ALL／ONE 完整封包與事件順序證據。
+- 原始組語、腳本摘錄、完整相關 hex 存入 `docs/research/` 對應目錄。
+- 最多兩個單變數修正／實驗建議；若無法定位，明確列出缺失證據，不猜時序。
+
+### 完成條件
+
+能以客戶端腳本或 DLL 證明燈號慢一拍的具體觸發點，並提出不改地圖選擇語意的最小預設關閉修正；否則只交分析與阻塞。
+
+## H7：房間設定對話框地圖清單為空
+
+> **狀態：2026-09-18 Claude 高階新增，未指派**
+
+### 目標
+
+找出 `ZPopup_RoomSet`／地圖選擇對話框清單仍為空的最後一個篩選關卡，讓 PvE 地圖可列出且人數控制切換到 PvE 版本；提出最小修正，不重做已驗證的房間同步路徑。
+
+### 範圍
+
+- 追蹤 `Account_MapList_Check`／`m_MapList`、人數範圍篩選與 `g_SelectMapInfo` 設定者的完整鏈。
+- 對照 `docs/research/2026-09-18-room-setting/`、`docs/research/2026-09-18-map-list-zero/`，以及 R4／R9 日誌與實測結果。
+- 查明 `g_SelectMapInfo` 何時、由哪個 Cache record 或事件設定；保留 `MapIndex < 1000`、人數陣列與 map type 的原始證據。
+
+### 背景
+
+- [OBS] R4 把 `SN_ROOM_DEFAULT` 首筆 entry 改成真實 map id 後仍是 4 VS 4、清單空；R9 已送 `MapInfo_SN 0x00210115` 的 9001–9012 十二筆仍無效果。
+- [DLL][SRC] `Account_MapList_Check`／`m_MapList` 只是其中一關；完整鏈還包含人數範圍，而只有 `g_SelectMapInfo` 命中才切 PvE 人數陣列。
+- [OBS] Gemini「伺服器從未送出 `0x00210115`」已由 session log 推翻；不要回到該錯誤前提。
+
+### 限制
+
+- 只做分析與最小方案，不改資料庫、不改 `state.md`／`HANDOFF.md`，不先動已驗證的四個 enabled 開關。
+- 不重開伺服器、不請操作者測試；未知封包保留完整 hex，不猜 `g_SelectMapInfo` 的寫入格式。
+- 若需修正，只提出預設關閉單變數開關；不得修改 `PVE_SLOT_SELECT_FLOW`、ItemInfo、G6、G7 或 `Grade_Info`。
+
+### 交付
+
+- 50–100 行日誌與 INDEX 待審列，逐關列出 `m_MapList`、人數範圍、`g_SelectMapInfo` 與清單生成條件。
+- 原始反組譯、腳本摘錄、Cache／封包資料存入 `docs/research/` 對應目錄。
+- 最多兩個單變數實驗建議；若無法確認最後關卡，只交分析及需要高階裁決的阻塞。
+
+### 完成條件
+
+能以 DLL／腳本／實際 log 證明清單在哪一關被丟掉，並給出不影響現有房間地圖同步的最小預設關閉修正；若不能確認，不猜格式、不改程式。

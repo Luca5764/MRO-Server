@@ -68,16 +68,14 @@ const ROOM_STATE_RETRY_SCHEDULE = [
 
 let nextRoomIndex = 1;
 
-// 0x220221 / 0x220222 experimental body layout (10 bytes total).
-// We do not know the real semantics yet, so keep these as offset-based fields:
-//   [0]    = b0
-//   [1..2] = w1
-//   [3..4] = w2
-//   [5]    = b5
-//   [6..7] = w6
-//   [8..9] = w8
+// 0x220221 carries a 10-byte payload. For 0x220222, the enabled path adds
+// the 6-byte zero success header required by ZDispatchRoom::Map_Change_One_SA
+// at 0x107eb510, then places the same payload at body+0x06. The disabled path
+// preserves the old 10-byte body with the payload at body+0x00.
 //
-// Change only one field at a time while testing difficulty buttons.
+// R3b verified: the 6-byte zero success header prevents the client error.
+// Evidence: docs/journal/2026-09-18-10-map-change-one-sa.md.
+const MAP_CHANGE_SA_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
 const MAP_CHANGE_ONE_SA_EXPERIMENT = {
     mode: 'manual',  // SA에 현재 선택된 맵 캐시키를 반환 (returns the currently selected map cache key in the SA)
     manual: {
@@ -424,19 +422,36 @@ function resolveExperimentValue(value, client)
     return value;
 }
 
-function writeMapChangeOneBody(body, fields)
+function writeMapChangeOneBody(body, fields, offset = 0)
 {
-    body.writeUInt8(fields.b0 & 0xFF, 0);
-    body.writeUInt16LE(fields.w1 & 0xFFFF, 1);
-    body.writeUInt16LE(fields.w2 & 0xFFFF, 3);
-    body.writeUInt8(fields.b5 & 0xFF, 5);
-    body.writeUInt16LE(fields.w6 & 0xFFFF, 6);
-    body.writeUInt16LE(fields.w8 & 0xFFFF, 8);
+    body.writeUInt8(fields.b0 & 0xFF, offset + 0);
+    body.writeUInt16LE(fields.w1 & 0xFFFF, offset + 1);
+    body.writeUInt16LE(fields.w2 & 0xFFFF, offset + 3);
+    body.writeUInt8(fields.b5 & 0xFF, offset + 5);
+    body.writeUInt16LE(fields.w6 & 0xFFFF, offset + 6);
+    body.writeUInt16LE(fields.w8 & 0xFFFF, offset + 8);
 }
 
 function buildMapChangeOneSaFields(body, client)
 {
     const incoming = parseMapChangeOneBody(body);
+    if (MAP_CHANGE_SA_ECHO_MODE === 'enabled') {
+        const adoptedMapId = Number(client.campaignMapCacheKey_);
+        const adoptedRound = Number(client.playRound_);
+        return {
+            rawHex: null,
+            // b0 is MapNumber/room-map slot, not a result code; echo the CQ
+            // value while w1/b5 follow the state accepted above.
+            b0: incoming.b0,
+            w1: adoptedMapId >= 9001 && adoptedMapId <= 9012
+                ? adoptedMapId : incoming.w1,
+            w2: incoming.w2,
+            b5: Number.isInteger(adoptedRound) && adoptedRound >= 0 && adoptedRound <= 0xFF
+                ? adoptedRound : incoming.b5,
+            w6: incoming.w6,
+            w8: incoming.w8,
+        };
+    }
     if (MAP_CHANGE_ONE_SA_EXPERIMENT.mode === 'echo') {
         return incoming;
     }
@@ -495,9 +510,11 @@ function resendRoomMapOnly(client, tag)
             return;
         }
 
-        const { sendRoomMapPackets, sendCampaignBootstrap } = require('./room/room-map.sender');
+        const { sendRoomMapPackets, sendCampaignBootstrap, ROOM_MAP_SYNC_MODE } = require('./room/room-map.sender');
         // sendRoomState와 동일한 맵 목록 사용 — same map list as sendRoomState (CAMPAIGN_MAP_ALL_HINTS)
-        const campaignMapAllHints = [8, 37, 30, 34, 43, 6, 2, 26, 36, 43, 16, 24, 45, 47, 49, 14, 10, 22, 52, 30, 18];
+        const campaignMapAllHints = ROOM_MAP_SYNC_MODE === 'enabled'
+            ? [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012]
+            : [8, 37, 30, 34, 43, 6, 2, 26, 36, 43, 16, 24, 45, 47, 49, 14, 10, 22, 52, 30, 18];
         const roomDefaultEntryHints = [8, 37, 30, 34, 6, 2];
         const mapId = client.createdMapId_ || client.mapId_ || 1;
         const campaignMapCacheKey = client.campaignMapCacheKey_ || CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[mapId] || 8;
@@ -506,7 +523,7 @@ function resendRoomMapOnly(client, tag)
             roomDefaultEntryHints,
             campaignMapHints: campaignMapAllHints,
         };
-        sendRoomMapPackets(client, ctx, getExactMessageBuffer);
+        sendRoomMapPackets(client, ctx, getExactMessageBuffer, { mapChangeOneResponse: true });
         sendCampaignBootstrap(client, getExactMessageBuffer);
         console.log(`[ZGateGameDispatch] >> Re-sent map packets only [${tag}] (mapId=${mapId}, cacheKey=${campaignMapCacheKey})`);
     } catch (err) {
@@ -840,10 +857,9 @@ class ZGateGameDispatch
             case 0x00220221:
             {
                 clearPendingRoomStateRetries(client, 'map-change-one cq');
-                // Static analysis for ZDispatchRoom::Map_Change_One_CQ/SA shows
-                // the SA uses a 0x1A packet (0x0A body), not the generic 6-byte OK.
-                // When the body begins with zeroed status fields, the client-side
-                // SA path falls back to its retained room-map state and proceeds.
+                // Static analysis for ZDispatchRoom::Map_Change_One_SA shows the
+                // enabled SA body is 6 zero status bytes followed by the 10-byte
+                // map payload. Keep the old 10-byte body only while disabled.
                 const incomingFields = parseMapChangeOneBody(body);
                 // Map_Change_One_CQ (ZDispatchRoom 0x107eec30): w1 = MapIndex,
                 // b5 = MapRound. Take the difficulty/map the player switched to,
@@ -851,6 +867,12 @@ class ZGateGameDispatch
                 if (incomingFields.w1 >= 9001 && incomingFields.w1 <= 9012) {
                     client.campaignMapCacheKey_ = incomingFields.w1;
                     client.playRound_ = incomingFields.b5;
+                    // Preserve the settings accepted with Map_Change_One_CQ
+                    // for the following SN_MAP_CHANGE_ONE resend.
+                    client.mapChangeOneTime_ = incomingFields.w2;
+                    client.mapChangeOneRound_ = incomingFields.b5;
+                    client.mapChangeOneKill_ = incomingFields.w6;
+                    client.mapChangeOneGoal_ = incomingFields.w8;
                 }
                 const outgoingFields = buildMapChangeOneSaFields(body, client);
                 console.log(
@@ -858,12 +880,19 @@ class ZGateGameDispatch
                     `(b0=${incomingFields.b0}, w1=${incomingFields.w1}, w2=${incomingFields.w2}, ` +
                     `b5=${incomingFields.b5}, w6=${incomingFields.w6}, w8=${incomingFields.w8})`
                 );
-                const [msg, respBody] = getExactMessageBuffer(0x00220222, 0x0A);
-                writeMapChangeOneBody(respBody, outgoingFields);
+                const saHasSuccessHeader = MAP_CHANGE_SA_ECHO_MODE === 'enabled';
+                const saBodySize = saHasSuccessHeader ? 0x10 : 0x0A;
+                const saPayloadOffset = saHasSuccessHeader ? 0x06 : 0x00;
+                const [msg, respBody] = getExactMessageBuffer(0x00220222, saBodySize);
+                if (saHasSuccessHeader) {
+                    respBody.writeUInt16LE(0, 0x00);
+                    respBody.writeUInt32LE(0, 0x02);
+                }
+                writeMapChangeOneBody(respBody, outgoingFields, saPayloadOffset);
                 client.send(msg);
                 console.log(
                     `[ZGateGameDispatch] >> Sent Map_Change_One_SA 0x220222 ` +
-                    `(mode=${MAP_CHANGE_ONE_SA_EXPERIMENT.mode}, ` +
+                    `(mode=${MAP_CHANGE_ONE_SA_EXPERIMENT.mode}, bodySize=${saBodySize}, ` +
                     `b0=${outgoingFields.b0}, w1=${outgoingFields.w1}, w2=${outgoingFields.w2}, ` +
                     `b5=${outgoingFields.b5}, w6=${outgoingFields.w6}, w8=${outgoingFields.w8}, ` +
                     `hex=${respBody.toString('hex')})`

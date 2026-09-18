@@ -3,6 +3,24 @@ const SN_ROOM_BOUNDARY = 0x00220213;
 const SN_ROOM_STATE = 0x00220214;
 const SN_ROOM_OPTION = 0x00220217;
 const SN_ROOM_NAME = 0x0022021A;
+const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
+
+// R4 implemented but failed: using the real map id here had no observable
+// effect; the room-settings list remained empty and showed 4 VS 4.
+// See docs/journal/2026-09-18-11-room-default-map-entry.md.
+const ROOM_DEFAULT_MAP_ENTRY_MODE = 'disabled'; // 'disabled' | 'enabled'
+const MAP_ID_DEFAULT_PVE = 9001;
+const MAP_ID_PVE_MIN = 9001;
+const MAP_ID_PVE_MAX = 9012;
+
+function resolveRoomDefaultMapEntry(client, fallback) {
+    if (ROOM_DEFAULT_MAP_ENTRY_MODE !== 'enabled') return fallback;
+    const selectedMapId = Number(client.campaignMapCacheKey_);
+    return Number.isInteger(selectedMapId) &&
+        selectedMapId >= MAP_ID_PVE_MIN && selectedMapId <= MAP_ID_PVE_MAX
+        ? selectedMapId
+        : MAP_ID_DEFAULT_PVE;
+}
 
 function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
     const {
@@ -48,10 +66,12 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         respBody.writeUint8(roomSettingRound, 0x1E);
         respBody.writeUint8(roomDefaultEntryCount, 0x1F);
 
+        const firstEntryMapIndex = resolveRoomDefaultMapEntry(client, primaryBodyCacheIndex);
+
         for (let i = 0; i < roomDefaultEntryCount; i++) {
             const entryOffset = 0x20 + (i * 9);
             const cacheIndex = (i === 0)
-                ? primaryBodyCacheIndex
+                ? firstEntryMapIndex
                 : roomDefaultEntryHints[i];
             respBody.writeUint16LE(cacheIndex, entryOffset + 0x00);
             respBody.writeUint16LE(0, entryOffset + 0x02);
@@ -70,7 +90,11 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
 
     {
         const [msg, respBody] = getExactMessageBuffer(SN_ROOM_NAME, 0x32);
-        respBody.write(roomName + '\0', 0x00, 'utf16le');
+        if (ROOM_STRING_ANSI_MODE === 'enabled') {
+            writeAnsiStringField(respBody, roomName, 0x00, 0x32);
+        } else {
+            respBody.write(roomName + '\0', 0x00, 'utf16le');
+        }
         client.send(msg);
         console.log(`[ZRoomDispatch] >> Sent SN_ROOM_NAME 0x22021A ("${roomName}")`);
     }

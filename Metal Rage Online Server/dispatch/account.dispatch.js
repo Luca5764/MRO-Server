@@ -28,6 +28,12 @@ const SN_WEAR_INFO = 0x210113;         // DLL: WearInfo_SN
 const SN_EXPIRATION_ITEM = 0x210112;   // DLL: ExpirationItem_SN
 const SN_COMPLETE = 0x210121;
 
+// R9 implemented but failed: real PvE ids did not fill the room-settings list;
+// another filter, including the PvE user-count range, remains unresolved.
+// See docs/journal/2026-09-18-14-map-info-sn-real-ids.md.
+const MAP_INFO_REAL_ID_MODE = 'disabled'; // 'disabled' | 'enabled'
+const MAP_INFO_REAL_IDS = [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012];
+
 
 // ZDispatchGate
 const CQ_LEAVE = 0x220131;
@@ -266,12 +272,21 @@ class ZAccountDispatch
 
                 // SN_MAP_INFO
                 {
-                    const [msg, respBody] = client.getMessageBuffer(SN_MAP_INFO, 0x2 + (4 * MAX_MAP_COUNT));
+                    const realMapIds = MAP_INFO_REAL_ID_MODE === 'enabled' ? MAP_INFO_REAL_IDS : null;
+                    const mapCount = realMapIds ? realMapIds.length : MAX_MAP_COUNT;
+                    const [msg, respBody] = client.getMessageBuffer(SN_MAP_INFO, 0x2 + (4 * mapCount));
                     let offset = 0;
                     respBody[offset++] = 0x00;
-                    respBody[offset++] = MAX_MAP_COUNT;
-                    for (let i = 0; i < MAX_MAP_COUNT; ++i, offset += 4)
-                        respBody.writeUint32LE(i, offset);
+                    respBody[offset++] = mapCount;
+                    if (realMapIds) {
+                        for (const mapId of realMapIds) {
+                            respBody.writeUint32LE(mapId, offset);
+                            offset += 4;
+                        }
+                    } else {
+                        for (let i = 0; i < MAX_MAP_COUNT; ++i, offset += 4)
+                            respBody.writeUint32LE(i, offset);
+                    }
                     client.send(msg);
                 }
 
@@ -387,12 +402,21 @@ class ZAccountDispatch
 
                 // SN_MAP_INFO
                 {
-                    const [msg, respBody] = client.getMessageBuffer(SN_MAP_INFO, 0x2 + (4 * MAX_MAP_COUNT));
+                    const realMapIds = MAP_INFO_REAL_ID_MODE === 'enabled' ? MAP_INFO_REAL_IDS : null;
+                    const mapCount = realMapIds ? realMapIds.length : MAX_MAP_COUNT;
+                    const [msg, respBody] = client.getMessageBuffer(SN_MAP_INFO, 0x2 + (4 * mapCount));
                     let offset = 0;
                     respBody[offset++] = 0x00;
-                    respBody[offset++] = MAX_MAP_COUNT;
-                    for (let i = 0; i < MAX_MAP_COUNT; ++i, offset += 4)
-                        respBody.writeUint32LE(i, offset);
+                    respBody[offset++] = mapCount;
+                    if (realMapIds) {
+                        for (const mapId of realMapIds) {
+                            respBody.writeUint32LE(mapId, offset);
+                            offset += 4;
+                        }
+                    } else {
+                        for (let i = 0; i < MAX_MAP_COUNT; ++i, offset += 4)
+                            respBody.writeUint32LE(i, offset);
+                    }
                     client.send(msg);
                 }
 
@@ -542,14 +566,22 @@ class ZAccountDispatch
 
         // SN_MAP_INFO
         {
-            const mapCount = maps.length;  // || MAX_MAP_COUNT 제거 (removed)
+            const realMapIds = MAP_INFO_REAL_ID_MODE === 'enabled' ? MAP_INFO_REAL_IDS : null;
+            const mapCount = realMapIds ? realMapIds.length : maps.length;  // || MAX_MAP_COUNT 제거 (removed)
             const [msg, body] = client.getMessageBuffer(SN_MAP_INFO, 0x2 + (4 * mapCount));
             let offset = 0;
             body[offset++] = 0x00;
             body[offset++] = mapCount;
-            for (const map of maps) {
-                body.writeUint32LE(map.map_id, offset);
-                offset += 4;
+            if (realMapIds) {
+                for (const mapId of realMapIds) {
+                    body.writeUint32LE(mapId, offset);
+                    offset += 4;
+                }
+            } else {
+                for (const map of maps) {
+                    body.writeUint32LE(map.map_id, offset);
+                    offset += 4;
+                }
             }
             client.send(msg);
         }

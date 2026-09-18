@@ -3,6 +3,7 @@ const SN_USER_STATE = 0x00220401;
 const SN_USER_MASTER = 0x00220319;
 const SN_USER_NAME = 0x00220421;
 const SN_USER_PILOT = 0x00220402;
+const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
 
 function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
     const {
@@ -40,8 +41,11 @@ function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
         respBody.writeUint16LE(teamIndex, 0x13);             // +0x11 team: 0 red, 1 blue
         respBody.writeUint32LE(0, 0x15);                     // +0x13 rank / substate
         respBody.writeUint32LE(packedIp, 0x19);              // +0x17 clan id / packed ip
-        respBody.write(nickname + '\0', 0x1D, 'ascii');      // +0x1B nickname, ASCII,
-                                                             //       widened by the client
+        if (ROOM_STRING_ANSI_MODE === 'enabled') {
+            writeAnsiStringField(respBody, nickname, 0x1D, 0x19);
+        } else {
+            respBody.write(nickname + '\0', 0x1D, 'ascii'); // +0x1B nickname, ASCII,
+        }                                                        // widened by client
         client.send(msg);
         console.log(`[ZRoomDispatch] >> Sent SN_USER_DEFAULT 0x220233 (54 bytes, count=1, userIndex=${accountIndex}, pilot=${pilotId}, nickname="${nickname}", team=${teamIndex}, hiddenRaw=${userHiddenRaw}, stateRaw=${userStateRaw}, levelType=${userLevelType}, roomStateRaw=${userStateRaw})`);
     }
