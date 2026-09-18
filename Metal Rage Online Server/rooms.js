@@ -157,6 +157,38 @@ function listRooms() {
 }
 
 /**
+ * D1 step 2 (design §3, backlog D1-2): broadcast helper. Calls
+ * `build(client)` once per member with a live connection and sends
+ * whatever it returns. `build` must produce a *fresh* buffer per call --
+ * `client.getMessageBuffer`/`getExactMessageBuffer` are per-connection
+ * (client.js's `sndbuf_` is a single reusable scratch region, "only one
+ * message can be acquired at a time"), so the same buffer object cannot be
+ * handed to two different clients' `.send()`. Members with `client === null`
+ * (disconnected/reconnecting, design §4) are skipped, not errored.
+ */
+function sendAll(roomId, build) {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    for (const member of room.members.values()) {
+        if (!member.client) continue;
+        const msg = build(member.client);
+        if (msg) member.client.send(msg);
+    }
+}
+
+/** Same as sendAll(), but skips the member whose accountId === exceptAccountId. */
+function sendOthers(roomId, exceptAccountId, build) {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    for (const member of room.members.values()) {
+        if (member.accountId === exceptAccountId) continue;
+        if (!member.client) continue;
+        const msg = build(member.client);
+        if (msg) member.client.send(msg);
+    }
+}
+
+/**
  * Test-only reset: clears every room and index, and resets the room-id
  * counter back to 1. Not called anywhere in the real dispatch/server path —
  * this module intentionally lives outside dispatch/ so a live server's
@@ -182,5 +214,7 @@ module.exports = {
     removeMember,
     setMemberClient,
     listRooms,
+    sendAll,
+    sendOthers,
     _resetForTests,
 };

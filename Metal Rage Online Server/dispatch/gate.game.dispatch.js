@@ -33,6 +33,18 @@ const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 // docs/journal/2026-09-18-20-room-leave-reset.md.
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
 const GAME_CHAT_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
+// D1 step 2 (docs/design/d1-multiplayer-room.md §5/§6 step 2, backlog
+// D1-2): client sends the SAME opcode for room chat CQ and SN (observed
+// [LOG] session-20260918-225741.jsonl, 258-byte 0x00220505 body; mirrors
+// the already-verified 0x00220507/0x00220509 in-game chat echo above).
+// 'enabled' relays it to the whole room (0x00220505) or same-team members
+// (0x00220503) via rooms.sendAll instead of the old ACK-only fallback; the
+// task contract for D1-2 explicitly calls this an intended behaviour
+// change (single-player golden sample gets its own chat echoed back) and
+// directs re-recording the affected baseline, so this defaults on like
+// GAME_CHAT_ECHO_MODE above -- flagging for high-tier review since the
+// general backlog rule wants new mid-tier behaviour default OFF.
+const ROOM_CHAT_BROADCAST_MODE = 'enabled'; // 'disabled' | 'enabled'
 // T1 [DLL] 0x107d4fa7 movzx ebp, word ptr [eax+0x23] (handler body 0x107d4f50):
 // Game_Info_SN body+0x13 is TimeLimit in minutes. 'room' makes it follow the
 // room's PlayTime (Map_Change_One_CQ 0x00220221 w2, client.mapChangeOneTime_,
@@ -1014,6 +1026,64 @@ class ZGateGameDispatch
                 client.send(msg);
                 console.log(`[ZGateGameDispatch] >> Sent Option_Change_SA 0x220216 (status=0, result=0)`);
                 resendRoomState(client, 'after option-change cq');
+                return true;
+            }
+
+            // ==========================================
+            // Room Chat (0x00220505 All / 0x00220503 Team). Triggered by the
+            // client typing in the room chat box (not the game/battle chat
+            // box below, and not the lobby chat channel 0x00220501). Same
+            // opcode is reused for CQ and the SN broadcast, per
+            // docs/client-dispatch-map.md listing 0x00220505/0x00220503 as
+            // Chat_Room_All_SN/Chat_Room_Team_SN and the identical CN/SN
+            // echo pattern already verified for in-game chat just below.
+            // ==========================================
+            case 0x00220505: // Chat_Room_All_CN/SN
+            case 0x00220503: // Chat_Room_Team_CN/SN
+            {
+                const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
+                const room = (ROOM_CHAT_BROADCAST_MODE === 'enabled') ? rooms.getRoomByAccount(accountId) : undefined;
+
+                if (!room) {
+                    // Not in a tracked room (or switch off): unchanged
+                    // behaviour -- ACK with type+1 (0x00220506/0x00220504),
+                    // neither of which appears in docs/client-dispatch-map.md,
+                    // so the client's dispatcher has no handler for it and
+                    // silently ignores it either way.
+                    packetlog.fallback(client, 'ZGateGameDispatch', type, body, type + 1);
+                    const [msg, respBody] = client.getMessageBuffer(type + 1, 0x6);
+                    respBody.writeUint16LE(0x0000, 0);
+                    respBody.writeUint32LE(0x0000, 2);
+                    client.send(msg);
+                    return true;
+                }
+
+                const channelName = (type === 0x00220505) ? 'All' : 'Team';
+                const textPreview = body.length > 2 ? body.subarray(2).toString('latin1').split('\0')[0] : '';
+                console.log(`[ZGateGameDispatch] >> Room chat ${channelName} (0x${type.toString(16).padStart(8, '0')}): "${textPreview}" (${body.length} bytes)`);
+
+                if (type === 0x00220505) {
+                    // All channel: relay to the whole room, including the
+                    // sender (design §5/§6 step 2).
+                    rooms.sendAll(room.id, () => {
+                        const [msg, respBody] = getExactMessageBuffer(type, body.length);
+                        body.copy(respBody);
+                        return msg;
+                    });
+                } else {
+                    // Team channel: only same-team members (design §5).
+                    // rooms.js only exports sendAll/sendOthers (neither
+                    // filters by team), so this loops the room directly.
+                    const sender = room.members.get(accountId);
+                    const senderTeam = sender ? sender.team : 0;
+                    for (const member of room.members.values()) {
+                        if (member.team !== senderTeam) continue;
+                        if (!member.client) continue;
+                        const [msg, respBody] = getExactMessageBuffer(type, body.length);
+                        body.copy(respBody);
+                        member.client.send(msg);
+                    }
+                }
                 return true;
             }
 

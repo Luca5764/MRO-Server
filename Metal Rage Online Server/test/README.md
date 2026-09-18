@@ -77,8 +77,12 @@ Covered (see `test/golden/`):
 - `login-room-game`: game-server login + channel enter + card ack
   (`0x00110124`/`0x00220111`/`0x00250102`/`0x00320104`), PvE room create with
   both scheduled room-state resends (`0x00220201`, exercises
-  `test/fixtures/fake-timers.js`), a lobby-chat fallback ack, and leaving the
-  room back to the lobby (`0x00220234`).
+  `test/fixtures/fake-timers.js`), a lobby chat (`0x00220501`, still a
+  fallback ack -- the client has no dispatcher handler for the reply opcode
+  either way) and a room chat (`0x00220505`, now `rooms.sendAll`-broadcast
+  back to the room per D1-2 instead of a fallback ack -- see
+  `test/room-chat.js` for the room-membership broadcast cases), and leaving
+  the room back to the lobby (`0x00220234`).
 - `login-room-shop-buy`: the same prefix as `login-room-game` (client state
   has to build up naturally -- a fixture client that jumps straight to
   Hangar Open would never have `campaignRoom_`/`accountId_` set, and
