@@ -15,6 +15,7 @@ const MAP_ALL_SEND_TWICE = 'enabled'; // 'disabled' | 'enabled'
 const MAP_ALL_ENTRY_OFFSET = MAP_ALL_HEADER_MODE === 'compact' ? 0x02 : 0x06;
 const ROOM_MAP_SYNC_MODE = 'disabled'; // 'disabled' | 'enabled'
 const MAP_CHANGE_ONE_SETTINGS_MODE = 'disabled'; // 'disabled' | 'enabled'
+const MAP_CHANGE_ORDER_MODE = 'disabled'; // 'disabled' | 'enabled'
 
 const SN_MAP_CHANGE_ALL = 0x00220226;
 const SN_MAP_CHANGE_ONE = 0x00220223;
@@ -32,7 +33,38 @@ function resolveMapChangeOneSetting(candidates, fallback, max)
     return fallback;
 }
 
-function sendRoomMapPackets(client, ctx, getExactMessageBuffer) {
+function sendMapChangeOnePacket(client, mapList, effectiveSelectedIdx, ctx, getExactMessageBuffer)
+{
+    const {
+        roomSettingGoal,
+        roomSettingTime,
+        roomSettingRound,
+    } = ctx;
+    const effectiveCacheKey = mapList[effectiveSelectedIdx] >>> 0;
+    const [msg, respBody] = getExactMessageBuffer(SN_MAP_CHANGE_ONE, 0x0A);
+    const mapTime = resolveMapChangeOneSetting(
+        [client.mapChangeOneTime_, roomSettingTime], 0, 0xFFFF
+    );
+    const mapRound = resolveMapChangeOneSetting(
+        [client.mapChangeOneRound_, client.playRound_, roomSettingRound], 1, 0xFF
+    );
+    const mapKill = resolveMapChangeOneSetting(
+        [client.mapChangeOneKill_, roomSettingGoal], 0, 0xFFFF
+    );
+    const mapGoal = resolveMapChangeOneSetting(
+        [client.mapChangeOneGoal_, roomSettingGoal], 0, 0xFFFF
+    );
+    respBody.writeUint8(0, 0x00);
+    respBody.writeUint16LE(effectiveCacheKey, 0x01);
+    respBody.writeUint16LE(mapTime, 0x03);
+    respBody.writeUint8(mapRound, 0x05);
+    respBody.writeUint16LE(mapKill, 0x06);
+    respBody.writeUint16LE(mapGoal, 0x08);
+    client.send(msg);
+    console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ONE 0x220223 (slot=0, cacheKey=${effectiveCacheKey}, time=${mapTime}, round=${mapRound}, kill=${mapKill}, goal=${mapGoal})`);
+}
+
+function sendRoomMapPackets(client, ctx, getExactMessageBuffer, options = {}) {
     if (!client.isTrueCampaign_) {  // isTrueCampaign_ → campaignRoom_
         return;
     }
@@ -41,9 +73,6 @@ function sendRoomMapPackets(client, ctx, getExactMessageBuffer) {
         campaignMapCacheKey,
         campaignMapHints,
         roomDefaultEntryHints,
-        roomSettingGoal,
-        roomSettingTime,
-        roomSettingRound,
     } = ctx;
 
     const mapList = (campaignMapHints && campaignMapHints.length > 0)
@@ -54,6 +83,12 @@ function sendRoomMapPackets(client, ctx, getExactMessageBuffer) {
 
     const selectedIdx = mapList.indexOf(Number(campaignMapCacheKey));
     const effectiveSelectedIdx = selectedIdx >= 0 ? selectedIdx : 0;
+    const sendOneBeforeAll = MAP_CHANGE_ORDER_MODE === 'enabled' &&
+        options.mapChangeOneResponse === true;
+
+    if (sendOneBeforeAll) {
+        sendMapChangeOnePacket(client, mapList, effectiveSelectedIdx, ctx, getExactMessageBuffer);
+    }
 
     const bodySize = MAP_ALL_ENTRY_OFFSET + count * 9;
     {
@@ -93,29 +128,8 @@ function sendRoomMapPackets(client, ctx, getExactMessageBuffer) {
         console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ALL 0x220226 (count=${count}, selectedIdx=${effectiveSelectedIdx}, mapId=${campaignMapCacheKey}, header=${MAP_ALL_HEADER_MODE}, body=0x${bodySize.toString(16)})`);
     }
 
-    {
-        const effectiveCacheKey = mapList[effectiveSelectedIdx] >>> 0;
-        const [msg, respBody] = getExactMessageBuffer(SN_MAP_CHANGE_ONE, 0x0A);
-        const mapTime = resolveMapChangeOneSetting(
-            [client.mapChangeOneTime_, roomSettingTime], 0, 0xFFFF
-        );
-        const mapRound = resolveMapChangeOneSetting(
-            [client.mapChangeOneRound_, client.playRound_, roomSettingRound], 1, 0xFF
-        );
-        const mapKill = resolveMapChangeOneSetting(
-            [client.mapChangeOneKill_, roomSettingGoal], 0, 0xFFFF
-        );
-        const mapGoal = resolveMapChangeOneSetting(
-            [client.mapChangeOneGoal_, roomSettingGoal], 0, 0xFFFF
-        );
-        respBody.writeUint8(0, 0x00);
-        respBody.writeUint16LE(effectiveCacheKey, 0x01);
-        respBody.writeUint16LE(mapTime, 0x03);
-        respBody.writeUint8(mapRound, 0x05);
-        respBody.writeUint16LE(mapKill, 0x06);
-        respBody.writeUint16LE(mapGoal, 0x08);
-        client.send(msg);
-        console.log(`[ZRoomDispatch] >> Sent SN_MAP_CHANGE_ONE 0x220223 (slot=0, cacheKey=${effectiveCacheKey}, time=${mapTime}, round=${mapRound}, kill=${mapKill}, goal=${mapGoal})`);
+    if (!sendOneBeforeAll) {
+        sendMapChangeOnePacket(client, mapList, effectiveSelectedIdx, ctx, getExactMessageBuffer);
     }
 }
 

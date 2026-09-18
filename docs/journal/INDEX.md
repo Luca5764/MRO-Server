@@ -103,3 +103,4 @@
 | 2026-09-18 | `2026-09-18-10-map-change-one-sa.md` | `0x00220221`、`0x00220222`、`0x00220223`、`0x00220226` | 🟡 待審／預設關閉 | R3b 更正 R3：`Map_Change_One_SA` enabled 為 6-byte 全零成功標頭＋10-byte payload（共 16 bytes）；disabled 保留舊 10-byte 路徑，未實測。 |
 | 2026-09-18 | `2026-09-18-11-room-default-map-entry.md` | `0x00220203` | 🟡 待審／預設關閉 | R4：首筆 entry `body+0x20+0x00` 由 Cache 列索引改為實際 map ID 的預設關閉實驗；與已修正的 `body+0x05 mapIndex` 分開，未實測。 |
 | 2026-09-18 | `2026-09-18-12-map-change-one-sn-settings.md` | `0x00220221`、`0x00220223` | 🟡 待審／預設關閉 | R6：依 DLL 交叉確認 Map_Change_One_SN 四個設定欄位；enabled 回送 CQ 採納／伺服器保存值，disabled 保留 0/1/0/0，未實測。 |
+| 2026-09-18 | `2026-09-18-13-map-change-order.md` | `0x00220221`、`0x00220222`、`0x00220223`、`0x00220226` | 🟡 待審／預設關閉 | R7：只在換圖回應路徑可選擇 ONE 先於 ALL×2；初始進房仍維持 ALL×2→ONE，未實測。 |

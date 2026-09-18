@@ -522,7 +522,7 @@ function resendRoomMapOnly(client, tag)
             roomDefaultEntryHints,
             campaignMapHints: campaignMapAllHints,
         };
-        sendRoomMapPackets(client, ctx, getExactMessageBuffer);
+        sendRoomMapPackets(client, ctx, getExactMessageBuffer, { mapChangeOneResponse: true });
         sendCampaignBootstrap(client, getExactMessageBuffer);
         console.log(`[ZGateGameDispatch] >> Re-sent map packets only [${tag}] (mapId=${mapId}, cacheKey=${campaignMapCacheKey})`);
     } catch (err) {
