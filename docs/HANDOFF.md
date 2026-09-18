@@ -5,36 +5,52 @@
 
 ---
 
-## ⚡ 交接快照（2026-09-18 晚，Claude 高階，請以此段為準）
+## ⚡ 高階交接：Claude → Codex Sol（2026-09-18 深夜，請以此段為準）
 
-### 今天完成並合併 `reverse-work`
+Claude 主力額度將盡，高階位置交給 Sol。**接手第一件事：驗證下面標 ✅ 的其中一兩條**（規則見 `AGENTS.md`「接手時」）。
 
-1. **G6 機庫換裝備存檔**（merge `fb6c6ef`）：換裝 → 寫 DB → 完全重登保留 → PvE 出場帶入。拆掉四層阻塞，詳見 `journal/2026-09-18-02` ～ `-06`。最隱蔽的一層：客戶端 `ZPanel_InvenItems.uc:408-411` 把 **SerialIndex 101–999 當保留區整段跳過**，`items.id` 全落在裡面 → 用 `tools/renumber-item-serials.js` 把主鍵搬到 100000+（已執行，腳本冪等）。
-2. **商店一把一列＋期限選單**（merge `6b5e889`）：item_id 末兩碼是**持有期限**（`GameItemRecord +0x43`），同家族共用 `RepresentIndex`（+0x04）。全部送出、只讓代表項 `IsShow=1`，購買彈窗就能組出 1/3/7/15/30/60/90 天選單。
-3. **房間修正四項**（merge `315819c`）：面板地圖與實際開戰一致、房名改送 ANSI、`Map_Change_One_SA` 補 6-byte 成功標頭、`SN_MAP_CHANGE_ONE` 不再把房間設定洗成 0/1/0/0。
+### 今天完成、已合併 `reverse-work`、已推上 GitHub fork
 
-### 今天失敗的（實作保留、開關預設 disabled，不要直接打開）
+1. **G6 機庫換裝備存檔**（merge `fb6c6ef`）：換裝 → 寫 DB → 完全重登保留 → PvE 出場帶入。四層阻塞，日誌 `2026-09-18-02` ～ `-06`。最隱蔽的一層：客戶端 `ZPanel_InvenItems.uc:408-411` 跳過 **SerialIndex 101–999**，`items.id` 全落在裡面 → `tools/renumber-item-serials.js` 已執行（冪等），主鍵搬到 100000+。
+2. **商店一把一列 ＋ 期限選單**（merge `6b5e889`）：item_id 末兩碼是**持有期限**（`GameItemRecord +0x43`），同家族共用 `RepresentIndex`（+0x04）。全部送出、只讓代表項 `IsShow=1`。
+3. **房間四項修正**（merge `315819c`）：面板地圖與開戰一致、房名改 ANSI、`Map_Change_One_SA` 補 6-byte 成功標頭、`SN_MAP_CHANGE_ONE` 不再洗掉房間設定。
+4. **H5 佔位常數盤點**（`docs/reference/placeholder-audit.md`）：566 行寫入分類後，**56 筆未查過語意**。
+5. **D1 開關盤點**（`flash-wip-switch-audit` 分支，`docs/reference/switch-audit.md`）：33 個開關分成 A12／B4／C2／D8／E7。
 
-- `MAP_CHANGE_ORDER_MODE`（R7／R7b）：換圖封包順序。**兩種做法都失敗**，並因此確認 `Map_Change_All_SN` 會寫入選中狀態，不能排在 `Map_Change_One_SN` 之後。
-- `ROOM_DEFAULT_MAP_ENTRY_MODE`（R4）、`MAP_INFO_REAL_ID_MODE`（R9）：都無可觀察效果，證明 `m_MapList` 不是地圖清單空白的唯一關卡。
+### 待實測（分支上，開關預設 disabled，**明天第一輪一起測**）
 
-### 今天學到最重要的一件事
+| 分支 | 內容 | 測法 |
+|---|---|---|
+| `flash-wip-room-team` | RED TEAM 槽位空白：`SN_ROOM_DEFAULT` body+0x10／+0x12 被寫入 `createWord1_/createWord2_`（實測值 9010／60），玩家 `TeamIndex=0` 紅藍都配不上。改送 Red=0／Blue=1 | 開 `ROOM_TEAM_INDEX_MODE`，建房看頭像有沒有出現在第一格 |
+| `flash-wip-money` | 金錢持久化。**根因**：`Buy SA 0x00240202` 只送 6 bytes，客戶端在 `0x107deadd` 讀 body+0x06 的 int64 當新餘額 → 讀到 0 → 買完 G 幣歸零 | 先跑 `tools/add-account-money.js`（冪等，需高階執行），再開 `MONEY_PERSIST_MODE`，買一件東西看扣款與重登保留 |
 
-今天六個 bug **全是同一個形狀**：不是邏輯錯，是**當初不知道欄位語意時填的佔位值沒跟著更新**（房間地圖寫死 9001、`isShow=1`、購買 `mech_type` 照抄 catalog、`items.id` 落在保留區、`MapTime=0/Round=1`、`MapInfo_SN` 送列索引 0..5）。程式裡用 `b0/w1/w2` 這種偏移當變數名的地方，就是「還沒查過語意」的記號。已開 backlog **H5：盤點所有 sender 的佔位常數**（Luna 執行中，交付 `docs/reference/placeholder-audit.md`）。
+兩者觀察點不重疊，可同一輪測。
 
-### 下一步
+### 技術債收斂（已規劃、未執行）
 
-- **H5** 佔位常數盤點（進行中）→ 出來之後照影響面排序逐一處理，很可能是下一批「一改就好」的來源。
-- **RED TEAM 槽位不顯示玩家**：客戶端比對 `RoomInfo.RedTeamIndex／BlueTeamIndex`，我們從未送過。子 agent 調查中，原始資料會在 `research/2026-09-18-red-team-slot/`。
-- **H6** 難度燈慢一拍、**H7** 設定對話框地圖清單空：都需要反覆試假設，**建議等 Pico 2 W 到貨**（操作者 2026-09-18 下單）。`tools/pico/`、`tools/win/pico_drive.sh` 已經有人寫好但未 commit，能用真實 USB HID 驅動客戶端，硬性約束第 1 條明確允許。那之後「改開關 → 重啟 → 建房 → 點一下 → 截圖」可以自動化，實驗成本從十幾分鐘降到幾十秒。
-- 其他未動：**H1** 登入後預設機體商店漏接、**H2** G 幣不持久化、**H3** catalog 價格（3Day 比 30Day 貴）、Legend 機體授權封包、結算頁隊伍分數全 0、`Assist_SN` 格式、PvP 房完全沒碰過。
+操作者同意先清債。建議**第一批 13 個開關**：B 全部 4 個 ＋ C 全部 2 個（只刪危險分支）＋ A 裡彼此不相依的 7 個（`ROOM_STRING_ANSI_MODE`、`GAME_CHAT_ECHO_MODE`、`ITEM_INFO_INCLUDE_BODY`、`EQUIP_SAVE_MODE`、`PURCHASE_MECH_SLOT_MODE`、`PURCHASE_ITEMINFO_REFRESH`、`SHOP_PERIOD_REPRESENTATIVE_MODE`）。
+**只往目前預設值收斂＝純刪沒在跑的分支，行為在構造上不變**，不需重測；驗證用 `node --check` ＋ 啟動伺服器 ＋ `tools/test_replay.js` 離線重播比對。
+A 剩 5 個（房間地圖組、商店組）同屬一條流程，第二批單獨做。E 的 7 個是「選定變體」，那是決策不是清理，最後處理。**C 的兩個絕對不要打開**：`SHOP_UNBLOCK_MODE` 含已被組語推翻兩次的 IsShow 重排；`CAMPAIGN_GAME_USER_BOOTSTRAP_MODE` 會在場景 5 送只有場景 6 處理的封包。
 
-### 環境與協作
+### 環境與協作（重要）
 
-- 伺服器在 tmux `server`，主目錄 `/home/lucas/mro-reverse/Metal Rage Online Server`，**由高階自己控，不要請操作者代勞**。
-- worktree `mro-reverse-g6-unblock`、`mro-reverse-g7` 已完成任務，分支都已合併。
-- tmux：`codex`（Luna 中階）、`sol`、`antigravity`（Gemini 中階，今天做了 `Map_Change_All_SN` 的組語分析，品質好；它唯一講錯的是「伺服器從未送 `0x00210115`」，log 證明有送）。**已開的 session 不要關。**
-- 操作者在 YouTube 留言聯繫原作者（repo 作者 moonlight776，今天仍在推進 P2P／TDM／爆破／佔領模式），等回覆。
+- **伺服器由高階自己控**（操作者明確要求），tmux `server`，主目錄 `/home/lucas/mro-reverse/Metal Rage Online Server`，現在跑主線。
+- **主工作目錄是共用的**：Codex Luna 會在裡面切分支。今天已經發生過一次「commit 掉到別人的分支上」（已用 cherry-pick 修回）。**每次 commit 前先 `git branch --show-current`。**
+- tmux：`codex`（Luna 中階）、`sol`、`antigravity`（Gemini 中階，今天兩份分析品質最好：`Map_Change_All_SN` 欄位表、金錢鏈）。**已開的 session 不要關。**
+- GitHub：`origin` = 操作者的 fork `Luca5764/MRO-Server`（`reverse-work` 已推），`upstream` = `shanzenos/MRO-Server`（停在 2026-06-13）。
+- **`AGENTS.md`／`CLAUDE.md`／`.claude`／`.codex` 已改為不受版控**（公開 fork 時移除，檔案仍在本機）。改規則不再有歷史，需另行備份。
+- 原作者聯繫中：`moonlight776`（上游 PR #2 作者）在 2026-08-11 於 PR 底下回報三個問題——「地圖只載入部分」「變更房間設定跳錯誤」「進遊戲後機體選擇面板不顯示」。**後兩個我們有答案**（分別是 SA 成功標頭、以及 G5 的 `PVE_SLOT_SELECT_FLOW`）。操作者已在 YouTube 留言，等回覆。
+
+### 下一步優先序
+
+1. 明天一輪測完 room-team ＋ money
+2. 開關收斂第一批（13 個，行為不變）
+3. `placeholder-audit.md` 的 56 筆照影響面往下打——那是目前最密集的 bug 來源
+4. H1 登入後商店漏接 / H3 catalog 價格 / H6 難度燈慢一拍 / H7 設定對話框地圖清單（H6、H7 建議等 Pico 2 W 到貨後再打，需要反覆試假設；`tools/pico/` 已進版控）
+
+### 今天最值得記住的一件事
+
+七個 bug **全是同一個形狀**：不是邏輯錯，是**當初不知道欄位語意時填的佔位值沒跟著更新**。程式裡用 `b0/w1/w2` 這種偏移當變數名的地方，就是「還沒查過語意」的記號。`placeholder-audit.md` 就是為此做的。
 
 ---
 
