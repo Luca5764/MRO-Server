@@ -6,6 +6,11 @@ const { sendRoomStatePackets } = require('./room/room-state.sender');
 const { sendRoomUserPackets } = require('./room/room-user.sender');
 const { sendRoomMapPackets, sendCampaignBootstrap, ROOM_MAP_SYNC_MODE } = require('./room/room-map.sender');
 const { sendGameUserBootstrap } = require('./room/room-game-user.sender');
+// D1-4 (docs/backlog.md): real Room_List_SN alongside the existing
+// (client-ignored) 0x00230103 empty list sent below, on returning to the
+// lobby after Leave_CQ.
+const rooms = require('../rooms.js');
+const { sendFullRoomList } = require('./room/room-list.sender');
 const { MAX_SLOT_COUNT } = require('../datatypes/enums');
 const { clampMoney, moneyBigInt } = require('./money');
 const fs = require('fs');
@@ -319,12 +324,19 @@ function sendLobbyBootstrapAfterRoomLeave(client) {
     }
 
     {
+        // D1-4: kept as-is even though the client ignores this opcode (see
+        // lobby.dispatch.js's sendEmptyRoomList for the same note) -- the
+        // real list is Room_List_SN 0x00220204, sent below when enabled.
         const [msg, body] = getExactMessageBuffer(0x00230103, 0x4);
         body.writeUint8(0, 0);
         body.writeUint8(0, 1);
         body.writeUint16LE(0, 2);
         client.send(msg);
         console.log(`[ZRoomDispatch] >> Sent Lobby Room_List_SN 0x230103 after room leave`);
+    }
+
+    if (rooms.isRoomJoinEnabled()) {
+        sendFullRoomList(client, rooms.listRooms(), getExactMessageBuffer);
     }
 }
 

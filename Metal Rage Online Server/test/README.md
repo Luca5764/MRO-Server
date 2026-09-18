@@ -132,3 +132,14 @@ Not covered yet, and why:
 - **`saveEquippedLoadout`, `createAccount`, cash-currency purchases**: no
   golden sample exercises these DB entry points yet; `fake-db.js` throws a
   labelled "not mocked" error rather than guess a shape if one ever does.
+- **`ROOM_JOIN_MODE`** (rooms.js, D1-4, docs/backlog.md): default
+  'disabled', so no golden sample exercises it (flipping it on would change
+  the room-list/join/leave traffic byte-for-byte, same reasoning as D1-2's
+  room chat). `test/room-join.js` covers it directly, the same technique as
+  `test/room-chat.js`: two fake clients sharing rooms.js's registry, mode
+  switched on for the file via `rooms._setRoomJoinModeForTests('enabled')`.
+  Covers: Room_List_SN broadcast to the lobby on room create (and full list
+  on lobby open), Enter_CQ join (Enter_SA + both sides getting each other's
+  User_Default_SN, using `test/fixtures/fake-timers.js` to drain the
+  scene-change-race retry), and Leave_CQ notifying the remaining member
+  with Leave_SN.

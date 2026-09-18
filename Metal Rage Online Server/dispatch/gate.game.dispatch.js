@@ -5,6 +5,12 @@ const { sendGameUserBootstrap } = require('./room/room-game-user.sender');
 // registry, dual-written alongside the existing client.xxx_ fields below.
 // Lives outside dispatch/ on purpose — see rooms.js header comment.
 const rooms = require('../rooms.js');
+// D1-4 (docs/backlog.md): joining an existing room reuses the same
+// room-state/room-user sender chain the room creator already gets below,
+// plus the lobby room list broadcast that makes a room visible to join.
+const { sendRoomStatePackets } = require('./room/room-state.sender');
+const { sendRoomUserPackets } = require('./room/room-user.sender');
+const { broadcastRoomListChange } = require('./room/room-list.sender');
 
 // ZGateGameDispatch - Handles Gate-range (0x22XXXX) messages on the GAME server
 //
@@ -33,6 +39,11 @@ const BACK_FROM_ROOM_SA_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
 // docs/journal/2026-09-18-20-room-leave-reset.md.
 const READY_HOST_SN_URL_MODE = 'fit'; // 'fit' | 'fixed_0x13'
 const GAME_CHAT_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
+// D1-4: mirrors room.dispatch.js's own ROOM_DEFAULT_ENTRY_HINTS (same
+// array). Already-existing duplication precedent in this file --
+// CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID above is duplicated the same way
+// between the two files, with its own comment explaining why.
+const ROOM_DEFAULT_ENTRY_HINTS = [8, 37, 30, 34, 6, 2];
 // D1 step 2 (docs/design/d1-multiplayer-room.md §5/§6 step 2, backlog
 // D1-2): client sends the SAME opcode for room chat CQ and SN (observed
 // [LOG] session-20260918-225741.jsonl, 258-byte 0x00220505 body; mirrors
@@ -591,6 +602,27 @@ function resendRoomMapOnly(client, tag)
     }
 }
 
+// D1-4: builds the ctx sendRoomUserPackets() needs for one rooms.js Member.
+// Used both for "tell the joiner about this existing member" and "tell
+// existing members about the joiner" -- same shape either way, since
+// rooms.js's Member already carries everything sendRoomState() used to read
+// straight off the single occupant's client fields (nickname, team). Pilot
+// id still comes from the member's own connection (client.pilot_) when it
+// has one connected, same default (101) sendRoomState() already uses.
+function buildMemberUserCtx(member) {
+    return {
+        accountIndex: member.accountId,
+        pilotId: Number(member.client && member.client.pilot_) || 101,
+        userLevelText: '1',
+        userLevelType: 2,
+        teamIndex: member.team || 0,
+        userHiddenRaw: 0,
+        userStateRaw: 1,
+        packedIp: 0x0100007F,
+        nickname: member.nickname || 'Player',
+    };
+}
+
 module.exports =
 class ZGateGameDispatch
 {
@@ -726,8 +758,11 @@ class ZGateGameDispatch
                 // step 1]: dual-write into the shared Room registry alongside
                 // the client.xxx_ fields above. Triggered by the same
                 // Create_CQ 0x00220201 that built those fields (client
-                // pressed "Create Room" in the lobby). Nothing reads from
-                // `rooms` yet, so this cannot change any byte sent below.
+                // pressed "Create Room" in the lobby). While ROOM_JOIN_MODE
+                // (rooms.js, default disabled) is off, nothing reads from
+                // `rooms` either, so this cannot change any byte sent below;
+                // enabled, it also broadcasts the new room to the lobby
+                // (D1-4, see below).
                 {
                     const hostAccountId = Number(client.accountIndex_ || client.accountId_ || 1);
                     const room = rooms.createRoom({
@@ -744,6 +779,11 @@ class ZGateGameDispatch
                         maxPlayers,
                         campaign: isCampaignLike,
                         hostAccountId,
+                        // D1-4: needed for Room_List_SN's RoomType/password
+                        // fields (dispatch/room/room-list.sender.js).
+                        roomType: effectiveRoomType,
+                        hasPassword: !!roomPassword,
+                        password: roomPassword,
                     });
                     rooms.addMember(room.id, {
                         accountId: hostAccountId,
@@ -753,6 +793,16 @@ class ZGateGameDispatch
                         ready: false,
                         client,
                     });
+
+                    // D1-4 (docs/backlog.md, design §5/§6 step 4): tell
+                    // everyone else in the lobby a new room exists to join.
+                    // rooms.getLobbyClients() naturally excludes the creator
+                    // (they are now tracked as a room member, via addMember
+                    // above).
+                    if (rooms.isRoomJoinEnabled()) {
+                        broadcastRoomListChange(rooms.getLobbyClients(), room, 1, getExactMessageBuffer);
+                        console.log(`[ZGateGameDispatch] >> Broadcast new room #${room.id} to the lobby`);
+                    }
                 }
 
                 // ZDispatchLobby::Create_CQ sends 0x220201 with Send(..., 0x220202),
@@ -963,6 +1013,160 @@ class ZGateGameDispatch
             }
 
             // ==========================================
+            // Room Enter CQ. Client action: double-click a room row in the
+            // lobby room list (fed by Room_List_SN, see the CQ_CREATE
+            // broadcast above), or "join" from a Play Together invite.
+            // Body: u16 RoomIndex + UTF-16LE password, fixed 0x1D bytes
+            // (docs/research/2026-09-18-d1-room-formats/notes.md, [DLL]
+            // write site 0x107e5e61). D1-4 (docs/backlog.md).
+            // ==========================================
+            case 0x00220231:
+            {
+                if (!rooms.isRoomJoinEnabled()) {
+                    // Unchanged from before this case existed: the generic
+                    // odd-opcode fallback this used to fall through to
+                    // (packetlog.fallback + 6-byte 0/0 auto-ACK as type+1).
+                    // Keeping this byte-identical matters for
+                    // test/replay-golden.js's baselines.
+                    packetlog.fallback(client, 'ZGateGameDispatch', type, body, type + 1);
+                    const [msg, respBody] = client.getMessageBuffer(type + 1, 0x6);
+                    respBody.writeUint16LE(0x0000, 0);
+                    respBody.writeUint32LE(0x0000, 2);
+                    client.send(msg);
+                    return true;
+                }
+
+                const roomIndexReq = body.length >= 2 ? body.readUInt16LE(0) : 0;
+                let password = '';
+                for (let i = 2; i + 1 < body.length; i += 2) {
+                    const code = body.readUInt16LE(i);
+                    if (code === 0) break;
+                    password += String.fromCharCode(code);
+                }
+
+                const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
+                const room = rooms.getRoom(roomIndexReq);
+
+                // Enter_SA 0x00220232 [DLL 0x107e4080]:
+                // docs/research/2026-09-18-d1-room-formats/enter-sa.md found
+                // it carries no room data of its own -- both the success and
+                // failure branches only need the standard 0/0 (success) or
+                // non-zero (failure) status/result header. The client pulls
+                // the actual room content from the SN broadcasts sent below.
+                // Failure result code is a guess (1, matching this
+                // repo's generic-failure convention elsewhere, e.g.
+                // room.dispatch.js's Shop Buy SA) -- the numeric->error
+                // string table Event_Call feeds ZPage_Lobby.RecvRoomEnter
+                // was not traced, so which popup text this produces is
+                // unconfirmed. Any non-zero result reaches some non-empty
+                // ErrorMessage there, so the client will not hang either way.
+                const sendEnterSa = (ok) => {
+                    const [msg, respBody] = getExactMessageBuffer(0x00220232, 0x06);
+                    respBody.writeUInt16LE(ok ? 0 : 1, 0x00);
+                    respBody.writeUInt32LE(ok ? 0 : 1, 0x02);
+                    client.send(msg);
+                    console.log(`[ZGateGameDispatch] >> Sent Enter_SA 0x220232 (${ok ? 'success' : 'failure'}, room=${roomIndexReq})`);
+                };
+
+                if (!room) {
+                    console.log(`[ZGateGameDispatch] >> Enter_CQ: room #${roomIndexReq} not found`);
+                    sendEnterSa(false);
+                    return true;
+                }
+                if (room.hasPassword && room.password !== password) {
+                    console.log(`[ZGateGameDispatch] >> Enter_CQ: wrong password for room #${roomIndexReq}`);
+                    sendEnterSa(false);
+                    return true;
+                }
+                if (room.members.size >= room.maxPlayers) {
+                    console.log(`[ZGateGameDispatch] >> Enter_CQ: room #${roomIndexReq} full (${room.members.size}/${room.maxPlayers})`);
+                    sendEnterSa(false);
+                    return true;
+                }
+
+                const nickname = client.nickname_ || 'Player';
+                rooms.addMember(room.id, {
+                    accountId,
+                    nickname,
+                    team: 0, // PvE all-red (design §2, R11); PvP team assignment is M4, out of scope here
+                    slot: 0,
+                    ready: false,
+                    client,
+                });
+
+                // Minimal client-side mirror: only the fields existing
+                // unrelated handlers already key off client.xxx_ for
+                // (Hangar Open_CQ 0x00240101's campaign-room suppression,
+                // Leave_CQ 0x00220234's resetRoomSessionState). This is
+                // deliberately not a full mirror of everything CQ_CREATE
+                // sets above -- starting a match as the joiner (map
+                // selection, Game_Info_SN, etc: M2) is out of scope for
+                // D1-4, which only covers seeing and being seen in the room.
+                client.campaignRoom_ = room.campaign;
+                client.isTrueCampaign_ = room.campaign;
+                client.createdRoomIndex_ = room.id;
+                client.roomIndex_ = 0;
+                client.maxPlayers_ = room.maxPlayers;
+                client.mapId_ = room.mapId;
+                client.roomName_ = room.name;
+
+                sendEnterSa(true);
+
+                const allMembers = Array.from(room.members.values());
+                const otherMembers = allMembers.filter((m) => m.accountId !== accountId);
+
+                // Same scene-change race as CQ_CREATE's
+                // ROOM_STATE_RETRY_SCHEDULE above: Enter_SA also drives
+                // Scene_Change(5) client-side (enter-sa.md), and the room
+                // scene needs a moment to start listening for ZDispatchRoom
+                // SNs. One retry (not the creator's two) -- see journal.
+                setTimeout(() => {
+                    const roomStateCtx = {
+                        roomIndex: room.id,
+                        accountIndex: accountId,
+                        roomType: room.roomType,
+                        mapId: room.mapId,
+                        maxPlayers: room.maxPlayers,
+                        currentUsers: room.members.size,
+                        gameMode: 0, // not modeled on Room yet; host's own room-option flags are not replicated to joiners (known gap, see journal)
+                        mapIndex: room.mapId,
+                        roomName: room.name,
+                        roomSettingGoal: room.campaign ? 0 : room.members.size,
+                        roomSettingTime: room.campaign ? 0 : room.maxPlayers,
+                        roomSettingRound: room.campaign ? 1 : 0,
+                        roomDefaultEntryCount: room.campaign
+                            ? ROOM_DEFAULT_ENTRY_HINTS.length
+                            : Math.min(Math.max(room.maxPlayers, 1), ROOM_DEFAULT_ENTRY_HINTS.length),
+                        roomDefaultEntryHints: ROOM_DEFAULT_ENTRY_HINTS,
+                        primaryBodyCacheIndex: ROOM_DEFAULT_ENTRY_HINTS[0] || 8,
+                        selectedMech: 1,
+                    };
+                    sendRoomStatePackets(client, roomStateCtx, getExactMessageBuffer);
+
+                    for (const member of allMembers) {
+                        sendRoomUserPackets(client, buildMemberUserCtx(member), getExactMessageBuffer, {
+                            includeMaster: member.accountId === room.hostAccountId,
+                        });
+                    }
+                    console.log(`[ZGateGameDispatch] >> Sent full room state to joiner (room=${room.id}, members=${allMembers.length})`);
+                }, 350);
+
+                // Tell whoever was already in the room about the new
+                // arrival. No scene-change race for them -- they are
+                // already sitting in the room scene.
+                for (const member of otherMembers) {
+                    if (!member.client) continue;
+                    sendRoomUserPackets(member.client, buildMemberUserCtx({ accountId, nickname, team: 0, client }), getExactMessageBuffer, { includeMaster: false });
+                }
+                console.log(`[ZGateGameDispatch] >> Notified ${otherMembers.length} existing room member(s) of new arrival (account=${accountId})`);
+
+                // Member count changed -- tell the lobby too.
+                broadcastRoomListChange(rooms.getLobbyClients(), room, 2, getExactMessageBuffer);
+
+                return true;
+            }
+
+            // ==========================================
             // Room Map Change One CQ
             // ==========================================
             case 0x00220221:
@@ -1047,8 +1251,58 @@ class ZGateGameDispatch
                 // Room registry too — same trigger (Leave_CQ) as the
                 // resetRoomSessionState() call above. Removes this account
                 // from whatever room it was in; deletes the room once empty.
-                // No broadcast yet (that is design step 2+).
-                rooms.removeMember(Number(client.accountIndex_ || client.accountId_ || 1));
+                const leavingAccountId = Number(client.accountIndex_ || client.accountId_ || 1);
+
+                // D1-4 (docs/backlog.md): capture room/host state *before*
+                // removeMember() below, since that call deletes the Room
+                // from rooms.js's registry once the last member leaves (the
+                // `room` object reference below keeps working after that --
+                // deleting a Map entry does not touch the object itself --
+                // but rooms.getRoomByAccount()/getRoom() would no longer
+                // find it).
+                const room = rooms.isRoomJoinEnabled() ? rooms.getRoomByAccount(leavingAccountId) : undefined;
+                const wasHost = room ? room.hostAccountId === leavingAccountId : false;
+                const remainingMembers = room
+                    ? Array.from(room.members.values()).filter((m) => m.accountId !== leavingAccountId)
+                    : [];
+
+                rooms.removeMember(leavingAccountId);
+
+                if (room) {
+                    if (remainingMembers.length > 0) {
+                        // Leave_SN 0x00220236 [DLL 0x107edb70]: u16 UserIndex
+                        // + u8 Kickout. Client action: the leaver pressed
+                        // "back" in the room (see the case comment above).
+                        for (const member of remainingMembers) {
+                            if (!member.client) continue;
+                            const [leaveMsg, leaveBody] = getExactMessageBuffer(0x00220236, 0x03);
+                            leaveBody.writeUInt16LE(leavingAccountId, 0x00);
+                            leaveBody.writeUInt8(0, 0x02); // Kickout=0: voluntary leave, not a kick
+                            member.client.send(leaveMsg);
+                        }
+                        console.log(`[ZGateGameDispatch] >> Sent Leave_SN 0x220236 to ${remainingMembers.length} remaining room member(s) (left=${leavingAccountId})`);
+
+                        if (wasHost) {
+                            // rooms.js's Member map preserves insertion
+                            // (join) order, so the first surviving entry is
+                            // whoever joined earliest (design §2).
+                            const newHost = remainingMembers[0];
+                            rooms.setHost(room.id, newHost.accountId);
+                            console.log(`[ZGateGameDispatch] >> Host left room #${room.id}; reassigned to account ${newHost.accountId}`);
+                            for (const member of remainingMembers) {
+                                if (!member.client) continue;
+                                sendRoomUserPackets(member.client, buildMemberUserCtx(newHost), getExactMessageBuffer);
+                            }
+                        }
+
+                        broadcastRoomListChange(rooms.getLobbyClients(), room, 2, getExactMessageBuffer);
+                    } else {
+                        // Room now empty -- removeMember() above already
+                        // deleted it from the registry; tell the lobby.
+                        broadcastRoomListChange(rooms.getLobbyClients(), room, 3, getExactMessageBuffer);
+                    }
+                }
+
                 return true;
             }
 

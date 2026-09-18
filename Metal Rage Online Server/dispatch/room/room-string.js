@@ -24,4 +24,9 @@ function writeAnsiStringField(buffer, value, offset, fieldSize) {
 module.exports = {
     ROOM_STRING_ANSI_MODE,
     writeAnsiStringField,
+    // D1-4: Room_List_SN's room-name field is length-prefixed (no fixed
+    // field width to pad to), so it needs the ASCII-clamp logic without
+    // writeAnsiStringField's fixed-width zero-fill. Exporting the existing
+    // helper rather than duplicating it.
+    toSafeAscii,
 };

@@ -41,6 +41,9 @@
  * @property {number} maxPlayers
  * @property {boolean} campaign
  * @property {number} hostAccountId
+ * @property {number} roomType - ROOM_INFO.RoomType (0 normal/1 clan/2 campaign/3 quick), see ZNetwork_DJ.uc
+ * @property {boolean} hasPassword
+ * @property {string} password
  * @property {Map<number, Member>} members
  * @property {'lobby'|'playing'} state
  */
@@ -52,6 +55,47 @@ const rooms = new Map();
 const byAccount = new Map();
 
 let nextRoomId = 1;
+
+// D1-4 (docs/backlog.md, docs/design/d1-multiplayer-room.md §5/§6 step 4):
+// lobby room list broadcast, join, leave-notify, host reassignment. Default
+// off pending a real two-client test (backlog contract: mid-tier work ships
+// with new behaviour disabled). A `let` + accessor pair, not a plain
+// `module.exports` const, because gate.game.dispatch.js, lobby.dispatch.js
+// and room.dispatch.js all need to read the SAME switch, and
+// test/room-join.js needs to flip it on for its run (same pattern as
+// _resetForTests() below).
+let roomJoinMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isRoomJoinEnabled() {
+    return roomJoinMode === 'enabled';
+}
+
+function _setRoomJoinModeForTests(mode) {
+    roomJoinMode = mode;
+}
+
+// D1-4: which live client objects count as "in the lobby" for the
+// Room_List_SN broadcast. There is no separate "entered lobby" flag on
+// NetworkClient (login goes straight from channel-enter to the client
+// polling 0x00230111), so this is approximated from state that already
+// exists: authenticated on the game server (`accountId_` set) and not
+// currently tracked as a member of any room (`byAccount`). That means a
+// client between "socket connected" and "finished game-server login" is
+// briefly counted as not-in-lobby (accountId_ unset) rather than in-lobby,
+// which just means it misses room list broadcasts until its next lobby
+// open/request (0x00230111/0x00230141) — those still send the full list.
+// `clientSource` is server.js's live `DispatchServer.clients` array
+// reference for the 30907 game server (registerLobbyClientSource), so this
+// module does not need its own connect/disconnect bookkeeping.
+let clientSource = [];
+
+function registerLobbyClientSource(clientArrayRef) {
+    clientSource = clientArrayRef || [];
+}
+
+function getLobbyClients() {
+    return clientSource.filter((client) => client && client.accountId_ && !byAccount.has(Number(client.accountId_)));
+}
 
 /**
  * Allocates the next room id. Same generation rule as the counter this
@@ -67,7 +111,7 @@ function allocateRoomId() {
  * addMember() separately (the CQ_CREATE handler adds the creator as host
  * right after this).
  */
-function createRoom({ id, name, mapId, playTime, playRound, maxPlayers, campaign, hostAccountId }) {
+function createRoom({ id, name, mapId, playTime, playRound, maxPlayers, campaign, hostAccountId, roomType, hasPassword, password }) {
     const room = {
         id,
         name,
@@ -77,6 +121,12 @@ function createRoom({ id, name, mapId, playTime, playRound, maxPlayers, campaign
         maxPlayers,
         campaign,
         hostAccountId,
+        // D1-4: optional, default to "no password / normal type" so the
+        // existing test/rooms.js and test/room-chat.js callers (which do
+        // not pass these) are unaffected.
+        roomType: roomType || 0,
+        hasPassword: !!hasPassword,
+        password: password || '',
         members: new Map(),
         state: 'lobby',
     };
@@ -89,6 +139,24 @@ function getRoomByAccount(accountId) {
     const roomId = byAccount.get(accountId);
     if (roomId === undefined) return undefined;
     return rooms.get(roomId);
+}
+
+/** Looks up a Room by id, or undefined. D1-4: used by the Enter_CQ handler. */
+function getRoom(roomId) {
+    return rooms.get(roomId);
+}
+
+/**
+ * D1-4: reassigns a room's host (design §2: "房主離開時，交給加入最早的成員").
+ * Does not touch membership or send anything -- callers broadcast
+ * User_Master_SN themselves once this returns. No-op (returns false) if the
+ * room is not tracked.
+ */
+function setHost(roomId, accountId) {
+    const room = rooms.get(roomId);
+    if (!room) return false;
+    room.hostAccountId = accountId;
+    return true;
 }
 
 /**
@@ -204,17 +272,25 @@ function _resetForTests() {
     rooms.clear();
     byAccount.clear();
     nextRoomId = 1;
+    roomJoinMode = 'disabled';
+    clientSource = [];
 }
 
 module.exports = {
     allocateRoomId,
     createRoom,
     getRoomByAccount,
+    getRoom,
+    setHost,
     addMember,
     removeMember,
     setMemberClient,
     listRooms,
     sendAll,
     sendOthers,
+    isRoomJoinEnabled,
+    _setRoomJoinModeForTests,
+    registerLobbyClientSource,
+    getLobbyClients,
     _resetForTests,
 };

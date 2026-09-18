@@ -10,7 +10,17 @@ const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string')
 // only displayed the first letter.
 // See docs/journal/2026-09-18-17-user-name-ansi.md.
 
-function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
+function sendRoomUserPackets(client, ctx, getExactMessageBuffer, options = {}) {
+    // D1-4 (docs/backlog.md): sending one room member's User_Default/Name/
+    // Pilot/State to a *different* client (a joiner learning about the
+    // room's existing members, or existing members learning about a new
+    // joiner) must not also claim that member is the room master --
+    // otherwise looping this per member would send one User_Master_SN per
+    // member, the last of which would "win" and misname the master.
+    // Defaults to true so every call site that pre-dates this option (the
+    // single-occupant room-creator path) keeps sending User_Master_SN
+    // exactly as before.
+    const includeMaster = options.includeMaster !== false;
     const {
         accountIndex,
         pilotId,
@@ -91,7 +101,7 @@ function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
     // Observed exactly that: "I saw 'start game' the instant I entered, and a
     // prompt saying I was the room master, and then it immediately turned into
     // 'ready'." The first block made them master; the next three took it away.
-    {
+    if (includeMaster) {
         const [msg, respBody] = getExactMessageBuffer(SN_USER_MASTER, 0x06);
         respBody.writeUint16LE(accountIndex, 0x00);
         respBody.writeUint32LE(userStateRaw, 0x02);

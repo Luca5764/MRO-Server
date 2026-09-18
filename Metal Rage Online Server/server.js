@@ -224,6 +224,14 @@ function main()
     const gameServer = new DispatchServer('GameServer', GAME_PORT, gameServices);
     gameServer.start();
 
+    // D1-4 (docs/backlog.md, rooms.js): Room_List_SN needs to know which
+    // live connections are "in the lobby" (rooms.getLobbyClients()). Room
+    // create/enter/leave all happen on this server (0x22/0x23/0x24XXXX are
+    // all game.js services), so this is the array to filter -- passing the
+    // reference itself, not a copy, since server.js mutates it in place
+    // (push/splice above) and rooms.js should always see the current list.
+    rooms.registerLobbyClientSource(gameServer.clients);
+
     // Stamps the session log with which build produced it — see packetlog.js.
     // This is the only thing tying a recording back to the code that made it, so
     // it has to run even if nothing has connected yet.

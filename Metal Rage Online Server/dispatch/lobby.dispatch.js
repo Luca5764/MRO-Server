@@ -1,5 +1,10 @@
 const NetworkClient = require("../client");
 const packetlog = require("../packetlog.js");
+// D1-4 (docs/backlog.md): the real Room_List_SN, sent alongside the
+// existing (client-ignored, see sendEmptyRoomList below) 0x00230103 when
+// the lobby is opened/refreshed.
+const rooms = require('../rooms.js');
+const { sendFullRoomList } = require('./room/room-list.sender');
 
 // How the PvE player's first mech gets spawned.
 //   'client': the original flow. After BeginRound_SN the client's
@@ -396,11 +401,22 @@ class ZLobbyDispatch
     {
         //Possibly 0x220101 = SN_SERVER_ADD, lobby might use 0x230103 or similar.
         //Test 0x00230103 as Room_List_SN.
+        //
+        // D1-4: 0x00230103 is NOT in the client's dispatch map (verified via
+        // tools/dispatch-map.py, docs/research/2026-09-18-d1-room-formats/
+        // notes.md) -- it is silently ignored on arrival. Kept as-is rather
+        // than removed: it is harmless dead weight, and deleting it now
+        // would be an unrelated cleanup outside this task's scope. The real
+        // room list is Room_List_SN 0x00220204, sent below when enabled.
         const [msg, body] = client.getMessageBuffer(0x00230103, 0x4);
         body[0] = 0x00; // No more messages following
         body[1] = 0x00; // Room count = 0
         body.writeUint16LE(0, 2);
         client.send(msg);
+
+        if (rooms.isRoomJoinEnabled()) {
+            sendFullRoomList(client, rooms.listRooms(), (type, size) => client.getMessageBuffer(type, size));
+        }
     }
 
     sendRespawn(client, userIndex, sourceTag)
