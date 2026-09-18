@@ -6,6 +6,32 @@ const session = require('./session.js');
 const SERVER_PORT = 9211;
 const GAME_PORT = 30907;
 
+// Backlog X1: one bad client packet used to be able to crash the whole
+// process (both listeners, every connected client, mid-match) because
+// nothing between the socket and the reverse-engineered handler code caught
+// exceptions. Register the process-level nets before either server starts
+// listening. These are last resorts, not the primary defense — the primary
+// defense is the per-connection try/catch around service.dispatch() in
+// DispatchServer.onConnection() below (and the matching one in
+// client.js:onData()), which can attribute the failure to a connection and
+// drop just that socket. Anything that reaches here instead (e.g. thrown
+// from inside a setTimeout callback a handler scheduled, long after
+// dispatch() returned) cannot be mapped back to a connection — that is a
+// known limitation, not an oversight. Per the operator's decision recorded
+// in docs/backlog.md (X1): log loudly, do not process.exit(), do not
+// swallow it silently.
+process.on('uncaughtException', (err, origin) => {
+    const stack = err && err.stack ? err.stack : String(err);
+    console.error(`[process] !!! UNCAUGHT EXCEPTION (origin=${origin}) — server kept alive:\n${stack}`);
+    packetlog.marker(`!!! UNCAUGHT EXCEPTION (origin=${origin}): ${err && err.message || err} — could not be attributed to a connection, server kept running`, 'auto');
+});
+
+process.on('unhandledRejection', (reason) => {
+    const stack = reason && reason.stack ? reason.stack : String(reason);
+    console.error(`[process] !!! UNHANDLED REJECTION — server kept alive:\n${stack}`);
+    packetlog.marker(`!!! UNHANDLED REJECTION: ${reason && reason.message || reason} — could not be attributed to a connection, server kept running`, 'auto');
+});
+
 class DispatchServer
 {
     constructor(name, port, services)
@@ -40,7 +66,40 @@ class DispatchServer
         const client = new NetworkClient(socket, (client, type, data) => {
             for (const service of this.services)
             {
-                if (service.dispatch(client, type, data))
+                // Backlog X1: dispatch() runs reverse-engineered handler code
+                // against a live client packet — the least-trusted input this
+                // process sees. A synchronous throw here (bad offset read,
+                // unexpected null, etc.) used to be an uncaught exception
+                // that killed the whole process, taking every other
+                // connected client down with it. Catch it here and drop only
+                // this one connection.
+                let handled;
+                try
+                {
+                    handled = service.dispatch(client, type, data);
+                }
+                catch (err)
+                {
+                    this.onDispatchException(client, type, data, err);
+                    return;
+                }
+
+                // None of the services in dispatch.js/game.js currently
+                // return a Promise from dispatch() itself — the async
+                // handlers they call (e.g. account.dispatch.js's
+                // handleCreate) are fired without being awaited or returned,
+                // so a throw inside one becomes an unhandledRejection (see
+                // the process-level net above), not something catchable
+                // here. This branch only guards against a future
+                // `async dispatch()` producing a rejected promise that would
+                // otherwise go unhandled silently.
+                if (handled && typeof handled.then === 'function')
+                {
+                    handled.catch((err) => this.onDispatchException(client, type, data, err));
+                    handled = true;
+                }
+
+                if (handled)
                 {
                     // Handlers keep their state on the client, which dies with
                     // the socket. Mirror it into the account session so it can
@@ -91,73 +150,125 @@ class DispatchServer
             session.save(client);
         });
     }
+
+    /**
+     * Handles an exception thrown (or rejected) by a service's dispatch()
+     * for a given connection. Triggered by whatever client packet drove the
+     * reverse-engineered handler into a bad state — an offset that did not
+     * hold what the handler expected, an unanticipated value, etc. Logs a
+     * loud marker with the full packet that caused it, then drops only that
+     * connection; every other connected client keeps playing.
+     * @private
+     * @param {NetworkClient} client
+     * @param {number} type - Opcode
+     * @param {Buffer} data - Message body, excluding the 16-byte header
+     * @param {Error} err
+     */
+    onDispatchException(client, type, data, err)
+    {
+        const op = '0x' + (type >>> 0).toString(16).padStart(8, '0');
+        const stack = err && err.stack ? err.stack : String(err);
+
+        console.error(`[${this.name}] !!! DISPATCH EXCEPTION conn=${client.connId_} op=${op} — dropping this connection:\n${stack}`);
+
+        packetlog.connection('exception', client.connId_, {
+            server: this.name,
+            op,
+            len: data.length,
+            hex: data.toString('hex'),
+            stack,
+        });
+        packetlog.marker(`!!! DISPATCH EXCEPTION conn=${client.connId_} op=${op}: ${err && err.message || err} — connection dropped, server kept running`, 'auto');
+
+        // Only this connection is compromised; its handler state may now be
+        // inconsistent. destroy() rather than the graceful disconnect() —
+        // it should not linger waiting on a reply that is never coming.
+        if (client.socket_)
+            client.socket_.destroy();
+    }
 };
 
-// Dispatch server handles: Account login, Gate (server/channel selection)
-const dispatchServices = require('./dispatch.js');
-const dispatchServer = new DispatchServer('DispatchServer', SERVER_PORT, dispatchServices);
-dispatchServer.start();
-
-// Game server handles: Lobby, Room, Game, Hangar, Community, etc.
-const gameServices = require('./game.js');
-const gameServer = new DispatchServer('GameServer', GAME_PORT, gameServices);
-gameServer.start();
-
-// Stamps the session log with which build produced it — see packetlog.js.
-// This is the only thing tying a recording back to the code that made it, so
-// it has to run even if nothing has connected yet.
-packetlog.recordBuild('start');
-
-// Hot reload: typing /reload in the server console swaps in freshly loaded
-// dispatch code without closing sockets, so the client stays logged in and
-// the operator does not have to log in again after every handler change.
-// Handler state lives on the client objects and survives. What does not:
-// module-level variables in dispatch/ (currently only nextRoomIndex in
-// gate.game.dispatch.js restarts at 1), and timers already scheduled by the
-// old code, which finish running the old code. Anything outside dispatch/
-// (client.js, message.js, session.js, packetlog.js, database/) still needs a
-// full restart.
-function reloadServices()
+// Everything below only runs when this file is executed directly (`node
+// server.js` / the launcher .bat), which is the only way anything in this
+// codebase has ever run it. Guarded so test/exception-guard.js (backlog X1)
+// can `require('../server.js')` to reuse the real DispatchServer class —
+// including the try/catch this test exists to exercise — without also
+// binding the real ports 9211/30907 a second time. Nothing here changes
+// what happens when server.js is run the normal way: require.main === module
+// is true in that case, same as before this guard existed.
+function main()
 {
-    const path = require('path');
-    const root = __dirname + path.sep;
-    const isReloadable = (file) =>
-        file.startsWith(root + 'dispatch' + path.sep) ||
-        file === root + 'dispatch.js' ||
-        file === root + 'game.js';
+    // Dispatch server handles: Account login, Gate (server/channel selection)
+    const dispatchServices = require('./dispatch.js');
+    const dispatchServer = new DispatchServer('DispatchServer', SERVER_PORT, dispatchServices);
+    dispatchServer.start();
 
-    const saved = {};
-    for (const file of Object.keys(require.cache))
+    // Game server handles: Lobby, Room, Game, Hangar, Community, etc.
+    const gameServices = require('./game.js');
+    const gameServer = new DispatchServer('GameServer', GAME_PORT, gameServices);
+    gameServer.start();
+
+    // Stamps the session log with which build produced it — see packetlog.js.
+    // This is the only thing tying a recording back to the code that made it, so
+    // it has to run even if nothing has connected yet.
+    packetlog.recordBuild('start');
+
+    // Hot reload: typing /reload in the server console swaps in freshly loaded
+    // dispatch code without closing sockets, so the client stays logged in and
+    // the operator does not have to log in again after every handler change.
+    // Handler state lives on the client objects and survives. What does not:
+    // module-level variables in dispatch/ (currently only nextRoomIndex in
+    // gate.game.dispatch.js restarts at 1), and timers already scheduled by the
+    // old code, which finish running the old code. Anything outside dispatch/
+    // (client.js, message.js, session.js, packetlog.js, database/) still needs a
+    // full restart.
+    function reloadServices()
     {
-        if (isReloadable(file))
+        const path = require('path');
+        const root = __dirname + path.sep;
+        const isReloadable = (file) =>
+            file.startsWith(root + 'dispatch' + path.sep) ||
+            file === root + 'dispatch.js' ||
+            file === root + 'game.js';
+
+        const saved = {};
+        for (const file of Object.keys(require.cache))
         {
-            saved[file] = require.cache[file];
-            delete require.cache[file];
+            if (isReloadable(file))
+            {
+                saved[file] = require.cache[file];
+                delete require.cache[file];
+            }
+        }
+
+        try
+        {
+            const nextDispatch = require('./dispatch.js');
+            const nextGame = require('./game.js');
+            dispatchServer.services = nextDispatch;
+            gameServer.services = nextGame;
+            console.log(`[reload] Dispatch code reloaded (${Object.keys(saved).length} modules); connections kept.`);
+            packetlog.marker('RELOAD: dispatch code reloaded', 'auto');
+            packetlog.recordBuild('reload');
+        }
+        catch (err)
+        {
+            // Put the old modules back so a later require() of them does not pick
+            // up the broken files half-way; the running services never changed.
+            for (const file of Object.keys(require.cache))
+                if (isReloadable(file)) delete require.cache[file];
+            Object.assign(require.cache, saved);
+            console.error(`[reload] FAILED, still running the previous code:`, err);
         }
     }
 
-    try
-    {
-        const nextDispatch = require('./dispatch.js');
-        const nextGame = require('./game.js');
-        dispatchServer.services = nextDispatch;
-        gameServer.services = nextGame;
-        console.log(`[reload] Dispatch code reloaded (${Object.keys(saved).length} modules); connections kept.`);
-        packetlog.marker('RELOAD: dispatch code reloaded', 'auto');
-        packetlog.recordBuild('reload');
-    }
-    catch (err)
-    {
-        // Put the old modules back so a later require() of them does not pick
-        // up the broken files half-way; the running services never changed.
-        for (const file of Object.keys(require.cache))
-            if (isReloadable(file)) delete require.cache[file];
-        Object.assign(require.cache, saved);
-        console.error(`[reload] FAILED, still running the previous code:`, err);
-    }
+    // Lets the operator annotate the recording from the console while playing:
+    // type what you just did in the client, press Enter, and it lands in the log
+    // between the packets it caused.
+    packetlog.listenForMarkers({ '/reload': reloadServices });
 }
 
-// Lets the operator annotate the recording from the console while playing:
-// type what you just did in the client, press Enter, and it lands in the log
-// between the packets it caused.
-packetlog.listenForMarkers({ '/reload': reloadServices });
+if (require.main === module)
+    main();
+
+module.exports = { DispatchServer };

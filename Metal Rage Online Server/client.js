@@ -235,62 +235,89 @@ class NetworkClient
         // Debug: log raw incoming bytes
         console.log(`[NetworkClient] RAW DATA: ${data.length} bytes: ${data.subarray(0, Math.min(64, data.length)).toString('hex')}`);
 
-        // Accumulate incoming data
-        this.recvbuf_ = Buffer.concat([this.recvbuf_, data]);
-
-        // Process all complete messages in the buffer
-        while (this.recvbuf_.length >= MSG_HEADER_SIZE)
+        // Backlog X1: everything below this point — frame accumulation, the
+        // length/CRC checks, onInternalMessage(), and callback_() (which
+        // reaches server.js's own dispatch try/catch, but not everything
+        // else server.js's callback does around it) — runs off a single
+        // client's socket. server.js's per-service try/catch around
+        // service.dispatch() is the primary defense for handler bugs; this
+        // is the backstop for anything that instead throws here (frame
+        // parsing itself, or a gap in that primary defense). Whatever
+        // tripped it is specific to this connection: log a full dump of
+        // whatever is still unconsumed and drop only this socket, not the
+        // listener every other connected client is on.
+        try
         {
-            const len = peekLength(this.recvbuf_, this.salt_);
+            // Accumulate incoming data
+            this.recvbuf_ = Buffer.concat([this.recvbuf_, data]);
 
-            if (len < MSG_HEADER_SIZE || len > MSG_MAX_SIZE) {
-                console.log(`[NetworkClient] Invalid message length: ${len}, disconnecting`);
-                this.socket_.end();
-                return;
-            }
-
-            // Wait for at least the declared message length
-            // (client may or may not pad to 16-byte alignment)
-            if (this.recvbuf_.length < len)
-                return;
-
-            // Consume exactly the declared length. The client does not pad its
-            // frames: every recorded chunk that held one message was exactly
-            // `len` bytes (17, 21, 23, 27, ...). Rounding up to 16 swallowed the
-            // start of the next frame whenever two arrived in one TCP chunk
-            // (e.g. 23 + 27 bytes during PvE combat) and the connection dropped
-            // with "Invalid message length".
-            const consumeLen = len;
-
-            // Use exact message length for CRC (client computes CRC over actual bytes, not padding)
-            const msgBuf = Buffer.from(this.recvbuf_.subarray(0, len));
-
-            if (!unpack(msgBuf, this.salt_))
+            // Process all complete messages in the buffer
+            while (this.recvbuf_.length >= MSG_HEADER_SIZE)
             {
-                console.log(`[NetworkClient] CRC check failed, disconnecting`);
-                this.socket_.end();
-                return;
+                const len = peekLength(this.recvbuf_, this.salt_);
+
+                if (len < MSG_HEADER_SIZE || len > MSG_MAX_SIZE) {
+                    console.log(`[NetworkClient] Invalid message length: ${len}, disconnecting`);
+                    this.socket_.end();
+                    return;
+                }
+
+                // Wait for at least the declared message length
+                // (client may or may not pad to 16-byte alignment)
+                if (this.recvbuf_.length < len)
+                    return;
+
+                // Consume exactly the declared length. The client does not pad its
+                // frames: every recorded chunk that held one message was exactly
+                // `len` bytes (17, 21, 23, 27, ...). Rounding up to 16 swallowed the
+                // start of the next frame whenever two arrived in one TCP chunk
+                // (e.g. 23 + 27 bytes during PvE combat) and the connection dropped
+                // with "Invalid message length".
+                const consumeLen = len;
+
+                // Use exact message length for CRC (client computes CRC over actual bytes, not padding)
+                const msgBuf = Buffer.from(this.recvbuf_.subarray(0, len));
+
+                if (!unpack(msgBuf, this.salt_))
+                {
+                    console.log(`[NetworkClient] CRC check failed, disconnecting`);
+                    this.socket_.end();
+                    return;
+                }
+
+                const type = msgBuf.readUint32BE(0xC);
+                const body = msgBuf.subarray(0x10, len);
+
+                console.log(`[NetworkClient] RECV: 0x${type.toString(16).padStart(8, '0')} len=0x${len.toString(16)} body=${body.length}b`);
+
+                packetlog.packet('recv', this, type, body, {
+                    route: (type & 0x80) ? 'internal' : 'dispatch',
+                });
+
+                if (type & 0x80)
+                {
+                    this.onInternalMessage(type, body);
+                }
+                else
+                {
+                    this.callback_(this, type, body);
+                }
+
+                this.recvbuf_ = this.recvbuf_.subarray(consumeLen);
             }
-
-            const type = msgBuf.readUint32BE(0xC);
-            const body = msgBuf.subarray(0x10, len);
-
-            console.log(`[NetworkClient] RECV: 0x${type.toString(16).padStart(8, '0')} len=0x${len.toString(16)} body=${body.length}b`);
-
-            packetlog.packet('recv', this, type, body, {
-                route: (type & 0x80) ? 'internal' : 'dispatch',
+        }
+        catch (err)
+        {
+            const stack = err && err.stack ? err.stack : String(err);
+            console.error(`[NetworkClient] !!! EXCEPTION in onData for conn ${this.connId_} — dropping this connection:\n${stack}`);
+            packetlog.connection('exception', this.connId_, {
+                server: 'NetworkClient.onData',
+                len: this.recvbuf_.length,
+                hex: this.recvbuf_.toString('hex'),
+                stack,
             });
-
-            if (type & 0x80)
-            {
-                this.onInternalMessage(type, body);
-            }
-            else
-            {
-                this.callback_(this, type, body);
-            }
-
-            this.recvbuf_ = this.recvbuf_.subarray(consumeLen);
+            packetlog.marker(`!!! NetworkClient EXCEPTION conn=${this.connId_}: ${err && err.message || err} — connection dropped, server kept running`, 'auto');
+            this.socket_.destroy();
         }
     }
 
