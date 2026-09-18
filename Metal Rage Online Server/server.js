@@ -103,6 +103,11 @@ const gameServices = require('./game.js');
 const gameServer = new DispatchServer('GameServer', GAME_PORT, gameServices);
 gameServer.start();
 
+// Stamps the session log with which build produced it — see packetlog.js.
+// This is the only thing tying a recording back to the code that made it, so
+// it has to run even if nothing has connected yet.
+packetlog.recordBuild('start');
+
 // Hot reload: typing /reload in the server console swaps in freshly loaded
 // dispatch code without closing sockets, so the client stays logged in and
 // the operator does not have to log in again after every handler change.
@@ -139,6 +144,7 @@ function reloadServices()
         gameServer.services = nextGame;
         console.log(`[reload] Dispatch code reloaded (${Object.keys(saved).length} modules); connections kept.`);
         packetlog.marker('RELOAD: dispatch code reloaded', 'auto');
+        packetlog.recordBuild('reload');
     }
     catch (err)
     {

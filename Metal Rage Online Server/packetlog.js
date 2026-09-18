@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 // Structured packet recorder.
 //
@@ -288,6 +289,160 @@ function currentPath()
     return logPath;
 }
 
+// --- Build/version fingerprint ----------------------------------------------
+//
+// Handlers get edited in place constantly, often behind *_MODE feature
+// switches (see AGENTS.md). A session log with no record of which commit —
+// and which not-yet-committed edits — produced it is only half evidence: two
+// logs that look contradictory might simply be two different builds. This
+// writes one 'build' event [LOG] at startup and one after every successful
+// /reload, capturing git identity plus the current value of every switch in
+// dispatch/, so a log can always be traced back to the code that made it.
+
+const SWITCH_RE = /^\s*const\s+([A-Z][A-Z0-9_]*_MODE)\s*=\s*(['"])([^'"]*)\2/;
+const DEFAULT_REF = 'reverse-work';
+
+/**
+ * Runs git in this file's directory, returning trimmed stdout or null on any
+ * failure. Recording a build event must never be the reason the server fails
+ * to start (e.g. git missing, or __dirname not inside a git checkout).
+ * @param {string[]} args
+ * @returns {string|null}
+ */
+function git(args)
+{
+    try {
+        return execFileSync('git', args, { cwd: __dirname, encoding: 'utf8' }).trim();
+    } catch {
+        return null;
+    }
+}
+
+function gitIdentity()
+{
+    const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
+    const commit = git(['rev-parse', '--short', 'HEAD']);
+    const status = git(['status', '--porcelain']);
+    const dirtyFiles = status ? status.split('\n').filter(Boolean) : [];
+
+    return {
+        cwd: __dirname,
+        branch,
+        commit,
+        dirty: status === null ? null : dirtyFiles.length > 0,
+        dirtyFiles: dirtyFiles.slice(0, 20).map((line) => line.trim()),
+    };
+}
+
+/**
+ * Recursively lists .js files under dir.
+ * @param {string} dir
+ * @returns {string[]}
+ */
+function listJsFiles(dir)
+{
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch { return []; }
+
+    let out = [];
+    for (const entry of entries)
+    {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory())
+            out = out.concat(listJsFiles(full));
+        else if (entry.isFile() && entry.name.endsWith('.js'))
+            out.push(full);
+    }
+    return out;
+}
+
+/**
+ * Scans dispatch/ (recursively) for `const XXX_MODE = '...'` /
+ * `const XXX_EXPERIMENT_MODE = '...'` declarations and reads back the value
+ * currently sitting in the file on disk — this is a text scan, not a
+ * require(), so it never runs dispatch code as a side effect.
+ * @returns {Object<string, {value: string, file: string}>}
+ */
+function scanSwitches()
+{
+    const files = listJsFiles(path.join(__dirname, 'dispatch'));
+    const switches = {};
+
+    for (const file of files)
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); }
+        catch { continue; }
+
+        const rel = path.relative(__dirname, file);
+        for (const line of text.split('\n'))
+        {
+            const m = SWITCH_RE.exec(line);
+            if (m !== null)
+                switches[m[1]] = { value: m[3], file: rel };
+        }
+    }
+    return switches;
+}
+
+/**
+ * Diffs the scanned switch values against the same files as committed on
+ * DEFAULT_REF, so a glance at the log shows what is running away from the
+ * agreed default. A switch is skipped (not counted as non-default) when its
+ * file does not exist on DEFAULT_REF, e.g. a file only present in this
+ * worktree.
+ * @param {Object<string, {value: string, file: string}>} switches
+ * @returns {Object<string, {from: string, to: string}>}
+ */
+function nonDefaultSwitches(switches)
+{
+    const diffs = {};
+    const fileTextCache = new Map();
+
+    for (const [name, { value, file }] of Object.entries(switches))
+    {
+        if (!fileTextCache.has(file))
+            // The leading './' matters: without it git resolves the path
+            // from the repo top level, not from cwd, and silently fails to
+            // find e.g. 'dispatch/room.dispatch.js' from inside this subdir.
+            fileTextCache.set(file, git(['show', `${DEFAULT_REF}:./${file}`]));
+        const defaultText = fileTextCache.get(file);
+        if (defaultText === null)
+            continue;
+
+        let defaultValue;
+        for (const line of defaultText.split('\n'))
+        {
+            const m = SWITCH_RE.exec(line);
+            if (m !== null && m[1] === name) { defaultValue = m[3]; break; }
+        }
+        if (defaultValue !== undefined && defaultValue !== value)
+            diffs[name] = { from: defaultValue, to: value };
+    }
+    return diffs;
+}
+
+/**
+ * Records a 'build' event: git identity plus every dispatch/ feature switch
+ * and how it differs from DEFAULT_REF. Call once at startup and once after
+ * every successful /reload.
+ * @param {string} reason - 'start' or 'reload'
+ */
+function recordBuild(reason)
+{
+    const identity = gitIdentity();
+    const switches = scanSwitches();
+    const nonDefault = nonDefaultSwitches(switches);
+
+    write(Object.assign({ ev: 'build', reason }, identity, { switches, nonDefault }));
+
+    const nonDefaultList = Object.keys(nonDefault);
+    console.log(`[packetlog] build: ${identity.branch}@${identity.commit}`
+        + ` dirty=${identity.dirty}`
+        + (nonDefaultList.length > 0 ? ` nonDefault=[${nonDefaultList.join(', ')}]` : ' nonDefault=[]'));
+}
+
 module.exports = {
     nextConnId,
     connection,
@@ -296,4 +451,5 @@ module.exports = {
     marker,
     listenForMarkers,
     currentPath,
+    recordBuild,
 };
