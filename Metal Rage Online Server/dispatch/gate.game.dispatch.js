@@ -913,22 +913,12 @@ class ZGateGameDispatch
             }
 
             // ==========================================
-            // 0x00220234 — EXPERIMENT, purpose unconfirmed
-            //
-            // Observed 2026-09-15: pressing "back" inside a room sends this
-            // with an empty body. It is even, so the default branch answers
-            // nothing, and the client froze on a loading screen — it sent the
-            // message again 79 seconds later and kept waiting.
-            //
-            // Hypothesis: it is a request that expects an answer, and the hang
-            // is the client waiting for one. Untested alternative: it is a
-            // notification needing no reply and the freeze has another cause.
-            //
-            // So this replies with the project's standard empty EVENT_INFO at
-            // type+1 purely to see what the client does with it. It is not
-            // knowledge. If the client still hangs, the hypothesis is wrong and
-            // this should come straight back out — set the mode to 'disabled'.
-            // Either way the result belongs in docs/opcode-ledger.md.
+            // L1 verified [DLL][LOG][OBS]: 0x00220234 is Leave_CQ, sent by the
+            // client when the player presses "back" inside a room. It expects
+            // a reply: without one the client froze on a loading screen and
+            // resent it 79 seconds later. Reply is Leave_SA 0x00220235 (empty
+            // EVENT_INFO body). See docs/journal/2026-09-18-20-room-leave-reset.md,
+            // docs/state.md 4b.
             // ==========================================
             case 0x00220234:
             {
@@ -937,12 +927,12 @@ class ZGateGameDispatch
                     return true;
                 }
 
-                console.log(`[ZGateGameDispatch] >> 0x220234 (back-from-room?) — EXPERIMENT: replying 0x220235`);
+                console.log(`[ZGateGameDispatch] >> 0x220234 (Leave_CQ): replying Leave_SA 0x220235`);
                 const [msg, respBody] = client.getMessageBuffer(0x00220235, 0x6);
                 respBody.writeUint16LE(0x0000, 0);
                 respBody.writeUint32LE(0x0000, 2);
                 client.send(msg);
-                packetlog.marker('EXPERIMENT: answered 0x00220234 with 0x00220235 (empty EVENT_INFO)', 'auto');
+                packetlog.marker('Leave_CQ 0x00220234 answered with Leave_SA 0x00220235', 'auto');
                 // Client pressed "back" in a room: drop room flags so the lobby
                 // hangar is no longer treated as in-campaign-room.
                 require('./room.dispatch').resetRoomSessionState(client);
