@@ -9,8 +9,11 @@ const rooms = require('../rooms.js');
 // room-state/room-user sender chain the room creator already gets below,
 // plus the lobby room list broadcast that makes a room visible to join.
 const { sendRoomStatePackets } = require('./room/room-state.sender');
-const { sendRoomUserPackets } = require('./room/room-user.sender');
+const { sendRoomUserPackets, buildMemberUserCtx } = require('./room/room-user.sender');
 const { broadcastRoomListChange } = require('./room/room-list.sender');
+// D1-4 correction (design §4 "斷線即離開"): Leave_CQ and server.js's socket
+// close hook now share the same remove-member/Leave_SN/host-reassign path.
+const { leaveRoomAndNotify } = require('./room/room-leave');
 
 // ZGateGameDispatch - Handles Gate-range (0x22XXXX) messages on the GAME server
 //
@@ -602,27 +605,6 @@ function resendRoomMapOnly(client, tag)
     }
 }
 
-// D1-4: builds the ctx sendRoomUserPackets() needs for one rooms.js Member.
-// Used both for "tell the joiner about this existing member" and "tell
-// existing members about the joiner" -- same shape either way, since
-// rooms.js's Member already carries everything sendRoomState() used to read
-// straight off the single occupant's client fields (nickname, team). Pilot
-// id still comes from the member's own connection (client.pilot_) when it
-// has one connected, same default (101) sendRoomState() already uses.
-function buildMemberUserCtx(member) {
-    return {
-        accountIndex: member.accountId,
-        pilotId: Number(member.client && member.client.pilot_) || 101,
-        userLevelText: '1',
-        userLevelType: 2,
-        teamIndex: member.team || 0,
-        userHiddenRaw: 0,
-        userStateRaw: 1,
-        packedIp: 0x0100007F,
-        nickname: member.nickname || 'Player',
-    };
-}
-
 module.exports =
 class ZGateGameDispatch
 {
@@ -798,8 +780,12 @@ class ZGateGameDispatch
                     // everyone else in the lobby a new room exists to join.
                     // rooms.getLobbyClients() naturally excludes the creator
                     // (they are now tracked as a room member, via addMember
-                    // above).
-                    if (rooms.isRoomJoinEnabled()) {
+                    // above). Gated by LOBBY_ROOM_LIST_MODE, not
+                    // ROOM_JOIN_MODE -- this is a Room_List_SN send, and the
+                    // PM contract requires that opcode to have its own
+                    // switch (rooms.js: it changes single-player-visible
+                    // lobby behaviour independent of whether joining works).
+                    if (rooms.isLobbyRoomListEnabled()) {
                         broadcastRoomListChange(rooms.getLobbyClients(), room, 1, getExactMessageBuffer);
                         console.log(`[ZGateGameDispatch] >> Broadcast new room #${room.id} to the lobby`);
                     }
@@ -1160,8 +1146,13 @@ class ZGateGameDispatch
                 }
                 console.log(`[ZGateGameDispatch] >> Notified ${otherMembers.length} existing room member(s) of new arrival (account=${accountId})`);
 
-                // Member count changed -- tell the lobby too.
-                broadcastRoomListChange(rooms.getLobbyClients(), room, 2, getExactMessageBuffer);
+                // Member count changed -- tell the lobby too. Gated by
+                // LOBBY_ROOM_LIST_MODE separately from ROOM_JOIN_MODE (this
+                // whole case is already behind ROOM_JOIN_MODE above), same
+                // reasoning as the CQ_CREATE broadcast above.
+                if (rooms.isLobbyRoomListEnabled()) {
+                    broadcastRoomListChange(rooms.getLobbyClients(), room, 2, getExactMessageBuffer);
+                }
 
                 return true;
             }
@@ -1247,61 +1238,13 @@ class ZGateGameDispatch
                 // hangar is no longer treated as in-campaign-room.
                 require('./room.dispatch').resetRoomSessionState(client);
                 console.log(`[ZGateGameDispatch] >> Room state reset on Leave_CQ 0x220234`);
-                // D1 step 1 [design §4, §6 step 1]: mirror the leave into the
-                // Room registry too — same trigger (Leave_CQ) as the
-                // resetRoomSessionState() call above. Removes this account
-                // from whatever room it was in; deletes the room once empty.
-                const leavingAccountId = Number(client.accountIndex_ || client.accountId_ || 1);
-
-                // D1-4 (docs/backlog.md): capture room/host state *before*
-                // removeMember() below, since that call deletes the Room
-                // from rooms.js's registry once the last member leaves (the
-                // `room` object reference below keeps working after that --
-                // deleting a Map entry does not touch the object itself --
-                // but rooms.getRoomByAccount()/getRoom() would no longer
-                // find it).
-                const room = rooms.isRoomJoinEnabled() ? rooms.getRoomByAccount(leavingAccountId) : undefined;
-                const wasHost = room ? room.hostAccountId === leavingAccountId : false;
-                const remainingMembers = room
-                    ? Array.from(room.members.values()).filter((m) => m.accountId !== leavingAccountId)
-                    : [];
-
-                rooms.removeMember(leavingAccountId);
-
-                if (room) {
-                    if (remainingMembers.length > 0) {
-                        // Leave_SN 0x00220236 [DLL 0x107edb70]: u16 UserIndex
-                        // + u8 Kickout. Client action: the leaver pressed
-                        // "back" in the room (see the case comment above).
-                        for (const member of remainingMembers) {
-                            if (!member.client) continue;
-                            const [leaveMsg, leaveBody] = getExactMessageBuffer(0x00220236, 0x03);
-                            leaveBody.writeUInt16LE(leavingAccountId, 0x00);
-                            leaveBody.writeUInt8(0, 0x02); // Kickout=0: voluntary leave, not a kick
-                            member.client.send(leaveMsg);
-                        }
-                        console.log(`[ZGateGameDispatch] >> Sent Leave_SN 0x220236 to ${remainingMembers.length} remaining room member(s) (left=${leavingAccountId})`);
-
-                        if (wasHost) {
-                            // rooms.js's Member map preserves insertion
-                            // (join) order, so the first surviving entry is
-                            // whoever joined earliest (design §2).
-                            const newHost = remainingMembers[0];
-                            rooms.setHost(room.id, newHost.accountId);
-                            console.log(`[ZGateGameDispatch] >> Host left room #${room.id}; reassigned to account ${newHost.accountId}`);
-                            for (const member of remainingMembers) {
-                                if (!member.client) continue;
-                                sendRoomUserPackets(member.client, buildMemberUserCtx(newHost), getExactMessageBuffer);
-                            }
-                        }
-
-                        broadcastRoomListChange(rooms.getLobbyClients(), room, 2, getExactMessageBuffer);
-                    } else {
-                        // Room now empty -- removeMember() above already
-                        // deleted it from the registry; tell the lobby.
-                        broadcastRoomListChange(rooms.getLobbyClients(), room, 3, getExactMessageBuffer);
-                    }
-                }
+                // D1-4 correction (design §4 "斷線即離開"): mirror the leave
+                // into the Room registry too — same shared helper
+                // server.js's socket close hook now uses for any disconnect
+                // (Leave_CQ used to duplicate this logic inline; the two
+                // paths need to stay in sync, so they now share one
+                // function). No-op when ROOM_JOIN_MODE is disabled.
+                leaveRoomAndNotify(Number(client.accountIndex_ || client.accountId_ || 1));
 
                 return true;
             }

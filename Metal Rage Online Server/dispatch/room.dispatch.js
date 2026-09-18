@@ -335,7 +335,10 @@ function sendLobbyBootstrapAfterRoomLeave(client) {
         console.log(`[ZRoomDispatch] >> Sent Lobby Room_List_SN 0x230103 after room leave`);
     }
 
-    if (rooms.isRoomJoinEnabled()) {
+    // D1-4 PM contract: gated by LOBBY_ROOM_LIST_MODE, not ROOM_JOIN_MODE --
+    // this opcode has its own switch (rooms.js), same reasoning as
+    // lobby.dispatch.js's sendEmptyRoomList.
+    if (rooms.isLobbyRoomListEnabled()) {
         sendFullRoomList(client, rooms.listRooms(), getExactMessageBuffer);
     }
 }

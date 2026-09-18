@@ -74,6 +74,22 @@ function _setRoomJoinModeForTests(mode) {
     roomJoinMode = mode;
 }
 
+// D1-4 PM contract (docs/backlog.md): Room_List_SN 0x00220204 needs its OWN
+// switch, separate from roomJoinMode above, because sending it changes
+// single-player-visible behaviour on its own (the lobby starts showing your
+// own room) independent of whether Enter_CQ actually works -- the two need
+// to be regression-tested separately. Default off, same reasoning as
+// roomJoinMode.
+let lobbyRoomListMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isLobbyRoomListEnabled() {
+    return lobbyRoomListMode === 'enabled';
+}
+
+function _setLobbyRoomListModeForTests(mode) {
+    lobbyRoomListMode = mode;
+}
+
 // D1-4: which live client objects count as "in the lobby" for the
 // Room_List_SN broadcast. There is no separate "entered lobby" flag on
 // NetworkClient (login goes straight from channel-enter to the client
@@ -273,6 +289,7 @@ function _resetForTests() {
     byAccount.clear();
     nextRoomId = 1;
     roomJoinMode = 'disabled';
+    lobbyRoomListMode = 'disabled';
     clientSource = [];
 }
 
@@ -290,6 +307,8 @@ module.exports = {
     sendOthers,
     isRoomJoinEnabled,
     _setRoomJoinModeForTests,
+    isLobbyRoomListEnabled,
+    _setLobbyRoomListModeForTests,
     registerLobbyClientSource,
     getLobbyClients,
     _resetForTests,

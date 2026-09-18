@@ -5,7 +5,10 @@
 // from docs/research/2026-09-18-d1-room-formats/notes.md (client thunk
 // 0x10702ef0 -> body 0x107e4640, ZNetwork.dll disassembly):
 //
-//   header: +0x00 u8 "more frames follow" flag, +0x01 u8 entry count (<=255)
+//   header: +0x00 u8 (notes.md: "讀了但沒用" -- client reads this byte and
+//           discards it; sender still tracks a continuation flag here for
+//           its own bookkeeping, but it has no confirmed client-side
+//           effect), +0x01 u8 entry count (<=255)
 //   per entry:
 //     u16 RoomIndex
 //     u8  UpdateType (1=new room [+u16 RoomNumber follows immediately],

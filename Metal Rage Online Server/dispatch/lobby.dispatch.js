@@ -414,7 +414,10 @@ class ZLobbyDispatch
         body.writeUint16LE(0, 2);
         client.send(msg);
 
-        if (rooms.isRoomJoinEnabled()) {
+        // D1-4 PM contract: gated by LOBBY_ROOM_LIST_MODE, not
+        // ROOM_JOIN_MODE -- this opcode has its own switch because it
+        // changes single-player-visible lobby behaviour on its own.
+        if (rooms.isLobbyRoomListEnabled()) {
             sendFullRoomList(client, rooms.listRooms(), (type, size) => client.getMessageBuffer(type, size));
         }
     }

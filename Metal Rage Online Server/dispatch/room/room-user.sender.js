@@ -111,6 +111,32 @@ function sendRoomUserPackets(client, ctx, getExactMessageBuffer, options = {}) {
     }
 }
 
+// D1-4 (docs/backlog.md): builds the ctx sendRoomUserPackets() needs for one
+// rooms.js Member. Used both for "tell the joiner about this existing
+// member" and "tell existing members about the joiner" -- same shape either
+// way, since rooms.js's Member already carries everything sendRoomState()
+// used to read straight off the single occupant's client fields (nickname,
+// team). Pilot id still comes from the member's own connection
+// (client.pilot_) when it has one connected, same default (101)
+// sendRoomState() already uses. Colocated with sendRoomUserPackets (not
+// gate.game.dispatch.js, its original home) because dispatch/room/room-leave.js
+// (the disconnect/Leave_CQ shared path) needs it too and importing a plain
+// function from a dispatch class module would be unusual for this codebase.
+function buildMemberUserCtx(member) {
+    return {
+        accountIndex: member.accountId,
+        pilotId: Number(member.client && member.client.pilot_) || 101,
+        userLevelText: '1',
+        userLevelType: 2,
+        teamIndex: member.team || 0,
+        userHiddenRaw: 0,
+        userStateRaw: 1,
+        packedIp: 0x0100007F,
+        nickname: member.nickname || 'Player',
+    };
+}
+
 module.exports = {
     sendRoomUserPackets,
+    buildMemberUserCtx,
 };

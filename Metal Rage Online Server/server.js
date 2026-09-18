@@ -2,12 +2,14 @@ const NetworkClient = require('./client.js');
 const { createServer } = require('net');
 const packetlog = require('./packetlog.js');
 const session = require('./session.js');
-// D1 step 1 (docs/design/d1-multiplayer-room.md §4, §6 step 1): record-only
-// disconnect hook. Client changing maps always reconnects (session.js
-// header comment), so a closed socket does not mean the player left the
-// room — just note the client went away; step 5 adds the grace-period
-// timeout that turns a stale disconnect into an actual removeMember().
+// D1-4 correction (docs/design/d1-multiplayer-room.md §4 "斷線即離開",
+// 2026-09-19 PM decision): the original step-1 comment here described a
+// planned grace-period/reconnect design. That plan was dropped -- log
+// evidence showed the client neither auto-reconnects nor reconnects across
+// a map change (docs/journal/2026-09-19-0230-*.md), so there is no "stale
+// disconnect" case to time out. A closed socket always means "gone".
 const rooms = require('./rooms.js');
+const { leaveRoomAndNotify } = require('./dispatch/room/room-leave');
 
 const SERVER_PORT = 9211;
 const GAME_PORT = 30907;
@@ -155,14 +157,23 @@ class DispatchServer
             // otherwise lose exactly the state this is meant to preserve.
             session.save(client);
 
-            // D1 step 1 [design §4]: this socket is gone (map-change
-            // reconnect or real disconnect — session.js can't tell them
-            // apart either, see its header comment). Only clear the
-            // member's client reference and stamp disconnectedAt; do not
-            // remove membership. A no-op if this account was never tracked
-            // in rooms.js (e.g. closed before CQ_CREATE).
+            // D1-4 correction [design §4 "斷線即離開"]: this socket is gone,
+            // and per the PM's 2026-09-19 decision that always means the
+            // player left the room -- no grace period, no reconnect. When
+            // ROOM_JOIN_MODE is enabled, remove the member outright and
+            // notify the room/lobby via the same helper Leave_CQ uses. When
+            // disabled, fall back to the old record-only behaviour
+            // (leaveRoomAndNotify() is itself a no-op while the switch is
+            // off, via rooms.isRoomJoinEnabled() — the setMemberClient(null)
+            // branch below is kept only so this stays a literal no-op-diff
+            // when disabled, since setMemberClient is not itself gated by
+            // the switch and some other reader might still expect it).
             if (client.accountId_) {
-                rooms.setMemberClient(Number(client.accountId_), null);
+                if (rooms.isRoomJoinEnabled()) {
+                    leaveRoomAndNotify(Number(client.accountId_));
+                } else {
+                    rooms.setMemberClient(Number(client.accountId_), null);
+                }
             }
         });
     }
