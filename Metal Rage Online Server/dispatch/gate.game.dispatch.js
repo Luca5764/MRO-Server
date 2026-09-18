@@ -68,8 +68,8 @@ const ROOM_STATE_RETRY_SCHEDULE = [
 
 let nextRoomIndex = 1;
 
-// 0x220221 / 0x220222 experimental body layout (10 bytes total).
-// We do not know the real semantics yet, so keep these as offset-based fields:
+// 0x220221 / 0x220222 body layout (10 bytes total), confirmed in
+// ZDispatchRoom::Map_Change_One_SA at 0x107eb510:
 //   [0]    = b0
 //   [1..2] = w1
 //   [3..4] = w2
@@ -78,6 +78,7 @@ let nextRoomIndex = 1;
 //   [8..9] = w8
 //
 // Change only one field at a time while testing difficulty buttons.
+const MAP_CHANGE_SA_ECHO_MODE = 'disabled'; // 'disabled' | 'enabled'
 const MAP_CHANGE_ONE_SA_EXPERIMENT = {
     mode: 'manual',  // SA에 현재 선택된 맵 캐시키를 반환 (returns the currently selected map cache key in the SA)
     manual: {
@@ -437,6 +438,23 @@ function writeMapChangeOneBody(body, fields)
 function buildMapChangeOneSaFields(body, client)
 {
     const incoming = parseMapChangeOneBody(body);
+    if (MAP_CHANGE_SA_ECHO_MODE === 'enabled') {
+        const adoptedMapId = Number(client.campaignMapCacheKey_);
+        const adoptedRound = Number(client.playRound_);
+        return {
+            rawHex: null,
+            // b0 is MapNumber/room-map slot, not a result code; echo the CQ
+            // value while w1/b5 follow the state accepted above.
+            b0: incoming.b0,
+            w1: adoptedMapId >= 9001 && adoptedMapId <= 9012
+                ? adoptedMapId : incoming.w1,
+            w2: incoming.w2,
+            b5: Number.isInteger(adoptedRound) && adoptedRound >= 0 && adoptedRound <= 0xFF
+                ? adoptedRound : incoming.b5,
+            w6: incoming.w6,
+            w8: incoming.w8,
+        };
+    }
     if (MAP_CHANGE_ONE_SA_EXPERIMENT.mode === 'echo') {
         return incoming;
     }
