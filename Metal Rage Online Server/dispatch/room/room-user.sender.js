@@ -5,7 +5,7 @@ const SN_USER_NAME = 0x00220421;
 const SN_USER_PILOT = 0x00220402;
 const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
 
-const ROOM_USER_NAME_ANSI_MODE = 'disabled'; // 'disabled' | 'enabled'
+const ROOM_USER_NAME_ANSI_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 function sendRoomUserPackets(client, ctx, getExactMessageBuffer) {
     const {

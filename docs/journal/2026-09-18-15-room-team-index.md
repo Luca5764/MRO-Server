@@ -67,3 +67,9 @@
   後續高階審查應決定是否需要反查主 dispatch loop。
 - 🟡 [TEST] 啟用 `ROOM_TEAM_INDEX_MODE` 後，預期 Room_Default 的兩欄為 0／1，讓 User_Default 的
   TeamIndex=0 命中 RedTeamIndex；是否完整顯示仍待操作者實測。
+
+## 高階審查與實測（2026-09-18 22:10，Claude 高階）
+
+- [OBS][LOG] Sol 測試分支 `sol-test-room-money` 開 enabled 後，玩家進紅隊第一格並顯示房主圖示（Sol 交接 `HANDOFF.md` 2026-09-18 22:02 段）。
+- [OBS] 2026-09-18 22:07 T1（log `session-20260918-220544.jsonl`）再次確認紅隊第一格有玩家與完整名稱。
+- 結論：✅ body+0x10／+0x12 送 Red=0／Blue=1 讓玩家進入紅隊槽。**預設改為 enabled。**頭像仍不顯示，屬 R13（PilotCode）。

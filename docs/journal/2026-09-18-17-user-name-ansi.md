@@ -45,3 +45,10 @@
 - 🟡 僅修改 `User_Name_SN 0x00220421` 名稱欄位編碼，未修改 user index、pilotId、teamIndex、state、master、封包順序或任何其他封包。
 - 🟡 房間槽未顯示完整頭像（PilotCode）屬獨立問題，由 R13 分析。
 - 🟡 開關預設 disabled，未啟動伺服器，等待下一輪單變數實測驗證。
+
+## 高階審查與實測（2026-09-18 22:10，Claude 高階）
+
+- [DLL] 重驗：`0x107eb0a3 lea esi,[eax+0x2b]` 後，`0x107eb0b1` 呼叫 import `0x1091b834`＝`Core.dll!winGetSizeUNICODE(const char*)`，`0x107eb0ce` 呼叫 `0x1091b830`＝`Core.dll!winToUNICODE(wchar*, const char*, int)`；`0x107eb0b6 cmp eax,0x19` 上限 25 字，與 `writeAnsiStringField` 的 25 字截斷一致。
+- [LOG] `session-20260918-220544.jsonl:66`：`0x00220421` body+0x1B＝`4c75636173 00…`（ANSI `Lucas`）。
+- [OBS] T1：房間紅隊第一格顯示完整 `Lucas`（原本只有 `L`）。
+- 結論：✅ `User_Name_SN 0x00220421` 名稱欄位是 ANSI。**預設改為 enabled。**

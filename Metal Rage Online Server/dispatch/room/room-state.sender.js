@@ -5,7 +5,7 @@ const SN_ROOM_OPTION = 0x00220217;
 const SN_ROOM_NAME = 0x0022021A;
 const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
 
-const ROOM_TEAM_INDEX_MODE = 'disabled'; // 'disabled' | 'enabled'
+const ROOM_TEAM_INDEX_MODE = 'enabled'; // 'disabled' | 'enabled'
 const ROOM_RED_TEAM_INDEX = 0;
 const ROOM_BLUE_TEAM_INDEX = 1;
 
