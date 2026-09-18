@@ -81,6 +81,31 @@ const SN_SHOP_LIST     = 0x00240241;
 const SN_CASH_SHOP     = 0x00240242;
 const HANGAR_POINT_BALANCE = 100000;
 const HANGAR_COUPON_BALANCE = 1000;
+// G6 equipment persistence passed change -> DB -> relog verification.
+// Evidence: docs/journal/2026-09-18-06-g6-equip-save-verified.md.
+const EQUIP_SAVE_MODE = 'enabled'; // 'disabled' | 'enabled'
+const SLOT_CHANGE_PART_NAMES = ['body', 'main', 'left', 'right', 'equipment', 'skin'];
+// G6 shop/inventory unblock is opt-in until the client is tested with the
+// corrected ShopList fields and post-purchase ItemInfo refresh.
+const SHOP_UNBLOCK_MODE = 'disabled'; // 'disabled' | 'enabled'
+// G6e: purchased inventory classification passed W1 and G6f/W2 follow-up.
+// Evidence: docs/journal/2026-09-18-04-g6e-purchase-inventory-classification.md.
+const PURCHASE_MECH_SLOT_MODE = 'enabled'; // 'disabled' | 'enabled'
+// G6e: post-purchase chunked ItemInfo refresh passed W1 and G6f/W2 follow-up.
+// Evidence: docs/journal/2026-09-18-04-g6e-purchase-inventory-classification.md.
+const PURCHASE_ITEMINFO_REFRESH = 'enabled'; // 'disabled' | 'enabled'
+// G6c: item_catalog.mech_type is actually the weapon family, not the mech
+// that can equip it. Slot 1 (Small) cannot use the 21x main-weapon family
+// that the catalog filter selects for it; Cache.Bin's DefaultSetList shows
+// the Small mech's default main weapon is 22100101. See
+// docs/journal/2026-09-18-01-g6b-shop-list-filter-root-cause.md. When
+// enabled, this swaps ONLY the first 21100101 entry in the slot-1 general
+// ShopList_SN (0x00240241) main-weapon tab to 22100101; CashShopList_SN
+// (0x00240242) and every other field/order/timing stay untouched.
+const SHOP_COMPAT_EXPERIMENT = 'disabled'; // 'disabled' | 'enabled'
+// G6d: full catalog path passed the high-level shop display test; the client
+// owns mech/item compatibility filtering. Evidence: docs/journal/2026-09-18-03-g6d-shop-full-catalog.md.
+const SHOP_FULL_CATALOG_MODE = 'enabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
@@ -270,10 +295,20 @@ function writeShopListBody(body, shopItems, currencyCode) {
         body.writeInt32LE(itemIndex, off + 0x00);
         body.writeInt32LE(disc,      off + 0x04);
         body.writeInt32LE(gold,      off + 0x08);
-        body.writeUint8(0,           off + 0x0C);
-        body.writeUint8(isShow,      off + 0x0D);
-        body.writeUint8(isNew,       off + 0x0E);
-        body.writeUint8(isHot,       off + 0x0F);
+        if (SHOP_UNBLOCK_MODE === 'enabled') {
+            // ZNetwork_DJ::SHOP_ITEM_INFO: IsShow/IsNew/IsHot/IsSale follow
+            // the three 4-byte fields. The old path shifted all four flags
+            // by one byte, leaving IsShow false in the client ListLoad().
+            body.writeUint8(isShow,      off + 0x0C);
+            body.writeUint8(isNew,       off + 0x0D);
+            body.writeUint8(isHot,       off + 0x0E);
+            body.writeUint8(0,           off + 0x0F);
+        } else {
+            body.writeUint8(0,           off + 0x0C);
+            body.writeUint8(isShow,      off + 0x0D);
+            body.writeUint8(isNew,       off + 0x0E);
+            body.writeUint8(isHot,       off + 0x0F);
+        }
         body.writeUint8(1,           off + 0x10);
         body.writeUint8(currencyCode.charCodeAt(0), off + 0x11);
         body.writeUint8(0,           off + 0x12);
@@ -296,6 +331,27 @@ function catalogCategoryType(row)
         return fromDb >>> 0;
     const key = String(row.category || '').trim();
     return (SHOP_CATEGORY_TYPE[key] || 2) >>> 0;
+}
+
+// Client action: hangar Open_SA / DefaultSlot_Change_SA / shop tab load
+// trigger sendShopList(). Under SHOP_COMPAT_EXPERIMENT this patches only the
+// general ShopList_SN (0x00240241) payload for the slot-1 main-weapon tab;
+// the caller must NOT reuse the returned array for CashShopList_SN.
+function applyShopCompatExperiment(sendItems, cat, selectedSlot)
+{
+    if (SHOP_COMPAT_EXPERIMENT !== 'enabled') return sendItems;
+    if (Number(selectedSlot) !== 1 || Number(cat) !== SHOP_CATEGORY_TYPE.MainWeapon) return sendItems;
+
+    const idx = sendItems.findIndex(({ item }) => Number(item.item_id) === 21100101);
+    if (idx === -1) {
+        console.log(`[ZRoomDispatch] >> SHOP_COMPAT_EXPERIMENT: no 21100101 entry found in slot=1 main-weapon list, no swap`);
+        return sendItems;
+    }
+
+    const patched = sendItems.slice();
+    patched[idx] = { ...patched[idx], item: { ...patched[idx].item, item_id: 22100101 } };
+    console.log(`[ZRoomDispatch] >> SHOP_COMPAT_EXPERIMENT: swapped ShopList_SN entry[${idx}] item_id 21100101 -> 22100101`);
+    return patched;
 }
 
 function catalogGoldPrice(row)
@@ -368,6 +424,11 @@ function preferShopRepresentative(candidate, current)
 function needsPostSelectShopRefresh(slot)
 {
     return false;
+}
+
+function readSlotChangeSerials(body)
+{
+    return Array.from({ length: 7 }, (_, index) => body.readUInt32LE(index * 4));
 }
 
 module.exports =
@@ -611,20 +672,35 @@ class ZRoomDispatch
             // ==========================================
             // Hangar slot change request.
             // The client CQ sends 7 dwords:
-            //   slot, mech, main, left, right, equipment, skin.
+            //   slot, body/mech, main, left, right, equipment, skin.
             // ZDispatchHangar::Slot_Change_SA expects the normal SA header
             // before the same 7 dwords: u16 origin + u32 result + payload.
             // ==========================================
             case 0x00240107:
             {
                 if (body.length >= 0x1C) {
-                    const slot = body.readUInt32LE(0x00);
+                    const serials = readSlotChangeSerials(body);
+                    const slot = serials[0];
                     client.currentHangarSlot_ = slot; // 현재 선택 슬롯 기억 (remember current selected slot)
                     (async () => {
+                        let saveSucceeded = true;
+                        if (EQUIP_SAVE_MODE === 'enabled') {
+                            try {
+                                await db.saveEquippedLoadout(client.accountId_, slot, serials.slice(1));
+                                console.log(
+                                    `[ZRoomDispatch] >> Saved Slot_Change_CQ 0x00240107: ` +
+                                    `slot=${slot} ${SLOT_CHANGE_PART_NAMES.map((name, index) => `${name}=${serials[index + 1]}`).join(' ')}`
+                                );
+                            } catch (err) {
+                                saveSucceeded = false;
+                                console.error(`[ZRoomDispatch] >> Slot_Change_CQ save failed:`, err.message);
+                            }
+                        }
+
                         const slotPayload = await this.buildSlotChangePayload(client, body);
                         const [msg, respBody] = getExactMessageBuffer(0x00240108, 0x22);
-                        respBody.writeUInt16LE(0, 0x00);
-                        respBody.writeUInt32LE(0, 0x02);
+                        respBody.writeUInt16LE(saveSucceeded ? 0 : 1, 0x00);
+                        respBody.writeUInt32LE(saveSucceeded ? 0 : 1, 0x02);
                         slotPayload.copy(respBody, 0x06, 0x00, 0x1C);
                         if (needsPostSelectShopRefresh(slot)) {
                             client.send(msg);
@@ -728,7 +804,9 @@ class ZRoomDispatch
                     // 2=주무기→1, 3=보조무기→2, 4=부스터→4, 5=스킨→5, 6=장비→4, 7=부스터→4, 8=지원→5 (2=MainWeapon→1, 3=SubWeapon→2, 4=Booster→4, 5=Skin→5, 6=Equipment→4, 7=Booster→4, 8=Support→5)
                     const partSlotMap = { 2: 1, 3: 2, 4: 4, 5: 4, 6: 4, 7: 4, 8: 4 };
                     const partSlot = partSlotMap[catType] ?? 1;
-                    const mechType = Number(item.mech_type) || 0;
+                    const mechType = PURCHASE_MECH_SLOT_MODE === 'enabled'
+                        ? (Number(client.currentHangarSlot_) || 1)
+                        : (Number(item.mech_type) || 0);
                     await db.pool.execute(
                         'INSERT INTO items (account_id, item_id, slot, mech_type, part_slot, quantity, equipped) VALUES (?, ?, ?, ?, ?, 1, 0)',
                         [client.accountId_, itemId, partSlot, mechType, partSlot]
@@ -738,6 +816,20 @@ class ZRoomDispatch
             } catch (err) {
                 result = 1;
                 console.error(`[ZRoomDispatch] >> Shop Buy DB error:`, err.message);
+            }
+        }
+
+        if (result === 0 && (PURCHASE_ITEMINFO_REFRESH === 'enabled' || SHOP_UNBLOCK_MODE === 'enabled')) {
+            try {
+                const items = await db.getItems(client.accountId_);
+                require('./item-info.sender').sendItemInfo(
+                    client,
+                    items,
+                    client.accountId_,
+                    'shop-purchase'
+                );
+            } catch (err) {
+                console.error(`[ZRoomDispatch] >> Shop purchase ItemInfo refresh error:`, err.message);
             }
         }
 
@@ -878,20 +970,46 @@ class ZRoomDispatch
             }
 
             for (const [cat, items] of [...groups.entries()].sort(([a],[b]) => a - b)) {
-                const count = Math.min(items.length, CAT_LIMIT[cat] || 25);
-                const sendItems = items.slice(0, count);
+                if (SHOP_FULL_CATALOG_MODE !== 'enabled') {
+                    const count = Math.min(items.length, CAT_LIMIT[cat] || 25);
+                    const sendItems = items.slice(0, count);
+                    const generalItems = applyShopCompatExperiment(sendItems, cat, selectedSlot);
 
-                const [msg, respBody] = getExactMessageBuffer(SN_SHOP_LIST,
-                    HEADER_SIZE + (ENTRY_SIZE * count));
-                writeShopListBody(respBody, sendItems, 'P');
-                client.send(msg);
+                    const [msg, respBody] = getExactMessageBuffer(SN_SHOP_LIST,
+                        HEADER_SIZE + (ENTRY_SIZE * count));
+                    writeShopListBody(respBody, generalItems, 'P');
+                    client.send(msg);
 
-                const [msg2, body2] = getExactMessageBuffer(SN_CASH_SHOP,
-                    HEADER_SIZE + (ENTRY_SIZE * count));
-                writeShopListBody(body2, sendItems, 'C');
-                client.send(msg2);
+                    const [msg2, body2] = getExactMessageBuffer(SN_CASH_SHOP,
+                        HEADER_SIZE + (ENTRY_SIZE * count));
+                    writeShopListBody(body2, sendItems, 'C');
+                    client.send(msg2);
 
-                console.log(`[ZRoomDispatch] >> Sent ShopList_SN cat=${cat}: ${count} items`);
+                    console.log(`[ZRoomDispatch] >> Sent ShopList_SN cat=${cat}: ${count} items`);
+                    continue;
+                }
+
+                const MAX_ENTRIES_PER_FRAME = 45;
+                for (let start = 0; start < items.length; start += MAX_ENTRIES_PER_FRAME) {
+                    const sendItems = items.slice(start, start + MAX_ENTRIES_PER_FRAME);
+                    const count = sendItems.length;
+                    const generalItems = applyShopCompatExperiment(sendItems, cat, selectedSlot);
+
+                    const [msg, respBody] = getExactMessageBuffer(SN_SHOP_LIST,
+                        HEADER_SIZE + (ENTRY_SIZE * count));
+                    writeShopListBody(respBody, generalItems, 'P');
+                    client.send(msg);
+
+                    const [msg2, body2] = getExactMessageBuffer(SN_CASH_SHOP,
+                        HEADER_SIZE + (ENTRY_SIZE * count));
+                    writeShopListBody(body2, sendItems, 'C');
+                    client.send(msg2);
+
+                    console.log(
+                        `[ZRoomDispatch] >> Sent ShopList_SN cat=${cat}: ` +
+                        `${count} items (full catalog part ${Math.floor(start / MAX_ENTRIES_PER_FRAME) + 1})`
+                    );
+                }
             }
 
             console.log(`[ZRoomDispatch] >> Sent ShopList_SN 0x240241: ${allItems.length} total items in ${groups.size} tabs (rawItemId/show/P)`);
@@ -906,6 +1024,17 @@ class ZRoomDispatch
         const weaponItems = catalog
             .map((item, index) => ({ item, index }))
             .filter(({ item }) => Number(item.category_type) >= 2 && Number(item.category_type) <= 6);
+
+        if (SHOP_FULL_CATALOG_MODE === 'enabled') {
+            const uniqueItems = new Map();
+            for (const entry of weaponItems) {
+                const itemId = Number(entry.item.item_id) || 0;
+                if (!uniqueItems.has(itemId)) uniqueItems.set(itemId, entry);
+            }
+            return [...uniqueItems.values()].sort((a, b) =>
+                (Number(a.item.item_id) || 0) - (Number(b.item.item_id) || 0)
+            );
+        }
 
         if (!selectedSlot || !client.accountId_) {
             return weaponItems;

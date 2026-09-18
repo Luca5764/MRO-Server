@@ -1,0 +1,69 @@
+G6b raw evidence: packet hex and item/catalog lookup
+
+Source packet log
+-----------------
+Source: /home/lucas/mro-reverse/Metal Rage Online Server/logs/session-20260917-220519.jsonl
+The file contains several hangar opens and repeated refreshes. The following are
+the first full point/cash pair after Open_SA in the 2026-09-17 14:07:53.162Z
+sequence. Header length is the logged frame length; hex is retained verbatim.
+
+Open_SA before the list:
+{"t":"2026-09-17T14:07:53.162Z","ms":153536,"ev":"pkt","conn":2,"port":30907,"dir":"send","op":"0x00240102","len":14,"hex":"0000000000000000000000000000","ctx":{"accountId":1,"nickname":"Lucas","roomIndex":1,"roomType":2,"mapId":1}}
+
+ShopList_SN, 10 entries, full frame:
+{"t":"2026-09-17T14:07:53.227Z","ms":153601,"ev":"pkt","conn":2,"port":30907,"dir":"send","op":"0x00240241","len":203,"hex":"01000a45f64101e8030000e80300000001000001500000e57c4301e8030000e8030000000100000150000085034501e8030000e80300000001000001500000c5104801e8030000e80300000001000001500000a9f64101e8030000e80300000001000001500000497d4301e8030000e80300000001000001500000e9034501e8030000e8030000000100000150000029114801e8030000e80300000001000001500000ad7d4301e8030000e803000000010000015000004d044501e8030000e80300000001000001500000","ctx":{"accountId":1,"nickname":"Lucas","roomIndex":1,"roomType":2,"mapId":1}}
+
+CashShopList_SN, same 10 entries, full frame:
+{"t":"2026-09-17T14:07:53.227Z","ms":153601,"ev":"pkt","conn":2,"port":30907,"dir":"send","op":"0x00240242","len":203,"hex":"01000a45f64101e8030000e80300000001000001430000e57c4301e8030000e8030000000100000143000085034501e8030000e80300000001000001430000c5104801e8030000e80300000001000001430000a9f64101e8030000e80300000001000001430000497d4301e8030000e80300000001000001430000e9034501e8030000e8030000000100000143000029114801e8030000e80300000001000001430000ad7d4301e8030000e803000000010000014300004d044501e8030000e80300000001000001430000","ctx":{"accountId":1,"nickname":"Lucas","roomIndex":1,"roomType":2,"mapId":1}}
+
+Point-shop 2-entry frame, full frame:
+{"t":"2026-09-17T14:07:53.227Z","ms":153601,"ev":"pkt","conn":2,"port":30907,"dir":"send","op":"0x00240241","len":43,"hex":"010002c58cda01e8030000e80300000001000001500000298dda01e8030000e80300000001000001500000","ctx":{"accountId":1,"nickname":"Lucas","roomIndex":1,"roomType":2,"mapId":1}}
+
+Cash-shop 2-entry frame, full frame:
+{"t":"2026-09-17T14:07:53.227Z","ms":153601,"ev":"pkt","conn":2,"port":30907,"dir":"send","op":"0x00240242","len":43,"hex":"010002c58cda01e8030000e80300000001000001430000298dda01e8030000e80300000001000001430000","ctx":{"accountId":1,"nickname":"Lucas","roomIndex":1,"roomType":2,"mapId":1}}
+
+Wire decode of the first 10-entry frame
+-----------------------------------------
+The body is 3 + 20*n bytes. Header bytes are 01 00 0a. Each entry is:
+  +0x00 ItemIndex, +0x04 DisplayPrice, +0x08 Price,
+  +0x0c 00, +0x0d 01, +0x0e 00, +0x0f 00,
+  +0x10 01, +0x11..0x13 50 00 00 (point) or 43 00 00 (cash).
+The ten ItemIndex values, decoded little-endian, are:
+  21100101, 21200101, 21300101, 21500101,
+  21100201, 21200201, 21300201, 21500201,
+  21200301, 21300301.
+The +0x0d IsShow value is 1 in every one of these entries. This uses the
+high-level review's confirmed field location; the prior field-shift experiment
+is not enabled or reopened here.
+
+Cache.Bin Table 2 record evidence
+----------------------------------
+Read-only parse of /mnt/c/Games/MetalRage Online/data/System/Cache.Bin:
+Table 2 starts at file offset 19549 (0x4c5d), stride 103 bytes, and the
+FGameItemRecord ItemIndex is at record +0x0f. The following records were
+observed as [ItemIndex, RepresentIndex, HighGroup, MiddleGroup, LowGroup,
+DetailGroup, FunctionIndex]:
+  21100101 [21100101, 21100101, 2, 1, 1, 0, 20482]
+  21200101 [21200101, 21200101, 2, 1, 2, 0, 20482]
+  21300101 [21300101, 21300101, 2, 1, 3, 0, 20482]
+  21500101 [21500101, 21500101, 2, 1, 5, 0, 20482]
+  22100101 [22100101, 22100101, 2, 2, 1, 0, 20482]
+  31100101 [31100101, 31100101, 3, 1, 1, 0, 20482]
+  32100101 [32100101, 32100101, 3, 2, 1, 0, 20482]
+  41100101 [41100101, 41100101, 4, 1, 1, 0, 20482]
+
+The official DefaultSetList at file offset 0x37456, stride 0x1c, begins:
+  [11100101, 1, 22100101, 32100101, 31100101, 41100101, 61101001]
+This is the static source for the first-slot default main weapon comparison.
+
+Server catalog rows used by the sender
+---------------------------------------
+Metal Rage Online Server/metalrageserver.sql:212-226 assigns the packet's
+21x main-weapon families category_type=2 and mech_type=1. The same file's
+22100101 row is category_type=2 and mech_type=2 at line 227. room.dispatch.js
+buildShopItems() filters the selected-slot catalog with
+Number(item.mech_type) === Number(selectedSlot), so selectedSlot=1 produces
+the 21x list and excludes the official 22100101 first-slot family.
+
+This is data evidence only. No SQL, live DB, server, or packet was changed in
+this task.

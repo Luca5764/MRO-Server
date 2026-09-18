@@ -81,7 +81,7 @@
 - 一次只改一個變數；每個實測寫一篇日誌、在 `INDEX.md` 標「待審」。
 - 審查：由 Codex reviewer（Sol，高階）或下一個接手的 Claude 審；審過才能把開關預設打開。
 
-## G6：機庫換裝備存檔（指派：Codex）
+## G6（✅ 已完成並實測 2026-09-18，證據見 journal 2026-09-18-06）：機庫換裝備存檔
 
 > **注意**：`flash-wip` 分支停在 `cd7faf5`，**缺少 2026-09-17 下午之後所有伺服器修正**（Grade_Info_SN、Round、選機體、ItemInfo 分包、戰績等）。開工前先 `git merge reverse-work`（在 `flash-wip` 上），否則會在舊程式上改、而且重啟伺服器會跑舊程式。
 
@@ -120,7 +120,7 @@
 
 ---
 
-## G6b：商店清單為什麼是空的（指派：Codex Luna，2026-09-18）
+## G6b（✅ 已完成 2026-09-18，證據見 journal 2026-09-18-01）：商店清單為什麼是空的
 
 > 在 worktree `/home/lucas/mro-reverse-g6-unblock`（分支 `flash-wip-g6-unblock`）工作，**不要**在 `/home/lucas/mro-reverse` 切分支。commit 最後一行 `Agent: codex (中階)`。
 
@@ -141,7 +141,7 @@
   3. 最多兩個建議的單變數實驗（改哪個欄位／時機、預期結果），標「待審」。
 - **完成條件**：至少對一筆實際送出的商品，給出「在哪個條件被丟掉」並附組語或原始碼行號；或明確證明 ShopList 內容都通過、問題在別處（例如送出時機或場景）並附證據。遇到跟既有 ✅ 矛盾就停下來寫疑點。
 
-## G6c：商店相容性單變數實驗（指派：Codex Luna，2026-09-18）
+## G6c（✅ 已完成 2026-09-18，證據見 journal 2026-09-18-02）：商店相容性單變數實驗
 
 > 同一個 worktree `/home/lucas/mro-reverse-g6-unblock`（分支 `flash-wip-g6-unblock`）。commit 最後一行 `Agent: codex (中階)`。
 
@@ -153,3 +153,154 @@
 - **限制**：一次只改這一個變數；不改 DB、不動 G6 save、ItemInfo、`PVE_SLOT_SELECT_FLOW`、Grade、Death_SN、G7。
 - **交付**：日誌 `docs/journal/2026-09-18-02-g6c-shop-compat-experiment.md`（標待審，附 [OBS]／[SHOT]／[LOG]）；commit。
 - **完成條件**：有「出現幾件、哪件」的實測結果；若 0 件，記錄完整 ShopList hex 與客戶端 log（關閉客戶端後的 `MetalRage.log`）並停下回報。
+## H1：登入後 1 號機商店清單漏接
+
+> **狀態：2026-09-18 Claude 高階新增，未指派**
+
+### 目標
+
+找出重新登入進機庫後，1 號機商店清單沒有顯示、但切到 2 號機再切回就出現的真正原因，提出最小修正；新行為須放在預設關閉的開關後。
+
+### 範圍
+
+- 客戶端腳本 `ZPanel_ShopItems` 的 `ShopUpdate`、`ListLoad` 呼叫時機與頁面初始化狀態。
+- 客戶端是否送出「商店開啟」或其他商店請求 CQ，以及伺服器對應的接收路徑。
+- `Metal Rage Online Server/dispatch/room.dispatch.js` 中
+  `Delayed ShopList refresh (initial default) slot=1 after 500ms` 路徑、`Slot_Change_SA` 後送出時機與相關 log／封包。
+- 最近 session 中登入初始 1 號機與切換機體後的 `ShopList_SN 0x00240241`／`CashShopList_SN 0x00240242`。
+
+### 背景
+
+- [OBS] 2026-09-18 實測：重新登入進機庫後，1 號機主武器頁空白，只剩一個 `»X«` 佔位圖；證據為 [SHOT] `/home/lucas/mro-reverse/shots/g6d-relogin.png`。
+- [OBS][SHOT] 切到 2 號機時商店正常滿列，證據為 `shots/g6d-mech2.png`；再切回 1 號機後清單出現。
+- [LOG] 子 agent 比對 `session-20260918-071737.jsonl` 兩段連線，同位置 frame 逐位元組相同；筆數差異只對應購買觸發的 repaint，伺服器送出內容沒有差別。
+- [CODE] `room.dispatch.js` 有 `Delayed ShopList refresh (initial default) slot=1 after 500ms`，目前懷疑送出時客戶端商店頁尚未建立。
+
+### 限制
+
+- 只做分析，不改程式、不改資料庫、不改 `docs/state.md`、不標 ✅。
+- 不啟動或重啟伺服器，不請操作者測試；伺服器由 Claude 高階控制。
+- 不先假定是時序問題；若需修改，只提出預設關閉開關的單一最小方案。
+- 既有 ShopList 欄位偏移、G6d 完整 catalog 與 G6e 購買路徑不在本任務擴大修改。
+
+### 交付
+
+- 日誌 50–100 行，`docs/journal/INDEX.md` 追加一行並標「待審」，逐段對照登入與切換機體的實際 frame、客戶端腳本呼叫與 DLL／封包證據。
+- 原始 decompile／組語與必要的封包 hex 存入 `docs/research/2026-09-17-backlog/H1/`。
+- 提出最多兩個單變數實驗，並列出最小修正與預設關閉開關名稱；不實作、不測試。
+
+### 完成條件
+
+能以實際 session、腳本或組語證據說明為何登入初始 1 號機漏接而切換後恢復；若無法確認，明確列出未知點與阻塞，不猜時序或封包格式。
+
+## H2：G 幣沒有持久化
+
+> **狀態：2026-09-18 Claude 高階新增，未指派**
+
+### 目標
+
+找出購買後 G 幣扣款沒有持久化的真正原因，確認金錢的伺服器送出來源與資料庫寫回缺口，提出最小修正並形成可審查的 DB 腳本方案。
+
+### 範圍
+
+- 客戶端收到金錢的 SN 封包、opcode、body 欄位與欄位來源；對照登入與購買後的 `sendPackageMoney` 路徑。
+- 伺服器購買 CQ／購買 SA、`sendPackageMoney`、資料庫 account／point 欄位與 `database/db.js` 查詢／更新。
+- 2026-09-18 的購買、斷線、重新登入 session log，確認 1000→0 只存在於連線狀態還是已寫入 DB。
+
+### 背景
+
+- [OBS] 2026-09-18 購買扣款正常，畫面由 1000 變 0；重開客戶端登入後又回到 1000。
+- G6d／G6e 已記錄購買成功與 `ItemInfo_SN 0x00210111` 路徑，但 G 幣持久化尚未查明。
+- [GUESS] 問題可能在購買 handler 只改送出值、未寫回正確資料表或欄位；須由 DB schema、程式與 log 證據確認，不得直接採用此猜測。
+
+### 限制
+
+- 先做分析，不直接下 SQL，不直接改既有資料，不改 `docs/state.md`，結論標 🟡／待審。
+- 不啟動或重啟伺服器，不請操作者測試；不得改任何現有開關或其他 G6/G7 行為。
+- 若提出資料庫變更，必須寫成可 commit 的 `tools/` 腳本或 migration 草案，不能把手動 SQL 當成完成交付。
+- 不動 ItemInfo 分包、ShopList、PVE、Grade_Info、Death_SN 或 G7。
+
+### 交付
+
+- 日誌 50–100 行，`docs/journal/INDEX.md` 追加「待審」列，逐欄列出金錢 SN、body offset／型別、來源函式、DB 欄位與購買前後 log。
+- 原始 decompile／組語、封包 hex 與必要 schema 摘錄存入 `docs/research/2026-09-17-backlog/H2/`。
+- 提出最小修正；若需要 DB 變更，附可審查、可重複執行的 DB 腳本草案，但不執行它。
+
+### 完成條件
+
+能以程式、schema 與 session log 證明 G 幣顯示值與持久化值在哪一步分離，並給出不改資料庫現況的最小修正方案；若無法確認，列出具體缺失證據與阻塞。
+
+## H3：catalog 髒資料
+
+> **狀態：2026-09-18 Claude 高階新增，未指派**
+
+### 目標
+
+查明商店 catalog 中非法 ItemIndex 與強化等級價格異常的來源，判斷是否應在送出前過濾非法項目、是否只販售等級 01，提出分析與建議，不修改資料。
+
+### 範圍
+
+- catalog／item_catalog 表及其 seed、匯入或生成來源；追查 `ItemIndex=27430` 對應列與相關 item_id／category 欄位。
+- `ShopList_SN 0x00240241`、`CashShopList_SN 0x00240242` 的建構路徑、ItemIndex 合法性與價格欄位。
+- 2026-09-18 session 中 cat2 第一包及同一武器強化等級 01–08 的實際封包、log 與客戶端畫面。
+- 若能取得原廠資料或客戶端 catalog／腳本，只作對照，不把推測當成原廠規則。
+
+### 背景
+
+- [LOG] 2026-09-18 送出的 cat2 第一包第一筆 `ItemIndex=27430`，不是合法 8 位 item id。
+- [OBS] 商店中同一把武器的強化等級 01–08 價格全是 1000G。
+- G6d 已確認完整 catalog 能讓客戶端自行過濾相容商品，但髒資料與強化品是否應顯示尚未裁定。
+
+### 限制
+
+- 只做分析與建議，不改資料庫、不改程式、不改資料、不改 `docs/state.md`、不標 ✅。
+- 不啟動或重啟伺服器，不請操作者測試；未知資料保留完整 hex 與原始列值。
+- 不擅自過濾商品、不改價格、不改 `SHOP_FULL_CATALOG_MODE` 或任何其他開關。
+- 不把「合法 8 位」直接當成充分的客戶端合法性規則，必須提供 DLL／catalog／實際反應證據。
+
+### 交付
+
+- 日誌 50–100 行，`docs/journal/INDEX.md` 追加一行並標「待審」，列出髒資料來源、完整欄位、實際封包與客戶端處理結果。
+- 原始 SQL／catalog 摘錄、decompile／組語與完整相關 hex 存入 `docs/research/2026-09-17-backlog/H3/`。
+- 最多提出兩個單變數建議實驗，分別針對非法 ItemIndex 過濾與強化等級顯示；只提出方案，不執行。
+
+### 完成條件
+
+能追到 `27430` 與強化等級 01–08 的資料來源，並以證據提出是否過濾／是否只送等級 01 的待審建議；若來源或原廠規則無法確認，明確保留未知，不猜格式或資料意義。
+
+## H4：驗證 PvE 出場時手上是不是機庫換的新武器
+
+> **狀態：已完成（2026-09-18，證據見 journal 2026-09-18-06 追加節）**
+
+### 目標
+
+確認 G6 W3 已保存的機庫換裝是否一路傳到 PvE 出場，讓玩家在戰鬥中實際拿到換上的新武器；若未生效，定位斷點並提出待審分析，不擅自修正。
+
+### 範圍
+
+- 以 W3 已保存的 1 號機 `main=100223`／`item_id=22100301` 為對照，追蹤進入 PvE 前的 `Game_User_SN 0x00222112`、出場機體與武器欄位。
+- 對照 `dispatch/room/room-game-user.sender.js`、`PVE_SLOT_SELECT_FLOW`、開局相關封包與伺服器 log；必要時查看客戶端 `Game_User_SN`／武器初始化後的 log 或畫面。
+- 實測流程：完全重登 → 確認 1 號機裝備 `22100301` → 進入 PvE → 截圖／記錄實際手上武器 → 回合結束後保留原狀。
+
+### 背景
+
+- [OBS][SHOT] `shots/w3-equipped.png` 與完全重登結果已證明機庫外觀、裝備標記及 DB 保存為 `22100301`。
+- [LOG] W3 的 `Slot_Change_CQ 0x00240107` 含 `main=100223`，G6 已確認換裝保存路徑。
+- G6 結案目前只剩 PvE 出場武器未驗證；機庫保存成功不等於戰鬥初始化一定採用同一 serial／item_id。
+
+### 限制
+
+- 只驗證與記錄，不改 `state.md`、`HANDOFF.md`、資料庫或既有程式；不得自行改任何開關值。
+- 不改 `PVE_SLOT_SELECT_FLOW`、`Game_User_SN`、ItemInfo 分包、Grade_Info_SN、Death_SN 或 G7。
+- 伺服器與客戶端實測由 Claude 高階／操作者控制；未獲指示不得自行重啟伺服器或要求額外測試。
+- 若發現 PvE 不使用新武器，先保存完整 log／封包／截圖並回報斷點，不猜欄位格式、不擴大修正範圍。
+
+### 交付
+
+- 一篇 50–100 行日誌，`docs/journal/INDEX.md` 追加一行並標「待審」，列出 W3 保存值、PvE 開局封包欄位、實際武器與任何差異。
+- 原始 session log、封包 hex 與截圖存入 `docs/research/2026-09-17-backlog/H4/` 或日誌可追溯的既有證據路徑。
+- 若通過，附 `[LOG][OBS][SHOT]` 的完整流程；若未通過，提出最多兩個單變數後續實驗，保持開關與程式不變。
+
+### 完成條件
+
+有證據證明 PvE 出場時實際武器就是已保存的 `22100301`，或明確指出從 DB／`Game_User_SN`／客戶端戰鬥初始化哪一層開始分離，並保留完整未知資料供高階審查。

@@ -68,6 +68,9 @@ CREATE TABLE `mech_licenses` (
 
 -- [해결] item_id 컬럼 뒤쪽의 숨은 공백 문자열 완벽 제거
 -- [Resolved] Completely removed hidden whitespace characters following the item_id column.
+-- ItemInfo_SN exposes this primary key as SerialIndex. The client excludes
+-- SerialIndex values 101..999 in ZPanel_InvenItems.uc:408-411, so inventory
+-- serials start above that client-reserved range.
 CREATE TABLE `items` (
     `id`              INT UNSIGNED    AUTO_INCREMENT PRIMARY KEY,
     `account_id`      INT UNSIGNED    NOT NULL,
@@ -79,7 +82,7 @@ CREATE TABLE `items` (
     `equipped`        TINYINT         NOT NULL DEFAULT 0,
     INDEX `idx_account` (`account_id`),
     FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB AUTO_INCREMENT=100001 DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `tutorials` (
     `account_id`      INT UNSIGNED    NOT NULL,

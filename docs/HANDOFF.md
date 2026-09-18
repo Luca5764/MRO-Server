@@ -5,48 +5,43 @@
 
 ---
 
-## ⚡ 高階主力交接：Codex Sol → 下一位高階（2026-09-17 22:35）
+## ⚡ 交接快照（2026-09-18 08:5x，Claude 高階，請以此段為準）
 
-### 已完成
+### 今天完成：G6 機庫換裝備存檔，全部實測通過
 
-- **G7 已審查、實測、合併 `reverse-work`**：Team／All
-  `0x00220507`／`0x00220509` 均在 HUD 顯示，預設 enabled。merge `d64d427`，
-  state／交接 commit `a0fda91`；證據見 `2026-09-17-23-game-chat-echo-g7.md`。
-- **G6 保存本體靜態審查通過但未實測**：CQ 本體 `0x107e0c50`、SA 本體
-  `0x107dde80` 已核對；商店清單空白、購入物重登不顯示，沒有第二件裝備可選。
-  G6 審查在 `flash-wip` commit `6180060`，開關仍預設 disabled，尚未合主線。
+分支 `flash-wip-g6-unblock`（worktree `/home/lucas/mro-reverse-g6-unblock`），已由 Claude 高階審查、實測、合併回 `reverse-work`。
+一路拆掉**四層**阻塞，每層原因都不同（日誌 `2026-09-18-02` ～ `-06`）：
 
-### 正在進行（不要關 session）
+1. **商店全空**：伺服器用 `item_catalog.mech_type` 依槽位篩商品，但那欄是**武器家族**，送出的武器該機體不能裝，全被客戶端 `ItemSubordinateCheck` 濾掉。→ 整批送出、交給客戶端過濾（`SHOP_FULL_CATALOG_MODE`）。
+2. **購入物歸錯機**：購買時把 catalog 的 `mech_type` 照抄進 `items`，應寫玩家當下的機庫槽位（`PURCHASE_MECH_SLOT_MODE`）。
+3. **買完不即時顯示**：購買後重送 ItemInfo 的程式被 `SHOP_UNBLOCK_MODE` 綁著（那個開關另含已被組語否決的 IsShow 欄位重排）→ 拆成 `PURCHASE_ITEMINFO_REFRESH`。
+4. **庫存永遠只有一格**（最隱蔽）：客戶端 `ZPanel_InvenItems.uc:408-411` 把 **SerialIndex 101–999** 當保留區整段跳過，而 `items.id` 全落在裡面。→ `tools/renumber-item-serials.js` 把主鍵搬到 100000+，程式不需做偏移。
 
-- Codex Luna（中階）正在 tmux `codex` 執行 **G6-unblock**；讓它繼續，不要中斷。
-- worktree：`/home/lucas/mro-reverse-g6-unblock`；分支：
-  `flash-wip-g6-unblock`；同步點 `1c23820`（含既有 G6 + 最新 G7）。
-- 目前未提交修改只有 `dispatch/room.dispatch.js`。Luna 的初步待審發現：
-  `ShopList_SN` 每列三個 LE int 後應是 IsShow／IsNew／IsHot／IsSale；現行 sender
-  把 IsShow 往後錯一 byte，客戶端 `ListLoad()` 因 IsShow=false 跳過全部列。
-  它已在預設關閉的 `SHOP_UNBLOCK_MODE` 後修正欄位，並準備在購買成功後以既有
-  分包 sender 重送 ItemInfo。**這仍是中階 WIP，未經高階 DLL 位址核對，不可標 ✅。**
-- tmux `server` 正在主目錄 `/home/lucas/mro-reverse/Metal Rage Online Server`
-  跑 `reverse-work`；Luna 依契約會在實測前停下，不會自行切 server。
+實測：換裝 → 寫 DB → **完全關閉客戶端重開**仍保留 → PvE 出場帶入（`Game_User_SN` slots 送出 `22100301`）。
+截圖 `shots/g6d-main.png`、`w1-after-buy.png`、`w2-inventory.png`、`w3-equipped.png`、`w4-pve-weapon.png`。
 
-### 下一位高階任務契約
+### 開關現況（`Metal Rage Online Server/dispatch/room.dispatch.js`）
 
-- **目標**：審查 Luna 的 G6-unblock，解除商店／購入物顯示阻塞，再完成 G6
-  換裝保存實測。
-- **範圍**：`ShopList_SN 0x00240241`、`CashShopList_SN 0x00240242`、
-  `Packege_Item_SN 0x00240131`、購買 CQ/SA、購買後 ItemInfo；以及既有
-  `Slot_Change_CQ 0x00240107`／SA `0x00240108`。
-- **背景**：測試 U1 購買 `41200101` 確實寫 DB（items 34→35），但 UI 不顯示；
-  截圖 `shots/shot-221153.png`。G6／G7 日誌均為 `2026-09-17-23-*`。
-- **限制**：先等 Luna 回報；核對完整 DLL 位址與逐欄位組語；一次只開一個測試
-  開關；不得動 ItemInfo 分包、`PVE_SLOT_SELECT_FLOW`、Grade_Info_SN、
-  Death_SN 戰績或 G7。實驗不能平行。
-- **交付**：高階 review findings；通過後暫開 `SHOP_UNBLOCK_MODE`，測商店多件
-  顯示→購買→庫存可選；再只開 G6 保存，測換主武器→機庫顯示→重登保留→
-  PvE 出場武器；更新 journal、INDEX、state、HANDOFF，分段 commit。
-- **完成條件**：兩階段均有 [LOG][OBS]（必要時 [SHOT]）且與 DLL 證據一致；
-  才把相關開關預設 enabled、合併到 `reverse-work`。若前置修正失敗，保持
-  disabled，記錄完整 hex 與反證，不合併猜測。
+預設 **enabled**：`EQUIP_SAVE_MODE`、`PURCHASE_MECH_SLOT_MODE`、`PURCHASE_ITEMINFO_REFRESH`、`SHOP_FULL_CATALOG_MODE`。
+維持 **disabled**：`SHOP_UNBLOCK_MODE`（含已被組語否決的 ShopList 欄位重排，不要打開）、`SHOP_COMPAT_EXPERIMENT`（一次性實驗）。
+
+### 環境注意
+
+- 伺服器目前從 worktree 跑；合併後**要換回主目錄** `/home/lucas/mro-reverse/Metal Rage Online Server` 再 `npm start`。
+- worktree 原本缺 repo 根目錄的 `MetalRage` symlink，導致 Cache.Bin 讀不到（只影響 `CACHE_INDEX_BY_ITEM_ID`）。已補。
+- DB 已跑過 `tools/renumber-item-serials.js`（70 筆 154–223 → 100154–100223，AUTO_INCREMENT=200000）。腳本冪等，重跑無害。
+
+### 下一步（`docs/backlog.md`）
+
+- **H1** 登入後預設機體的 ShopList 漏接（切機再切回才出現；兩次封包逐位元組相同，是時機問題）
+- **H2** G 幣不持久化（重登回到初始值）
+- **H3** catalog 髒資料（`ItemIndex 27430`、強化等級 01–08 全部同價）
+- Legend（時限）機體授權：`Mech_License_Check`／`IsLicense`（0 無／1 教學／2 購買）對應 DB `mech_licenses`，**填這個欄位的封包還沒找到**。`11100101`／`11200101` 這類配對只是塗裝變體，可裝武器相同（`research/2026-09-18-premium-mech/notes.md`，🟡）。
+
+### 協作狀態
+
+- tmux：`server`（伺服器，Claude 高階自己控，不要請操作者代勞）、`codex`（Luna 中階）、`sol`、`antigravity`。**已開的 session 不要關**，cache 會掉。
+- 今天的中階產出全部由 Claude 高階審查過；`SHOP_UNBLOCK_MODE` 的 IsShow 欄位假設已被否決兩次，不要再提。
 
 ---
 

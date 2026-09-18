@@ -4,7 +4,7 @@
 > 上限約 300 行；超過就依命名空間拆成 `docs/state/<命名空間>.md`。
 > 每一條都附依據：日誌檔名或 DLL 位址。細節回日誌查，不要把細節搬進來。
 >
-> 最後整理：2026-09-17，從凍結的 `opcode-ledger.md` 與 `research/2026-09-17-ledger-migration/opcode-inventory.md` 整理，並重跑 `tools/dispatch-map.py` 核對。
+> 最後整理：2026-09-18（第 2、4 節補 G6 結果），從凍結的 `opcode-ledger.md` 與 `research/2026-09-17-ledger-migration/opcode-inventory.md` 整理，並重跑 `tools/dispatch-map.py` 核對。
 
 狀態：✅ 已確認／🟡 假設／⬜ 未知／❌ 已排除
 
@@ -23,6 +23,7 @@
 |---|---|---|
 | 客戶端拒收整包超過 **0x400 bytes** 的 frame，這條連線之後的封包全部卡住 | ✅ [DLL][LOG] | `ZNetwork.dll 0x107f8fad`；`journal/2026-09-17-01-review-iteminfo-stall-root-cause.md` |
 | ItemInfo 卡住的原因是大小，不是內容；分包（每包 ≤28 筆）後含機體本體列也正常 | ✅ [LOG][OBS] 測試 H1／H2 | `journal/2026-09-17-20-iteminfo-chunking.md` |
+| 客戶端庫存清單會**跳過 SerialIndex 101–999**（原廠保留給預設組合書），`items.id` 一定要 >999 | ✅ [SRC][OBS] W2 | `ZPanel_InvenItems.uc:408-411`；`journal/2026-09-18-05-g6f-item-serial-reserved-range.md` |
 | 「body rows（part_slot=0）放進 ItemInfo 會斷線」這條舊說法是大小問題；機庫要有機體本體列才會顯示機體 | ✅ [OBS] 測試 H2 | 同上 |
 | `ZDispatchGame` 的 handler 只在場景 6 生效，其他場景收到會直接丟棄 | ✅ [DLL] | `journal/2026-09-16-13-battle-start-is-scene-driven.md`；`Assist_SN 0x1070a425` 的 `this[4]` 檢查 |
 | `Game_Info_SN 0x00222111` 有兩個 handler（Waiting＝場景 1、Game＝場景 6） | ✅ [DLL] | `journal/2026-09-16-10-two-game-info-sn-handlers-diff.md` |
@@ -94,6 +95,14 @@
 | `Map_Change_All_SN 0x00220226`：flag＋count＋每筆 9 bytes；要連送兩次清單才會顯示 | ✅ [DLL][TEST] | `journal/2026-09-15-20-map-change-all-sn-body-confirmed.md`、`journal/2026-09-16-11-room-map-list-shows-after-double-send.md` |
 | 選地圖彈窗的 `m_MapInfoList` 仍是 0／0，資料來源跟房間清單不同 | ⬜ | `journal/2026-09-16-11-room-map-list-shows-after-double-send.md` |
 | 遊戲內 Team／All 聊天：C→S 與 S→C 共用 `0x00220507`／`0x00220509`，258-byte body 原樣回送後 HUD 正常顯示 | ✅ [DLL][LOG][OBS] V1 | `journal/2026-09-17-23-game-chat-echo-g7.md` |
+| 機庫換裝 → 寫入 DB → 完全重登保留 → PvE 出場帶入（`Game_User_SN` slots 送出新 serial） | ✅ [LOG][DB][OBS][SHOT] W3／W4 | `journal/2026-09-18-06-g6-equip-save-verified.md` |
+| `items.mech_type` 是**機體槽位 1–8**；`catalog`／`item_catalog.mech_type` 是**武器家族**，兩者不可混用 | ✅ [CODE][DB][OBS] | `journal/2026-09-18-04-g6e-purchase-inventory-classification.md` |
+| 商店清單伺服器**不做相容性篩選**，整批送出交給客戶端 `ItemSubordinateCheck` 過濾；送 1541 筆分包（每包 ≤45 筆）正常 | ✅ [LOG][OBS][SHOT] | `journal/2026-09-18-02-g6c-shop-compat-experiment.md`、`-03-g6d-shop-full-catalog.md` |
+| 購買：寫 DB 的 `mech_type` 要用當下機庫槽位；購買後要重送 `ItemInfo_SN` 才會即時出現 | ✅ [LOG][OBS] W1 | `journal/2026-09-18-04-g6e-purchase-inventory-classification.md` |
+| 登入後預設（1 號機）的 ShopList 會被客戶端漏接，切到別台機再切回來才出現；封包內容兩次完全相同 | 🟡 時機問題，未修 | backlog H1；`journal/2026-09-18-03-g6d-shop-full-catalog.md` |
+| G 幣扣款不持久化，重登回到初始值 | 🟡 未修 | backlog H2 |
+| `11100101`／`11200101` 這類配對是**塗裝變體**，HighGroup／MiddleGroup 相同、可裝武器相同 | 🟡 [CACHE] 靜態分析 | `research/2026-09-18-premium-mech/notes.md` |
+| Legend（時限）機體有授權機制 `Mech_License_Check`／`IsLicense`（0 無／1 教學／2 購買），對應 DB `mech_licenses`；**填這個欄位的封包未知** | ⬜ | `ZPage_Hangar.uc:1544-1552`、`ZNetwork_DJ.uc:234,1286` |
 
 ## 5. 程式碼裡已知錯誤的名稱與無效封包（尚未修正）
 
@@ -115,8 +124,8 @@
 
 ## 6. 待查（依優先順序）
 
-1. **測試 A**：開火、副武器、推進器（`docs/next-test.md`）
-2. **測試 B**：ItemInfo 是大小還是內容的問題；如果是大小，就實作分包，再把 slot 3／5 和機體本體加回來
+1. 登入後預設機體的 ShopList 漏接（backlog H1）、G 幣不持久化（H2）、catalog 髒資料（H3）
+2. Legend 機體授權：找出填 `IsLicense` 的封包
 3. `ChangeSlot_SN 0x00230102` 照 DLL 結構實作；目前只保存部分結構與行為證據，待 Claude 審查，未實作（`journal/2026-09-17-04-changeslot-body-wip.md`；前文 `journal/2026-09-16-26-slot-sortie-function-followup-analysis.md`）
 4. `Assist_CN` 數值遞減代表什麼
 5. `Map_PC01` 沒有敵人：`ZMechanicA call failed`、`PreLoadallPveAI_BD` 讀到 null（`journal/2026-09-16-31-combat-control-and-ai-todo.md`）

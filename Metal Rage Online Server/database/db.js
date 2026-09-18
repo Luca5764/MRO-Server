@@ -123,6 +123,87 @@ async function getItems(accountId)
 }
 
 /**
+ * Save one hangar slot's six equipped item serials.
+ *
+ * The client sends item serials (the `items.id` values), not catalog item IDs.
+ * A zero serial means that part is empty. The whole update is transactional so
+ * a malformed or unknown serial cannot leave the target mech half-cleared.
+ *
+ * @param {number} accountId
+ * @param {number} mechType 1..8, the client's 1-based hangar slot
+ * @param {number[]} serials [body, main, left, right, equipment, skin]
+ */
+async function saveEquippedLoadout(accountId, mechType, serials)
+{
+    if (!Number.isInteger(Number(accountId)) || Number(accountId) <= 0) {
+        throw new Error('invalid account id');
+    }
+    if (!Number.isInteger(Number(mechType)) || Number(mechType) < 1 || Number(mechType) > 8) {
+        throw new Error(`invalid mech slot: ${mechType}`);
+    }
+    if (!Array.isArray(serials) || serials.length !== 6 || serials.some(serial =>
+        !Number.isInteger(Number(serial)) || Number(serial) < 0 || Number(serial) > 0xFFFFFFFF
+    )) {
+        throw new Error('invalid equipped serial list');
+    }
+
+    const selectedSerials = serials.filter(serial => Number(serial) !== 0).map(Number);
+    const uniqueSerials = [...new Set(selectedSerials)];
+    if (uniqueSerials.length !== selectedSerials.length) {
+        throw new Error('duplicate equipped serial');
+    }
+
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        if (uniqueSerials.length > 0) {
+            const placeholders = uniqueSerials.map(() => '?').join(', ');
+            const [rows] = await conn.execute(
+                `SELECT id FROM items WHERE account_id = ? AND id IN (${placeholders})`,
+                [accountId, ...uniqueSerials]
+            );
+            const found = new Set(rows.map(row => Number(row.id)));
+            if (uniqueSerials.some(serial => !found.has(serial))) {
+                throw new Error('equipped serial is not owned by account');
+            }
+        }
+
+        // Clear the complete target slot first; zero serials intentionally
+        // leave the corresponding part empty.
+        await conn.execute(
+            'UPDATE items SET equipped = 0 WHERE account_id = ? AND mech_type = ? AND part_slot BETWEEN 0 AND 5',
+            [accountId, mechType]
+        );
+
+        // An item serial can only be equipped in one place at a time.
+        if (uniqueSerials.length > 0) {
+            const placeholders = uniqueSerials.map(() => '?').join(', ');
+            await conn.execute(
+                `UPDATE items SET equipped = 0 WHERE account_id = ? AND id IN (${placeholders})`,
+                [accountId, ...uniqueSerials]
+            );
+        }
+
+        for (let partSlot = 0; partSlot < serials.length; partSlot++) {
+            const serial = Number(serials[partSlot]);
+            if (serial === 0) continue;
+            await conn.execute(
+                'UPDATE items SET equipped = 1, mech_type = ?, part_slot = ? WHERE account_id = ? AND id = ?',
+                [mechType, partSlot, accountId, serial]
+            );
+        }
+
+        await conn.commit();
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
+/**
  * Create a new player account with all default data.
  * @param {string} username
  * @param {string} nickname
@@ -313,6 +394,7 @@ module.exports = {
     getItems,
     getItemCatalog,
     createAccount,
+    saveEquippedLoadout,
     completeTutorial,
     updateLastLogin,
 };
