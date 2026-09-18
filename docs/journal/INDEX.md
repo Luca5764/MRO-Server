@@ -107,3 +107,4 @@
 | 2026-09-18 | `2026-09-18-14-map-info-sn-real-ids.md` | `0x00210115` | ❌ 實測未通過 | R9：count=12、9001–9012 已送出，但清單仍空、仍顯示 4 VS 4；m_MapList 不是唯一篩選關卡，維持 disabled。 |
 | 2026-09-18 | `2026-09-18-15-room-team-index.md` | `0x00220203`、`0x00220233` | ✅ Claude 高階審查＋實測，預設 enabled | R11：Room_Default body+0x10/+0x12 原誤送建房選項；新增 `ROOM_TEAM_INDEX_MODE`，enabled 才送 Red=0／Blue=1；TeamIndex 無值域閘門，body 換算仍標待驗證，未實測。 |
 | 2026-09-18 | `2026-09-18-17-user-name-ansi.md` | `0x00220421` | ✅ Claude 高階審查＋實測，預設 enabled | R12：User_Name_SN 改送 ANSI 窄字串；新增 `ROOM_USER_NAME_ANSI_MODE`，enabled 才寫入 ANSI 名稱，未實測。 |
+| 2026-09-18 | `2026-09-18-18-pve-hard-flow.md` | `0x00222111`、`0x00230139`、`0x00222213`、`0x00230123` | 🟡 高階初審／只分析 | P3：通關的是 9010 簡單房（205012），困難房（214305）送 9012／10 但 547 秒後停住、沒有 Campaign／EndGame；三命是 `DefNumLive=3` 全難度共用；另發現 TimeLimit 寫死 10 分鐘。 |
