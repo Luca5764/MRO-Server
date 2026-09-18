@@ -65,3 +65,22 @@
 4. C 絕對不要打開：`SHOP_UNBLOCK_MODE` 的 enabled 旗標偏移已被 DLL／客戶端欄位分析推翻；`CAMPAIGN_GAME_USER_BOOTSTRAP_MODE` 會在場景 5 送給只在場景 6 處理的 handler。兩者只能在單獨核對後移除危險分支。
 5. E 不能和其他開關混合改動：`MAP_ALL_HEADER_MODE`、`PVE_SLOT_SELECT_FLOW`、`MAP_CHANGE_ONE_RESEND_MODE`、`GAME_START_HANDSHAKE_MODE`、`READY_HOST_SN_URL_MODE`、`MAP_CHANGE_ONE_SA_EXPERIMENT`、`MAP_ID_MODE` 都是具名變體，收斂時只能明確選定表中目前分支。
 6. D 暫不動：尤其 `MAP_ALL_SEND_TWICE`、`SERVER_DRIVEN_START_MODE`、`GAME_INFO_SN_WITH_ROOM_STATE` 和各個 gate timing experiment，現有資料不足以符合 A 的證據門檻；它們不可和其他改動綁在同一輪。
+
+## C1 收斂：盤點基準之外新增的開關
+
+以下五個開關是在 `ea3f1d8` 之後才新增的（不在上表 33 個之內），2026-09-18 由中階
+worker 依 `docs/backlog.md` C1 契約收斂。收斂前用「翻成 disabled、跑
+`node test/replay-golden.js`」逐一確認會變紅，證明開關本身是活的（非死碼）。
+
+| ~~開關名稱~~ | 依據 | 已收斂 |
+|---|---|---|
+| ~~`ROOM_TEAM_INDEX_MODE`（`dispatch/room/room-state.sender.js`）~~ | R11，`journal/2026-09-18-15-room-team-index.md` | 已收斂（C1，`02d4a98`） |
+| ~~`ROOM_USER_NAME_ANSI_MODE`（`dispatch/room/room-user.sender.js`）~~ | R12，`journal/2026-09-18-17-user-name-ansi.md` | 已收斂（C1，`8a9dd7f`） |
+| ~~`ROOM_LEAVE_RESET_MODE`（`dispatch/gate.game.dispatch.js`）~~ | L1，`journal/2026-09-18-20-room-leave-reset.md` | 已收斂（C1，`e205a49`） |
+| ~~`MONEY_PERSIST_MODE`（`dispatch/money.js`）~~ | M1，`journal/2026-09-18-16-money-persistence.md` | 已收斂（C1，`2134182`） |
+| ~~`POST_BUY_SLOT_REFRESH_MODE`（`dispatch/room.dispatch.js`）~~ | M3a，`journal/2026-09-18-19-m3-inventory-refresh.md` | 已收斂（C1，`92450ef`） |
+
+另外 `dispatch/gate.game.dispatch.js` 的 `0x00220234` handler 註解與
+`packetlog.marker` 文字（原「EXPERIMENT, purpose unconfirmed」）已改寫為已確認的
+Leave_CQ 描述，純註解，不影響行為（C1，`59d9843`）。`BACK_FROM_ROOM_SA_EXPERIMENT_MODE`
+開關本身未動，仍在上表 D 類，維持不收斂。
