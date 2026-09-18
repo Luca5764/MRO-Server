@@ -13,6 +13,7 @@
 
 - 主目錄 `/home/lucas/mro-reverse` 固定停在 `reverse-work`，不要在裡面切分支。執行者各開 `~/mro-wt/<名稱>`。
 - 伺服器在 tmux `server`，跑在 `~/mro-wt/test`（分支 `test-server`）。session log 集中在主目錄的 `Metal Rage Online Server/logs/`（worktree 用 symlink 指過去）；每份 log 的第一筆是 build 事件（分支、commit、dirty、非預設開關）。
+- **每輪實測前，高階先把 `test-server` fast-forward 到 `reverse-work`**（`git -C ~/mro-wt/test merge --ff-only reverse-work`，再 `/reload` 或重啟）。有沒有落後，看 session log build 事件裡的 commit 就知道。
 - 改 `dispatch/` 以內的程式：在伺服器 console 輸入 `/reload` 就能熱重載，連線不斷。改 `dispatch/` 以外的檔案（`packetlog.js`、`db.js` 等）才要完整重啟，操作者也要重登。
 - AI 設定檔用 `mro-config`（本機 git，`~/mro-agents-config.git`）管版本。
 - DB 設定 `database/config.json` 已移出版控。新 worktree 要用 symlink 指到主目錄那份。

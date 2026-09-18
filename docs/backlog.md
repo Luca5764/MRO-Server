@@ -4,35 +4,19 @@
 
 ## 共通規則（每個任務都適用）
 
-- **只做分析，不改程式、不改資料庫、不改 `docs/state.md`、不標 ✅。** 結論一律標 🟡 或「待審」，由 Claude（高階）審查。
-- 客戶端與伺服器只有一套，**不要要求操作者測試**，也不要啟動或停止伺服器（tmux `server` 由 Claude 控制）。
+- **不改 `docs/state.md`、不標 ✅／❌、不改資料庫。** 結論一律標 🟡 或「待審」，由高階審查。
+- 分析任務不改程式。契約明寫允許實作的任務，新行為一律放在**預設關閉的開關**後面（例如 `const XXX_MODE = 'disabled'; // 'disabled' | 'enabled'`），commit 時一定是關閉。開關預設值只有高階能改。
+- 客戶端與伺服器只有一套。**不要要求操作者測試**，也不要啟動、停止或 `/reload` 伺服器（tmux `server` 由高階控制）。實測由高階安排。
+- 工作位置：`git -C /home/lucas/mro-reverse worktree add -b <分支> ~/mro-wt/<名稱> reverse-work`，只在那個 worktree 裡動檔案。**不要在主目錄切分支**，也不要用 `/tmp`。
 - 交付：
-  - 原始 decompile／組語存到 `docs/research/2026-09-17-backlog/<任務代號>/`。
-  - 一篇日誌 `docs/journal/2026-09-18-NN-<主題>.md`（50–100 行），在 `docs/journal/INDEX.md` 追加一行並標「待審」。
-  - commit 在 `flash-wip` 分支（`git checkout flash-wip && git merge reverse-work` 之後再開始），訊息最後一行 `Agent: gemini (中階)`。
-- 工具（在 `Metal Rage Online Server/` 底下執行）：`python3 tools/disasm.py {exports|at|func|xref|str} ...`、`tools/ghidra/decompile.sh <va>`（換 DLL：`DLL=Engine.dll`）、`tools/dispatch-map.py`；opcode 名稱查 `docs/client-dispatch-map.md`。客戶端檔案在 `/mnt/c/Games/MetalRage Online/data/`。
+  - 原始 decompile／組語存到 `docs/research/<日期>-<主題>/`。
+  - 一篇日誌 `docs/journal/<日期>-<HHMM>-<主題>.md`（50–100 行）。在 `docs/journal/INDEX.md` 追加一行，**5 欄**：日期｜檔名｜opcode｜`—`｜一句話（第 4 欄是舊的狀態欄，新列一律填 `—`，狀態記在 state.md／backlog）。
+  - commit 最後一行 `Agent: <工具> (中階)`。
+- 資料庫變更寫成 `tools/` 下的腳本，由高階執行，不直接下 SQL。
+- 工具（在 `Metal Rage Online Server/` 底下執行）：`python3 tools/disasm.py {exports|at|func|xref|str} ...`、`tools/ghidra/decompile.sh <va>`（換 DLL：`DLL=Engine.dll`）、`tools/dispatch-map.py`、`tools/item-names.py <編號或名稱>`；opcode 名稱查 `docs/client-dispatch-map.md`。客戶端檔案在 `/mnt/c/Games/MetalRage Online/data/`。
 - 解密後的客戶端 UnrealScript 原始碼：`~/mro-decrypted/src/<Package>/<Class>.uc`；class 預設值：`tools/uetool/bin/Release/net8.0/uetool ~/mro-decrypted/<Pkg>.u decompile <Class>`。不要讀 `Metal Rage Online Server/static/`。
 - **Ghidra 的參數順序常出錯**：封包欄位偏移一律回頭看組語確認，日誌裡寫出你核對的組語位址。
-- 遇到跟既有 ✅ 矛盾、需要改程式才能確認、或超出範圍：停下來，在日誌寫疑點，不要自己擴大範圍。
-
----
-
-## 目前由 Claude（高階）自己做，中階不要碰
-
-- 任務結束流程：`Campaign_CN 0x00230139` → `Campaign_SN 0x0023013a` → `EndGame_SN 0x00222213` → 結算頁 → 回房間（`docs/journal/2026-09-17-14-campaign-result.md`）。
-- 所有伺服器程式修改與實測。
-
----
-
-## 2026-09-17 21:40 新增（Claude 額度將盡，交給 Codex Luna／Gemini）
-
-**這兩個任務允許改伺服器程式**，但依 `AGENTS.md` 中階規則：
-- 所有新行為都放在**預設關閉的開關**後面（例如檔案頂端 `const EQUIP_SAVE_MODE = 'disabled'; // 'disabled' | 'enabled'`），commit 時一定是關閉。
-- 在 `flash-wip` 分支工作；**實測時**可以在工作目錄暫時打開開關、請操作者重啟伺服器並測試，測完把開關改回關閉再 commit，並在日誌寫明「打開開關時的測試結果」。
-- 伺服器在 tmux `server` session 跑（`cd "Metal Rage Online Server" && npm start`），重啟前先跟操作者說一聲。
-- 資料庫變更寫成 `tools/` 下的腳本，不直接下 SQL。
-- 一次只改一個變數；每個實測寫一篇日誌、在 `INDEX.md` 標「待審」。
-- 審查：由 Codex reviewer（Sol，高階）或下一個接手的 Claude 審；審過才能把開關預設打開。
+- 一次只改一個變數。遇到跟既有 ✅ 矛盾、需要超出範圍的改動或架構決策：停下來回報，不要自己擴大範圍。
 
 ---
 
@@ -344,6 +328,7 @@
 ### 範圍
 
 - 只動這五個開關與它們的 disabled 分支；其他開關（含 `docs/reference/switch-audit.md` 裡確定不能開的）另開任務。
+- 一併更新 `gate.game.dispatch.js` 的 `0x00220234` 註解（約第 915 行）與 marker 文字（約第 944 行）：目前寫「EXPERIMENT, purpose unconfirmed」，但 state.md 已確認它是 `Leave_CQ`（回 `Leave_SA 0x00220235`，依據 `journal/2026-09-18-20-room-leave-reset.md`）。這是純註解與 log 文字，單獨一個 commit；marker 文字改了會影響回歸樣本，要在遮罩或樣本說明裡註明。
 - 在 `~/mro-wt/<名稱>` 開 worktree 做，不要在主目錄切分支。
 
 ### 限制
