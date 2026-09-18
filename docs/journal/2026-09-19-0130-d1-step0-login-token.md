@@ -51,3 +51,11 @@
 - **未實機測試**：上面「實機測試步驟」尚未由操作者執行；目前的證據只到回歸測試＋新單元測試（fixture DB，非真實連線）。
 - `client.socket_.destroy()` 用的是硬斷（跟 `client.js` 例外守門用同一種方式），沒有送任何失敗封包告知客戶端——這跟現有的 `client.disconnect()`（`socket_.end()`，優雅關閉）是兩種不同語意，沿用契約字面「socket destroy」的選擇，但沒有 DLL 證據說明客戶端收到硬斷線時的反應（可能直接卡在載入畫面），留給高階／PM 裁決是否要換成 `disconnect()` 或先送一個失敗 SA。
 - `authTokens.issueKey` 在 `client.accountId_` 未設定時送 `accountId=0, key=0`（理論上不會發生，因為 Gate `CQ_LEAVE` 只會在 9211 登入成功後才送出），沒有另外處理，因為契約沒要求。
+
+## 實機驗證（2026-09-19 01:28，單人，Claude 高階）
+
+- build：`test-server@57a1f3f dirty=true nonDefault=[GAME_INFO_TIME_LIMIT_MODE] whitelist=on(2 users) publicHost=192.168.1.105`（`logs/session-20260919-012749.jsonl` 第一筆）。
+- [LOG] 第 26 行，conn1（9211）送出 Gate `Leave_SA 0x00220132`：`000000000000｜01000000｜dde7ba25`，也就是 body+0x06 accountId=1、+0x0A key=0x25bae7dd。
+- [LOG] 第 32 行，conn2（30907）收到 `Login_Again_CQ 0x00110124`：`01000000dde7ba25`，跟伺服器發出的完全一致。
+- log 裡沒有 `WARNING: Login_Again`／`REFUSING` marker → 走的是 token 路徑。
+- 結論：✅ [DLL][LOG] 客戶端把 Gate Leave_SA body+0x06／+0x0A 原樣帶回 Login_Again_CQ（**未經跨公司審查**）。兩人版（PM 驗收條件：兩個帳號各自帶回伺服器最近一次發給自己的 key）等第二台有空再補。
