@@ -21,6 +21,8 @@
 //   2. B is not in a room -> only A receives it (rooms.sendAll only walks
 //      the room A is actually in).
 //   3. Chat_Room_Team (0x00220503) -> only same-team members receive it.
+//      This case temporarily flips ROOM_TEAM_CHAT_MODE on via a test-only
+//      setter (PM-F1 fix 1) since that switch defaults off in shipped code.
 //
 // Run: node test/room-chat.js  (exit 0 = pass, exit 1 = fail)
 
@@ -121,6 +123,23 @@ function testRoomChatAllSkipsMemberNotInRoom()
 }
 
 function testRoomChatTeamOnlyReachesSameTeam()
+{
+    // PM-F1 fix 1: 0x00220503 (Chat_Room_Team) has its own
+    // ROOM_TEAM_CHAT_MODE switch, defaulted off (no [LOG]/[DLL] evidence
+    // yet that the client sends 0x00220503 for room team chat -- see the
+    // comment at the switch declaration in gate.game.dispatch.js). Flip it
+    // on for just this case via the test-only setter, and always flip it
+    // back so other tests in this file (and any that run after) keep
+    // seeing the shipped default.
+    GateGameDispatch._setRoomTeamChatModeForTest('enabled');
+    try {
+        testRoomChatTeamOnlyReachesSameTeamImpl();
+    } finally {
+        GateGameDispatch._setRoomTeamChatModeForTest('disabled');
+    }
+}
+
+function testRoomChatTeamOnlyReachesSameTeamImpl()
 {
     const dispatch = new GateGameDispatch();
     rooms._resetForTests();

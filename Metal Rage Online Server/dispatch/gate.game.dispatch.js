@@ -45,6 +45,15 @@ const GAME_CHAT_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
 // GAME_CHAT_ECHO_MODE above -- flagging for high-tier review since the
 // general backlog rule wants new mid-tier behaviour default OFF.
 const ROOM_CHAT_BROADCAST_MODE = 'enabled'; // 'disabled' | 'enabled'
+// PM-F1 fix 1 (docs/backlog.md PM-F1, PM ruling): ROOM_CHAT_BROADCAST_MODE
+// above was doing double duty for both 0x00220505 (room all-chat, has the
+// [LOG] session-20260918-225741.jsonl evidence cited above) and 0x00220503
+// (team chat) -- but there is no [LOG]/[DLL] evidence the client actually
+// sends 0x00220503 for room team chat; the CN/SN-share-opcode assumption
+// for it was only ever an analogy to 0x00220507/0x00220509. Split it into
+// its own switch, defaulted OFF, so 0x00220503 keeps the pre-D1-2 fallback
+// ACK behaviour until a real 0x00220503 capture justifies turning it on.
+let ROOM_TEAM_CHAT_MODE = 'disabled'; // 'disabled' | 'enabled' ('let' only so test/room-chat.js's test-only setter below can flip it; nothing else reassigns it)
 // T1 [DLL] 0x107d4fa7 movzx ebp, word ptr [eax+0x23] (handler body 0x107d4f50):
 // Game_Info_SN body+0x13 is TimeLimit in minutes. 'room' makes it follow the
 // room's PlayTime (Map_Change_One_CQ 0x00220221 w2, client.mapChangeOneTime_,
@@ -1042,7 +1051,12 @@ class ZGateGameDispatch
             case 0x00220503: // Chat_Room_Team_CN/SN
             {
                 const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
-                const room = (ROOM_CHAT_BROADCAST_MODE === 'enabled') ? rooms.getRoomByAccount(accountId) : undefined;
+                // PM-F1 fix 1: 0x00220505 (All) still follows
+                // ROOM_CHAT_BROADCAST_MODE; 0x00220503 (Team) follows its
+                // own ROOM_TEAM_CHAT_MODE switch (defaults disabled, see
+                // comment at the const declaration above).
+                const chatModeForType = (type === 0x00220505) ? ROOM_CHAT_BROADCAST_MODE : ROOM_TEAM_CHAT_MODE;
+                const room = (chatModeForType === 'enabled') ? rooms.getRoomByAccount(accountId) : undefined;
 
                 if (!room) {
                     // Not in a tracked room (or switch off): unchanged
@@ -1133,4 +1147,12 @@ class ZGateGameDispatch
             }
         }
     }
+};
+
+// Test-only hook (PM-F1 fix 1): lets test/room-chat.js exercise the
+// ROOM_TEAM_CHAT_MODE='enabled' branch without changing the shipped
+// default. Not called anywhere outside test/.
+module.exports._setRoomTeamChatModeForTest = function setRoomTeamChatModeForTest(mode)
+{
+    ROOM_TEAM_CHAT_MODE = mode;
 };
