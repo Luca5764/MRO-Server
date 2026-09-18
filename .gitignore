@@ -6,3 +6,6 @@ __pycache__/
 
 # Pico 的實際 WiFi 設定（只 commit settings.toml.example）
 Metal Rage Online Server/tools/pico/settings.toml
+
+# 本機 DB 連線設定（用 config.example.json 建立自己的）
+Metal Rage Online Server/database/config.json
