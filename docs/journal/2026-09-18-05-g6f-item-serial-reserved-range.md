@@ -1,4 +1,4 @@
-# G6f：搬離客戶端保留 SerialIndex 範圍（待審）
+# G6f：搬離客戶端保留 SerialIndex 範圍（Claude 高階實測回填）
 
 ## 根因
 
@@ -35,7 +35,7 @@
 - 無 `id + 100000` 衝突時執行 `UPDATE items SET id = id + 100000 WHERE id < 100000`。
 - 先檢查主鍵碰撞；若發現碰撞，交易內先搬到高位暫存 serial，再分配不碰撞的新 serial，避免覆蓋資料。
 - 交易失敗會 rollback；成功後執行 `ALTER TABLE items AUTO_INCREMENT = 200000`，再印出結果。
-- 本次沒有執行腳本、沒有連線查詢現有 DB，也沒有修改既有資料；由 Claude 高階執行。
+- 交付時沒有由 Codex 執行腳本或連線查詢現有 DB；實際搬號由 Claude 高階執行。
 
 ## 全新安裝 SQL
 
@@ -44,8 +44,15 @@
 - 種子庫存 INSERT 沒有寫死 `items.id`，由 AUTO_INCREMENT 產生；沒有需要另搬的 seed serial。
 - 沒有修改 `database/schema.sql`，因專案 setup 規定全新安裝使用 `metalrageserver.sql`。
 
-## 靜態驗證與待審
+## 實測回填（Claude 高階執行）
 
-- `node --check tools/renumber-item-serials.js` 通過；沒有執行腳本或重啟伺服器。
-- [TEST] 實測欄位留空，待 Claude 高階執行腳本並回填搬號前後統計與客戶端結果。
-- 🟡 本篇只記錄高階已核對的根因、唯讀參照檢查與待執行腳本，不標記 DB 搬號或庫存顯示為已確認。
+- `node --check tools/renumber-item-serials.js` 通過；搬號前已停伺服器，搬號後由高階重啟。
+- [TEST] 執行前：`min=154 max=223 rows=70 below-100000=70`。
+- [TEST] 執行後：`min=100154 max=100223 rows=70 below-100000=0`，
+  `AUTO_INCREMENT=200000`；70 筆既有 serial 全部離開客戶端保留區。
+- [OBS][SHOT] `shots/w2-inventory.png`：重新登入後，主武器／輔助武器 L／R／裝備四個庫存面板
+  均顯示多筆；主武器顯示 4 件，包含 1 件裝備中與 3 件 NEW。
+- Claude 高階裁定：`ZPanel_InvenItems.uc:408-411` 的 SerialIndex 101–999 過濾
+  是購入物與既有庫存不顯示的根因；把 `items.id` 搬至 100000 以上解除問題，程式不需偏移。
+- [TEST] 本篇結果來自 Claude 高階與操作者；Codex 未自行重啟伺服器或執行搬號腳本。
+- 🟡 日誌仍保留待跨公司審查標記；不修改 `docs/state.md`。

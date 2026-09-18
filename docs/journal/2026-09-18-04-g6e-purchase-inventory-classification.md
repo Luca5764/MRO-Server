@@ -1,11 +1,11 @@
-# G6e：購買物品的機體槽位分類與 ItemInfo 重送（待審）
+# G6e：購買物品的機體槽位分類與 ItemInfo 重送（Claude 高階實測回填）
 
 ## 目標
 
 - 修正「買到的東西哪台機都看不到」的兩個可獨立測試因素。
 - 第一個因素控制購買寫入 `items.mech_type` 是否採用當下機庫槽位。
 - 第二個因素控制購買成功後是否重送既有分包的 `ItemInfo_SN 0x00210111`。
-- 兩個開關均預設關閉，實測由 Claude 高階執行；本篇不下已確認結論。
+- 實作交付時兩個開關均預設關閉；W1 由 Claude 高階執行，收尾後依高階裁定固定為 enabled。
 
 ## 背景證據（Claude 高階已核對）
 
@@ -24,11 +24,11 @@
 
 ## 實作
 
-- 在 `room.dispatch.js:93` 新增 `PURCHASE_MECH_SLOT_MODE = 'disabled'`。
+- 在 `room.dispatch.js:93` 新增 `PURCHASE_MECH_SLOT_MODE`；W1 使用 enabled。
 - enabled 時購買 INSERT 的 `mech_type` 使用 `Number(client.currentHangarSlot_) || 1`；
   取不到當下槽位時回退 1，`part_slot`、`quantity`、`equipped` 與 SQL 不變。
 - disabled 時仍直接使用 `(Number(item.mech_type) || 0)`，即原 catalog 分類表達式。
-- 在 `room.dispatch.js:95` 新增 `PURCHASE_ITEMINFO_REFRESH = 'disabled'`。
+- 在 `room.dispatch.js:95` 新增 `PURCHASE_ITEMINFO_REFRESH`；W1 使用 enabled。
 - 購買成功後，enabled 時呼叫既有 `require('./item-info.sender').sendItemInfo()`，
   沿用 `ITEM_INFO_CHUNK=12`、35-byte record 與既有 `0x00210111` sender。
 - 舊 `SHOP_UNBLOCK_MODE` 的 ItemInfo refresh 觸發仍保留在同一條條件中；其值與
@@ -48,8 +48,16 @@
 ## 靜態驗證與待實測
 
 - `node --check Metal Rage Online Server/dispatch/room.dispatch.js` 通過。
-- [TEST] 尚未由 Codex 啟動伺服器、重啟客戶端或執行實測；實測結果留待高階回填。
-- 待測一：只開 `PURCHASE_MECH_SLOT_MODE`，確認 1 號機購買的新物品寫入 `mech_type=1`。
-- 待測二：只開 `PURCHASE_ITEMINFO_REFRESH`，確認同一連線收到分包後庫存立即更新。
-- [⬜] 是否能在商店與左下庫存顯示，是否能被換裝保存流程選取，均待實測。
-- 本篇結論維持 🟡 待審；沒有新增 `docs/state.md` 確認標記。
+## W1 實測回填（Claude 高階執行）
+
+- [LOG] `logs/session-20260918-074856.jsonl` 顯示
+  `Shop Buy stored item: account=1 item_id=22100201 mech=1 part=1`，
+  證明購買物採用當下 1 號機槽位，而非 catalog 的 `mech_type=2`。
+- [LOG] 同一場有 `[ItemInfo] >> Sent SN_ITEM_INFO [shop-purchase]: 37 items in 4 packet(s)`，
+  證明購買成功後立即重送既有分包 sender。
+- [OBS][SHOT] `/home/lucas/mro-reverse/shots/w1-after-buy.png`：庫存仍只有 1 格，
+  切換機體再切回也沒有新物品；兩個 G6e 修正本身已通過，但顯示仍受另一層根因阻擋。
+- W1 將問題導向 G6f 的 SerialIndex 保留區；G6f 搬號後由 W2 完成庫存顯示驗證。
+- [TEST] 本篇未由 Codex 啟動伺服器；實測與裁定均來自 Claude 高階與操作者。
+- Claude 高階收尾後把 `PURCHASE_MECH_SLOT_MODE` 與 `PURCHASE_ITEMINFO_REFRESH`
+  固定為 enabled；ItemInfo 分包本身沒有修改。

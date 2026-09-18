@@ -81,18 +81,19 @@ const SN_SHOP_LIST     = 0x00240241;
 const SN_CASH_SHOP     = 0x00240242;
 const HANGAR_POINT_BALANCE = 100000;
 const HANGAR_COUPON_BALANCE = 1000;
-// G6 equipment persistence is deliberately opt-in until live client testing
-// and cross-agent review are complete.
-const EQUIP_SAVE_MODE = 'disabled'; // 'disabled' | 'enabled'
+// G6 equipment persistence passed change -> DB -> relog verification.
+// Evidence: docs/journal/2026-09-18-06-g6-equip-save-verified.md.
+const EQUIP_SAVE_MODE = 'enabled'; // 'disabled' | 'enabled'
 const SLOT_CHANGE_PART_NAMES = ['body', 'main', 'left', 'right', 'equipment', 'skin'];
 // G6 shop/inventory unblock is opt-in until the client is tested with the
 // corrected ShopList fields and post-purchase ItemInfo refresh.
 const SHOP_UNBLOCK_MODE = 'disabled'; // 'disabled' | 'enabled'
-// G6e: keep purchased inventory classified by the currently selected hangar
-// slot only when explicitly enabled; disabled preserves catalog mech_type.
-const PURCHASE_MECH_SLOT_MODE = 'disabled'; // 'disabled' | 'enabled'
-// G6e: independently resend the existing chunked ItemInfo after a purchase.
-const PURCHASE_ITEMINFO_REFRESH = 'disabled'; // 'disabled' | 'enabled'
+// G6e: purchased inventory classification passed W1 and G6f/W2 follow-up.
+// Evidence: docs/journal/2026-09-18-04-g6e-purchase-inventory-classification.md.
+const PURCHASE_MECH_SLOT_MODE = 'enabled'; // 'disabled' | 'enabled'
+// G6e: post-purchase chunked ItemInfo refresh passed W1 and G6f/W2 follow-up.
+// Evidence: docs/journal/2026-09-18-04-g6e-purchase-inventory-classification.md.
+const PURCHASE_ITEMINFO_REFRESH = 'enabled'; // 'disabled' | 'enabled'
 // G6c: item_catalog.mech_type is actually the weapon family, not the mech
 // that can equip it. Slot 1 (Small) cannot use the 21x main-weapon family
 // that the catalog filter selects for it; Cache.Bin's DefaultSetList shows
@@ -102,9 +103,9 @@ const PURCHASE_ITEMINFO_REFRESH = 'disabled'; // 'disabled' | 'enabled'
 // ShopList_SN (0x00240241) main-weapon tab to 22100101; CashShopList_SN
 // (0x00240242) and every other field/order/timing stay untouched.
 const SHOP_COMPAT_EXPERIMENT = 'disabled'; // 'disabled' | 'enabled'
-// G6d: opt-in full catalog path. The client owns mech/item compatibility
-// filtering; disabled keeps the pre-G6d slot/family selection unchanged.
-const SHOP_FULL_CATALOG_MODE = 'disabled'; // 'disabled' | 'enabled'
+// G6d: full catalog path passed the high-level shop display test; the client
+// owns mech/item compatibility filtering. Evidence: docs/journal/2026-09-18-03-g6d-shop-full-catalog.md.
+const SHOP_FULL_CATALOG_MODE = 'enabled'; // 'disabled' | 'enabled'
 // Cache.Bin inspection:
 //   entry 6  -> Map_C06
 //   entry 8  -> Map_C01
