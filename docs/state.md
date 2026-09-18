@@ -98,9 +98,12 @@
 | 機庫換裝 → 寫入 DB → 完全重登保留 → PvE 出場帶入（`Game_User_SN` slots 送出新 serial） | ✅ [LOG][DB][OBS][SHOT] W3／W4 | `journal/2026-09-18-06-g6-equip-save-verified.md` |
 | `items.mech_type` 是**機體槽位 1–8**；`catalog`／`item_catalog.mech_type` 是**武器家族**，兩者不可混用 | ✅ [CODE][DB][OBS] | `journal/2026-09-18-04-g6e-purchase-inventory-classification.md` |
 | 商店清單伺服器**不做相容性篩選**，整批送出交給客戶端 `ItemSubordinateCheck` 過濾；送 1541 筆分包（每包 ≤45 筆）正常 | ✅ [LOG][OBS][SHOT] | `journal/2026-09-18-02-g6c-shop-compat-experiment.md`、`-03-g6d-shop-full-catalog.md` |
-| 購買：寫 DB 的 `mech_type` 要用當下機庫槽位；購買後要重送 `ItemInfo_SN` 才會即時出現 | ✅ [LOG][OBS] W1 | `journal/2026-09-18-04-g6e-purchase-inventory-classification.md` |
+| 購買：寫 DB 的 `mech_type` 要用當下機庫槽位 | ✅ [LOG][OBS] W1 | `journal/2026-09-18-04-g6e-purchase-inventory-classification.md` |
+| 購買後新物品要即時出現：`ItemInfo_SN 0x00210111` 只寫資料、不發 UI 事件；購買成功後補送目前槽位的 `Slot_Change_SA 0x00240108` 才會觸發 `InvenUpdate()`（`POST_BUY_SLOT_REFRESH_MODE`）。「ACK 與 ItemInfo 的先後順序」已排除 | ✅ [DLL][SRC][LOG][OBS] M3a | `journal/2026-09-18-19-m3-inventory-refresh.md`、`-16-money-persistence.md` |
 | 登入後預設（1 號機）的 ShopList 會被客戶端漏接，切到別台機再切回來才出現；封包內容兩次完全相同 | 🟡 時機問題，未修 | backlog H1；`journal/2026-09-18-03-g6d-shop-full-catalog.md` |
-| G 幣扣款不持久化，重登回到初始值 | 🟡 未修 | backlog H2 |
+| G 幣持久化：`accounts` 的 Point／Cash／Coupon 欄位；Buy SA `0x00240202` body+0x06 是新餘額 int64（送 0 客戶端會歸零）；重登後由 `0x00240132`／`0x00210103` 帶回（`MONEY_PERSIST_MODE`） | ✅ [DLL][LOG][DB][OBS] M1 | `journal/2026-09-18-16-money-persistence.md` |
+| 庫存同名武器重複：客戶端會依 DefaultSetList 自己合成 `SerialIndex=0` 的預設項，我們建帳時又發了實體列，所以會重複 | 🟡 [SRC][DB] | `ZPanel_InvenItems.uc:338-383`；backlog P1b |
+| 物品名稱：Cache.Bin 的 `Spec*Record` 表，用 `tools/item-names.py` 查 | ✅ [CACHE] 駕駛員表 25／25 與獨立 dump 相符 | `docs/reference/item-names.md`、`journal/2026-09-18-2240-item-names.md` |
 | `11100101`／`11200101` 這類配對是**塗裝變體**，HighGroup／MiddleGroup 相同、可裝武器相同 | 🟡 [CACHE] 靜態分析 | `research/2026-09-18-premium-mech/notes.md` |
 | Legend（時限）機體有授權機制 `Mech_License_Check`／`IsLicense`（0 無／1 教學／2 購買），對應 DB `mech_licenses`；**填這個欄位的封包未知** | ⬜ | `ZPage_Hangar.uc:1544-1552`、`ZNetwork_DJ.uc:234,1286` |
 
@@ -119,7 +122,10 @@
 | `Map_Change_All_SN` 每筆 9 bytes，record+0x04 是 **Round** 不是選中旗標；客戶端只存前 **6** 筆（`MAX_MAP_COUNT=6`，`0x107ebc1d`） | 🟡 [DLL] Gemini 分析，未實測 | `research/2026-09-18-map-list-zero/` |
 | 難度鈕的燈慢一拍（值正確、時機不對）。已排除送出順序 | ⬜ | backlog H6 |
 | 房間設定對話框地圖清單空、人數顯示 4VS4。已知鏈：`Account_MapList_Check`／`m_MapList`（送真 map id 仍不夠）→ 人數範圍篩選 → 要 `g_SelectMapInfo` 命中才切 PvE 人數陣列。缺「誰設定 `g_SelectMapInfo`」 | ⬜ | backlog H7；`research/2026-09-18-room-setting/` |
-| RED TEAM 槽位不顯示玩家。客戶端比對 `RoomInfo.RedTeamIndex／BlueTeamIndex`，我們從未送過這兩個欄位 | ⬜ | `research/2026-09-18-room-user/` |
+| 紅隊槽顯示玩家：`Room_Default_SN 0x00220203` body+0x10／+0x12 是 Red／Blue TeamIndex，送 0／1（原本誤送建房選項）（`ROOM_TEAM_INDEX_MODE`） | ✅ [LOG][OBS] | `journal/2026-09-18-15-room-team-index.md` |
+| `User_Name_SN 0x00220421` body+0x1B 暱稱送 **ANSI**（上限 25 字） | ✅ [DLL]（`0x107eb0ce` → `winToUNICODE`）[OBS] | `journal/2026-09-18-17-user-name-ansi.md` |
+| 房間槽頭像不顯示。PilotCode 101 是 BeginSet 編號；改送 `51500101`／`51100801` 也都沒有頭像，所以值不是唯一關卡 | ❌ R14／R15（改值）；根因 ⬜ | `journal/2026-09-18-2305-room-avatar-experiments.md` |
+| 離開房間是 `Leave_CQ 0x00220234`（回 `Leave_SA 0x00220235`）；要重設房間狀態，否則 `campaignRoom_` 殘留，大廳機庫會跳過初始化、商城空白（`ROOM_LEAVE_RESET_MODE`）。房內開機庫仍刻意被擋（原作者 `e01f1bb`） | ✅ [DLL][LOG][OBS] L1 | `journal/2026-09-18-20-room-leave-reset.md` |
 | 協力模式的**建房對話框沒有任務選項**，任務只能在房內改 | ✅ [SHOT] | `shots/create-room-dialog.png` |
 
 ## 5. 程式碼裡已知錯誤的名稱與無效封包（尚未修正）
@@ -142,7 +148,7 @@
 
 ## 6. 待查（依優先順序）
 
-1. 登入後預設機體的 ShopList 漏接（backlog H1）、G 幣不持久化（H2）、catalog 髒資料（H3）
+1. 登入後預設機體的 ShopList 漏接（backlog H1）、catalog 髒資料（H3）、PvE 輔武／裝備回預設（P2）、困難模式時間上限寫死 10 分鐘（`journal/2026-09-18-18-pve-hard-flow.md`）
 2. Legend 機體授權：找出填 `IsLicense` 的封包
 3. `ChangeSlot_SN 0x00230102` 照 DLL 結構實作；目前只保存部分結構與行為證據，待 Claude 審查，未實作（`journal/2026-09-17-04-changeslot-body-wip.md`；前文 `journal/2026-09-16-26-slot-sortie-function-followup-analysis.md`）
 4. `Assist_CN` 數值遞減代表什麼
@@ -150,5 +156,5 @@
 6. `Game_Score_SN`、`EndRound_SN`、`EndGame_SN` 的 body 結構
 7. 第 5 節那些錯誤名稱與無效封包，逐一單獨測試後修正
 8. 四個 `CQ_COMPLETE` 候選（`0x00210122`／`0x00210131`／`0x00210132`／`0x00210141`）是哪一個（`journal/2026-09-15-23-investigation-queue.md`）
-9. `0x00220234`（房間按「上一頁」）目前回 `0x00220235` 能讓客戶端前進，但該 opcode 不在 dispatch map，回應是否正確未知（`journal/2026-09-15-07-loading-stall-fix-confirmed.md`）
+9. `Leave_SA 0x00220235` 的 body 格式：目前回 6-byte 空標頭能讓客戶端前進，未照 DLL 核對（`journal/2026-09-18-20-room-leave-reset.md`）
 10. PVP 房的開戰流程（目前只支援戰役房，`journal/2026-09-15-03-campaign-only-start-flow-pvp-blocked.md`）
