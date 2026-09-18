@@ -866,6 +866,12 @@ class ZGateGameDispatch
                 if (incomingFields.w1 >= 9001 && incomingFields.w1 <= 9012) {
                     client.campaignMapCacheKey_ = incomingFields.w1;
                     client.playRound_ = incomingFields.b5;
+                    // Preserve the settings accepted with Map_Change_One_CQ
+                    // for the following SN_MAP_CHANGE_ONE resend.
+                    client.mapChangeOneTime_ = incomingFields.w2;
+                    client.mapChangeOneRound_ = incomingFields.b5;
+                    client.mapChangeOneKill_ = incomingFields.w6;
+                    client.mapChangeOneGoal_ = incomingFields.w8;
                 }
                 const outgoingFields = buildMapChangeOneSaFields(body, client);
                 console.log(

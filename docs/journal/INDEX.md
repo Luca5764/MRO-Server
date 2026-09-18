@@ -102,3 +102,4 @@
 | 2026-09-18 | `2026-09-18-09-room-string-encoding.md` | `0x0022021A`、`0x00220233`、`0x00220421` | 🟡 待審／預設關閉 | R2：房名加 ANSI 窄字串實驗，User_Default 以共用安全 ASCII 路徑重寫；保留 `0x00220421` 未確認的 UTF-16LE 路徑，未實測。 |
 | 2026-09-18 | `2026-09-18-10-map-change-one-sa.md` | `0x00220221`、`0x00220222`、`0x00220223`、`0x00220226` | 🟡 待審／預設關閉 | R3b 更正 R3：`Map_Change_One_SA` enabled 為 6-byte 全零成功標頭＋10-byte payload（共 16 bytes）；disabled 保留舊 10-byte 路徑，未實測。 |
 | 2026-09-18 | `2026-09-18-11-room-default-map-entry.md` | `0x00220203` | 🟡 待審／預設關閉 | R4：首筆 entry `body+0x20+0x00` 由 Cache 列索引改為實際 map ID 的預設關閉實驗；與已修正的 `body+0x05 mapIndex` 分開，未實測。 |
+| 2026-09-18 | `2026-09-18-12-map-change-one-sn-settings.md` | `0x00220221`、`0x00220223` | 🟡 待審／預設關閉 | R6：依 DLL 交叉確認 Map_Change_One_SN 四個設定欄位；enabled 回送 CQ 採納／伺服器保存值，disabled 保留 0/1/0/0，未實測。 |
