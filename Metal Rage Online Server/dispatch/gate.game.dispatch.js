@@ -495,9 +495,11 @@ function resendRoomMapOnly(client, tag)
             return;
         }
 
-        const { sendRoomMapPackets, sendCampaignBootstrap } = require('./room/room-map.sender');
+        const { sendRoomMapPackets, sendCampaignBootstrap, ROOM_MAP_SYNC_MODE } = require('./room/room-map.sender');
         // sendRoomState와 동일한 맵 목록 사용 — same map list as sendRoomState (CAMPAIGN_MAP_ALL_HINTS)
-        const campaignMapAllHints = [8, 37, 30, 34, 43, 6, 2, 26, 36, 43, 16, 24, 45, 47, 49, 14, 10, 22, 52, 30, 18];
+        const campaignMapAllHints = ROOM_MAP_SYNC_MODE === 'enabled'
+            ? [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012]
+            : [8, 37, 30, 34, 43, 6, 2, 26, 36, 43, 16, 24, 45, 47, 49, 14, 10, 22, 52, 30, 18];
         const roomDefaultEntryHints = [8, 37, 30, 34, 6, 2];
         const mapId = client.createdMapId_ || client.mapId_ || 1;
         const campaignMapCacheKey = client.campaignMapCacheKey_ || CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[mapId] || 8;

@@ -13,6 +13,7 @@
 const MAP_ALL_HEADER_MODE = 'compact'; // 'compact' | 'padded'
 const MAP_ALL_SEND_TWICE = 'enabled'; // 'disabled' | 'enabled'
 const MAP_ALL_ENTRY_OFFSET = MAP_ALL_HEADER_MODE === 'compact' ? 0x02 : 0x06;
+const ROOM_MAP_SYNC_MODE = 'disabled'; // 'disabled' | 'enabled'
 
 const SN_MAP_CHANGE_ALL = 0x00220226;
 const SN_MAP_CHANGE_ONE = 0x00220223;
@@ -114,4 +115,5 @@ function sendCampaignBootstrap(client, getExactMessageBuffer) {
 module.exports = {
     sendRoomMapPackets,
     sendCampaignBootstrap,
+    ROOM_MAP_SYNC_MODE,
 };

@@ -4,7 +4,7 @@ const db = require('../database/db');
 const ZCommunityDispatch = require('./community.dispatch');
 const { sendRoomStatePackets } = require('./room/room-state.sender');
 const { sendRoomUserPackets } = require('./room/room-user.sender');
-const { sendRoomMapPackets, sendCampaignBootstrap } = require('./room/room-map.sender');
+const { sendRoomMapPackets, sendCampaignBootstrap, ROOM_MAP_SYNC_MODE } = require('./room/room-map.sender');
 const { sendGameUserBootstrap } = require('./room/room-game-user.sender');
 const { MAX_SLOT_COUNT } = require('../datatypes/enums');
 const fs = require('fs');
@@ -1396,7 +1396,18 @@ class ZRoomDispatch
         const packedIp = 0x0100007F;
         const selectedMech = 1;
         const primaryMapCacheIndex = CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[mapId] || ROOM_DEFAULT_ENTRY_HINTS[0] || 8;
-        const campaignMapCacheKey = primaryMapCacheIndex;
+        // Game_Info_SN already uses campaignMapCacheKey_ as the real Cache.Bin
+        // MapIndex (9001..9012). Keep the old cache-entry fallback untouched
+        // while allowing room status packets to opt into that same source.
+        const selectedCampaignMapId = Number(client.campaignMapCacheKey_);
+        const hasSelectedCampaignMapId = client.campaignRoom_ &&
+            MAP_IDS_PVE.includes(selectedCampaignMapId);
+        const campaignMapCacheKey = ROOM_MAP_SYNC_MODE === 'enabled' && hasSelectedCampaignMapId
+            ? selectedCampaignMapId
+            : primaryMapCacheIndex;
+        const selectedRoomMapIndex = ROOM_MAP_SYNC_MODE === 'enabled' && hasSelectedCampaignMapId
+            ? selectedCampaignMapId
+            : null;
         const roomSettingGoal = client.campaignRoom_ ? 0 : currentUsers;
         const roomSettingTime = client.campaignRoom_ ? 0 : maxPlayers;
         const roomSettingRound = client.campaignRoom_ ? 1 : 0;
@@ -1411,7 +1422,7 @@ class ZRoomDispatch
             maxPlayers,
             currentUsers,
             gameMode,
-            mapIndex,
+            mapIndex: selectedRoomMapIndex || mapIndex,
             roomName,
             nickname,
             pilotId,
