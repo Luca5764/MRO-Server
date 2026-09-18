@@ -116,6 +116,20 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - **修掉 `Play Metal Rage Online.bat` 的 bug**：內層的 `if %ERRORLEVEL% NEQ 0` 包在 `if ( ... )` 區塊裡，`%ERRORLEVEL%` 在剖析整個區塊時就已經展開成外層的非零值，所以檢查 `reg add` 有沒有成功的那一行等於失效：永遠判斷成失敗、印出 FIRST RUN 然後離開。改用 `if errorlevel 1`，或開啟 delayed expansion 改用 `!ERRORLEVEL!`。
 - **字型檢查**：第二台的 `Window Font Count` 是 347，主機是 512。切中文介面前，要確認有安裝「繁體中文補充字型」（Windows「選用功能」）。
 
+## E1：物品「擁有」與「裝在哪台」拆開（IsShare）
+
+> **狀態：2026-09-19 開立，等 PM 排序、操作者同意 DB 結構改動。** 來源：[OBS] 操作者的哥哥（玩過原版）回報「以前輔助武器、裝備買了以後所有機體都能用，現在每台都要各買一次」。
+
+- **分析（IS1，🟡，未經跨公司審查）：**
+  - [SRC] 客戶端 `ITEM_DETAIL_INFO`（`ZNetwork_DJ.uc:185-220`）沒有「屬於哪台機」的欄位。庫存清單只用 `ItemSubordinateCheck`（`ZPanel_InvenItems.uc:790-847`）比對武器類別和機體類別，所以帳號擁有一件，每台相容的機體都看得到。
+  - [SRC] `IsShare`（`GameItemRecord.ShareType==1`，`ZPage_Hangar.uc:505-509`）決定能不能**同時**裝在多台上：非共享物品裝到 B 機時，會從 A 機卸下（`ItemFree`，`ZPage_Hangar.uc:917-924`）；共享物品可以多台同時裝。
+  - [CODE] 伺服器的 `items.mech_type` 一件只能綁一台；`saveEquippedLoadout`（`db.js:203-208`）換裝時直接改寫成新的機體；購買不檢查是否已擁有（`room.dispatch.js` 約 884-891）。這些都是 G6e 的做法，G6e 當時只驗證了「買到的東西看得到」，沒有驗證跨機體使用。
+- **目標：** 共享物品可以多台同時裝備；非共享物品照原版「裝到 B 就從 A 卸下」；買一次就好。
+- **範圍（先分析後實作）：** 從 Cache.Bin 讀出 `GameItemRecord.ShareType`（偏移要用 DLL 或 uetool 確認），列出主武器、副武器、裝備、塗裝各自的 share 狀態；設計「裝備表」（serial、機體槽位、部位），讓同一個 serial 可以出現在多台機體上；遷移腳本（`tools/` 下，冪等）；`WearInfo`、`Game_User_SN`、`Slot_Change` 改從裝備表讀。
+- **限制：** DB 結構改動要寫成 commit 進去的腳本，由高階執行，要先經操作者同意；回歸測試的 fixture 要跟著更新；一次一個變數。
+- **待確認：** 請操作者的哥哥描述更精確一點：是「換到另一台機時，清單裡看不到」，還是「看得到，但裝上去以後原本那台的就不見了」？
+- **完成條件：** 實測時，同一件共享物品可以同時裝在兩台機體上，重登之後都還在。
+
 ## D1：多人房間模型設計稿（C 線，高階自己做）
 
 > **狀態：等 S1 交付。屬於「要重構先問」：PM 審查、操作者同意之後才能實作。**
