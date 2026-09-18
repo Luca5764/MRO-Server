@@ -36,6 +36,16 @@
 - [OBS] 操作者完全關閉客戶端後重新開啟登入，1 號機主武器仍為 `22100301`。
 - Claude 高階裁定：G6「換裝 → 寫入 DB → 完全重登後保留」完成。
 
+## PvE 出場武器（追加驗證）
+
+- [LOG] 伺服器 console 記錄 `Saved Slot_Change_CQ 0x00240107: slot=1 body=100154 main=100223 left=100219 right=0 equipment=100220 skin=0`。
+- [LOG] 同場送出 `Game_User_SN 0x00222112`，`selectedMech=1`，slot 1 為
+  `11100101/22100301`；其餘槽位也由 log 列出對應機體與裝備 item_id。
+- [LOG] 隨後收到 `ChangeSlot_CN user=1 slot=1`，伺服器送出 `ChangeSlot_SN 0x00230102`。
+- [OBS] 操作者建 PvE 房並出場，確認手上武器是機庫換上的 `22100301`。
+- [SHOT] 證據為 `/home/lucas/mro-reverse/shots/w4-pve-weapon.png`。
+- Claude 高階裁定：G6 最後一項「保存的換裝傳到 PvE 出場」也通過。
+
 ## 開關收尾
 
 - `EQUIP_SAVE_MODE`、`PURCHASE_MECH_SLOT_MODE`、`PURCHASE_ITEMINFO_REFRESH`、
@@ -43,7 +53,7 @@
 - `SHOP_UNBLOCK_MODE` 與 `SHOP_COMPAT_EXPERIMENT` 維持 disabled；沒有重新打開已被組語否決的
   ShopList 欄位重排，也沒有保留一次性 21x→221x 實驗。
 - ItemInfo 分包、`PVE_SLOT_SELECT_FLOW`、`Grade_Info_SN`、`Death_SN` 與 G7 未改動。
-- [⬜] 尚未驗證 PvE 出場時手上是否為機庫換上的新武器，另列 backlog H4。
+- ✅ [OBS][SHOT] PvE 出場時手上已確認為機庫換上的 `22100301`（Claude 高階裁定）；H4 已完成。
 - G6 實測結論由 Claude 高階裁定，INDEX 以「✅ Claude 高階審查＋實測」記錄；未修改 `state.md` 或 `HANDOFF.md`。
 
 ## 交接
