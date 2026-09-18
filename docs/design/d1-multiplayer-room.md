@@ -47,7 +47,7 @@ rooms.js（模組層級，同一個 Node 程序內共用；9211 和 30907 本來
 | `0x00220204` | Room_List_SN | 大廳開啟、房間增減 | 大廳所有人 | [DLL] `0x107e4640`，格式見 `research/2026-09-18-d1-room-formats/`（UpdateType＋FieldMask；房名是 ANSI）。目前伺服器送的 `0x00230103` **不在客戶端的 dispatch map 裡**，會被忽略 |
 | `0x00220232` | Enter_SA（回應加入房間） | 客戶端送 `Enter_CQ 0x00220231`（u16 RoomIndex＋UTF-16 密碼） | 加入者 | [DLL] `0x107e5e61`、`0x107e4080`；成功標頭 u16＋u32 都是 0，後段 setter 對應 ⬜ |
 | `0x00220223`／`0x00220217`／`0x00220213` | Map_Change_One／Room_Option／Room_Boundary_SN | 房主改設定 | 全房 | ✅ 格式已驗證（state.md 4b） |
-| `0x00222104`、`0x00222111`、`0x00222112` | Game_Start／Game_Info／Game_User_SN | 房主按開始 | 全房；Game_User_SN 的 count 改成 N | [CODE] S1 M2 組 |
+| `0x00222104`、`0x00222111`、`0x00222112` | Game_Start／Game_Info／Game_User_SN | 房主按開始 | 全房。**Game_User_SN 每人一包（count=1），每個連線收 N 包**，排在 Game_Wait／Game_Info 之後；不能合成 count=N 的一包，3 人以上會超過 0x400 | [DLL] `0x107d8ae0`、`Game_User_Add` `0x107343e0` 依 UserIndex upsert（`research/2026-09-18-d1-room-formats/game-user-sn-multi.md`） |
 | `0x00230124`、`0x00222213` | Death_SN、EndGame_SN | 戰鬥中 | 全房 | [CODE] `lobby.dispatch.js:211-279` |
 
 ## 6. 實作步驟（每步回歸測試全綠）
@@ -58,7 +58,7 @@ rooms.js（模組層級，同一個 Node 程序內共用；9211 和 30907 本來
 3. **分析任務（2026-09-18 已完成大部分，見 `research/2026-09-18-d1-room-formats/`；剩下 Enter_SA 後段與 LPort）**：用 DLL 查出 `Room_List_SN 0x00220204`、加入房間 CQ／`Enter_SA 0x00220232`、`Leave_SN 0x00220236` 的 body 格式，以及 user index 的值域。
 4. **大廳房間清單＋加入房間＋離開房間**：用第 3 步的格式實作。單人：大廳會開始看到自己的房間（實測）。
 5. **房主與斷線寬限**：`User_Master_SN` 從 Room 讀；斷線寬限；房間欄位從 session 延續清單移除。
-6. **M2：開戰廣播**：Game_Start／Info／User 送給全房，Game_User_SN 的 count 改成 N；Death／EndGame 廣播。
+6. **M2：開戰廣播**：Game_Start／Info／User 送給全房，Game_User_SN 每人一包；Death／EndGame 廣播。
 7. **M2 風險：主機（listen server）**：PvE 是其中一個客戶端開 `?Listen`，其他人直接連到它，走 UE2 的 P2P 連線，不經過我們的伺服器。`Ready_Host_SN 0x00420115` 目前送的是伺服器的 `socket.localAddress`（S1），多人時必須改成**房主客戶端的 IP**，而且其他人要連得到（區網或 VPN）。UE 的遊戲埠（預設 UDP 7777）也要開，⬜ 待查客戶端用哪個埠，這可能是 N0 還要補的防火牆規則。
 
 ## 7. 不做的事
