@@ -1,0 +1,31 @@
+total records with item_id>0: 2112
+parsed with SellType lenbyte==0x02: 2112
+records with unexpected SellType lenbyte (skipped): 0
+
+(HighGroup, ShareType) -> count:
+  機體 ShareType=0: 104
+  主武器 ShareType=0: 495
+  副武器 ShareType=1: 192
+  推進器 ShareType=0: 30
+  推進器 ShareType=1: 42
+  駕駛員 ShareType=0: 143
+  塗裝 ShareType=0: 633
+  7 ShareType=0: 127
+  8 ShareType=0: 160
+  9 ShareType=0: 186
+
+ShareType=1 examples per group (up to 5 each):
+  主武器 (0 total):
+  副武器 (192 total):
+    31100101 (rep 31100101) 輕型主動式加農砲
+    31100102 (rep 31100101) 輕型主動式加農砲
+    31100103 (rep 31100101) 輕型主動式加農砲
+    31100104 (rep 31100101) 輕型主動式加農砲
+    31100105 (rep 31100101) 輕型主動式加農砲
+  推進器 (42 total):
+    41100102 (rep 41100101) 電漿推進器
+    41100103 (rep 41100101) 電漿推進器
+    41100104 (rep 41100101) 電漿推進器
+    41100105 (rep 41100101) 電漿推進器
+    41100106 (rep 41100101) 電漿推進器
+  塗裝 (0 total):
