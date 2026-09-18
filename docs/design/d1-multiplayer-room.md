@@ -43,9 +43,9 @@ rooms.js（模組層級，同一個 Node 程序內共用；9211 和 30907 本來
 | `0x00220233` | User_Default_SN | 有人進房 | 新成員收到全房每人各一筆；其他人收到新成員那一筆 | [DLL] `0x107ee2d0`（R13 已追過寫入 record+0x38） |
 | `0x00220421`、`0x00220402`、`0x00220401` | User_Name／Pilot／State_SN | 有人進房、狀態改變 | 全房 | 同上 |
 | `0x00220319` | User_Master_SN | 進房、換房主 | 全房 | [CODE] `room-user.sender.js:85-102` |
-| `0x00220236` | Leave_SN | 有人離房 | 其他人 | [MAP]；body 格式 ⬜ |
-| `0x00220204` | Room_List_SN | 大廳開啟、房間增減 | 大廳所有人 | [MAP]；body 格式 ⬜。目前伺服器送的 `0x00230103` **不在客戶端的 dispatch map 裡**，會被忽略 |
-| `0x00220232` | Enter_SA（回應加入房間） | 客戶端點房間 | 加入者 | [MAP]；CQ opcode 與 body ⬜ |
+| `0x00220236` | Leave_SN | 有人離房 | 其他人（自己也會收到，用來回大廳） | [DLL] `0x107edb70`：u16 UserIndex＋u8 Kickout |
+| `0x00220204` | Room_List_SN | 大廳開啟、房間增減 | 大廳所有人 | [DLL] `0x107e4640`，格式見 `research/2026-09-18-d1-room-formats/`（UpdateType＋FieldMask；房名是 ANSI）。目前伺服器送的 `0x00230103` **不在客戶端的 dispatch map 裡**，會被忽略 |
+| `0x00220232` | Enter_SA（回應加入房間） | 客戶端送 `Enter_CQ 0x00220231`（u16 RoomIndex＋UTF-16 密碼） | 加入者 | [DLL] `0x107e5e61`、`0x107e4080`；成功標頭 u16＋u32 都是 0，後段 setter 對應 ⬜ |
 | `0x00220223`／`0x00220217`／`0x00220213` | Map_Change_One／Room_Option／Room_Boundary_SN | 房主改設定 | 全房 | ✅ 格式已驗證（state.md 4b） |
 | `0x00222104`、`0x00222111`、`0x00222112` | Game_Start／Game_Info／Game_User_SN | 房主按開始 | 全房；Game_User_SN 的 count 改成 N | [CODE] S1 M2 組 |
 | `0x00230124`、`0x00222213` | Death_SN、EndGame_SN | 戰鬥中 | 全房 | [CODE] `lobby.dispatch.js:211-279` |
@@ -55,7 +55,7 @@ rooms.js（模組層級，同一個 Node 程序內共用；9211 和 30907 本來
 0. **身分鏈**：Gate Leave_SA 帶 (accountId, key)，Login_Again 查表，查不到退回舊行為。`login-dispatch` 樣本的 `0x00220132` 會改變 → 附理由重錄。另外補一個測試：兩個帳號交錯登入，各自拿到自己的帳號。
 1. **rooms.js ＋ 建房寫入 Room**：`CQ_CREATE` 同時寫 client 欄位和 Room（雙寫）。送出內容不變。
 2. **廣播輔助＋房間聊天**：`0x00220505` 從「只 ACK」改成 `room.sendAll` 原樣回送。單人的行為會改變（多了一包自己的聊天回送），但這是 bug 修正，要單獨測試：房間聊天會出現在畫面上，要實測。
-3. **分析任務（中階，可以提前平行做）**：用 DLL 查出 `Room_List_SN 0x00220204`、加入房間 CQ／`Enter_SA 0x00220232`、`Leave_SN 0x00220236` 的 body 格式，以及 user index 的值域。
+3. **分析任務（2026-09-18 已完成大部分，見 `research/2026-09-18-d1-room-formats/`；剩下 Enter_SA 後段與 LPort）**：用 DLL 查出 `Room_List_SN 0x00220204`、加入房間 CQ／`Enter_SA 0x00220232`、`Leave_SN 0x00220236` 的 body 格式，以及 user index 的值域。
 4. **大廳房間清單＋加入房間＋離開房間**：用第 3 步的格式實作。單人：大廳會開始看到自己的房間（實測）。
 5. **房主與斷線寬限**：`User_Master_SN` 從 Room 讀；斷線寬限；房間欄位從 session 延續清單移除。
 6. **M2：開戰廣播**：Game_Start／Info／User 送給全房，Game_User_SN 的 count 改成 N；Death／EndGame 廣播。
