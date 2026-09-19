@@ -21,6 +21,26 @@ function _setItemEquipsModeForTests(mode)
     ITEM_EQUIPS_MODE = mode === 'enabled' ? 'enabled' : 'disabled';
 }
 
+// P1B-IMPL (docs/backlog.md P1b, 🟡 未經跨公司審查): createAccount's
+// starterLoadouts issues every mech's DefaultSetList items as real owned
+// items+item_equips rows, so the client inventory shows five identical
+// copies of the same booster (one per mech that defaults to it) instead of
+// the one the client already synthesizes at SerialIndex=0
+// (ZPanel_InvenItems.uc:338-383). 'disabled' (default) = createAccount
+// unchanged. 'enabled' = createAccount skips the whole starterLoadouts
+// insert loop; the parts stay empty, WearInfo_SN sends serial 0 for them
+// (itemIndex 0 too, see below), and Game_User_SN's CANONICAL_LOADOUTS
+// fallback (dispatch/room/room-game-user.sender.js, via
+// database/default-loadouts.js) fills in the same default item IDs the
+// client would have shown anyway.
+let P1B_NO_DEFAULT_ITEMS = 'disabled'; // 'disabled' | 'enabled'
+
+// Test-only, same pattern as _setItemEquipsModeForTests above.
+function _setP1bNoDefaultItemsForTests(mode)
+{
+    P1B_NO_DEFAULT_ITEMS = mode === 'enabled' ? 'enabled' : 'disabled';
+}
+
 // Load DB config from config.json (editable per-machine)
 let dbConfig = { host: '127.0.0.1', port: 3306, user: 'root', password: '', database: 'mro' };
 try {
@@ -426,13 +446,16 @@ async function createAccount(username, nickname, pilot)
             [4, 0, 14200101], // Body: NB01m
             [4, 1, 24100201], // Main: Sniper rifle
             [4, 2, 32100101], // SubLeft: AOM_a
-            [4, 4, 41100101], // Booster: BPE_a
+            // No booster row: Table 4 DefaultSetList has Booster=0 for this
+            // mech (docs/journal/2026-09-16-33-weapon-model-true-root-cause-verified.md),
+            // matching CANONICAL_LOADOUTS[4].booster in room-game-user.sender.js.
 
             // Mech 5 - Firepower / 聖戰士 (TB01m)
             [5, 0, 15200101], // Body: TB01m
             [5, 1, 22200201], // Main: Firepower cannon
             [5, 2, 32100101], // SubLeft: AOM_a
-            [5, 4, 41200101], // Booster: BHE_a
+            // No booster row: Table 4 DefaultSetList has Booster=0 for this
+            // mech too, same source as above.
 
             // Mech 6 - Engineer / 雷霆 (BB01m)
             [6, 0, 16200101], // Body: BB01m
@@ -453,20 +476,27 @@ async function createAccount(username, nickname, pilot)
             [8, 4, 41100101], // Booster: BPE_a
         ];
 
-        for (const [mechType, partSlot, itemId] of starterLoadouts) {
-            const [result] = await conn.execute(
-                'INSERT INTO items (account_id, item_id, slot, mech_type, part_slot, quantity, equipped) VALUES (?, ?, ?, ?, ?, 1, 1)',
-                [accountId, itemId, partSlot, mechType, partSlot]
-            );
-            // E1: keep item_equips in sync so a fresh account's first
-            // WearInfo_SN/Game_User_SN looks identical whether
-            // ITEM_EQUIPS_MODE is on or off (see saveEquippedLoadout's own
-            // item_equips write for the general case).
-            if (ITEM_EQUIPS_MODE === 'enabled') {
-                await conn.execute(
-                    'INSERT INTO item_equips (account_id, item_id, mech_slot, part_slot) VALUES (?, ?, ?, ?)',
-                    [accountId, result.insertId, mechType, partSlot]
+        // P1B_NO_DEFAULT_ITEMS 'enabled': skip issuing DefaultSetList items
+        // entirely. Every part stays empty, so the reads that fill in a
+        // default (WearInfo_SN's per-slot 0/0 -> client-side synthesized
+        // entry, Game_User_SN's CANONICAL_LOADOUTS fallback) take over
+        // instead of the account owning a real duplicate-prone copy.
+        if (P1B_NO_DEFAULT_ITEMS !== 'enabled') {
+            for (const [mechType, partSlot, itemId] of starterLoadouts) {
+                const [result] = await conn.execute(
+                    'INSERT INTO items (account_id, item_id, slot, mech_type, part_slot, quantity, equipped) VALUES (?, ?, ?, ?, ?, 1, 1)',
+                    [accountId, itemId, partSlot, mechType, partSlot]
                 );
+                // E1: keep item_equips in sync so a fresh account's first
+                // WearInfo_SN/Game_User_SN looks identical whether
+                // ITEM_EQUIPS_MODE is on or off (see saveEquippedLoadout's own
+                // item_equips write for the general case).
+                if (ITEM_EQUIPS_MODE === 'enabled') {
+                    await conn.execute(
+                        'INSERT INTO item_equips (account_id, item_id, mech_slot, part_slot) VALUES (?, ?, ?, ?)',
+                        [accountId, result.insertId, mechType, partSlot]
+                    );
+                }
             }
         }
 
@@ -543,6 +573,7 @@ module.exports = {
     completeTutorial,
     updateLastLogin,
     _setItemEquipsModeForTests,
+    _setP1bNoDefaultItemsForTests,
 };
 
 // Live getter, not a plain property: ITEM_EQUIPS_MODE is a `let` (see its
@@ -553,4 +584,11 @@ module.exports = {
 Object.defineProperty(module.exports, 'ITEM_EQUIPS_MODE', {
     enumerable: true,
     get() { return ITEM_EQUIPS_MODE; },
+});
+
+// Same reasoning as ITEM_EQUIPS_MODE's getter above, for
+// _setP1bNoDefaultItemsForTests.
+Object.defineProperty(module.exports, 'P1B_NO_DEFAULT_ITEMS', {
+    enumerable: true,
+    get() { return P1B_NO_DEFAULT_ITEMS; },
 });
