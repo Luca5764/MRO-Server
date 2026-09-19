@@ -59,6 +59,7 @@ const LobbyDispatch = require('../dispatch/lobby.dispatch.js');
 const CQ_CREATE = 0x00220201;
 const CAMPAIGN_CN = 0x00230139;
 const DEATH_CN = 0x00230123;
+const BEGIN_ROUND_CN = 0x00230151;
 const USER_SCORE_SN = '0x00222221';
 const END_GAME_SN = '0x00222213';
 const DEATH_SN = '0x00230124';
@@ -234,6 +235,38 @@ async function main()
         // Death_CN (attacker=2) did not credit it a kill.
         assert.strictEqual(room.battleStats.get(2).kills, 0, 'a non-host Death_CN must not credit its sender a kill on room.battleStats');
         console.log('[battle-end-broadcast test] PASS: a non-host Death_CN is ignored, no reply to anyone, no stats change');
+
+        // --- Sol batch3 review (docs/research/2026-09-19-sol-review/
+        // batch3.md, Part B "需修改 -- round/reset ownership"): a
+        // BeginRound_CN rejected by the host/dedup check must NOT wipe
+        // room.battleStats. This needs ROOM_BATTLE_START_BROADCAST_MODE
+        // enabled too, since the reset now lives inside that acceptance
+        // branch (lobby.dispatch.js's case 0x00230151). ---
+        rooms._setRoomBattleStartBroadcastModeForTests('enabled');
+        const statsBeforeBeginRound = room.battleStats.get(1).kills;
+        assert.strictEqual(statsBeforeBeginRound, 2, 'sanity: room.battleStats still has 2 kills going into the BeginRound_CN case');
+
+        // Duplicate/non-host BeginRound_CN attempts, all inside the dedup
+        // window right after the first accepted one below -- each must
+        // leave room.battleStats untouched.
+        const firstBeginHandled = lobby.dispatch(clientA, BEGIN_ROUND_CN, Buffer.alloc(0));
+        assert.strictEqual(firstBeginHandled, true, 'first BeginRound_CN must be handled');
+        assert.strictEqual(room.battleStats.size, 0, 'the FIRST accepted BeginRound_CN (host, not a duplicate) legitimately resets room.battleStats to an empty Map');
+
+        // Re-accumulate a kill, then send a duplicate (same host, inside
+        // the dedup window) and a non-host BeginRound_CN -- neither is
+        // accepted, so neither may reset room.battleStats again.
+        lobby.dispatch(clientA, DEATH_CN, makeDeathCnBody(1, 2, 1));
+        assert.strictEqual(room.battleStats.get(1).kills, 1, 'sanity: re-accumulated 1 kill after the legitimate reset');
+
+        const dupBeginHandled = lobby.dispatch(clientA, BEGIN_ROUND_CN, Buffer.alloc(0));
+        assert.strictEqual(dupBeginHandled, true, 'duplicate BeginRound_CN inside the dedup window is still claimed (handled=true)');
+        assert.strictEqual(room.battleStats.get(1).kills, 1, 'a duplicate BeginRound_CN rejected by the dedup window must NOT reset room.battleStats');
+
+        const nonHostBeginHandled = lobby.dispatch(clientB, BEGIN_ROUND_CN, Buffer.alloc(0));
+        assert.strictEqual(nonHostBeginHandled, true, 'non-host BeginRound_CN is still claimed (handled=true)');
+        assert.strictEqual(room.battleStats.get(1).kills, 1, 'a non-host BeginRound_CN must NOT reset room.battleStats either');
+        console.log('[battle-end-broadcast test] PASS: BeginRound_CN only resets room.battleStats when actually accepted (host, past the dedup window)');
     } finally {
         fakeTimers.restore();
         rooms._resetForTests();

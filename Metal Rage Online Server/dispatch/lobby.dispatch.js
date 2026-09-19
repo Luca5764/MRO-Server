@@ -227,25 +227,20 @@ class ZLobbyDispatch
                     ? rooms.getRoomByAccount(accountIdForBeginRound)
                     : undefined;
 
-                // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4):
-                // room.battleStats storage is gated by its OWN switch
-                // (BATTLE_END_BROADCAST_MODE), independent of
-                // ROOM_BATTLE_START_BROADCAST_MODE above -- BeginRound_SN
-                // broadcasting and Death_SN/EndGame_SN broadcasting are
-                // separate D1-6 steps with separate regression coverage, so
-                // this lookup and the host check below do not reuse
-                // roomForBeginRound/its dedup state. Only the room's current
-                // host resets the shared totals (design §4's "reset for the
-                // whole room on each accepted BeginRound"); a resend inside
-                // the dedup window just resets an already-empty map, which
-                // is harmless.
+                // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4),
+                // fix round per docs/research/2026-09-19-sol-review/
+                // batch3.md Part B "需修改 -- round/reset ownership": the
+                // room.battleStats reset used to run before the host/dedup
+                // acceptance check below, so a duplicate BeginRound_CN
+                // rejected by that check (BEGIN_ROUND_DEDUP_WINDOW_MS) could
+                // still wipe stats already accumulated this round. The reset
+                // now only runs inside the `if (roomForBeginRound)` branch,
+                // after both the host check and the dedup check have
+                // actually accepted this CN -- which also means it now
+                // requires ROOM_BATTLE_START_BROADCAST_MODE in addition to
+                // BATTLE_END_BROADCAST_MODE (both are meant to be turned on
+                // together for a real multiplayer match, design doc §5).
                 const battleEndBroadcastEnabledForBegin = rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled();
-                const roomForBattleStats = battleEndBroadcastEnabledForBegin
-                    ? rooms.getRoomByAccount(accountIdForBeginRound)
-                    : undefined;
-                if (roomForBattleStats && accountIdForBeginRound === roomForBattleStats.hostAccountId) {
-                    roomForBattleStats.battleStats = new Map();
-                }
 
                 if (roomForBeginRound) {
                     if (accountIdForBeginRound !== roomForBeginRound.hostAccountId) {
@@ -260,6 +255,12 @@ class ZLobbyDispatch
                     }
                     roomForBeginRound.beginRoundAcceptedAt = now;
                     roomForBeginRound.beginRoundGen = (roomForBeginRound.beginRoundGen || 0) + 1;
+
+                    // Accepted (host, non-duplicate): now safe to reset the
+                    // room-shared battle totals for the new round.
+                    if (battleEndBroadcastEnabledForBegin) {
+                        roomForBeginRound.battleStats = new Map();
+                    }
 
                     // BeginRound_CN starts a battle: reset the per-player
                     // battle totals that Death_SN carries (see case
