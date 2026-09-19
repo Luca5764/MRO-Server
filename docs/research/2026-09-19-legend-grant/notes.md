@@ -84,3 +84,46 @@
   其他 7 個、缺 license／缺原型機各自標不同 skip reason）。真的要對帳號
   1/3/4 寫入前，需要高階（或操作者）先確認要不要備份、以及上面那個「舊表
   來源不明」的問題要不要先解決，否則發下去的圖示可能是錯的。
+
+## 上一段「舊表來源不明」已由主力找到（claude-sonnet worker 中階記錄，🟡 待審）
+
+- 主力回報公式：`bodyIndex = GameItemRecord 表（起點 0x2294、每筆 0x67、共
+  2112 筆）裡 item_id 第一次出現的 position + 84`。用本 worktree 真實
+  `Cache.Bin` 全部核對過 [CACHE][TEST]：
+  - 舊表 9 個 id **完全對上**（11100101 pos0+84=84、12100101 pos13+84=97、
+    13100101 pos26+84=110、14200101 pos39+84=123、14300101 pos46+84=130、
+    15200101 pos52+84=136、16200101 pos65+84=149、17100101 pos78+84=162、
+    18100101 pos91+84=175）；
+  - 7 台傳說機也對上主力給的值（11200101 pos7+84=91、12200101
+    pos20+84=104、13200101 pos33+84=117、15300101 pos59+84=143、16300101
+    pos72+84=156、17200101 pos85+84=169、18200101 pos98+84=182）。
+    `+84` 本身意義未知（🟡，可能是某個 client 端前置清單的固定筆數），
+    `dispatch/cache-index.js` 的 `GIR_BODY_INDEX_OFFSET` 註解已標註。
+- 改法：`dispatch/cache-index.js` 的 `loadCacheIndexByItemId()` 同一次
+  GameItemRecord 掃描順手記 `girPositionByItemId`（第一次出現的 position），
+  新增 `getBodyIndexFromGir(itemId)` 回傳 `position+84`（查不到回 `null`）。
+  開關改名 `BODY_INDEX_GIR_MODE`（原 `BODY_INDEX_FULL_CACHE_MODE`，
+  `_setBodyIndexFullCacheModeForTests` 同步改名
+  `_setBodyIndexGirModeForTests`），預設仍是 `disabled`。
+  `account.dispatch.js`／`gamelogin.dispatch.js` 都改成：`enabled` 時先查
+  `getBodyIndexFromGir`，查不到才退回原本各自的 fallback（前者是舊
+  9-entry 表，後者是 raw item_id，兩者都跟開關關閉時完全一樣）。
+  `test/body-index-full-cache.js` 整支換掉，改成
+  `test/body-index-gir.js`：斷言預設 `disabled`、`enabled` 時對 9 個舊 id
+  跟 7 個傳說 id 的值都精準等於上面那串數字、查不到的 id 回 `null`。
+- **golden replay 用真實 Cache.Bin 跑過兩種狀態**（開關切 `enabled` 只是暫時
+  改本機檔案測試，測完就切回 `disabled`，不留在 commit 裡）：
+  - `disabled`（預設，commit 裡的狀態）：`node test/replay-golden.js` 全綠
+    ×2（改動前後都跑過），四個樣本（`login-dispatch`、`login-room-game`、
+    `login-room-shop-buy`、`pve-full-match`）位元級一致。
+  - `enabled`：`login-dispatch`（走 `account.dispatch.js` 的 9211 登入
+    WearInfo）**位元級一致**，因為公式算出的值跟舊 9-entry 表完全相等；
+    `login-room-game`／`login-room-shop-buy`／`pve-full-match`（都走
+    `gamelogin.dispatch.js` 的 30907 WearInfo）**不是位元級一致**——
+    body slot 從 raw item_id（`11100101`）變成 `84`，因為這條路徑本來就
+    是本輪才發現的「完全沒做轉換」的缺口（見上一段），開下去本來就會改
+    bytes，這是修正缺口的正常結果，不是回歸。主力訊息裡「replay-golden
+    on/off 都要位元級一致」這條，對 `account.dispatch.js` 的路徑成立，對
+    `gamelogin.dispatch.js` 的路徑因為上述已知缺口而不成立；已如實記在
+    這裡，開關預設仍是 `disabled` 沒有變更現行行為，等主力裁定是否要開。
+- 其餘不變：帳號 1/3/4 dry-run 結果、grant 工具測試、寫入 gating 均同上一段。

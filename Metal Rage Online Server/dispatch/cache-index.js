@@ -1,6 +1,6 @@
 // Cache.Bin item-id -> table-1 index lookup, shared by room.dispatch.js's
 // WearInfo/EquipInfo body-slot conversion (slot===0) and, behind
-// BODY_INDEX_FULL_CACHE_MODE, account.dispatch.js / gamelogin.dispatch.js's
+// BODY_INDEX_GIR_MODE, account.dispatch.js / gamelogin.dispatch.js's
 // login-time WearInfo_SN body slot (LEGEND-GRANT-IMPL).
 //
 // Extracted verbatim from room.dispatch.js's original loadCacheIndexByItemId
@@ -14,6 +14,18 @@ const GAME_ITEM_RECORD_TABLE_START = 0x2294;
 const GAME_ITEM_RECORD_ENTRY_SIZE = 0x67;
 const GAME_ITEM_RECORD_COUNT = 2112;
 
+// LEGEND-GRANT-IMPL, coordinator finding (docs/research/2026-09-19-legend-
+// grant/notes.md): the login-time WearInfo_SN body-slot index the client
+// actually expects is (first-occurrence position of the item_id in the
+// GameItemRecord table above) + 84 -- verified against all 9 of the old
+// hand-written BODY_IDX table's ids AND the 8 legend ids
+// (11200101/12200101/13200101/14300101/15300101/16300101/17200101/18200101).
+// [CACHE][TEST] exact match for all 9+8, real Cache.Bin, this worktree.
+// 🟡 why +84 is unknown -- possibly a fixed count of some other
+// client-side prefix list merged ahead of GameItemRecord. Do not assume
+// it generalizes to non-body items without separately checking.
+const GIR_BODY_INDEX_OFFSET = 84;
+
 let cached = null;
 
 // LEGEND-GRANT-IMPL (docs/backlog.md, docs/research/2026-09-19-legend-grant/
@@ -22,14 +34,13 @@ let cached = null;
 // BODY_IDX table (account.dispatch.js only -- gamelogin.dispatch.js applied
 // no conversion at all, see the notes update this task appended). That
 // missed the 7 legend bodies and anything else not in the 9-entry list.
-// Behind this switch, both call sites use the same 1268-entry Cache.Bin
-// scan room.dispatch.js already relies on for the in-room WearInfo/EquipInfo
-// body slot. Default 'disabled': behavior unchanged until verified against a
-// real login.
-let BODY_INDEX_FULL_CACHE_MODE = 'disabled'; // 'disabled' | 'enabled'
+// Behind this switch, both call sites use getBodyIndexFromGir() below
+// (GameItemRecord position + 84) instead. Default 'disabled': behavior
+// unchanged until verified against a real login.
+let BODY_INDEX_GIR_MODE = 'disabled'; // 'disabled' | 'enabled'
 
-function _setBodyIndexFullCacheModeForTests(mode) {
-    BODY_INDEX_FULL_CACHE_MODE = mode === 'enabled' ? 'enabled' : 'disabled';
+function _setBodyIndexGirModeForTests(mode) {
+    BODY_INDEX_GIR_MODE = mode === 'enabled' ? 'enabled' : 'disabled';
 }
 
 function loadCacheIndexByItemId() {
@@ -38,6 +49,7 @@ function loadCacheIndexByItemId() {
     const indexByItemId = {};
     const representByItemId = {};
     const periodByItemId = {};
+    const girPositionByItemId = {};
     try {
         // Cache.Bin 탐색: 상위 디렉토리 순회 + 절대경로 폴백 (Cache.Bin search: traverse parent directories + absolute path fallback)
         let cachePath = null;
@@ -102,6 +114,9 @@ function loadCacheIndexByItemId() {
                         representByItemId[itemId] = representIndex;
                     }
                     periodByItemId[itemId] = periodSeconds;
+                    if (girPositionByItemId[itemId] == null) {
+                        girPositionByItemId[itemId] = i;
+                    }
                 }
             }
         }
@@ -114,19 +129,33 @@ function loadCacheIndexByItemId() {
         console.warn(`[CacheIndex] Cache.Bin index load failed: ${err.message}`);
     }
 
-    cached = { indexByItemId, representByItemId };
+    cached = { indexByItemId, representByItemId, girPositionByItemId };
     return cached;
+}
+
+/**
+ * LEGEND-GRANT-IMPL: login-time WearInfo_SN body-slot index, per the
+ * coordinator's GameItemRecord-position formula above.
+ * @param {number} itemId
+ * @returns {number|null} GameItemRecord first-occurrence position + 84, or
+ *   null if itemId is not in that table (or Cache.Bin failed to load).
+ */
+function getBodyIndexFromGir(itemId) {
+    const { girPositionByItemId } = loadCacheIndexByItemId();
+    const pos = girPositionByItemId[Number(itemId)];
+    return pos != null ? pos + GIR_BODY_INDEX_OFFSET : null;
 }
 
 module.exports = {
     loadCacheIndexByItemId,
-    _setBodyIndexFullCacheModeForTests,
+    getBodyIndexFromGir,
+    _setBodyIndexGirModeForTests,
 };
 
-// Live getter, not a plain property: BODY_INDEX_FULL_CACHE_MODE is a `let`
-// (see database/db.js's ITEM_EQUIPS_MODE for the same pattern/reasoning) --
-// call sites read it as `cacheIndex.BODY_INDEX_FULL_CACHE_MODE` on demand.
-Object.defineProperty(module.exports, 'BODY_INDEX_FULL_CACHE_MODE', {
+// Live getter, not a plain property: BODY_INDEX_GIR_MODE is a `let` (see
+// database/db.js's ITEM_EQUIPS_MODE for the same pattern/reasoning) -- call
+// sites read it as `cacheIndex.BODY_INDEX_GIR_MODE` on demand.
+Object.defineProperty(module.exports, 'BODY_INDEX_GIR_MODE', {
     enumerable: true,
-    get() { return BODY_INDEX_FULL_CACHE_MODE; },
+    get() { return BODY_INDEX_GIR_MODE; },
 });

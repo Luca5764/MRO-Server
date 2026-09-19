@@ -60,12 +60,12 @@ function getExactMessageBuffer(type, bodySize) {
 }
 
 const ACCOUNT_LEVEL_STR = { 0: '0\0', 1: '1\0', 2: '2\0', 3: '3\0', 4: '4\0' };
-// LEGEND-GRANT-IMPL: full Cache.Bin index lookup for the WearInfo body slot,
-// shared with room.dispatch.js / account.dispatch.js. See
-// dispatch/cache-index.js for the switch (BODY_INDEX_FULL_CACHE_MODE) this
-// feeds below. Note: unlike account.dispatch.js's 9-id BODY_IDX table, this
-// file's WearInfo body slot previously applied NO conversion at all (see
-// notes update) -- 'disabled' preserves that raw-item_id behavior.
+// LEGEND-GRANT-IMPL: GameItemRecord-position-derived index for the WearInfo
+// body slot, shared with room.dispatch.js / account.dispatch.js. See
+// dispatch/cache-index.js for the switch (BODY_INDEX_GIR_MODE) this feeds
+// below. Note: unlike account.dispatch.js's 9-id BODY_IDX table, this file's
+// WearInfo body slot previously applied NO conversion at all (see notes
+// update) -- 'disabled' preserves that raw-item_id behavior.
 const cacheIndex = require('./cache-index');
 
 module.exports =
@@ -269,14 +269,14 @@ class ZGameLoginDispatch
                     // is 'disabled'.
                     const wearItems = await db.getItemsWithEquipViews(account.id);
 
-                    // LEGEND-GRANT-IMPL: BODY_INDEX_FULL_CACHE_MODE 'enabled'
-                    // converts the body slot (slot 0) item_id to its
-                    // Cache.Bin index the same way room.dispatch.js /
+                    // LEGEND-GRANT-IMPL: BODY_INDEX_GIR_MODE 'enabled' converts
+                    // the body slot (slot 0) item_id to
+                    // cacheIndex.getBodyIndexFromGir() (GameItemRecord
+                    // position + 84) the same way room.dispatch.js /
                     // account.dispatch.js do. Default 'disabled' keeps the
-                    // raw item_id (this file's prior, unconverted behavior).
-                    const fullCacheIndex = cacheIndex.BODY_INDEX_FULL_CACHE_MODE === 'enabled'
-                        ? cacheIndex.loadCacheIndexByItemId().indexByItemId
-                        : null;
+                    // raw item_id (this file's prior, unconverted behavior);
+                    // an id GIR doesn't have also falls back to raw item_id.
+                    const girModeEnabled = cacheIndex.BODY_INDEX_GIR_MODE === 'enabled';
 
                     // All items: slot 0 = body/chassis, slots 1-5 = weapons/equipment
                     for (const item of wearItems) {
@@ -284,8 +284,8 @@ class ZGameLoginDispatch
                             const slot = Number(item.part_slot);
                             if (slot >= 0 && slot < 6 && mechSlots[item.mech_type]) {
                                 const rawId = Number(item.item_id) || 0;
-                                const itemIndex = (slot === 0 && fullCacheIndex && fullCacheIndex[rawId] != null)
-                                    ? fullCacheIndex[rawId] : rawId;
+                                const girIndex = (slot === 0 && girModeEnabled) ? cacheIndex.getBodyIndexFromGir(rawId) : null;
+                                const itemIndex = girIndex != null ? girIndex : rawId;
                                 mechSlots[item.mech_type][slot] = {
                                     uniqueKey: item.id || 0,
                                     itemIndex: itemIndex,

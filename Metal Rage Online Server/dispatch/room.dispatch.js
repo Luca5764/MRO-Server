@@ -201,7 +201,7 @@ const CAMPAIGN_GAME_USER_BOOTSTRAP_MODE = 'disabled'; // 'disabled' | 'enabled'
 // The last record starts at 0x373ed; the known DefaultSetList follows at 0x37456.
 // LEGEND-GRANT-IMPL: the Cache.Bin scan itself (loadCacheIndexByItemId) moved
 // verbatim to dispatch/cache-index.js so account.dispatch.js and
-// gamelogin.dispatch.js can share it (BODY_INDEX_FULL_CACHE_MODE) instead of
+// gamelogin.dispatch.js can share it (BODY_INDEX_GIR_MODE) instead of
 // duplicating a hand-written 9-entry table. No behavior change here.
 const { loadCacheIndexByItemId } = require('./cache-index');
 const CACHE_INDEX_DATA = loadCacheIndexByItemId();
