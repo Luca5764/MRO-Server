@@ -584,3 +584,14 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 > - 大廳上一頁 → `ZPage_Lobby.uc:1954` SendBack() → `Scene_Back`（`0x10716800`）→ scene 4 時走 `0x107e6020`。這個函式只在 ZDispatchLobby 的 `[this+4]` 旗標為真時，才在**現有連線**送 `Leave_CQ 0x00220114`，不會開新連線。旗標是假的時候只寫 log、什麼都不送。
 > - 旗標由 `ZDispatchLobby::Check`（`0x107e38d0`）設定：`sceneParam == 4（LOBBY）&& *[0x1091b884] != 0`。`0x1091b884` 是 Core.dll 的 **GIsClient**（`research/2026-09-19-ready/notes.md` 第一輪已識別），一般客戶端恆為真。
 > - 高階判讀：所以旗標是假的，代表**客戶端的 ZDispatchLobby 沒有收到 scene 4 的 Check**，也就是我們進大廳的流程沒讓客戶端正式進入 Lobby 場景（參考 state.md 第 5 節：`0x00230112` 不是 Lobby Enter SA）。下一步：查 ZDispatchLobby::Check 是由哪個場景切換呼叫、進大廳時客戶端的 scene 是多少、原版的 Lobby Enter 流程是什麼。另外 `Leave_CQ 0x00220114` 送出後，伺服器要回什麼也還沒查。
+
+## NET：連線與卡頓（操作者 2026-09-19 提出）
+
+1. **dusk 不能當房主**：白名單 dusk 沒有 hostAddress（HOST_ADDRESS_REQUIRE 會擋掉開戰）。需要他那台的區網 IP，並在他那台跑 p2p-open（UDP 30907、網路設為 Private）。改白名單要完整重啟。
+2. **dusk 連 Lucas 當主機時，怪多就延遲**（優先處理）：
+   - 高階發現：主機的 `MetalRage.ini` **沒有 `[IpDrv.TcpNetDriver]` 這一段**。第 182 行的 `MaxClientRate=25000` 在 `[Engine.DemoRecDriver]`（錄影用）底下，Default.ini 也一樣。所以實際的網路 driver 用的是**編譯時的預設值**（UE2 常見是 MaxClientRate 15000、MaxInternetClientRate 10000），之前把數字改成 100000 很可能沒有生效（檔案目前顯示的也還是 25000）。
+   - 單變數測試：在**主機**的 MetalRage.ini 加上 `[IpDrv.TcpNetDriver]`，`MaxClientRate=100000`、`MaxInternetClientRate=100000`，其他不動。改之前先備份 ini。只改 ini，不碰程式。🟡 這一段在這個客戶端是否有效，要實測才知道。
+3. **Lucas 這台不定時卡頓**（從一開始就有；dusk 的 Win10 沒遇到）：
+   - 懷疑方向一：伺服器和遊戲跑在同一台，機庫一次送約 1850 包，每包都印 console log，戰鬥中每次擊殺也印很多。
+   - 懷疑方向二：Win11 本身。
+   - 查法：卡的時候在聊天打「卡」當 marker，高階對照伺服器 log 和 CPU。如果跟伺服器有關，就減少 log；無關的話再試關閉全螢幕最佳化、改用高效能電源計畫。暫時擱置，操作者之後再處理。
