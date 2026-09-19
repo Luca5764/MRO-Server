@@ -103,3 +103,4 @@ node test/console-commands.js / exception-guard.js / extra-lives.js / login-toke
   （未經跨公司審查）
 - 結論：9211 登入時收到的 `MapInfo_SN` 在之後的場景切換中遺失。30907 登入時再送一次，`m_MapList` 就能保留。🟡 遺失的機制（哪個動作清掉了 CDO 資料）沒有查到，DLL 裡也掃不到直接清空的地方。只在 9211 送的其他帳號資料也可能有同樣問題，要列清單檢查。
 - 下一步：在視窗裡換一張圖，確認房主和加入者都會切換。
+- ✅ [LOG][OBS] 換圖也成功：房主在視窗裡選圖，客戶端送的是同一個 `Room_Map_Change_One_CQ 0x00220221`（ms 1410404 起，map 0x232c→0x232f→0x2332→0x2334→0x232b→0x232a），ROOM-OPT-BC 會把 `0x00220223` 轉送給加入者 conn8。[OBS] marker ms 1433212「筆電那邊有跟著換」。（未經跨公司審查）H7 核心症狀解除；「房間設定變更」視窗（ZPopup_RoomSet，需要 MaxUser=16）另外追蹤。
