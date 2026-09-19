@@ -560,3 +560,15 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - (a) 全部 DB 查詢是否參數化，出一張清單。
 - (b) accounts 表和白名單預留密碼雜湊欄位（只加欄位和腳本，不改登入行為；**DB 結構變更要先經操作者同意**）。
 - (c) 找出寫死 192.168.1.x、WSL、portproxy 的假設，讓伺服器之後能原生跑在 Linux VPS 上。
+
+## INTRUDE：戰鬥中參與（中途插入）（PM 2026-09-19 開立）
+
+> **狀態：唯讀分析已派出。實作排在 M2 之後、PvP 之前。**
+
+- 客戶端：`ZPanel_RoomInfo.uc` 的 co_Intrude（:66、:355-357）讀 `RoomInfo.IsIntrude`（:618、:629），會依房型顯示或隱藏。`Room_Option_Change_CQ 0x00220215` body+2 = IsIntrude（sender `0x107eeb80`）。字串 `RAGEMODE_INTRUDE_ONLY` 表示某些模式強制允許插入。伺服器完全沒處理。
+- 分析要回答：
+  - (1) IsIntrude 在哪個 SN 的哪個欄位；
+  - (2) **現在就存在的漏洞**：房間開戰後，Enter_CQ 會發生什麼事？Enter_SA 的失敗碼是什麼？Room_List_SN 有沒有「遊戲中」的狀態？
+  - (3) 允許插入時，中途加入者需要的序列，跟 D1-6 比較（只寫設計）；
+  - (4) RAGEMODE_INTRUDE_ONLY。
+- 過渡規則（PM）：INTRUDE 做完之前，**playing 中的房間一律拒絕加入**。失敗碼要照 DLL，查不到就讓房間不顯示成可加入。
