@@ -234,6 +234,31 @@ function _setRoomPlayingStateModeForTests(mode) {
     roomPlayingStateMode = mode;
 }
 
+// D1-6-BLEAVE (docs/design/d1-step6-battle-broadcast.md "補充：戰鬥中離開",
+// 🟡 未經跨公司審查, contract BATTLE-LEAVE docs/backlog.md): whether Leave_CQ
+// 0x00222131 (ESC -> leave while in battle, or closing the game mid-battle)
+// and a socket closing mid-battle get room-aware handling -- broadcasting
+// Leave_SN 0x00420133 to the rest of the room when a non-host leaves (battle
+// keeps going), or ending the battle for everyone with EndGame_SN 0x00222213
+// when the host leaves (design §6 "保守行為": no P2P host handover, the
+// match just ends and the room goes back to 'lobby'). Lives here (not just
+// gate.game.dispatch.js) because dispatch/room/room-leave.js's
+// handleBattleLeave() is shared by both the explicit 0x00222131 case
+// (gate.game.dispatch.js) and the socket-close/leaveRoomAndNotify path
+// (server.js), same reasoning as every other cross-file switch in this
+// file. Also requires isRoomPlayingStateEnabled() -- there is no tracked
+// 'playing' state to act on without it. Same `let` + accessor + test-only
+// setter pattern as every other switch here.
+let battleLeaveMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isBattleLeaveEnabled() {
+    return battleLeaveMode === 'enabled';
+}
+
+function _setBattleLeaveModeForTests(mode) {
+    battleLeaveMode = mode;
+}
+
 // ROOM-OPTION-SOURCE (docs/backlog.md OPTIONMASK-FIX, docs/research/
 // 2026-09-19-intrude/notes.md, 🟡 待審): Create_CQ's body carries no
 // balance/intrude flags at all -- ZNetwork_DJ.uc:1435
@@ -510,6 +535,7 @@ function _resetForTests() {
     battleEndBroadcastMode = 'disabled';
     roomPlayingStateMode = 'disabled';
     roomOptionSourceMode = 'disabled';
+    battleLeaveMode = 'disabled';
     clientSource = [];
 }
 
@@ -542,6 +568,8 @@ module.exports = {
     _setRoomPlayingStateModeForTests,
     isRoomOptionSourceEnabled,
     _setRoomOptionSourceModeForTests,
+    isBattleLeaveEnabled,
+    _setBattleLeaveModeForTests,
     registerLobbyClientSource,
     getLobbyClients,
     _resetForTests,

@@ -72,6 +72,20 @@ function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
     const room = rooms.getRoomByAccount(accountId);
     if (!room) return;
 
+    // D1-6-BLEAVE (see handleBattleLeave's own doc comment below): this
+    // function's callers (Leave_CQ 0x00220234, Kickout_CQ 0x00220337,
+    // server.js's socket-close hook) mean "actually gone from the room" --
+    // unlike the battle-only Leave_CQ 0x00222131 (which keeps the leaver's
+    // membership, see gate.game.dispatch.js's own case), so the
+    // remove-member/host-reassign logic below always runs regardless. This
+    // just sends the battle-aware packets FIRST when the room happens to be
+    // mid-battle (room.state==='playing') -- in practice that only really
+    // fires from the socket-close call site (a room-screen Leave_CQ/Kickout
+    // should not be reachable from battle scene 6), but is safe to call
+    // unconditionally: handleBattleLeave() is a no-op whenever the room is
+    // not 'playing' or the switches are off, and it never touches room
+    // membership itself, so it cannot change wasHost/remainingMembers below.
+    handleBattleLeave(accountId, room);
     const wasHost = room.hostAccountId === accountId;
     const remainingMembers = Array.from(room.members.values()).filter((m) => m.accountId !== accountId);
 
@@ -110,6 +124,91 @@ function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
     }
 }
 
+/**
+ * D1-6-BLEAVE (docs/design/d1-step6-battle-broadcast.md "補充：戰鬥中離開",
+ * §6 "房主戰鬥中離開＝該場結束、其餘成員回房間"; explorer 🟡 待審): shared by
+ * both trigger paths for "this account is leaving a room whose battle is in
+ * progress" --
+ *   - Leave_CQ 0x00222131 (client pressed ESC -> leave, or closed the game,
+ *     while in battle scene 6; gate.game.dispatch.js's case 0x00222131
+ *     calls this directly, in addition to always sending Leave_SA
+ *     0x00222132 0/0)
+ *   - a socket closing mid-battle (leaveRoomAndNotify below calls this
+ *     before its own existing remove-member logic, so server.js's close
+ *     hook gets the same battle-aware packets without changing what it
+ *     already does once the battle-specific side effects are handled)
+ *
+ * Gated by rooms.isBattleLeaveEnabled() AND rooms.isRoomPlayingStateEnabled()
+ * (no tracked 'playing' room to act on without the latter). No-op (returns
+ * false, "did not touch anything") when either switch is off, `room` is
+ * undefined, or `room.state !== 'playing'` -- callers fall back to whatever
+ * they already did in that case.
+ *
+ * - Host leaves: the DLL fact this is built on (Leave_SN 0x00420133 body+0
+ *   u16 UserIndex; non-self UserIndex just removes that one player from the
+ *   reader's local roster) has no "everyone leaves at once" semantics, so a
+ *   host leaving needs its own packet -- EndGame_SN 0x00222213, the same
+ *   0x1E-byte body lobby.dispatch.js's Campaign_CN handler already sends
+ *   (winTeam=1/lose here -- the match was cut short, not won), broadcast to
+ *   every OTHER live member. `room.state` flips back to 'lobby' and the
+ *   lobby gets the same partial Room_List_SN update member-count changes
+ *   already use. Does NOT touch room membership -- the host stays a member
+ *   (and stays host); only the caller decides whether to actually remove
+ *   them (see the two call sites' own comments).
+ * - Non-host leaves: room.state stays 'playing' (the battle keeps going for
+ *   everyone else). Broadcasts Leave_SN 0x00420133 (body+0 u16 UserIndex =
+ *   the leaver's accountId) to every OTHER live member, and flags the
+ *   leaving member `inBattle = false` on its own Room Member record (ad-hoc
+ *   field, same pattern as room.battleStartGen / room.pveRoundsCleared_
+ *   elsewhere in this codebase) so a future INTRUDE implementation has
+ *   somewhere to read "already left this battle" independent of room
+ *   membership.
+ *
+ * @param {number} accountId
+ * @param {import('../../rooms.js').Room|undefined} room
+ * @returns {boolean} true if this handled a mid-battle leave, false if it
+ *   was a no-op (switch off, no room, or room not 'playing').
+ */
+function handleBattleLeave(accountId, room) {
+    if (!rooms.isBattleLeaveEnabled() || !rooms.isRoomPlayingStateEnabled()) return false;
+    if (!room || room.state !== 'playing') return false;
+
+    if (room.hostAccountId === accountId) {
+        let sentCount = 0;
+        for (const member of room.members.values()) {
+            if (member.accountId === accountId) continue;
+            if (!member.client) continue;
+            const [msg, eb] = getExactMessageBuffer(0x00222213, 0x1E);
+            eb.writeUInt16LE(1, 0x00); // WinTeamIndex=1 (lose) -- battle cut short, no real winner
+            eb.writeUInt16LE(0, 0x02); // Team A block: TeamIndex=0 (red)
+            eb.writeUInt16LE(1, 0x10); // Team B block: TeamIndex=1 (blue)
+            member.client.send(msg);
+            sentCount++;
+        }
+        room.state = 'lobby';
+        console.log(`[room-leave] >> Host (account ${accountId}) left mid-battle: Broadcast EndGame_SN 0x222213 to ${sentCount} room member(s) (room #${room.id}), state -> lobby`);
+        if (rooms.isLobbyRoomListEnabled()) {
+            broadcastRoomListChange(rooms.getLobbyClients(), room, 2, getExactMessageBuffer);
+        }
+    } else {
+        const member = room.members.get(accountId);
+        if (member) member.inBattle = false;
+        let sentCount = 0;
+        for (const other of room.members.values()) {
+            if (other.accountId === accountId) continue;
+            if (!other.client) continue;
+            // Leave_SN 0x00420133 [DLL 0x107d8390]: body+0 u16 UserIndex.
+            const [msg, eb] = getExactMessageBuffer(0x00420133, 0x02);
+            eb.writeUInt16LE(accountId, 0x00);
+            other.client.send(msg);
+            sentCount++;
+        }
+        console.log(`[room-leave] >> Non-host (account ${accountId}) left mid-battle: Broadcast Leave_SN 0x420133 to ${sentCount} room member(s) (room #${room.id}), state stays playing`);
+    }
+    return true;
+}
+
 module.exports = {
     leaveRoomAndNotify,
+    handleBattleLeave,
 };

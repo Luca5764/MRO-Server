@@ -23,7 +23,7 @@ const { broadcastRoomListChange } = require('./room/room-list.sender');
 const { decodeAnsiBytes, decodeBig5ForLog, isRoomNameRawBytesEnabled, writeAnsiStringField } = require('./room/room-string');
 // D1-4 correction (design §4 "斷線即離開"): Leave_CQ and server.js's socket
 // close hook now share the same remove-member/Leave_SN/host-reassign path.
-const { leaveRoomAndNotify } = require('./room/room-leave');
+const { leaveRoomAndNotify, handleBattleLeave } = require('./room/room-leave');
 // D1-6-IMPL (docs/design/d1-step6-battle-broadcast.md §5 step 5): the
 // HOST_ADDRESS_REQUIRE_MODE check at the top of case 0x00222103 below needs
 // getHostAddress() to decide whether a would-be host of a 2+ member room is
@@ -1866,6 +1866,51 @@ class ZGateGameDispatch
                         schedulePostGameWaitReadyHost(client);
                     }
                 }, 400); // Game_Info_SN 전송 후 400ms 대기 (wait 400ms after sending Game_Info_SN)
+                return true;
+            }
+
+            // ==========================================
+            // D1-6-BLEAVE (docs/design/d1-step6-battle-broadcast.md "補充：
+            // 戰鬥中離開", contract BATTLE-LEAVE docs/backlog.md, explorer
+            // 🟡 待審): Leave_CQ 0x00222131 [DLL 0x107db1f0], client action --
+            // pressing ESC and choosing "leave" while in battle (scene 6), or
+            // closing the game from within battle. No body. This used to
+            // fall through to the generic odd-opcode default case below,
+            // which already replies with exactly what this case sends
+            // (client.getMessageBuffer(0x00222132, 0x6), same as the
+            // existing case 0x00220234 pattern above) -- that reply is kept
+            // byte-identical here; this case exists only so
+            // BATTLE_LEAVE_MODE (rooms.isBattleLeaveEnabled()) can hook the
+            // room-level side effects in without touching those bytes.
+            // Leave_SA 0x00222132 [DLL 0x107d8250]: 0/0 sends the client
+            // back to SCENE_ROOM -- the sender's own client already returns
+            // to the room screen from this reply alone, regardless of the
+            // switch below.
+            // ==========================================
+            case 0x00222131:
+            {
+                console.log(`[ZGateGameDispatch] >> 0x222131 (Leave_CQ, in-battle): replying Leave_SA 0x222132`);
+                const [msg, respBody] = client.getMessageBuffer(0x00222132, 0x6);
+                respBody.writeUint16LE(0x0000, 0);
+                respBody.writeUint32LE(0x0000, 2);
+                client.send(msg);
+
+                if (rooms.isBattleLeaveEnabled()) {
+                    // The sender already goes to SCENE_ROOM from the reply
+                    // above; handleBattleLeave() only tells the REST of the
+                    // room (Leave_SN to everyone else if a non-host left,
+                    // battle stays up; EndGame_SN to everyone else + room
+                    // back to 'lobby' if the host left) -- it never removes
+                    // the sender's own room membership (design doc
+                    // supplement: they are leaving the battle, not the
+                    // room). No-op (false) when there is no tracked room, or
+                    // it is not mid-battle -- see the function's own doc
+                    // comment in room/room-leave.js.
+                    const accountIdForBattleLeave = Number(client.accountIndex_ || client.accountId_ || 1);
+                    const roomForBattleLeave = rooms.getRoomByAccount(accountIdForBattleLeave);
+                    handleBattleLeave(accountIdForBattleLeave, roomForBattleLeave);
+                }
+
                 return true;
             }
 
