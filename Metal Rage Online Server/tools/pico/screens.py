@@ -143,6 +143,13 @@ BUILD_SPEC = {
         # (vs default 12) so it still reads "battle" with the console open on
         # top (see BUILD_SPEC["console_battle"] comment above) and during the
         # transient "YOU WIN" overlay (MAD 2.88-3.85, still mid-battle-frame).
+        # NOT map-independent (this task, 2026-09-20): the Escort map
+        # (Map_PC02) has a 5th row (F5 憤怒模式) that shifts every row below
+        # it down, so this box's fixed y-range stops matching -- MAD 60.47 on
+        # shots/esc-04-battle60.png, past accept=22.0. Kept only for
+        # `screens.py marker` debugging against the original reference map;
+        # actions.py's actual "is the battle HUD up" checks use
+        # battle_hud_state() below instead, which does generalize.
         "battle": {"source": "ref-05-battle.png", "box": [1275, 395, 1610, 548], "accept": 22.0},
         # "CAMPAIGN MODE" header of the post-match result/scoreboard screen.
         "result": {"source": "ref-06-end-3.png", "box": [478, 53, 1140, 158]},
@@ -156,6 +163,14 @@ BUILD_SPEC = {
         # text differs, so one marker covers both. Confirm button is at the
         # same client coords (798,675) in both observed cases.
         "notice_popup": {"source": "lobby-now.png", "box": [700, 535, 870, 570]},
+        # "◎ 選擇地圖" title of the room's map-selection popup (opened by
+        # clicking 選擇地圖▼, see actions.py select_map()). Box is the title
+        # text only, not the four map-name buttons below it (those move
+        # depending on which map is currently selected/highlighted).
+        # Measured (this task, 2026-09-20): MAD 0.00 on its own source shot,
+        # nearest wrong reference (a battle screenshot) 29.45 -- comfortably
+        # past marker_accept=12.0 either way.
+        "mapsel": {"source": "esc-01-mapsel.png", "box": [415, 495, 650, 535]},
     },
 }
 
@@ -470,6 +485,44 @@ def console_prompt_state(img):
         return "closed", w
     return "unknown", w
 
+
+# Map-independent "is the battle HUD up" detector (2026-09-20, this task).
+# BUILD_SPEC["markers"]["battle"] above (a MAD region compare against one
+# map's F1-F4 skill-cost panel) does not generalize: the HUD elements here
+# have no opaque backing panel (translucent over the 3D scene -- confirmed
+# by comparing shots/ref-05-battle.png, Map_PC04, against
+# shots/esc-04-battle60.png, the Escort desert map Map_PC02, at this task's
+# candidate boxes), so a fixed reference crop's raw pixels do not match
+# across maps/terrain either way, on top of the F5-row layout shift noted
+# above. Same technique as console_prompt_state() above instead: the SP
+# counter ("SP0000", bottom-right of the battle HUD) is always drawn in the
+# same screen position and always the same near-pure green, regardless of
+# map/terrain -- count green pixels in a fixed box instead of comparing raw
+# pixels to one reference. Measured (this task): 6343/6394/6438/6505 green
+# px across five battle references spanning two different maps
+# (ref-05-battle.png; three GameCampaign-round shots gc-r2/3/4/5.png; the
+# Escort desert map esc-04-battle60.png; one of those, gc-console.png, has
+# the console open on top of the HUD) vs exactly 0 on every non-battle
+# reference shot in shots/ (29 images: login/lobby/shop/room/create/
+# result/console-closed) -- see this task's report for the full table.
+BATTLE_SP_BOX = (1330, 985, 1600, 1030)  # shot coords, "SP0000" counter
+BATTLE_SP_MIN_PX = 3000  # min(battle)=6343, max(non-battle)=0 -- wide margin either side
+
+
+def battle_hud_state(img):
+    """Returns (state, green_px): state "battle" / "not_battle" (see
+    BATTLE_SP_BOX's comment above for the measurements). No "unknown" state
+    here -- unlike console_prompt_state's PROMPT_OPEN_MIN/PROMPT_CLOSED_MAX
+    split, the observed margin (0 vs >=6343) leaves no ambiguous middle
+    ground worth a third state."""
+    a = np.asarray(_load_image(img).convert("RGB"), dtype=np.int16)
+    x0, y0, x1, y1 = BATTLE_SP_BOX
+    region = a[y0:y1, x0:x1]
+    r, g, b = region[..., 0], region[..., 1], region[..., 2]
+    green_px = int(((g > 120) & (g > r + 40) & (g > b + 40)).sum())
+    return ("battle" if green_px >= BATTLE_SP_MIN_PX else "not_battle"), green_px
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -492,6 +545,9 @@ def main():
     p_marker = sub.add_parser("marker", help="detect_marker() on one image, print the result")
     p_marker.add_argument("image")
     p_marker.add_argument("marker_name")
+
+    p_battle = sub.add_parser("battle-hud", help="battle_hud_state() on one image, print the result")
+    p_battle.add_argument("image")
 
     args = ap.parse_args()
 
@@ -518,6 +574,11 @@ def main():
     if args.cmd == "marker":
         present, score = detect_marker(args.image, args.marker_name)
         print(f"present={present} score={score:.2f}")
+        return
+
+    if args.cmd == "battle-hud":
+        state, green_px = battle_hud_state(args.image)
+        print(f"state={state} green_px={green_px}")
         return
 
 

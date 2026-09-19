@@ -80,6 +80,29 @@ NOTICE_CONFIRM_BUTTON = (798, 675)  # 確認 on the NOTICE ("提示") popup
 # than duplicating the constant.
 LEAVE_ROOM_BUTTON = BACK_BUTTON
 
+# Room's map-selection popup (client (852,449), the room's 選擇地圖▼
+# button; opened only from the room screen, host or not -- this task's
+# contract). Entry coordinates derived 2026-09-20 from shots/esc-01-mapsel.png
+# (crop pixel centers, converted shot->client via screens.shot_to_client's
+# CLIENT_OFFSET); only "defense" (防衛作戰) has actually been click-tested
+# end to end (2026-09-20 escort smoke run, docs/journal/2026-09-20-0110-
+# escort-smoke.md: client (1078,527) -> a 0x00220221 recv with hex
+# "002f23..." -> map id 0x232f = 9007) -- the other three entries' click
+# targets are 🟡 UNTESTED, read off the same reference screenshot's button
+# geometry, not clicked live.
+SELECT_MAP_DROPDOWN = (852, 449)  # 選擇地圖▼, room screen -- click-tested (same journal)
+MAP_ENTRIES = {
+    "power":      {"label": "動力奪取戰", "coords": (642, 529), "tested": False},
+    "rescue":     {"label": "援救基地戰", "coords": (862, 529), "tested": False},
+    "defense":    {"label": "防衛作戰", "coords": (1078, 527), "tested": True},
+    "infiltrate": {"label": "潛入作戰", "coords": (622, 569), "tested": False},
+}
+# GC_CQ (dispatch/lobby.dispatch.js), the map-change request the client
+# sends after picking a map entry -- see select_map()'s docstring for the
+# body layout this task confirmed by reading the same journal entry.
+MAP_SELECT_CQ_OPCODE = "0x00220221"
+DEFAULT_MAP_SELECT_TIMEOUT_S = 10.0
+
 CONSOLE_CMD_WHITELIST = {"GameCampaign 1", "GameCampaign 2"}
 DEFAULT_ROUND_SETTLE_S = 12.0
 MAX_CAMPAIGN_ROUNDS = 12
@@ -375,6 +398,21 @@ def _marker_check(name):
     return check
 
 
+def _battle_any_check():
+    """Map-independent "is the battle HUD up" check -- see
+    screens.battle_hud_state()'s docstring for why _marker_check("battle")
+    (a MAD region compare tuned to one map's HUD layout) does not
+    generalize across maps/terrain. Same wait_for check_fn shape as
+    _marker_check; gray is always False, same reasoning as _marker_check's
+    own docstring (no ambiguous second-place candidate here either)."""
+    def check(shot_path):
+        state, green_px = screens.battle_hud_state(shot_path)
+        ok = state == "battle"
+        detail = f"battle_hud={state} green_px={green_px}"
+        return ok, False, detail, float(green_px)
+    return check
+
+
 def _room_or_notice_check():
     """Room screen OR its NOTICE popup on top of it -- used right after
     creating a room (which sometimes immediately shows a host-transfer
@@ -621,6 +659,67 @@ def create_pve_room(ctx):
     return ActionResult("create_pve_room", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
+def select_map(ctx, name):
+    """Triggered by: clicking 選擇地圖▼ in the room (opens the map-select
+    popup, see shots/esc-01-mapsel.png), then clicking one of its four map
+    entries (see MAP_ENTRIES above -- only "defense" 防衛作戰 has actually
+    been click-tested end to end, 2026-09-20 escort smoke run,
+    docs/journal/2026-09-20-0110-escort-smoke.md; the other three are 🟡
+    UNTESTED coordinates derived from the same reference screenshot).
+    ActionError before sending anything for any name not in MAP_ENTRIES.
+
+    Completion is the server actually receiving the map-change request: a
+    recv MAP_SELECT_CQ_OPCODE (0x00220221, dispatch/lobby.dispatch.js) --
+    per the same journal entry its body starts with a 00 byte then a u16 LE
+    map id (e.g. hex "002f23..." -> id 0x232f = 9007 for "defense" at
+    whatever difficulty tab -- 初級/中級/高級 -- was last selected, which
+    this action does not control). This action only asserts that some
+    0x00220221 recv happened; the parsed id is reported in `detail` for
+    every name but never gated on, since only that one (name, id-range)
+    pair is actually justified by a live observation -- per this task's
+    contract, "only assert the one you can justify, else just assert a
+    0x00220221 recv happened"."""
+    if name not in MAP_ENTRIES:
+        raise ActionError(f"unknown select_map name '{name}', known: {sorted(MAP_ENTRIES)}")
+    entry = MAP_ENTRIES[name]
+    t0 = time.monotonic()
+    pre = _precondition(ctx, f"select_map:{name}", "room", _marker_check("room"))
+    if pre:
+        return pre
+    steps = []
+    if not ctx.dry_run:
+        steps.append(click_at(ctx, SELECT_MAP_DROPDOWN))
+    ok, gray, detail, score, shot, _ = wait_for(ctx, f"select_map-{name}-popup", 6.0, _marker_check("mapsel"))
+    if not ok:
+        return ActionResult(f"select_map:{name}", False, gray, time.monotonic() - t0,
+                             f"選擇地圖 popup did not appear: {detail}", shot, score, steps)
+
+    if ctx.dry_run:
+        return ActionResult(f"select_map:{name}", True, False, time.monotonic() - t0,
+                             f"dry-run: skipped clicking '{entry['label']}'", None, None, steps)
+
+    base = _newest_log_ms(ctx.logs_dir)
+    steps.append(click_at(ctx, entry["coords"]))
+    ok, found, elapsed = wait_for_log_pkts(
+        ctx, DEFAULT_MAP_SELECT_TIMEOUT_S,
+        {"map_select": lambda e: e.get("dir") == "recv" and e.get("op") == MAP_SELECT_CQ_OPCODE},
+        baseline_ms=base,
+    )
+    parsed = ""
+    entry_pkt = found.get("map_select")
+    if entry_pkt is not None:
+        hexs = str(entry_pkt.get("hex", ""))
+        if len(hexs) >= 6 and hexs[0:2] == "00":
+            try:
+                map_id = int(hexs[2:4], 16) + (int(hexs[4:6], 16) << 8)
+                parsed = f" (parsed map id={map_id})"
+            except ValueError:
+                pass
+    detail = (f"clicked '{entry['label']}' ({'tested' if entry['tested'] else 'UNTESTED coords'}); "
+              f"{MAP_SELECT_CQ_OPCODE} recv: {'seen' if ok else 'MISSING'} (waited {elapsed:.1f}s){parsed}")
+    return ActionResult(f"select_map:{name}", ok, False, time.monotonic() - t0, detail, None, None, steps)
+
+
 def start_battle(ctx):
     """Triggered by: pressing F5 in the room (host only) to start the match.
     Completion is read from server-side text markers, not a screenshot --
@@ -659,7 +758,10 @@ def campaign_win_all(ctx, settle_s=DEFAULT_ROUND_SETTLE_S, max_rounds=MAX_CAMPAI
     send's result is read from the server's
     'R-ROUND: cleared=N playRound=M -> ...' marker (dispatch/lobby.dispatch.js,
     PVE_ROUND_ADVANCE_MODE), not a screenshot; screenshots are only used to
-    confirm the console is open before sending each command, against the
+    confirm the battle HUD is up (_battle_any_check(), see
+    screens.battle_hud_state() -- map-independent, added 2026-09-20 this
+    task; the old single-map _marker_check("battle") is not, see its own
+    comment) and then that the console is open on top of it, against the
     battle-background console crops (console_state(variant="battle"), see
     screens.py -- the lobby-only crops used by open_console() do not
     generalize to a live battle background, see this task's report)."""
@@ -669,7 +771,7 @@ def campaign_win_all(ctx, settle_s=DEFAULT_ROUND_SETTLE_S, max_rounds=MAX_CAMPAI
     # battle HUD here instead of a one-shot precondition.
     steps = []
     if not ctx.dry_run:
-        ok, gray, detail, score, shot, _ = wait_for(ctx, "campaign_win_all-battle", 60.0, _marker_check("battle"))
+        ok, gray, detail, score, shot, _ = wait_for(ctx, "campaign_win_all-battle", 60.0, _battle_any_check())
         if not ok:
             return ActionResult("campaign_win_all", False, gray, time.monotonic() - t0,
                                  f"battle HUD not seen within 60s: {detail}", shot, score, steps)
@@ -742,11 +844,15 @@ def campaign_fail(ctx):
     task's contract asked for exactly this fallback when no marker exists.
 
     🟡 not run live yet -- only campaign_win_all's GameCampaign 1 path has an
-    actual [TEST] result (docs/journal/2026-09-19-2230-unattended-trial-01.md)."""
+    actual [TEST] result (docs/journal/2026-09-19-2230-unattended-trial-01.md).
+
+    Battle-HUD-up check uses _battle_any_check() (screens.battle_hud_state(),
+    map-independent, 2026-09-20 this task) instead of the single-map
+    _marker_check("battle")."""
     t0 = time.monotonic()
     steps = []
     if not ctx.dry_run:
-        ok, gray, detail, score, shot, _ = wait_for(ctx, "campaign_fail-battle", 60.0, _marker_check("battle"))
+        ok, gray, detail, score, shot, _ = wait_for(ctx, "campaign_fail-battle", 60.0, _battle_any_check())
         if not ok:
             return ActionResult("campaign_fail", False, gray, time.monotonic() - t0,
                                  f"battle HUD not seen within 60s: {detail}", shot, score, steps)
@@ -800,7 +906,7 @@ def deltest(ctx, wait_s=DEFAULT_DELTEST_WAIT_S):
     t0 = time.monotonic()
     steps = []
     if not ctx.dry_run:
-        ok, gray, detail, score, shot, _ = wait_for(ctx, "deltest-battle", 60.0, _marker_check("battle"))
+        ok, gray, detail, score, shot, _ = wait_for(ctx, "deltest-battle", 60.0, _battle_any_check())
         if not ok:
             return ActionResult("deltest", False, gray, time.monotonic() - t0,
                                  f"battle HUD not seen within 60s: {detail}", shot, score, steps)
@@ -1021,6 +1127,7 @@ ACTIONS = {
     "console_cmd": console_cmd,
     "dismiss_notice": dismiss_notice,
     "create_pve_room": create_pve_room,
+    "select_map": select_map,
     "start_battle": start_battle,
     "campaign_win_all": campaign_win_all,
     "campaign_fail": campaign_fail,
