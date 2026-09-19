@@ -107,8 +107,10 @@ function main()
         rooms._resetForTests();
     }
 
-    // --- switch off (default): behaviour must stay byte-identical to
-    // before this change -- no Room_List_SN at all on channel enter. ---
+    // --- switch left 'disabled' (via rooms._resetForTests() below -- no
+    // longer the production default after SWITCH-CONVERGE): behaviour must
+    // stay byte-identical to before that change -- no Room_List_SN at all
+    // on channel enter. ---
     rooms._resetForTests();
     try {
         makeExistingRoom();
@@ -121,9 +123,9 @@ function main()
         assert.strictEqual(handled2, true, '0x00220111 must be handled');
 
         const listPackets2 = client2._sent.filter((s) => s.op === ROOM_LIST_SN);
-        assert.strictEqual(listPackets2.length, 0, 'LOBBY_ROOM_LIST_MODE off (default): channel enter must send no Room_List_SN at all');
+        assert.strictEqual(listPackets2.length, 0, 'LOBBY_ROOM_LIST_MODE disabled: channel enter must send no Room_List_SN at all');
 
-        console.log('[lobby-list-login test] PASS: LOBBY_ROOM_LIST_MODE off (default) -- channel enter sends no Room_List_SN');
+        console.log('[lobby-list-login test] PASS: LOBBY_ROOM_LIST_MODE disabled -- channel enter sends no Room_List_SN');
     } finally {
         rooms._resetForTests();
     }

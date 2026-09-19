@@ -90,6 +90,12 @@ async function main()
     rooms._resetForTests();
     rooms._setRoomJoinModeForTests('enabled');
     GateGameDispatch._setGameUserSnBroadcastModeForTest('enabled');
+    // This file doesn't cover HOST_ADDRESS_REQUIRE_MODE (that's
+    // test/room-host-address-require.js's job) -- SWITCH-CONVERGE flipped
+    // its production default to 'enabled', so force it off here or the
+    // fixture's unconfigured hostAddress would block this file's 2-member
+    // Game_Start_CN 0x00222103.
+    GateGameDispatch._setHostAddressRequireModeForTest('disabled');
 
     const gate = new GateGameDispatch();
 

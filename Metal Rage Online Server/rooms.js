@@ -88,14 +88,15 @@ const byAccount = new Map();
 let nextRoomId = 1;
 
 // D1-4 (docs/backlog.md, docs/design/d1-multiplayer-room.md §5/§6 step 4):
-// lobby room list broadcast, join, leave-notify, host reassignment. Default
-// off pending a real two-client test (backlog contract: mid-tier work ships
-// with new behaviour disabled). A `let` + accessor pair, not a plain
-// `module.exports` const, because gate.game.dispatch.js, lobby.dispatch.js
-// and room.dispatch.js all need to read the SAME switch, and
-// test/room-join.js needs to flip it on for its run (same pattern as
-// _resetForTests() below).
-let roomJoinMode = 'disabled'; // 'disabled' | 'enabled'
+// lobby room list broadcast, join, leave-notify, host reassignment.
+// SWITCH-CONVERGE: verified live against a real second client
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'. A `let` + accessor pair, not a plain `module.exports` const,
+// because gate.game.dispatch.js, lobby.dispatch.js and room.dispatch.js all
+// need to read the SAME switch, and test/room-join.js needs to flip it for
+// its own run (same pattern as _resetForTests() below, which still forces
+// this back to 'disabled' between test scenarios).
+let roomJoinMode = 'enabled'; // 'disabled' | 'enabled'
 
 function isRoomJoinEnabled() {
     return roomJoinMode === 'enabled';
@@ -112,10 +113,10 @@ function _setRoomJoinModeForTests(mode) {
 // broadcasts on changes traffic (an extra User_State_SN 0x00220401 send) on
 // its own, independent of whether joining itself works, so it needs its own
 // regression coverage. Also requires roomJoinMode (there is no tracked
-// Member to mark ready, or Room to broadcast to, without it). Default off,
-// same reasoning as the other two switches below. Same `let` + accessor +
-// test-setter pattern.
-let roomReadyStateMode = 'disabled'; // 'disabled' | 'enabled'
+// Member to mark ready, or Room to broadcast to, without it). SWITCH-
+// CONVERGE: verified live (docs/journal/2026-09-19-0330-d1-step4-room-join.md),
+// default flipped to 'enabled'. Same `let` + accessor + test-setter pattern.
+let roomReadyStateMode = 'enabled'; // 'disabled' | 'enabled'
 
 function isRoomReadyStateEnabled() {
     return roomReadyStateMode === 'enabled';
@@ -129,9 +130,10 @@ function _setRoomReadyStateModeForTests(mode) {
 // switch, separate from roomJoinMode above, because sending it changes
 // single-player-visible behaviour on its own (the lobby starts showing your
 // own room) independent of whether Enter_CQ actually works -- the two need
-// to be regression-tested separately. Default off, same reasoning as
-// roomJoinMode.
-let lobbyRoomListMode = 'disabled'; // 'disabled' | 'enabled'
+// to be regression-tested separately. SWITCH-CONVERGE: verified live
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'.
+let lobbyRoomListMode = 'enabled'; // 'disabled' | 'enabled'
 
 function isLobbyRoomListEnabled() {
     return lobbyRoomListMode === 'enabled';
@@ -150,9 +152,10 @@ function _setLobbyRoomListModeForTests(mode) {
 // targets Ready_Host_SQ at the room's host connection, and
 // community.dispatch.js's 0x00420114 (Ready_Host_CA) handler uses it to
 // decide whether to also message the room's non-host members. Same `let` +
-// accessor + test-only setter pattern as roomJoinMode above. Default
-// 'disabled' per docs/backlog.md's mid-tier rule.
-let readyHostSplitMode = 'disabled'; // 'disabled' | 'enabled'
+// accessor + test-only setter pattern as roomJoinMode above. SWITCH-
+// CONVERGE: verified live (docs/journal/2026-09-19-0330-d1-step4-room-join.md),
+// default flipped to 'enabled'.
+let readyHostSplitMode = 'enabled'; // 'disabled' | 'enabled'
 
 function isReadyHostSplitEnabled() {
     return readyHostSplitMode === 'enabled';
@@ -168,8 +171,10 @@ function _setReadyHostSplitModeForTests(mode) {
 // 0x00222103) and BeginRound_SN 0x00230152 (lobby.dispatch.js's case
 // 0x00230151, a *different* file -- the reason this lives here instead of a
 // local `let` in either) go to every room member instead of just whichever
-// connection triggered the opcode. Default 'disabled'.
-let roomBattleStartBroadcastMode = 'disabled'; // 'disabled' | 'enabled'
+// connection triggered the opcode. SWITCH-CONVERGE: verified live
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'.
+let roomBattleStartBroadcastMode = 'enabled'; // 'disabled' | 'enabled'
 
 function isRoomBattleStartBroadcastEnabled() {
     return roomBattleStartBroadcastMode === 'enabled';
@@ -189,8 +194,10 @@ function _setRoomBattleStartBroadcastModeForTests(mode) {
 // client.battleStats_. Its own switch, separate from
 // roomBattleStartBroadcastMode above, for the same reason every other
 // D1-6-IMPL step has its own switch (design §5): each broadcast surface
-// needs independent regression coverage. Default 'disabled'.
-let battleEndBroadcastMode = 'disabled'; // 'disabled' | 'enabled'
+// needs independent regression coverage. SWITCH-CONVERGE: verified live
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'.
+let battleEndBroadcastMode = 'enabled'; // 'disabled' | 'enabled'
 
 function isBattleEndBroadcastEnabled() {
     return battleEndBroadcastMode === 'enabled';

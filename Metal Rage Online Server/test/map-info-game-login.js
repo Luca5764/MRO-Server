@@ -152,17 +152,18 @@ async function testDisabledSendsNoMapInfo()
     authTokens.resetKeyGenerator();
 
     const { gate, gamelogin, GameLoginDispatchClass } = loadDispatchers(db, makeMarkerSpy());
-    // mapInfoOnGameLoginMode defaults to 'disabled' on a fresh require --
-    // no explicit reset needed here, but be explicit for clarity.
+    // SWITCH-CONVERGE flipped mapInfoOnGameLoginMode's production default
+    // to 'enabled' -- force it off explicitly here so the off path stays
+    // covered.
     GameLoginDispatchClass._setMapInfoOnGameLoginModeForTests('disabled');
 
     const token = gateLeave(gate, 1, 301);
     const client = await gameLogin(gamelogin, 302, makeLoginAgainBody(token.accountId, token.key));
 
     const mapInfoPackets = client._sent.filter((p) => p.op === SN_MAP_INFO_OP);
-    assert.strictEqual(mapInfoPackets.length, 0, 'disabled (default): 30907 login must send no MapInfo_SN at all');
+    assert.strictEqual(mapInfoPackets.length, 0, 'disabled: 30907 login must send no MapInfo_SN at all');
 
-    console.log('[map-info-game-login] disabled (default) -- no MapInfo_SN sent OK');
+    console.log('[map-info-game-login] disabled -- no MapInfo_SN sent OK');
 }
 
 async function testEnabledWithRealIdSendsPveIds()

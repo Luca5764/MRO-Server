@@ -403,6 +403,13 @@ function scanSwitches()
     const roomsJs = path.join(__dirname, 'rooms.js');
     if (fs.existsSync(roomsJs))
         files.push(roomsJs);
+    // SWITCH-CONVERGE: database/db.js's ITEM_EQUIPS_MODE lives outside
+    // dispatch/ too (same reasoning as rooms.js above), but was missed here
+    // -- the 2026-09-19-1710-e1-migration-run.md build event was already
+    // running it non-default and the log's nonDefault list didn't show it.
+    const dbJs = path.join(__dirname, 'database', 'db.js');
+    if (fs.existsSync(dbJs))
+        files.push(dbJs);
     const switches = {};
 
     for (const file of files)

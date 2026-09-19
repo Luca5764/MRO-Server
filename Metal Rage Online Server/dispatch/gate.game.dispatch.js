@@ -67,10 +67,11 @@ const MAP_CHANGE_ONE_RESEND_MODE = 'map_only'; // 'full_room' | 'map_only' | 'no
 // display never follows the host's pick. 'enabled' additionally relays the
 // same Map_Change_One_SN 0x00220223 payload (unchanged bytes, see the case
 // 0x00220221 handler) to the room's other members via rooms.sendOthers.
-// Defaults off per docs/backlog.md's mid-tier rule (new behaviour behind a
-// switch); untested against a real second client yet. `let` + test-only
-// setter below, same pattern as ROOM_TEAM_CHAT_MODE further down.
-let ROOM_MAP_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
+// SWITCH-CONVERGE: verified live against a real second client
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'. `let` + test-only setter below, same pattern as
+// ROOM_TEAM_CHAT_MODE further down.
+let ROOM_MAP_BROADCAST_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_START_HANDSHAKE_MODE = 'ready_then_start'; // 'start_only' | 'ready_then_start'
 const READY_HOST_GATE_PRIME_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_WAIT_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
@@ -140,8 +141,10 @@ let ROOM_TEAM_CHAT_MODE = 'disabled'; // 'disabled' | 'enabled' ('let' only so t
 // Game_Info_SN body+0x13 is TimeLimit in minutes. 'room' makes it follow the
 // room's PlayTime (Map_Change_One_CQ 0x00220221 w2, client.mapChangeOneTime_,
 // set at the case 0x00220221 handler below) instead of the hardcoded 10.
-// See docs/journal/2026-09-18-2334-t1-time-limit.md.
-const GAME_INFO_TIME_LIMIT_MODE = 'disabled'; // 'disabled' | 'room'
+// See docs/journal/2026-09-18-2334-t1-time-limit.md. SWITCH-CONVERGE:
+// verified live (docs/journal/2026-09-19-0330-d1-step4-room-join.md),
+// default flipped to 'room'.
+const GAME_INFO_TIME_LIMIT_MODE = 'room'; // 'disabled' | 'room'
 // When the room state block is re-sent after Create_SA, and why each entry
 // costs a room-master dialog. See the comment at the call site.
 // Send Game_Info_SN with the room state, so [this+0xfc8] holds the map before
@@ -190,8 +193,10 @@ const SERVER_DRIVEN_START_MODE = 'enabled'; // 'disabled' | 'enabled'
 // still loops exactly once with target===source===the host's own
 // connection, so this is byte-identical to the old single-send path in that
 // case (docs/design/d1-step6-battle-broadcast.md §5 step 1's regression
-// method). Default 'disabled' per docs/backlog.md's mid-tier rule.
-let GAME_USER_SN_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
+// method). SWITCH-CONVERGE: verified live
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'.
+let GAME_USER_SN_BROADCAST_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 // D1-6-IMPL (design doc §5 step 2): same F5 sequence's Game_Wait_SN
 // 0x00420111, both Game_Info_SN 0x00222111 sends (150ms initial + 600ms
@@ -226,8 +231,10 @@ let GAME_USER_SN_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
 // non-host connection must never be able to trigger the start sequence in
 // the first place. 'enabled' (additionally requires rooms.isRoomJoinEnabled())
 // adds both checks to the very top of the case 0x00222103 handler below,
-// before anything is sent. Default 'disabled'.
-let HOST_ADDRESS_REQUIRE_MODE = 'disabled'; // 'disabled' | 'enabled'
+// before anything is sent. SWITCH-CONVERGE: verified live
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'.
+let HOST_ADDRESS_REQUIRE_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 // Map_PC01 easy — the campaign room's default until the client picks another.
 const MAP_ID_DEFAULT_CAMPAIGN = 9001;

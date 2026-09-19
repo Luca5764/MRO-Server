@@ -7,12 +7,16 @@
 // here, unchanged, so gamelogin.dispatch.js's 30907 resend (MAP_INFO_ON_
 // GAME_LOGIN_MODE) can reuse the exact same bytes instead of drifting.
 //
-// R9 implemented but failed: real PvE ids did not fill the room-settings
-// list; another filter, including the PvE user-count range, remains
-// unresolved. See docs/journal/2026-09-18-14-map-info-sn-real-ids.md.
-// `let` + accessor (same pattern as room-map.sender.js's mapAllSingleEntryMode)
-// so tests can flip it without touching the shipped default.
-let mapInfoRealIdMode = 'disabled'; // 'disabled' | 'enabled'
+// R9 alone (this switch on its own) did not fill the room-settings list --
+// needs mapInfoOnGameLoginMode (gamelogin.dispatch.js) on too, since the
+// 9211 MapInfo_SN is lost after the scene change and 30907 has to resend
+// it. Verified ✅ with both switches on: the map-select popup lists all 4
+// PvE maps (docs/state.md H7 row, docs/journal/2026-09-19-1000-maplist-
+// single-entry.md, 未經跨公司審查). SWITCH-CONVERGE: default flipped to
+// 'enabled'. `let` + accessor (same pattern as room-map.sender.js's
+// mapAllSingleEntryMode) so tests can flip it without touching the shipped
+// default.
+let mapInfoRealIdMode = 'enabled'; // 'disabled' | 'enabled'
 const MAP_INFO_REAL_IDS = [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012];
 
 const SN_MAP_INFO = 0x210115;

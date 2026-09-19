@@ -330,11 +330,12 @@ async function testNonSharedMoveBetweenMechs()
     // this same process (e.g. testMergeSharedDuplicates()'s own item id),
     // not just for this function.
 
-    // database/db.js's ITEM_EQUIPS_MODE defaults to 'disabled' (byte-identical
-    // to pre-E1 behaviour for every other test/golden sample); this test-only
-    // setter flips it just for this process so saveEquippedLoadout()'s real
-    // item_equips write path can be exercised. Reset in the `finally` below
-    // so later tests in this same file see the default again.
+    // database/db.js's ITEM_EQUIPS_MODE defaults to 'enabled' since
+    // SWITCH-CONVERGE (was 'disabled', byte-identical to pre-E1 behaviour);
+    // this test-only setter forces 'enabled' explicitly regardless, so
+    // saveEquippedLoadout()'s real item_equips write path is exercised
+    // deterministically. Reset in the `finally` below so later tests in this
+    // same file are not affected by this one's forced state.
     // Earlier tests in this file (installFakeModule) may have left
     // require.cache[DB_PATH] pointing at a fixture object instead of the
     // real database/db.js -- drop it so this test gets the real module,

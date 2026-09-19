@@ -42,9 +42,11 @@ const PVE_SLOT_SELECT_FLOW = 'client'; // 'client' | 'auto'
 // with EndRound_SN 0x00222211 while client.pveRoundsCleared_ is still below
 // getGameInfoRound(client), and only sends EndGame_SN on the last round.
 // EndRound_SN actually advancing the client's PvE round (ZModePve.uc:716-722
-// EndRound_BD) is ⬜ -- this is an experimental candidate, not a confirmed
-// fix; see the journal entry for the pass/partial/fail criteria.
-let PVE_ROUND_ADVANCE_MODE = 'disabled'; // 'disabled' | 'enabled' ('let' only so test/round-advance.js's test-only setter below can flip it; nothing else reassigns it)
+// EndRound_BD) is verified live: a real 2-player 5-round 潛入作戰 session
+// showed EndRound_SN x4 then User_Score_SN + EndGame_SN on the last round
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md, 未經跨公司審查).
+// SWITCH-CONVERGE: default flipped to 'enabled'.
+let PVE_ROUND_ADVANCE_MODE = 'enabled'; // 'disabled' | 'enabled' ('let' only so test/round-advance.js's test-only setter below can flip it; nothing else reassigns it)
 
 // ZDispatchLobby - Handles lobby operations after entering a channel
 //

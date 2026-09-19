@@ -6,14 +6,19 @@ const { getShareType } = require('./item-share-type');
 // (`items`) vs. equipped-where (`item_equips`) split, so a ShareType=1
 // item (副武器/裝備) can be equipped on more than one mech at once instead
 // of only the mech its `items.mech_type` column happens to point at.
-// 'disabled' (default) = every read/write path below is byte-identical to
-// pre-E1 behaviour; saveEquippedLoadout() never touches item_equips and
-// still rewrites items.mech_type the old way. 🟡 未經跨公司審查.
+// 'disabled' = every read/write path below is byte-identical to pre-E1
+// behaviour; saveEquippedLoadout() never touches item_equips and still
+// rewrites items.mech_type the old way. 🟡 未經跨公司審查. The real `mro`
+// database has already been migrated and the 23 duplicate-serial merge
+// applied (docs/journal/2026-09-19-1710-e1-migration-run.md, backup at
+// ~/mro-backups/mro-before-e1-20260919-170807.sql). SWITCH-CONVERGE:
+// default flipped to 'enabled' to match the test server, which has been
+// running this way since that migration.
 // `let`, not `const`: test/item-equips.js needs to flip this at runtime (via
-// _setItemEquipsModeForTests below) to exercise the 'enabled' path without
+// _setItemEquipsModeForTests below) to exercise the 'disabled' path without
 // changing the default every other test/golden sample runs against. Every
 // production code path only ever reads it, never writes it.
-let ITEM_EQUIPS_MODE = 'disabled'; // 'disabled' | 'enabled'
+let ITEM_EQUIPS_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 // Test-only: see test/item-equips.js. Not used by any production code path.
 function _setItemEquipsModeForTests(mode)
