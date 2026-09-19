@@ -261,3 +261,28 @@ CREATE TABLE IF NOT EXISTS `match_participants` (
 
 ## 更正（2026-09-20）
 §1 提到的 Account_Record_Set「欄位對不齊」是偏移算錯了（多算了 0x10），見 `research/2026-09-19-p3-writeback/account-record-set-trace.md` 文末的更正。修正後它跟 RecordInfo_SN 的 Win/Draw/Lose/Kill/Death 完全對齊，是客戶端的勝率快取，直接吃同一組欄位。§1 的實務結論（伺服器只要送對 W/D/L/K/D）不變。
+
+## 高階推論審查（Claude，2026-09-20；未經跨公司審查，Sol 回來要再審）
+
+整體方向可以：只在 EndGame 那一支寫回、預設關閉的開關、`is_test`／`suspicious` 預留欄位、用 Pico 夜跑驗證。下面幾點要在實作前改掉：
+
+1. **§2.2-1 統計的粒度錯了（必改）。** `client.matchStats_` 掛在收到 `Death_CN` 的那條連線上，但 `Death_CN` 只有房主會送（Sol batch3 之後已加 host gate），所以多人時只會累積在房主身上。
+   - 改法：整場累計要放在 **Room 物件**上（例如 `room.matchStats`），用 `Death_CN` body 裡的擊殺者／受害者 user index 對應到房間成員，再分給各 participant。
+   - `battleStats_` 目前的語意（回合、廣播用）不動。
+2. **§2.2-3 缺「沒打完的場」。** 以下情況都不會走到 EndGame 的寫回：
+   - 任務失敗（`GameCampaign 2`／`Campaign_CN` 010002）；
+   - 房主中途離開；
+   - 全員離開、斷線。
+   - 要定義：失敗要寫（result=2）；中斷的場寫 `result=0` 加上 `ended_at`，還是乾脆不寫？這要**操作者決定**：中斷的場要不要給部分獎勵。建議先「失敗照寫、中斷不寫」，而且要在 `battleLeaveMode` 的離場路徑上確定不會留下半筆資料。
+3. **`is_test` 的判定規則要寫死：** 房主或任何一位參與者是測試帳號，整場都算 `is_test=1`。建議用 `allowed-users.json` 的 `isTest`，不改 `accounts` 表，同意這個提案。
+4. **`difficulty` 不用「待對照」：** PvE 地圖 id 每 3 個一組（`ZPanel_PVE.uc:328` 的 `(MapIndex-9001)/3` 是地圖組），所以難度＝`(map_id-9001)%3`（0 初級、1 中級、2 高級）。9007–9009（護送）也適用（`journal/2026-09-20-0110-escort-smoke.md`）。
+5. **Schema 細節：**
+   - `started_at TIMESTAMP NOT NULL` 在 MySQL 的嚴格模式下沒有預設值，會有自動更新的陷阱，建議改成 `DATETIME NOT NULL`；
+   - `host_account_id ... ON DELETE CASCADE` 會讓刪帳號時連同一起打過的整場紀錄也刪掉，建議把 matches 的 host 外鍵改成 `ON DELETE SET NULL`（欄位要允許 NULL）。
+6. **§6 的兩項矛盾：** 第一項已被 2026-09-20 的更正解決（偏移多算了 0x10）。第二項（9211 builder 的舊佈局）要在送 `Reward_Record_User_SN` 之前一起修，列為 P3 實作的第一個小步驟，獨立一個 commit。
+7. **實作順序建議：**
+   1. 修 9211 builder；
+   2. 做 Room 層統計＋回合計時（只記在記憶體、寫 log，不寫 DB）；
+   3. migration＋寫回（開關關著）；
+   4. `Reward_Record_User_SN`。
+   - 每一步都用 Pico 的 `U-pve-fullmatch` 驗證。第 3 步起動 DB 結構，要等 Sol 審過。
