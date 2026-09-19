@@ -27,6 +27,42 @@ function resolveRoomDefaultMapEntry(client, fallback) {
         : MAP_ID_DEFAULT_PVE;
 }
 
+// ROOMSET-MAXUSER (backlog.md, docs/journal/2026-09-19-1000-maplist-single-entry.md
+// H7 section): triggered by the same room-state send that runs on room
+// create/enter/resend. ZPopup_RoomSet.Update_MapList() (~ZPopup_RoomSet.uc:575)
+// only keeps a Cache map row when
+// `MapInfoList[n].UserMin <= nUserMax && nUserMax <= MapInfoList[n].UserMax`,
+// where nUserMax comes straight from MyRoomInfo.MaxUser via
+// SetMaxUserInfo(MyRoomInfo.MaxUser) (ZPopup_RoomSet.uc:363,1068-1104) with no
+// scaling/encoding applied before the comparison. [CACHE] (🟡, not
+// independently re-verified against Cache.Bin here) 9001-9012 have
+// UserMin=UserMax=16, so nUserMax must be exactly 16 for the "房間設定變更"
+// dialog's map list to keep any row. Room_Boundary_SN body+1 is the wire
+// value ZPage_Room.uc:768 reads as `MyRoomInfo.MaxUser`
+// (`m_MaxUser = MaxUser/2`); 16/2=8 matches the known 8-slot PvE room
+// screenshot, so this does not change the open-slot count. Only this one
+// byte changes -- Room_Default_SN body+7 (join-capacity maxPlayers),
+// Room_List_SN, rooms.js's room.maxPlayers, and Game_Info_SN are untouched,
+// so join capacity stays 8. Default disabled: no observed effect confirmed
+// yet, see docs/journal/2026-09-19-1000-maplist-single-entry.md.
+let PVE_MAXUSER_WIRE_MODE = 'disabled'; // 'disabled' | 'enabled'
+const PVE_MAXUSER_WIRE_VALUE = 16;
+
+function isPveMaxUserWireEnabled() {
+    return PVE_MAXUSER_WIRE_MODE === 'enabled';
+}
+
+function _setPveMaxUserWireModeForTests(mode) {
+    PVE_MAXUSER_WIRE_MODE = mode;
+}
+
+function resolveBoundaryMaxUser(maxPlayers, isTrueCampaign) {
+    if (isPveMaxUserWireEnabled() && isTrueCampaign) {
+        return PVE_MAXUSER_WIRE_VALUE;
+    }
+    return maxPlayers;
+}
+
 function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
     const {
         roomIndex,
@@ -54,6 +90,7 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         // identical to before), Enter_CQ's joiner ctx from the Room.
         isCampaignRoom,
         optionMask: ctxOptionMask,
+        isTrueCampaign,
     } = ctx;
 
     {
@@ -126,10 +163,11 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         // Room_Default_SN (0x00220203) +7/+8 are a separate, still-wrong pair
         // -- not touched here, left as a follow-up.
         const [msg, respBody] = getExactMessageBuffer(SN_ROOM_BOUNDARY, 0x02);
+        const boundaryMaxUser = resolveBoundaryMaxUser(maxPlayers, isTrueCampaign);
         respBody.writeUint8(currentUsers, 0x00);
-        respBody.writeUint8(maxPlayers, 0x01);
+        respBody.writeUint8(boundaryMaxUser, 0x01);
         client.send(msg);
-        console.log(`[ZRoomDispatch] >> Sent SN_ROOM_BOUNDARY 0x220213 (current=${currentUsers}, max=${maxPlayers})`);
+        console.log(`[ZRoomDispatch] >> Sent SN_ROOM_BOUNDARY 0x220213 (current=${currentUsers}, max=${boundaryMaxUser})`);
     }
 
     {
@@ -162,4 +200,5 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
 
 module.exports = {
     sendRoomStatePackets,
+    _setPveMaxUserWireModeForTests,
 };
