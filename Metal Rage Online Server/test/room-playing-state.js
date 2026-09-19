@@ -95,6 +95,9 @@ function main()
     // HOST_ADDRESS_REQUIRE_MODE now defaults on (switch convergence); this test
     // has no fixture hostAddress and is not testing that switch.
     GateGameDispatch._setHostAddressRequireModeForTest('disabled');
+    // PVE_ROUND_ADVANCE_MODE is default-on too: with it, the first Campaign_CN
+    // sends EndRound_SN, not EndGame_SN. This test is about the EndGame reset.
+    LobbyDispatch._setPveRoundAdvanceModeForTest('disabled');
     rooms._setLobbyRoomListModeForTests('enabled');
 
     const gate = new GateGameDispatch();
