@@ -132,6 +132,27 @@ function _setLobbyRoomListModeForTests(mode) {
     lobbyRoomListMode = mode;
 }
 
+// D1-6-IMPL (docs/backlog.md, docs/design/d1-step6-battle-broadcast.md §5
+// step 4): whether Ready_Host_SQ 0x00420113/Ready_Host_SN 0x00420115/
+// Ready_Success_SN 0x00420116 get split by host-vs-non-host membership
+// instead of all going to whichever connection triggered 0x00222103. Lives
+// here (not gate.game.dispatch.js or community.dispatch.js alone) because
+// both files need to read it: gate.game.dispatch.js's case 0x00222103
+// targets Ready_Host_SQ at the room's host connection, and
+// community.dispatch.js's 0x00420114 (Ready_Host_CA) handler uses it to
+// decide whether to also message the room's non-host members. Same `let` +
+// accessor + test-only setter pattern as roomJoinMode above. Default
+// 'disabled' per docs/backlog.md's mid-tier rule.
+let readyHostSplitMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isReadyHostSplitEnabled() {
+    return readyHostSplitMode === 'enabled';
+}
+
+function _setReadyHostSplitModeForTests(mode) {
+    readyHostSplitMode = mode;
+}
+
 // D1-4: which live client objects count as "in the lobby" for the
 // Room_List_SN broadcast. There is no separate "entered lobby" flag on
 // NetworkClient (login goes straight from channel-enter to the client
@@ -368,6 +389,7 @@ function _resetForTests() {
     roomJoinMode = 'disabled';
     lobbyRoomListMode = 'disabled';
     roomReadyStateMode = 'disabled';
+    readyHostSplitMode = 'disabled';
     clientSource = [];
 }
 
@@ -390,6 +412,8 @@ module.exports = {
     _setLobbyRoomListModeForTests,
     isRoomReadyStateEnabled,
     _setRoomReadyStateModeForTests,
+    isReadyHostSplitEnabled,
+    _setReadyHostSplitModeForTests,
     registerLobbyClientSource,
     getLobbyClients,
     _resetForTests,

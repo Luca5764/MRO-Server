@@ -152,6 +152,58 @@ const GAME_INFO_SN_WITH_ROOM_STATE = 'enabled'; // 'disabled' | 'enabled'
 // client log — success is "start Map_PC01?...ZModePve...", not Store_01.
 const SERVER_DRIVEN_START_MODE = 'enabled'; // 'disabled' | 'enabled'
 
+// D1-6-IMPL (docs/backlog.md, docs/design/d1-step6-battle-broadcast.md §5
+// step 1): the host's F5 (Game_Start_CN 0x00222103, case below) currently
+// sends Game_User_SN 0x00222112 only to the triggering connection with that
+// connection's own data -- in a 2+ member room every other member's client
+// never receives ANY player's Game_User_SN, so their in-game player table
+// (Game_User_Team_Get's array) stays empty. 'enabled' (additionally requires
+// rooms.isRoomJoinEnabled(), same as every other D1-6 switch) sends one
+// count=1 packet per room member to EVERY room member's connection instead
+// (sendGameUserSnRoomBroadcast() below), each packet's DB loadout/nickname/
+// pilot/selectedMech sourced from the packet's *subject* member, not the
+// triggering client -- see design doc §2's send-order loop. A 1-person room
+// still loops exactly once with target===source===the host's own
+// connection, so this is byte-identical to the old single-send path in that
+// case (docs/design/d1-step6-battle-broadcast.md §5 step 1's regression
+// method). Default 'disabled' per docs/backlog.md's mid-tier rule.
+let GAME_USER_SN_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
+
+// D1-6-IMPL (design doc §5 step 2): same F5 sequence's Game_Wait_SN
+// 0x00420111, both Game_Info_SN 0x00222111 sends (150ms initial + 600ms
+// resend), Game_Ready_SN 0x00222102 and Game_Start_SN 0x00222104 -- all four
+// currently reach only the triggering (host) connection. 'enabled'
+// (additionally requires rooms.isRoomJoinEnabled()) broadcasts all of them
+// to every room member via rooms.sendAll, with Game_Info_SN's body sourced
+// from the Room object (design §1 "狀態從 client 搬到 Room") instead of the
+// triggering client -- see sendGameInfoSnRoomBroadcast() below. A 1-person
+// room's rooms.sendAll iterates one member, byte-identical to the old
+// single-send path (same design doc §5 step 2 regression method). Default
+// 'disabled'.
+let ROOM_BATTLE_START_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
+
+// D1-6-IMPL (design doc §5 step 4, §1 rows 6-9): Ready_Host_SQ 0x00420113
+// only ever goes to whichever connection triggered 0x00222103 -- correct
+// today because that connection is always the room's only member, but not
+// necessarily the host once a 2+ member room exists. 'enabled' (additionally
+// requires rooms.isRoomJoinEnabled()) sends Ready_Host_SQ to the room's
+// tracked host connection specifically (room.hostAccountId), and has the
+// community.dispatch.js 0x00420114 (Ready_Host_CA) handler additionally send
+// Ready_Host_SN 0x00420115 + Ready_Success_SN 0x00420116 to every non-host
+// member once the host's CA reports its listen port -- see
+// sendReadyHostSnToRoomMember() below and community.dispatch.js. Read by
+// both this file and community.dispatch.js, so it lives on rooms.js (same
+// reasoning as roomReadyStateMode there). Default 'disabled'.
+
+// D1-6-IMPL (design doc §5 step 5, §3.2): the host's account needs a
+// configured hostAddress (config/allowed-users.json, config/whitelist.js
+// getHostAddress()) before a 2+ member room can battle-start at all, and a
+// non-host connection must never be able to trigger the start sequence in
+// the first place. 'enabled' (additionally requires rooms.isRoomJoinEnabled())
+// adds both checks to the very top of the case 0x00222103 handler below,
+// before anything is sent. Default 'disabled'.
+let HOST_ADDRESS_REQUIRE_MODE = 'disabled'; // 'disabled' | 'enabled'
+
 // Map_PC01 easy — the campaign room's default until the client picks another.
 const MAP_ID_DEFAULT_CAMPAIGN = 9001;
 
@@ -330,6 +382,41 @@ function sendGameUserSn(client, tag)
     console.log(`[ZGateGameDispatch] >> Game_User_SN [${tag}]`);
     return Promise.resolve(sendGameUserBootstrap(client, ctx, getExactMessageBuffer))
         .catch(err => console.error(`[ZGateGameDispatch] >> Game_User_SN failed: ${err.message}`));
+}
+
+// D1-6-IMPL (design doc §5 step 1, §2): GAME_USER_SN_BROADCAST_MODE's
+// enabled path. Per design §2's send-order loop, every room member's
+// connection (`target`) gets one count=1 Game_User_SN per room member
+// (`source`), each packet's DB loadout/nickname/pilot/selectedMech read off
+// that `source` member -- never the triggering client -- so a joiner's own
+// mech shows up on the host's screen and vice versa. Deliberately never
+// batches more than one record per packet (game-user-sn-multi.md: N>=3
+// records already exceeds the client's 0x400 frame cap).
+function sendGameUserSnRoomBroadcast(room, tag)
+{
+    const members = Array.from(room.members.values());
+    for (const target of members) {
+        if (!target.client) continue;
+        for (const source of members) {
+            const sourceClient = source.client;
+            const ctx = {
+                accountIndex: Number(source.accountId),
+                nickname: source.nickname || 'Player',
+                teamIndex: 0,
+                userLevelText: '1',
+                selectedMech: Number(sourceClient && sourceClient.currentHangarSlot_) || 1,
+                pilotId: Number(sourceClient && sourceClient.pilot_) || 101,
+            };
+            console.log(`[ZGateGameDispatch] >> Game_User_SN [room #${room.id} broadcast, target=${target.accountId}, source=${source.accountId}, ${tag}]`);
+            // `client` (1st arg) is unused beyond its accountId_ fallback,
+            // which opts.itemsAccountId below always overrides -- target.client
+            // (guaranteed non-null, checked above) is passed for clarity only.
+            Promise.resolve(sendGameUserBootstrap(target.client, ctx, getExactMessageBuffer, {
+                sendTo: target.client,
+                itemsAccountId: source.accountId,
+            })).catch(err => console.error(`[ZGateGameDispatch] >> Game_User_SN (room broadcast) failed: ${err.message}`));
+        }
+    }
 }
 
 // R-ROUND (docs/backlog.md): the "target round for this map" value. Shared
@@ -1182,6 +1269,19 @@ class ZGateGameDispatch
                     }
                 }
 
+                // D1-6-IMPL: shared Room lookup for the broadcast switches
+                // below (GAME_USER_SN_BROADCAST_MODE etc.) -- computed once,
+                // undefined when rooms.isRoomJoinEnabled() is off (matches
+                // the resendRoomState()/resendRoomMapOnly() pattern above).
+                // A 1-person room resolves to a Room with exactly one member
+                // (the host, who is also `client` here), which is what keeps
+                // every broadcast switch byte-identical to the old
+                // single-target sends in that case (design doc §5).
+                const accountIdForBattleBroadcast = Number(client.accountIndex_ || client.accountId_ || 1);
+                const roomForBattleBroadcast = rooms.isRoomJoinEnabled()
+                    ? rooms.getRoomByAccount(accountIdForBattleBroadcast)
+                    : undefined;
+
                 if (SERVER_DRIVEN_START_MODE === 'enabled') {
                     // Push to scene 6 first, then set the map there.
                     if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
@@ -1196,7 +1296,16 @@ class ZGateGameDispatch
                     // Game_User_SN fills, and an empty array answers 255 —
                     // which is how the map came up with a free camera and no
                     // mech. Scene 6 first, or ZDispatchGame drops it.
-                    setTimeout(() => sendGameUserSn(client, 'server-driven: in-game user table'), 60);
+                    setTimeout(() => {
+                        // D1-6-IMPL (design doc §5 step 1): broadcast one
+                        // Game_User_SN per room member to every room member's
+                        // connection instead of just this trigger connection.
+                        if (GAME_USER_SN_BROADCAST_MODE === 'enabled' && roomForBattleBroadcast) {
+                            sendGameUserSnRoomBroadcast(roomForBattleBroadcast, 'server-driven: in-game user table');
+                        } else {
+                            sendGameUserSn(client, 'server-driven: in-game user table');
+                        }
+                    }, 60);
                     // Give the client a beat to enter scene 6 before the map,
                     // so the scene-6 Game_Info_SN handler is the one that runs.
                     setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map'), 150);
@@ -1817,6 +1926,25 @@ module.exports._setRoomTeamChatModeForTest = function setRoomTeamChatModeForTest
 module.exports._setRoomMapBroadcastModeForTest = function setRoomMapBroadcastModeForTest(mode)
 {
     ROOM_MAP_BROADCAST_MODE = mode;
+};
+
+// D1-6-IMPL test-only hooks (docs/design/d1-step6-battle-broadcast.md §5):
+// let test/*.js exercise each new switch's 'enabled' branch without
+// changing its shipped 'disabled' default. Not called anywhere outside
+// test/.
+module.exports._setGameUserSnBroadcastModeForTest = function setGameUserSnBroadcastModeForTest(mode)
+{
+    GAME_USER_SN_BROADCAST_MODE = mode;
+};
+
+module.exports._setRoomBattleStartBroadcastModeForTest = function setRoomBattleStartBroadcastModeForTest(mode)
+{
+    ROOM_BATTLE_START_BROADCAST_MODE = mode;
+};
+
+module.exports._setHostAddressRequireModeForTest = function setHostAddressRequireModeForTest(mode)
+{
+    HOST_ADDRESS_REQUIRE_MODE = mode;
 };
 
 // R-ROUND (docs/backlog.md): shared with lobby.dispatch.js's Campaign_CN

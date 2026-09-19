@@ -94,7 +94,17 @@ function equippedBySlot(items, mechType, partSlot) {
 // this used to, could never have worked. It goes out after Game_Wait_SN.
 const GAME_USER_BOOTSTRAP_MODE = 'enabled'; // 'disabled' | 'enabled'
 
-async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
+// D1-6-IMPL (docs/backlog.md, docs/design/d1-step6-battle-broadcast.md §2/§5
+// step 1): `opts` is new and optional -- every existing 3-arg call site
+// (test/extra-lives.js, gate.game.dispatch.js's own single-target
+// sendGameUserSn(), room.dispatch.js:1551) is unaffected, since `opts.sendTo`
+// defaults to `client` and `opts.itemsAccountId` defaults to
+// `client.accountId_`, exactly the old behaviour. The room-broadcast path
+// (gate.game.dispatch.js's sendGameUserSnRoomBroadcast()) passes a
+// `sendTo` that differs from the record's *subject* connection (whoever the
+// DB items/loadout belong to) -- design §2's "每個連線各收 N 包" loop sends
+// one member's own record to every other room member's connection.
+async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer, opts) {
     if (GAME_USER_BOOTSTRAP_MODE !== 'enabled') {
         return;
     }
@@ -111,10 +121,13 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
         pilotId,
     } = ctx;
 
+    const targetClient = (opts && opts.sendTo) || client;
+    const itemsAccountId = (opts && opts.itemsAccountId !== undefined) ? opts.itemsAccountId : client.accountId_;
+
     let items = [];
-    if (client.accountId_) {
+    if (itemsAccountId) {
         try {
-            items = await db.getItems(client.accountId_);
+            items = await db.getItems(itemsAccountId);
         } catch (err) {
             console.error(`[ZRoomDispatch] >> Game_User_SN item lookup failed: ${err.message}`);
         }
@@ -211,12 +224,13 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
         summary.push(`${slotNo}:${bodyId}/${mainId}`);
     }
 
-    client.send(msg);
-    client.gameUserBootstrapSent_ = true;
+    targetClient.send(msg);
+    targetClient.gameUserBootstrapSent_ = true;
     console.log(
         `[ZRoomDispatch] >> Sent Game_User_SN 0x00222112 ` +
         `(userIndex=${accountIndex}, team=${teamIndex}, selectedMech=${mechType}, slots=${summary.join(' ')})` +
-        (pveExtraLives !== 0 ? ` pveExtraLives=${pveExtraLives}` : '')
+        (pveExtraLives !== 0 ? ` pveExtraLives=${pveExtraLives}` : '') +
+        (targetClient !== client ? ` -> conn=${targetClient.connId_}` : '')
     );
 }
 
