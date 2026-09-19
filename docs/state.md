@@ -75,6 +75,7 @@
 
 - 收到 `Campaign_CN 0x00230139` 回 `EndGame_SN 0x00222213` → 會進結算頁、回到房間：✅ [LOG][OBS]（`journal/2026-09-17-14-campaign-result.md`）。**只驗證過「會進結算頁」，沒有驗證過「時機正確」**：每一場都在第一回合就結算，見 backlog R-ROUND 🟡（未經跨公司審查）。
 - 回合推進：Campaign_CN 達標但還沒到 MapInfo.Round 時，回 `EndRound_SN 0x00222211`（30 bytes：WinTeam 0、Team A/B TeamIndex 0/1、分數全 0）→ 客戶端進入下一回合：✅ [LOG][OBS]（`session-20260919-083650.jsonl:1450-1453`，`journal/2026-09-19-0900-r-round-impl.md`，未經跨公司審查；開關 `PVE_ROUND_ADVANCE_MODE`）。最後一回合改回 EndGame_SN 的時機還沒實測。
+- PvE 多命測試設定 `pveExtraLives`（`config/server.json`）：寫在 Game_User_SN rec+0x64＝GAME_ITEM_INFO.PveRespawnAddCount → 命數＝3＋設定值，實測 HUD 顯示 10 ✅ [LOG][OBS]（未經跨公司審查）。每回合開始命數會補滿，這是原版設計（`ZModePve.uc` ModeReset_BD）。完整打通初級 5 回合、最後一回合才結算 ✅（`journal/2026-09-19-0900-r-round-impl.md`）。
 - 時間上限跟隨房間設定（`GAME_INFO_TIME_LIMIT_MODE='room'`，body+0x13 分鐘）：✅ [LOG] 實測 640 秒沒有停住（`journal/*-t1-time-limit.md`，未經跨公司審查）。
 
 ### 尚未實作（S→C 名稱已由 DLL 確認）
