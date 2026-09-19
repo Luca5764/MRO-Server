@@ -2384,3 +2384,12 @@ module.exports.getGameInfoRound = getGameInfoRound;
 // Ready_Host_CA reports its port -- see sendReadyHostSnToRoomMember()'s own
 // comment above for why it takes ip/port/mapCacheKey instead of a `client`.
 module.exports.sendReadyHostSnToRoomMember = sendReadyHostSnToRoomMember;
+
+// Sol batch3 review (docs/research/2026-09-19-sol-review/batch3.md, 新疑點):
+// after RHSN-IP, the non-host Ready_Host_SN path no longer carries the map
+// name (bare IP only, community.dispatch.js's ipOnly=true call), so
+// test/room-ready-host-split.js's testReadyHostSnUsesRealMapId() cases lost
+// their only assertion on MAP_ID_TO_MAP_NAME_GG. Exported so a unit test can
+// call the single-connection path (ipOnly=false, still embeds "IP/MapName")
+// directly and keep the table covered without going through a live socket.
+module.exports.buildReadyHostSnMsg = buildReadyHostSnMsg;
