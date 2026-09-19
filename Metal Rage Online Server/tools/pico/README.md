@@ -57,30 +57,97 @@ python3 tools/pico/pico_ctl.py ping
 （roundtrip 時間包含每次呼叫 powershell.exe 的啟動成本，約 1–2 秒；這是 PowerShell 進程啟動的固定開銷，不是序列埠本身的延遲。）
 
 ### 透過命令列操作遊戲
-可使用既有的 `pico_drive.sh`（介面與原本的 `drive.sh` 完全一致）：
+先開一個 session（見下方「無人值守護欄」），再用既有的 `pico_drive.sh`（介面與原本的 `drive.sh` 完全一致）：
 
 ```bash
+python3 tools/pico/pico_ctl.py session start "測試 F5 開始"
+
 # 按鍵
 tools/win/pico_drive.sh key F5           # 按下並放開 F5 (準備/開始)
 tools/win/pico_drive.sh key ENTER        # 按下 Enter (登入)
 
-# 按住按鍵 (戰鬥中移動/開火)
+# 按住按鍵 (戰鬥中移動/開火，最長 5000ms，超過會被韌體截斷)
 tools/win/pico_drive.sh press W 2000     # 前進 2 秒
 tools/win/pico_drive.sh press SPACE 300  # 跳躍
 
-# 點擊 (以 MetalRage 遊戲視窗為基準座標)
+# 點擊 (以 MetalRage 遊戲視窗客戶區為基準座標，見下方 click_at 說明)
 tools/win/pico_drive.sh click 512,300
 
-# 打字 (發送聊天室 marker)
+# 打字 (發送聊天室 marker；只接受可列印 ASCII)
 tools/win/pico_drive.sh type "test automated marker"
+
+python3 tools/pico/pico_ctl.py session end
 ```
 
 ### 一次送出多個指令（batch）
-因為每次呼叫 `powershell.exe` 都要付開機成本，需要連續送多個原始指令時用 `batch`，同一次 PowerShell 呼叫裡送完：
+因為每次呼叫 `powershell.exe` 都要付開機成本，需要連續送多個原始指令時用 `batch`，同一次 PowerShell 呼叫裡送完（一樣需要先開 session）：
 
 ```bash
 python3 tools/pico/pico_ctl.py batch "PING" "KEY F5" "PRESS W 1500"
 ```
+
+### 點擊：`click_at`（閉環校正，取代舊的 `win_click`）
+```bash
+python3 tools/pico/pico_ctl.py click_at 512,300        # 左鍵，座標=MetalRage 客戶區相對座標
+python3 tools/pico/pico_ctl.py click_at 512,300 right   # 右鍵
+python3 tools/pico/pico_ctl.py win_click 512,300         # win_click 是 click_at 的別名，行為完全相同
+```
+座標解析、相對移動、游標讀回校正（最多 6 次迭代收斂到 ±4px 內）都在 `pico_serial.ps1` 同一個 PowerShell 進程內完成，點擊目標超出遊戲視窗客戶區、或收斂失敗，一律 `[BLOCKED]`、不送出 CLICK。舊版 `win_click`（用 `screen.ps1` 抓視窗座標、`MOVE_TO` 盲送、沒有目標驗證）已經移除。
+
+---
+
+## 無人值守護欄（Unattended Safety Guards）
+
+這套工具原本假設操作者會盯著螢幕。現在領頭 AI 有時要在操作者不在（例如上班中）的情況下自己操作遊戲，所以加了幾層**結構性**防呆，讓「按錯視窗」在設計上就不可能發生，而不是靠自覺。
+
+### 1. Session（每次無人操作要明確開關）
+所有會送輸入的指令（`key` / `press` / `click` / `click_at` / `win_click` / `move` / `move_to` / `type` / `batch` / 大多數 `raw`）都要求先開一個 session，否則直接 `[BLOCKED]`、結束碼 3：
+```bash
+python3 tools/pico/pico_ctl.py session start "描述這次要做什麼"
+...（操作）...
+python3 tools/pico/pico_ctl.py session end
+```
+Session 狀態存在 `tools/pico/.pico_session`（已加進 `.gitignore`，不進 repo）。`ping`、`raw PING`、`raw RESET` 不需要 session（純診斷／釋放按鍵，不會把輸入送進任何視窗）。
+
+**任何一次 `[BLOCKED]` 都會把目前的 session 標成「halted」**：之後的指令會繼續被拒絕，即使 session 檔案還在，也要明確 `session end` 再 `session start` 一次才能繼續——這是刻意設計成不能自動恢復，逼你（或下一個接手的 AI）先搞清楚剛剛為什麼被擋。
+
+### 2. 前景視窗閘門（在 `pico_serial.ps1` 裡，每個指令送出前都檢查）
+除了 `PING`／`RESET`，每個指令送到韌體前，`pico_serial.ps1`（Windows 端）都會在**同一個 PowerShell 進程**裡確認：
+- 目前的前景視窗（`GetForegroundWindow`）屬於 `MetalRage` 行程
+- 視窗沒有被縮到最小
+- 視窗完整落在**主螢幕**（副螢幕放 VS Code / 終端機，不該收到任何按鍵）
+- 不是鎖定畫面／安全桌面（前景行程是 `LockApp`／`LogonUI`／`consent` 等）
+
+任一項不成立就印出 `[BLOCKED] <原因> <指令>`，送一個 `RESET`（釋放所有按鍵，盡力而為，失敗也不影響回報的原因）給 Pico，結束碼 3，**整批指令當場停止、不繼續處理**。
+
+**所有檢查都是 fail-closed**：Win32 查詢丟例外、抓不到前景視窗、抓不到 MetalRage 行程……任何查不出「確定沒問題」的情況都當作 `BLOCKED`，不會重試、不會放行。
+
+### 3. 點擊目標閘門（`click_at` / `win_click`）
+見上方「點擊」小節：目標必須落在遊戲視窗客戶區內，游標必須真的移動、讀回確認在 ±4px 內才送出 `CLICK`，否則 `[BLOCKED]`。
+
+### 4. 文字閘門（TYPE）
+`TYPE` 只接受可列印 ASCII（0x20–0x7E）；有中文或其他非 ASCII 字元會在送到 Pico 之前就被 `[BLOCKED]`（PowerShell 端也會再檢查一次）——中文輸入法會把鍵盤巨集打亂，乾脆不接受。
+
+### 5. 緊急停止（Kill Switch）
+以下任一動作都能立刻讓所有輸入指令失效：
+- 在 Windows 建立檔案 `C:\Users\su200\mro-pico\STOP`（可以是空檔案），刪掉它才會恢復。
+- 直接拔掉 Pico 的 USB 排線。
+
+STOP 檔案的檢查跟前景視窗閘門一樣是 fail-closed、每個指令送出前都查。
+
+### 6. 稽核紀錄
+每一個輸入指令，不管成功還是被擋，都會：
+- 附時間戳記寫進 `tools/pico/logs/actions.log`（已加進 `.gitignore`）
+- 盡力寫成 server 那個 tmux session（`server`）console 裡的一行 marker（`pico: <指令> -> <結果>`），沒有 `server` session 就靜默略過；marker 一律不會以 `/` 開頭。
+
+### 7. 韌體端（`code.py`）
+- 開啟硬體看門狗（`microcontroller.watchdog`，8 秒逾時、RESET 模式），主迴圈與長時間的 `PRESS`／`TYPE` 都會分段餵狗；韌體真的卡死會自動重開機，而不是永遠停在某個按鍵按著的狀態。
+- `PRESS` 最長截斷在 5000ms。
+- 每個指令執行完（不管成功或例外）都會呼叫 `release_all()`，確保不會有按鍵/滑鼠鍵卡在按下狀態。
+
+### 已知限制 / 待決
+- 這些護欄都掛在**序列埠傳輸**（`pico_serial.ps1`）上。如果切成 `PICO_TRANSPORT=http`（WiFi 模式），指令直接打去 Pico 的 HTTP handler，**不會經過前景視窗／點擊目標／ASCII 閘門**，只剩 session 這一層（在 `pico_ctl.py`）。無人值守時不要切到 HTTP 模式。
+- 前景視窗閘門檢查的是「視窗完整落在主螢幕」，用的是 `GetWindowRect` 的視窗外框（含邊框），不是客戶區；一般情況下夠用，但如果視窗有透明邊框或跨螢幕邊界一兩個像素，行為未驗證過。
 
 ---
 

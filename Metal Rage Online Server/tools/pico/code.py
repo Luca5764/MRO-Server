@@ -15,12 +15,53 @@ import gc
 import os
 import sys
 import time
+import microcontroller
 import supervisor
 import usb_hid
+from watchdog import WatchDogMode
 
 from adafruit_hid.keyboard import Keyboard
 from adafruit_hid.keycode import Keycode
 from adafruit_hid.mouse import Mouse
+
+# Cap on how long a single PRESS can hold a key, and how often long operations
+# (PRESS hold, TYPE) feed the watchdog while they sleep. A hung command (or a
+# runaway loop) resets the board within WATCHDOG_TIMEOUT_S instead of leaving a
+# key/button stuck down indefinitely with nobody watching the screen.
+MAX_PRESS_MS = 5000
+WATCHDOG_TIMEOUT_S = 8
+WATCHDOG_FEED_INTERVAL_S = 0.2
+
+# ---------------------------------------------------------------------------
+# Hardware watchdog: resets the board if the main loop (or a command handler)
+# stops feeding it, e.g. a firmware hang while unattended.
+# ---------------------------------------------------------------------------
+wdt = None
+try:
+    wdt = microcontroller.watchdog
+    wdt.timeout = WATCHDOG_TIMEOUT_S
+    wdt.mode = WatchDogMode.RESET
+    print(f"[WDT] Hardware watchdog enabled ({WATCHDOG_TIMEOUT_S}s timeout, RESET mode).")
+except Exception as e:
+    print(f"[WDT] Unable to enable watchdog: {e}")
+    wdt = None
+
+def feed_watchdog():
+    if wdt is not None:
+        try:
+            wdt.feed()
+        except Exception:
+            pass
+
+def sleep_and_feed(duration_s):
+    """time.sleep() that feeds the watchdog in chunks, so a long PRESS hold or a
+    long TYPE doesn't starve it and trigger an unwanted reset."""
+    remaining = duration_s
+    while remaining > 0:
+        chunk = min(remaining, WATCHDOG_FEED_INTERVAL_S)
+        time.sleep(chunk)
+        feed_watchdog()
+        remaining -= chunk
 
 # ---------------------------------------------------------------------------
 # Keycode Lookup Table
@@ -122,15 +163,20 @@ def mouse_move_to(target_x, target_y):
     mouse_move(target_x, target_y)
 
 def key_press(key_name, duration_ms=50):
+    """Returns (ok, used_duration_ms). duration_ms is clamped to MAX_PRESS_MS and
+    the hold is slept in small chunks so the watchdog keeps getting fed."""
     if not kbd:
-        return False
+        return False, duration_ms
     kc = parse_key(key_name)
     if kc is None:
-        return False
+        return False, duration_ms
+    used_ms = min(duration_ms, MAX_PRESS_MS)
     kbd.press(kc)
-    time.sleep(duration_ms / 1000.0)
-    kbd.release(kc)
-    return True
+    try:
+        sleep_and_feed(used_ms / 1000.0)
+    finally:
+        kbd.release(kc)
+    return True, used_ms
 
 def type_text(text):
     if not kbd:
@@ -147,6 +193,7 @@ def type_text(text):
                 kbd.release_all()
             else:
                 kbd.send(kc)
+        feed_watchdog()
         time.sleep(0.02)
 
 def release_all():
@@ -199,7 +246,8 @@ def execute_command(cmd_str):
             if len(parts) < 2:
                 return 400, "ERR: KEY requires keyname"
             k = parts[1]
-            if key_press(k):
+            ok, _used_ms = key_press(k)
+            if ok:
                 return 200, f"KEY {k}"
             else:
                 return 400, f"ERR: Unknown key '{k}'"
@@ -209,8 +257,10 @@ def execute_command(cmd_str):
                 return 400, "ERR: PRESS requires keyname duration_ms"
             k = parts[1]
             dur = int(parts[2])
-            if key_press(k, dur):
-                return 200, f"PRESS {k} {dur}ms"
+            ok, used_ms = key_press(k, dur)
+            if ok:
+                note = "" if used_ms == dur else f" (capped from {dur}ms)"
+                return 200, f"PRESS {k} {used_ms}ms{note}"
             else:
                 return 400, f"ERR: Unknown key '{k}'"
 
@@ -227,8 +277,13 @@ def execute_command(cmd_str):
             return 400, f"ERR: Unknown action '{action}'"
 
     except Exception as ex:
-        release_all()
         return 500, f"ERR: {ex}"
+
+    finally:
+        # Belt-and-suspenders: release every key/button after every command (not
+        # just on exception). Cheap, and this runs unattended, so nothing should
+        # ever end up stuck pressed between commands.
+        release_all()
 
 # ---------------------------------------------------------------------------
 # WiFi Setup (Optional, graceful fallback)
@@ -277,6 +332,8 @@ def main():
     serial_buf = ""
 
     while True:
+        feed_watchdog()
+
         # 1. Process USB Serial
         if supervisor.runtime.serial_bytes_available:
             ch = sys.stdin.read(1)
