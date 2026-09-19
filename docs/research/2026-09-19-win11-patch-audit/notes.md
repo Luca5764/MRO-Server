@@ -22,3 +22,12 @@
 
 在遊戲中還會持續執行的只有 D3D9Drv 的 DxDiag 跳過，而它 Win10 那台也有。exe 的三處修改只在解殼時作用；唯一會在執行期介入的 `wow64log.dll` 在這台沒有載入。**從檔案內容看不出修正版會造成遊戲中卡頓。**
 沒驗證的：筆電有沒有把 `wow64log.dll` 裝進 System32（可以看筆電有沒有 `C:\wow64log_beacon.txt`）。
+
+## 對照上游原始碼（https://github.com/shanzenos/Metal-Rage-Online-Win11-Fix ，2026-04-14 版）
+
+- `patch_metalrage.py` 的三個 patch 與我們 exe 的 6 個位元組完全對得上（第 3 個是把 NRV 來源位址從 `0x400000` 改成 ImageBase；我們的 ImageBase 是 `0x10900000`）。第 4 個 DllCharacteristics 在我們的檔案原本就是 0，所以沒變。→ 我們用的就是這一套。
+- `wow64log.c` 的註解：作者在 Win11 量到 y0da 的 8 條監控執行緒 120 秒內呼叫 `NtQueryInformationThread` 232,874 次（約每秒 1,940 次）、`NtSuspendThread` 98 次。這個 DLL 原本是想讓 y0da 的迴圈讓出 CPU，用來繞過一個 heap race；wiki 後來說那個 crash 其實是 DxDiag 造成的（`docs/client-notes-upstream.md`）。
+- wiki「Required-Patches」的 Launcher Resume Loop：**「y0da occasionally suspends the main game thread」**，作者的 launcher 每 1 秒掃一次，把被暫停的執行緒 `resume()` 回來。我們是用 bat 直接開 `MetalRage.exe`，沒有這個 launcher。
+- 🟡 [GUESS] 新假設 H-Y0DA：Win11 的卡頓是 y0da 定期暫停主執行緒（上游量到 120 秒 98 次 `NtSuspendThread`，約每 1.2 秒一次）。解釋得了「Win11 兩台都卡、Win10 不卡」，但上游沒有說 Win10 的次數，也沒有說每次停多久。
+  - 驗證方式（純觀察，不碰行程）：用 Windows 內建的 WPR 錄 CPU／context switch 的 ETW trace，再用 WPA 看卡頓時主執行緒是不是處於 Suspended 等待。
+  - **不採用** launcher 的 resume loop：從外部 `ResumeThread` 保護殼暫停的執行緒，等於干預反作弊的運作，超出硬性約束 1 的「純分析」範圍，要做必須先問操作者。
