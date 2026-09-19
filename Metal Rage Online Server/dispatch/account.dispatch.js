@@ -49,17 +49,10 @@ const SN_CHANNEL_ADD = 0x220102;
 const SA_LEAVE = 0x220132;
 
 const ACCOUNT_LEVEL_STR = { 0: '0\0', 1: '1\0', 2: '2\0', 3: '3\0', 4: '4\0' };
-const BODY_CACHE_INDEX_BY_ITEM_ID = {
-    11100101: 84,
-    12100101: 97,
-    13100101: 110,
-    14200101: 123,
-    14300101: 130,
-    15200101: 136,
-    16200101: 149,
-    17100101: 162,
-    18100101: 175,
-};
+// LEGEND-GRANT-IMPL: GameItemRecord-position-derived index for the WearInfo
+// body slot. See dispatch/cache-index.js for the switch
+// (BODY_INDEX_GIR_MODE) this feeds below (~line 630).
+const cacheIndex = require('./cache-index');
 
 module.exports =
 class ZAccountDispatch
@@ -620,6 +613,17 @@ class ZAccountDispatch
             // what lets it show up equipped in both mechs' WearInfo output.
             const wearItems = await db.getItemsWithEquipViews(accountId);
 
+            // LEGEND-GRANT-IMPL: BODY_INDEX_GIR_MODE 'enabled' switches the
+            // body-slot (slot 0) conversion below from the 9-entry
+            // hand-written table to cacheIndex.getBodyIndexFromGir()
+            // (GameItemRecord position + 84 -- dispatch/cache-index.js,
+            // exact match for the old 9 ids AND the 7 legend ids, [CACHE]
+            // [TEST]). Falls back to the old 9-entry table for any id GIR
+            // doesn't have (belt-and-suspenders; every id checked so far is
+            // in GIR). Default 'disabled' keeps the old 9-entry table
+            // byte-identical.
+            const girModeEnabled = cacheIndex.BODY_INDEX_GIR_MODE === 'enabled';
+
             // All items: part_slot 0 = body/chassis → slot 0; 1-5 → slots 1-5
             for (const item of wearItems) {
                 if (item.equipped && item.mech_type >= 1 && item.mech_type <= MAX_MECH_COUNT) {
@@ -632,8 +636,15 @@ class ZAccountDispatch
                             14200101:123, 14300101:130, 15200101:136,
                             16200101:149, 17100101:162, 18100101:175,
                         };
-                        const itemIndex = (slot === 0 && BODY_IDX[rawId] != null)
-                            ? BODY_IDX[rawId] : rawId;
+                        let itemIndex = rawId;
+                        if (slot === 0) {
+                            const girIndex = girModeEnabled ? cacheIndex.getBodyIndexFromGir(rawId) : null;
+                            if (girIndex != null) {
+                                itemIndex = girIndex;
+                            } else if (BODY_IDX[rawId] != null) {
+                                itemIndex = BODY_IDX[rawId];
+                            }
+                        }
                         mechSlots[item.mech_type][slot] = {
                             uniqueKey: item.id || 0,
                             itemIndex: itemIndex,

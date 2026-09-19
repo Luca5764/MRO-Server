@@ -60,17 +60,13 @@ function getExactMessageBuffer(type, bodySize) {
 }
 
 const ACCOUNT_LEVEL_STR = { 0: '0\0', 1: '1\0', 2: '2\0', 3: '3\0', 4: '4\0' };
-const BODY_CACHE_INDEX_BY_ITEM_ID = {
-    11100101: 84,
-    12100101: 97,
-    13100101: 110,
-    14200101: 123,
-    14300101: 130,
-    15200101: 136,
-    16200101: 149,
-    17100101: 162,
-    18100101: 175,
-};
+// LEGEND-GRANT-IMPL: GameItemRecord-position-derived index for the WearInfo
+// body slot, shared with room.dispatch.js / account.dispatch.js. See
+// dispatch/cache-index.js for the switch (BODY_INDEX_GIR_MODE) this feeds
+// below. Note: unlike account.dispatch.js's 9-id BODY_IDX table, this file's
+// WearInfo body slot previously applied NO conversion at all (see notes
+// update) -- 'disabled' preserves that raw-item_id behavior.
+const cacheIndex = require('./cache-index');
 
 module.exports =
 class ZGameLoginDispatch
@@ -273,14 +269,26 @@ class ZGameLoginDispatch
                     // is 'disabled'.
                     const wearItems = await db.getItemsWithEquipViews(account.id);
 
+                    // LEGEND-GRANT-IMPL: BODY_INDEX_GIR_MODE 'enabled' converts
+                    // the body slot (slot 0) item_id to
+                    // cacheIndex.getBodyIndexFromGir() (GameItemRecord
+                    // position + 84) the same way room.dispatch.js /
+                    // account.dispatch.js do. Default 'disabled' keeps the
+                    // raw item_id (this file's prior, unconverted behavior);
+                    // an id GIR doesn't have also falls back to raw item_id.
+                    const girModeEnabled = cacheIndex.BODY_INDEX_GIR_MODE === 'enabled';
+
                     // All items: slot 0 = body/chassis, slots 1-5 = weapons/equipment
                     for (const item of wearItems) {
                         if (item.equipped && item.mech_type >= 1 && item.mech_type <= MAX_MECH_COUNT) {
                             const slot = Number(item.part_slot);
                             if (slot >= 0 && slot < 6 && mechSlots[item.mech_type]) {
+                                const rawId = Number(item.item_id) || 0;
+                                const girIndex = (slot === 0 && girModeEnabled) ? cacheIndex.getBodyIndexFromGir(rawId) : null;
+                                const itemIndex = girIndex != null ? girIndex : rawId;
                                 mechSlots[item.mech_type][slot] = {
                                     uniqueKey: item.id || 0,
-                                    itemIndex: item.item_id || 0,
+                                    itemIndex: itemIndex,
                                 };
                             }
                         }
