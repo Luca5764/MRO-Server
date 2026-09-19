@@ -36,6 +36,10 @@ Node 的 `listen(port)` 不指定 host 時綁的是 `::`（IPv6 dual-stack），
 
 ### 本機安裝現況（這台機器）
 
+客戶端來源：上游 README 的 archive.org 連結（`https://archive.org/download/metal-rage-online-client/MetalRage%20Online/MetalRage%20Online.rar`）；操作者若記得是別的來源再更正。
+
+**語系：** 現行客戶端同時帶著英文和繁體中文。`data/System/*.twt` 是目前用的語系（UTF-16LE），中文原檔改名成 `*.c_twt` 保留（31 個，只有 `ALAudio.twt` 沒有中文版），另外有 2 個 UI 貼圖 `data/Resource/twt/UI/*.c_dds`。根目錄 `switch.cmd` 依 `current_language.txt`（現在是 `english`）把 `.twt`／`.dds` 在中英文之間改名切換；它只改名、不改內容。要不要切由操作者決定。🟡 y0da 只檢查 `MetalRage.exe` 的 .text，語系檔應該不受影響，但沒實測。
+
 客戶端裝在 Windows 的 `C:\Games\MetalRage Online`，並已套用 shanzenos 的 Win11 修正（patch 過的 `MetalRage.exe`、`D3D9Drv.dll`、三個 DLL；原檔備份在 `data\System\_original_backup\`）。`MetalRage.ini` 與 `Default.ini` 的 `ServerIP` 都已改為 `127.0.0.1`。
 
 repo 根目錄的 `MetalRage` 是指向它的 symlink（已 gitignore），所以 WSL 裡的伺服器能讀到 `Cache.Bin`——開機時應該看到 `Loaded 1268 Cache.Bin item indexes`。

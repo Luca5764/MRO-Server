@@ -32,3 +32,12 @@
 - **立即有用：** 第 6 項，中文介面可以用現行客戶端的 `switch.cmd` 切換，給朋友用；舊版 `.twt` 是原始用語對照。第 4 項，新版才有的 opcode 名稱，之後查未知封包可以用。
 - **之後可能有用：** 第 5 項，完整比對 418 個舊包和 445 個新包的腳本；`ZServerUI.tzp`（名稱像伺服器介面，沒看內容）。
 - **沒用：** 第 3 項，原本期待的「舊版比較好讀」不成立。另外留一個疑點給 client.md 的 Themida 描述。
+
+## 補查：現行客戶端的 switch.cmd（PM 追加，高階直接讀）
+
+- `switch.cmd` 讀 `current_language.txt`（內容 `english`）：
+  - `:english` 分支：把 `data/System/*.c_twt` 換成 `*.twt`，原本的英文 `.twt` 改名成 `.e_twt`；`data/Resource/twt/UI/*.c_dds` 也同樣處理；最後寫入 `chinese`。
+  - `:chinese` 分支：反向換回英文。
+  - 只改檔名，不改內容。
+- 中文檔：`*.c_twt` 31 個，UTF-16LE 繁體中文（`Core.c_twt` 開頭 `Unknown="未知的錯誤"`）；只有 `ALAudio.twt` 沒有中文版。UI 貼圖 `*.c_dds` 2 個。
+- → 中文介面**不需要舊版**，現行客戶端執行 `switch.cmd` 就能切換。要不要切由操作者決定。🟡 y0da 只 CRC exe 的 .text，應該不受影響，但沒實測。
