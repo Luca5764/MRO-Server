@@ -19,7 +19,7 @@ const ROOM_STRING_MAX_CHARS = 25;
 // mapAllSingleEntryMode) so tests can flip it on for their own run without
 // touching the shipped default. OFF by default: no byte written to the wire
 // changes while this stays 'disabled'.
-let roomNameRawBytesMode = 'disabled'; // 'disabled' | 'enabled'
+let roomNameRawBytesMode = 'enabled'; // 'disabled' | 'enabled' -- live-verified 2026-09-19 (journal *-room-name-big5.md)
 
 function isRoomNameRawBytesEnabled() {
     return roomNameRawBytesMode === 'enabled';
