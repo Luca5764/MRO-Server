@@ -141,8 +141,10 @@ let ROOM_TEAM_CHAT_MODE = 'disabled'; // 'disabled' | 'enabled' ('let' only so t
 // Game_Info_SN body+0x13 is TimeLimit in minutes. 'room' makes it follow the
 // room's PlayTime (Map_Change_One_CQ 0x00220221 w2, client.mapChangeOneTime_,
 // set at the case 0x00220221 handler below) instead of the hardcoded 10.
-// See docs/journal/2026-09-18-2334-t1-time-limit.md.
-const GAME_INFO_TIME_LIMIT_MODE = 'disabled'; // 'disabled' | 'room'
+// See docs/journal/2026-09-18-2334-t1-time-limit.md. SWITCH-CONVERGE:
+// verified live (docs/journal/2026-09-19-0330-d1-step4-room-join.md),
+// default flipped to 'room'.
+const GAME_INFO_TIME_LIMIT_MODE = 'room'; // 'disabled' | 'room'
 // When the room state block is re-sent after Create_SA, and why each entry
 // costs a room-master dialog. See the comment at the call site.
 // Send Game_Info_SN with the room state, so [this+0xfc8] holds the map before
