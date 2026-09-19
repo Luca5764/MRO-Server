@@ -326,7 +326,10 @@ function main()
     // indirectly via a fresh LobbyDispatch). ---
     rooms._resetForTests();
     rooms._setLobbyRoomListModeForTests('enabled');
-    // ROOM_JOIN_MODE deliberately left at its default 'disabled'.
+    // ROOM_JOIN_MODE deliberately left 'disabled' (the state
+    // rooms._resetForTests() above already put it in -- SWITCH-CONVERGE
+    // flipped the production default to 'enabled', so this is no longer
+    // "the default" but the scenario still needs the off path covered).
     try {
         const solo = makeFakeClient(21, 30907);
         solo.accountId_ = 21;
@@ -693,8 +696,10 @@ function main()
     // gate.game.dispatch.js) must broadcast User_State_SN 0x00220401 raw
     // state 2 (READY once client-normalized) to every room member,
     // including herself, and a member joining afterward must see that same
-    // ready state in her own room-state burst. Switch off (default): no
-    // such broadcast at all. rooms.isRoomReadyStateEnabled() lives in
+    // ready state in her own room-state burst. Switch left 'disabled' (via
+    // rooms._resetForTests() below -- no longer the production default
+    // after SWITCH-CONVERGE): no such broadcast at all.
+    // rooms.isRoomReadyStateEnabled() lives in
     // rooms.js (not a gate.game.dispatch.js-local switch), same pattern as
     // roomJoinMode/lobbyRoomListMode -- see the READY-IMPL comment there.
     const USER_STATE_SN = '0x00220401';
@@ -724,7 +729,7 @@ function main()
         assert.strictEqual(enterHandled7, true, 'Enter_CQ must be handled');
         while (fakeTimers6.fireNext()) { /* drain the 350ms joiner room-state send */ }
 
-        // --- 11a: switch off (default) -- pressing Ready must not
+        // --- 11a: switch left 'disabled' -- pressing Ready must not
         // broadcast anything to the host (resendRoomState only ever
         // unicasts to the presser herself, see scenario 8 above).
         hostK._sent.length = 0;
@@ -732,8 +737,8 @@ function main()
         const readyBodyOff = Buffer.from('270a000001', 'hex'); // observed CQ body: +0x00 u32 unknown, +0x04 u8 ready=1
         const readyHandledOff = gate.dispatch(joinerL, 0x00222101, readyBodyOff);
         assert.strictEqual(readyHandledOff, true, 'Ready 0x00222101 must be handled with the switch off');
-        assert.strictEqual(hostK._sent.length, 0, 'ROOM_READY_STATE off (default): the host must receive nothing at all from a joiner pressing Ready');
-        console.log('[room-join test] PASS: rooms.isRoomReadyStateEnabled() off (default) -- pressing Ready broadcasts no User_State_SN');
+        assert.strictEqual(hostK._sent.length, 0, 'ROOM_READY_STATE disabled: the host must receive nothing at all from a joiner pressing Ready');
+        console.log('[room-join test] PASS: rooms.isRoomReadyStateEnabled() disabled -- pressing Ready broadcasts no User_State_SN');
 
         // --- 11b: switch on -- both host and joiner must see raw state 2
         // for the joiner's own UserIndex (72).
