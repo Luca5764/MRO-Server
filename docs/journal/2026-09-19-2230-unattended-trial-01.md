@@ -46,3 +46,8 @@
 - 戰場裡主控台的區塊比對落在灰區（open 18.25／closed 25.50），因為主控台沒有底板、背景一直在動。改看提示字元 `(>` 的固定位置（shot 座標 x 6–34、y 612–627），數接近純白的像素：開著 39–43，關著 0（大廳、房間、商店、戰場的參考圖都是 0）。另外 F24 是切換鍵，要先確認提示字元不在畫面上才按。
 - start_battle 看到 server marker 時，客戶端還在載入地圖；campaign_win_all 改成最多等 60 秒等戰場 HUD 出現，不再做一次性的前置檢查。
 - 修完之後：✅ [TEST] `U-pve-fullmatch` **PASS**。8 步全部由 runner 自己判定，約 2.5 分鐘；5 回合的 R-ROUND、EndGame、結算畫面、回房、回大廳都有。高階只讀了文字報告（`tools/pico/logs/reports/U-pve-fullmatch-20260919-233020.txt`，gitignored）。未經跨公司審查。
+
+## 當掉重開的實測（操作者在場並同意）
+- ❌ [TEST] `client_ctl.py restart --step manual-test`：證據（截圖＋200 行 log）有存，但 `taskkill /IM MetalRage.exe /F` 回「無法終止 "MetalRage.exe" 處理程序 (PID 為 42340)」。工具照設計停下、session 鎖住，沒有嘗試重開。
+- 呼叫端不是管理員；遊戲行程的一般 handle 開得起來，但 WMI 看不到它的命令列。🟡 [GUESS] XIGNCODE 的驅動擋了終止權限（反作弊保護行程）。依硬性約束 1，**不嘗試繞過**，也不再用其他方式強制結束。
+- 結論：卡死但行程還在的客戶端，AI 無法結束它 → 停下來，等操作者處理。真正崩潰、行程已經消失的情況，才走「重開」那條路（這條路還沒實測過）。
