@@ -9,14 +9,15 @@
 // mock pool while it was written (see test/item-equips.js) -- never against
 // database/config.json's real `mro` database.
 //
-// Idempotent: running it twice in a row is a no-op the second time (every
-// row it would insert already exists with the same item_id, so it's
-// skipped). Fails loudly (throws, rolls back, exits non-zero from the CLI)
-// if a target (account_id, mech_slot, part_slot) already holds a *different*
-// item_id than the items row being copied -- that would mean two different
-// serials both claim equipped=1 on the same mech+part, which the UNIQUE
-// constraint says can't happen but the script checks explicitly instead of
-// trusting that.
+// Idempotent when re-run with --force: every row it would insert that
+// already exists with the same item_id is skipped, not duplicated. Without
+// --force a rerun refuses outright once item_equips has any rows (see the
+// rerun-safety comment inside runMigration()). Fails loudly (throws, rolls
+// back, exits non-zero from the CLI) if a target (account_id, mech_slot,
+// part_slot) already holds a *different* item_id than the items row being
+// copied -- that would mean two different serials both claim equipped=1 on
+// the same mech+part, which the UNIQUE constraint says can't happen but the
+// script checks explicitly instead of trusting that.
 //
 // E1 fix round (Sol batch4, docs/research/2026-09-19-sol-review/batch4.md
 // "Must fix before migration", item 1): CREATE TABLE now runs BEFORE
@@ -26,11 +27,17 @@
 // atomic. The transaction now only wraps the SELECT/INSERT work, so a
 // collision rolls all of that back.
 //
-// Usage (once a high-tier has reviewed this and taken a backup):
-//   node tools/migrate-e1-item-equips.js [--force]
-// The script itself refuses to run without ALLOW_REAL_DB_WRITE=1 in the
-// environment, on top of the operator's own backup step, so it can't be
-// triggered by an accidental `node tools/migrate-e1-item-equips.js` either.
+// E1 fix round (coordinator decision 2026-09-19): this script no longer
+// prints a mysqldump hint -- it is not reliable as a real backup command
+// (fails outright the first time, before item_equips exists) and the
+// high-tier operator takes their own full-database backup before running
+// this. The CLI now requires E1_BACKUP_CONFIRMED=1 on top of
+// ALLOW_REAL_DB_WRITE=1, so a real run can't happen without an explicit
+// "yes, I already backed up" signal.
+//
+// Usage (once a high-tier has reviewed this, taken a full-DB backup, and set
+// both env vars below):
+//   ALLOW_REAL_DB_WRITE=1 E1_BACKUP_CONFIRMED=1 node tools/migrate-e1-item-equips.js [--force]
 // --force is required for a rerun once item_equips already has rows (see
 // the rerun-safety comment inside runMigration() below).
 
@@ -47,10 +54,6 @@ async function runMigration(pool, opts = {})
 {
     const log = opts.log || console.log;
     const force = !!opts.force;
-
-    log('[E1 migration] Before running against the real DB, back it up first, e.g.:');
-    log('  mysqldump -u root -p mro items item_equips > backup-pre-e1-$(date +%Y%m%d-%H%M%S).sql');
-    log('[E1 migration] (this script does not run that command itself)');
 
     const conn = await pool.getConnection();
     try {
@@ -168,7 +171,17 @@ async function main()
     if (process.env.ALLOW_REAL_DB_WRITE !== '1') {
         console.error(
             '[E1 migration] Refusing to run: set ALLOW_REAL_DB_WRITE=1 only after a high-tier has '
-            + 'reviewed this script and you have a fresh backup (see the comment at the top of this file).'
+            + 'reviewed this script and you have a fresh, full-database backup (see the comment at the '
+            + 'top of this file).'
+        );
+        process.exitCode = 1;
+        return;
+    }
+    if (process.env.E1_BACKUP_CONFIRMED !== '1') {
+        console.error(
+            '[E1 migration] Refusing to run: this script no longer prints a backup command for you -- '
+            + 'take a full-database backup yourself first, then set E1_BACKUP_CONFIRMED=1 to confirm you '
+            + 'have done so (in addition to ALLOW_REAL_DB_WRITE=1).'
         );
         process.exitCode = 1;
         return;
