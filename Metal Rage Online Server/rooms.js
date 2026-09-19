@@ -200,6 +200,24 @@ function _setBattleEndBroadcastModeForTests(mode) {
     battleEndBroadcastMode = mode;
 }
 
+// ROOM-PLAYING-STATE (docs/backlog.md INTRUDE, docs/research/
+// 2026-09-19-intrude/notes.md "過渡規則", 🟡 待審): conservative interim
+// rule ahead of a real INTRUDE (mid-battle join) implementation -- whether
+// a Room's `state` field (already declared on the typedef above, always
+// 'lobby' until now because nothing ever wrote 'playing') actually gets
+// flipped when a battle starts/ends. Requires roomJoinMode -- there is no
+// tracked Room to flip without it. Same `let` + accessor + test-only setter
+// pattern as every other switch in this file.
+let roomPlayingStateMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isRoomPlayingStateEnabled() {
+    return roomPlayingStateMode === 'enabled';
+}
+
+function _setRoomPlayingStateModeForTests(mode) {
+    roomPlayingStateMode = mode;
+}
+
 // D1-4: which live client objects count as "in the lobby" for the
 // Room_List_SN broadcast. There is no separate "entered lobby" flag on
 // NetworkClient (login goes straight from channel-enter to the client
@@ -439,6 +457,7 @@ function _resetForTests() {
     readyHostSplitMode = 'disabled';
     roomBattleStartBroadcastMode = 'disabled';
     battleEndBroadcastMode = 'disabled';
+    roomPlayingStateMode = 'disabled';
     clientSource = [];
 }
 
@@ -467,6 +486,8 @@ module.exports = {
     _setRoomBattleStartBroadcastModeForTests,
     isBattleEndBroadcastEnabled,
     _setBattleEndBroadcastModeForTests,
+    isRoomPlayingStateEnabled,
+    _setRoomPlayingStateModeForTests,
     registerLobbyClientSource,
     getLobbyClients,
     _resetForTests,

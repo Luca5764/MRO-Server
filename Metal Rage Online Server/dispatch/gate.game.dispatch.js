@@ -1632,6 +1632,25 @@ class ZGateGameDispatch
                     startedHostAccountId = roomForBattleBroadcast.hostAccountId;
                 }
 
+                // ROOM-PLAYING-STATE (docs/backlog.md INTRUDE, docs/research/
+                // 2026-09-19-intrude/notes.md "過渡規則", 🟡 待審): client
+                // action -- the host's F5 press (see the case 0x00222101
+                // comment above for why only the host's F5 reaches this case)
+                // just cleared the HOST_ADDRESS_REQUIRE_MODE checks above and
+                // bumped battleStartGen, i.e. this Game_Start_CN is accepted.
+                // Flip the tracked Room to 'playing' here so Enter_CQ
+                // 0x00220231 below can refuse mid-battle joins until a real
+                // INTRUDE implementation exists. Also tell the lobby (partial
+                // update, same path member-count changes use) so Room_List_SN
+                // shows the room as in-progress.
+                if (rooms.isRoomPlayingStateEnabled() && roomForBattleBroadcast) {
+                    roomForBattleBroadcast.state = 'playing';
+                    console.log(`[ZGateGameDispatch] >> Room #${roomForBattleBroadcast.id} state -> playing (Game_Start_CN accepted)`);
+                    if (rooms.isLobbyRoomListEnabled()) {
+                        broadcastRoomListChange(rooms.getLobbyClients(), roomForBattleBroadcast, 2, getExactMessageBuffer);
+                    }
+                }
+
                 function battleStartStillValid(tag)
                 {
                     if (!roomForBattleBroadcast) return true;
@@ -1902,6 +1921,18 @@ class ZGateGameDispatch
                 }
                 if (room.hasPassword && room.password !== password) {
                     console.log(`[ZGateGameDispatch] >> Enter_CQ: wrong password for room #${roomIndexReq}`);
+                    sendEnterSa(false);
+                    return true;
+                }
+                // ROOM-PLAYING-STATE (docs/backlog.md INTRUDE 過渡規則,
+                // 🟡 待審): client action -- double-clicking a room row whose
+                // battle has already started (case 0x00222103 above sets
+                // room.state='playing'). Mid-battle join (INTRUDE) is not
+                // implemented yet, so refuse with the same failure Enter_SA
+                // used for "not found"/"wrong password" above (known not to
+                // wedge the client, see the sendEnterSa() comment).
+                if (rooms.isRoomPlayingStateEnabled() && room.state === 'playing') {
+                    console.log(`[ZGateGameDispatch] >> Enter_CQ: room #${roomIndexReq} already playing (intrude not implemented)`);
                     sendEnterSa(false);
                     return true;
                 }

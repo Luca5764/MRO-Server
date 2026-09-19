@@ -9,6 +9,10 @@ const { sendFullRoomList } = require('./room/room-list.sender');
 // body+0x15 already sends the client, so the Campaign_CN handler below
 // compares against exactly what the client was told, not a second guess.
 const { getGameInfoRound } = require('./gate.game.dispatch.js');
+// ROOM-PLAYING-STATE (docs/backlog.md INTRUDE): reuse the same partial-
+// update path gate.game.dispatch.js's CQ_CREATE/Enter_CQ broadcasts use for
+// a member-count change, to tell the lobby a room just finished a battle.
+const { broadcastRoomListChange } = require('./room/room-list.sender');
 // RANK (docs/backlog.md, config/server.json's pveFixedRank): test-mode
 // WinTeamRank sent via User_Score_SN 0x00222221 -- see the Campaign_CN
 // handler below.
@@ -512,6 +516,24 @@ class ZLobbyDispatch
                     eb.writeUInt16LE(1, 0x10);   // team B = blue
                     client.send(msg);
                     console.log(`[ZLobbyDispatch] >> Campaign_CN action=${action} -> Sent EndGame_SN 0x00222213 (winTeam=${winTeam})`);
+                }
+
+                // ROOM-PLAYING-STATE (docs/backlog.md INTRUDE 過渡規則,
+                // 🟡 待審): EndGame_SN just went out above (win or lose --
+                // either way the client leaves the battle for the result
+                // scene), so the room is back in the lobby screen. Look the
+                // room up independently of roomForCampaign above -- that one
+                // is only set when battleEndBroadcastMode is ALSO on, but
+                // this switch only requires roomJoinMode.
+                if (rooms.isRoomPlayingStateEnabled() && rooms.isRoomJoinEnabled()) {
+                    const roomForPlayingState = roomForCampaign || rooms.getRoomByAccount(accountIdForCampaign);
+                    if (roomForPlayingState && roomForPlayingState.state === 'playing') {
+                        roomForPlayingState.state = 'lobby';
+                        console.log(`[ZLobbyDispatch] >> Room #${roomForPlayingState.id} state -> lobby (EndGame_SN)`);
+                        if (rooms.isLobbyRoomListEnabled()) {
+                            broadcastRoomListChange(rooms.getLobbyClients(), roomForPlayingState, 2, getExactMessageBuffer);
+                        }
+                    }
                 }
                 return true;
             }
