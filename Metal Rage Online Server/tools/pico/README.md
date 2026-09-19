@@ -151,6 +151,30 @@ STOP 檔案的檢查跟前景視窗閘門一樣是 fail-closed、每個指令送
 
 ---
 
+## 客戶端崩潰偵測與復原（`client_ctl.py`）
+
+`pico_ctl.py` 只管輸入（鍵盤/滑鼠），完全不碰客戶端行程本身。`client_ctl.py` 是另一支獨立工具，負責無人跑步時偵測客戶端卡死／消失，留證據，然後重啟：
+
+```bash
+python3 tools/pico/client_ctl.py status
+# [OK] running pid=... hwnd=... responding=True rect=...    exit 0
+# [WARN] not responding ...                                 exit 1
+# [NOT_RUNNING] MetalRage process not found                 exit 2
+
+python3 tools/pico/client_ctl.py evidence "some-label"
+# 存整桌面截圖 + MetalRage.log 最後 200 行到
+# tools/pico/logs/crash-<時間戳>-<label>/，隨時可安全執行，不會動到客戶端行程。
+
+python3 tools/pico/client_ctl.py restart --step login --reason "卡在登入畫面" --dry-run
+python3 tools/pico/client_ctl.py restart --step login --reason "卡在登入畫面"
+```
+
+`restart` 一定要先有一個**開著、沒被 halt** 的 pico session（跟 `pico_ctl.py` 共用同一個 `.pico_session`）。依序擋下：STOP 檔案存在、這個 session 已經重啟滿 3 次、或**跟上一次重啟是同一個 step 標籤**（代表同一個點連續崩兩次，八成是迴圈，不值得再自動試）——任何一種都會直接把 session 標成 halted，結束碼非 0，不重試。通過閘門後才會真的動手：先留證據（重啟前的畫面/log），再 `taskkill /IM MetalRage.exe /F`（行程還在才殺）、等它真的退出、用 `Play Metal Rage Online.bat` 重開、等視窗出現（最多 90 秒）。過程中任何一步失敗一樣直接 halt session。**不會自動登入**，登入是後面的 Pico 步驟做的事。
+
+`--dry-run` 會照樣跑完所有閘門檢查、印出「接下來會做什麼」，但完全不碰真正的客戶端、也不改 session 檔案，測試改動時用這個，不要對正在用的客戶端跑真的 `restart`。
+
+---
+
 ## 選用：WiFi / HTTP 連線方式
 
 如果不想每次都透過 `powershell.exe` 開序列埠（例如板子離 WSL 主機的 Windows 比較遠、想直接用網路控制），可以額外設定 WiFi，改用 HTTP REST API。**這是選用功能，序列埠模式已經涵蓋所有指令。**

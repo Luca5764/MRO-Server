@@ -132,6 +132,10 @@ def session_start(purpose):
         "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "halted": False,
         "halt_reason": None,
+        # Used by client_ctl.py's `restart` to enforce a per-session restart
+        # budget and detect two consecutive crashes at the same step.
+        "client_restart_count": 0,
+        "client_last_restart_step": None,
     }
     _save_session(state)
     print(f"[PICO] session started: {purpose}")
@@ -141,10 +145,11 @@ def session_start(purpose):
 def session_end():
     state = _load_session()
     purpose = state.get("purpose", "") if state else ""
+    restarts = state.get("client_restart_count", 0) if state else 0
     if os.path.exists(SESSION_FILE):
         os.remove(SESSION_FILE)
-    print(f"[PICO] session ended: {purpose}")
-    log_action("session end", purpose)
+    print(f"[PICO] session ended: {purpose} (client restarts this session: {restarts})")
+    log_action("session end", f"{purpose} (client restarts: {restarts})")
 
 
 def halt_session(reason):
