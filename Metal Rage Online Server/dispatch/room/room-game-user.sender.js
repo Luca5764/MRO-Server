@@ -1,4 +1,5 @@
 const db = require('../../database/db');
+const serverConfig = require('../../config/server.js');
 
 // 0x00222112, read straight out of ZDispatchGame::Dispatch — the chain does
 // sub edx,0x222111 / dec edx and lands on Game_User_SN. The old 0x00230111 was
@@ -149,7 +150,24 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     // rec+0x37: asciiz[0x19] clan name
     writeCString(body, '', rec + 0x37, 0x19);
 
-    // rec+0x50-0x68: the seven u32 Game_Item_Add reads (all 0 = no bonus)
+    // rec+0x50-0x68: the seven u32 Game_Item_Add reads (all 0 = no bonus,
+    // except rec+0x64 below).
+    //
+    // LIVES (test mode): rec+0x64 -> Game_Item_Add param_8 -> GAME_ITEM_INFO
+    // +0xe0 = PveRespawnAddCount (0x107029ff: `*(int*)(iVar1+0xe0+base) =
+    // param_8`). Confirmed against the caller's real push sequence at
+    // 0x107d8d63/0x107d8d9f (0x107d8ae0 == this handler), not just Ghidra's
+    // decompiled param names -- the field order matches
+    // ~/mro-decrypted/src/ZNetwork/ZNetwork_DJ.uc:469-486 GAME_ITEM_INFO.
+    // Client adds this on top of the map's DefNumLive
+    // (ZModePve.uc:473-474 SetNumLive(DefNumLive + ItemInfo.PveRespawnAddCount)).
+    // Triggered the same way as the rest of this packet: server-side game
+    // start (F5 / BeginRound flow), not a direct client request. Default 0 =
+    // byte-identical to before this change; config/server.json's
+    // pveExtraLives sets it (see config/server.js).
+    const pveExtraLives = serverConfig.getPveExtraLives();
+    body.writeUint32LE(pveExtraLives, rec + 0x64);
+
     // rec+0x6C: slot count. Send all eight mech slots: the in-battle slot
     // select page (ZSlotSelectPage -> ChangeSlot_CN) can pick any of them, and
     // ChangeSlot_SN / Respawn only switch to a slot whose Game_Slot_Set row
@@ -197,7 +215,8 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer) {
     client.gameUserBootstrapSent_ = true;
     console.log(
         `[ZRoomDispatch] >> Sent Game_User_SN 0x00222112 ` +
-        `(userIndex=${accountIndex}, team=${teamIndex}, selectedMech=${mechType}, slots=${summary.join(' ')})`
+        `(userIndex=${accountIndex}, team=${teamIndex}, selectedMech=${mechType}, slots=${summary.join(' ')})` +
+        (pveExtraLives !== 0 ? ` pveExtraLives=${pveExtraLives}` : '')
     );
 }
 

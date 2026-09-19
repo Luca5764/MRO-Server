@@ -474,15 +474,19 @@ function recordBuild(reason)
     const whitelistStatus = whitelist.status();
     // Backlog N1: address advertised in SN_SERVER_ADD -- see config/server.js.
     const publicHost = serverConfig.getPublicHost();
+    // LIVES (test mode): GAME_ITEM_INFO.PveRespawnAddCount bonus -- see
+    // config/server.js and dispatch/room/room-game-user.sender.js.
+    const pveExtraLives = serverConfig.getPveExtraLives();
 
-    write(Object.assign({ ev: 'build', reason }, identity, { switches, nonDefault, whitelist: whitelistStatus, publicHost }));
+    write(Object.assign({ ev: 'build', reason }, identity, { switches, nonDefault, whitelist: whitelistStatus, publicHost, pveExtraLives }));
 
     const nonDefaultList = Object.keys(nonDefault);
     console.log(`[packetlog] build: ${identity.branch}@${identity.commit}`
         + ` dirty=${identity.dirty}`
         + (nonDefaultList.length > 0 ? ` nonDefault=[${nonDefaultList.join(', ')}]` : ' nonDefault=[]')
         + ` whitelist=${whitelistStatus}`
-        + ` publicHost=${publicHost}`);
+        + ` publicHost=${publicHost}`
+        + ` pveExtraLives=${pveExtraLives}`);
 }
 
 module.exports = {

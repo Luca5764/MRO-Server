@@ -175,3 +175,7 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 - 設定之後，這台主機自己也會經過 portproxy 連進來。執行 `lan-close.ps1` 之前，要先刪掉 `server.json` 並重啟，否則連本機都連不上。
 - 白名單：`config/allowed-users.json`（格式見 `allowed-users.example.json`，範例檔本身不會被讀取）。開放區網之前一定要設定。
 - 測試 worktree 的這兩個檔案用 symlink 指到主目錄那份。
+
+### PvE 多命測試（pveExtraLives）
+
+同一個 `config/server.json` 可以加 `"pveExtraLives": 97`，讓 PvE 開戰的 `Game_User_SN 0x00222112` 多送一個 `GAME_ITEM_INFO.PveRespawnAddCount`，客戶端命數＝地圖 `DefNumLive`（初級通常 3）＋這個值（`ZModePve.uc:473-474`）。設成 97 大約等於 100 條命，方便測試不用一直重開房。不填或填 0＝行為不變。改完要完整重啟伺服器（不是 `/reload`，這個值只在啟動時讀一次）。依據見 `dispatch/room/room-game-user.sender.js` 的 LIVES 註解。

@@ -11,12 +11,25 @@ const path = require('path');
 // publicHost field is missing, behaviour is unchanged from before N1:
 // '127.0.0.1' is used.
 
+// LIVES (test mode): pveExtraLives is an optional int added to
+// GAME_ITEM_INFO.PveRespawnAddCount (Game_User_SN 0x00222112, rec+0x64,
+// written via Game_Item_Add param_8 -- 0x107029ff, verified against the
+// disassembly at 0x107d8ae0, see
+// dispatch/room/room-game-user.sender.js). The client computes total lives
+// as DefNumLive + PveRespawnAddCount (ZModePve.uc:473-474
+// SetNumLive(DefNumLive + ItemInfo.PveRespawnAddCount)). Missing/0 =
+// unchanged behaviour.
+
 const CONFIG_PATH = path.join(__dirname, 'server.json');
 const DEFAULT_PUBLIC_HOST = '127.0.0.1';
+const DEFAULT_PVE_EXTRA_LIVES = 0;
 
 // undefined = not loaded yet; string = loaded (either the configured host or
 // the default, if the file/field is missing or invalid).
 let cachedPublicHost = undefined;
+// undefined = not loaded yet; number = loaded (either the configured value
+// or the default, if the file/field is missing or invalid).
+let cachedPveExtraLives = undefined;
 
 function load()
 {
@@ -48,11 +61,27 @@ function load()
             cachedPublicHost = host;
             console.log(`[config/server] Loaded publicHost=${host} from config/server.json`);
         }
+
+        const rawLives = parsed.pveExtraLives;
+        const lives = Number.isInteger(rawLives) ? rawLives : NaN;
+        if (rawLives === undefined) {
+            cachedPveExtraLives = DEFAULT_PVE_EXTRA_LIVES;
+        } else if (!Number.isInteger(lives) || lives < 0) {
+            console.warn(
+                `[config/server] pveExtraLives "${rawLives}" is not a non-negative integer -- `
+                + `falling back to ${DEFAULT_PVE_EXTRA_LIVES}`
+            );
+            cachedPveExtraLives = DEFAULT_PVE_EXTRA_LIVES;
+        } else {
+            cachedPveExtraLives = lives;
+            console.log(`[config/server] Loaded pveExtraLives=${lives} from config/server.json`);
+        }
     } catch (err) {
         if (err.code !== 'ENOENT') {
             console.warn(`[config/server] failed to read config/server.json (${err.message}) -- using ${DEFAULT_PUBLIC_HOST}`);
         }
         cachedPublicHost = DEFAULT_PUBLIC_HOST;
+        cachedPveExtraLives = DEFAULT_PVE_EXTRA_LIVES;
     }
     return cachedPublicHost;
 }
@@ -66,4 +95,15 @@ function getPublicHost()
     return load();
 }
 
-module.exports = { getPublicHost };
+/**
+ * @returns {number} GAME_ITEM_INFO.PveRespawnAddCount bonus to add on top of
+ *   the map's DefNumLive (test mode), 0 when config/server.json is absent or
+ *   the field is missing (matches pre-LIVES behaviour).
+ */
+function getPveExtraLives()
+{
+    load();
+    return cachedPveExtraLives;
+}
+
+module.exports = { getPublicHost, getPveExtraLives };

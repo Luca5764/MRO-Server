@@ -84,10 +84,13 @@ function installFakeModule(resolvedPath, exportsObj)
 
 // Fixed publicHost -- matches config/server.js's own DEFAULT_PUBLIC_HOST,
 // which is what every existing golden sample's expected.jsonl was captured
-// against (no config/server.json in this repo/CI).
+// against (no config/server.json in this repo/CI). pveExtraLives 0 matches
+// config/server.js's own DEFAULT_PVE_EXTRA_LIVES for the same reason (LIVES,
+// dispatch/room/room-game-user.sender.js); test/extra-lives.js exercises the
+// non-default value directly instead of through this fixture.
 function makeFixtureServerConfig()
 {
-    return { getPublicHost() { return '127.0.0.1'; } };
+    return { getPublicHost() { return '127.0.0.1'; }, getPveExtraLives() { return 0; } };
 }
 
 // Whitelist always off -- matches pre-W1 behaviour, what every existing
