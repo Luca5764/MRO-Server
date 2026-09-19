@@ -226,10 +226,68 @@ async function testMissingHostAddressSendsNothingToNonHost()
     }
 }
 
+// SOL-REVIEW-2 point 3 (docs/research/2026-09-19-sol-review/batch2.md):
+// a short/malformed Ready_Host_CA must not be treated as success (must not
+// default the result code to 0) and must not fall back to the hardcoded
+// 30907 port -- nobody, including the host itself, gets anything.
+async function testMalformedCaSendsNothingToAnyone()
+{
+    installFakeWhitelist({ alice: '203.0.113.5' });
+    const { gate, community, clientA, clientB } = setUpRoom();
+
+    const fakeTimers = installFakeTimers();
+    try {
+        await startBattleUpToReadyHostSq({ gate, clientA, clientB, fakeTimers });
+        clientA._sent.length = 0;
+        clientB._sent.length = 0;
+
+        // Only 6 bytes -- short of the 8 needed to hold the +0x06 port field.
+        const shortBody = makeReadyHostCaBody(12345, 0).subarray(0, 6);
+        const caHandled = community.dispatch(clientA, READY_HOST_CA, shortBody);
+        assert.strictEqual(caHandled, true, 'Ready_Host_CA 0x00420114 must still be handled (claims the opcode)');
+
+        assert.strictEqual(clientA._sent.length, 0, 'A (host) must receive NOTHING for a malformed (<8 byte) CA -- not even its own Ready_Success_SN');
+        assert.strictEqual(clientB._sent.length, 0, 'B (non-host) must receive nothing for a malformed CA');
+
+        console.log('[room-ready-host-split test] PASS: malformed (<8 byte) Ready_Host_CA sends nothing to anyone, including the host');
+    } finally {
+        fakeTimers.restore();
+        rooms._resetForTests();
+    }
+}
+
+// SOL-REVIEW-2 point 3: result != 0 (Listen failure) must not still send
+// the host its own Ready_Success_SN.
+async function testListenFailureResultSendsNothingToAnyone()
+{
+    installFakeWhitelist({ alice: '203.0.113.5' });
+    const { gate, community, clientA, clientB } = setUpRoom();
+
+    const fakeTimers = installFakeTimers();
+    try {
+        await startBattleUpToReadyHostSq({ gate, clientA, clientB, fakeTimers });
+        clientA._sent.length = 0;
+        clientB._sent.length = 0;
+
+        const caHandled = community.dispatch(clientA, READY_HOST_CA, makeReadyHostCaBody(12345, 0xFFFFFFFF));
+        assert.strictEqual(caHandled, true, 'Ready_Host_CA 0x00420114 must still be handled (claims the opcode)');
+
+        assert.strictEqual(clientA._sent.length, 0, 'A (host) must receive NOTHING when its own CA reports a Listen failure -- not even its own Ready_Success_SN');
+        assert.strictEqual(clientB._sent.length, 0, 'B (non-host) must receive nothing on a Listen failure');
+
+        console.log('[room-ready-host-split test] PASS: result=0xFFFFFFFF (Listen failure) sends nothing to anyone, including the host');
+    } finally {
+        fakeTimers.restore();
+        rooms._resetForTests();
+    }
+}
+
 async function main()
 {
     await testSqOnlyToHostAndSnToNonHost();
     await testMissingHostAddressSendsNothingToNonHost();
+    await testMalformedCaSendsNothingToAnyone();
+    await testListenFailureResultSendsNothingToAnyone();
     console.log('[room-ready-host-split test] ALL CHECKS PASS');
     process.exit(0);
 }
