@@ -14,7 +14,7 @@
 | 檔案 | 是什麼 | 有沒有被載入 |
 |---|---|---|
 | `wow64log.dll`（x64，PE timestamp 1774739677） | WoW64 記錄 hook。`Wow64LogInitialize`（0x180001030）用 GetModuleFileNameW 判斷是否為 MetalRage.exe，是才啟用；`Wow64LogSystemService`（0x180001140）每個系統呼叫 `lock inc` 計數，系統呼叫編號 0x25 時呼叫 `SwitchToThread`（IAT 0x18000f018）。一初始化就寫 `C:\wow64log_beacon.txt` | **沒有**：WoW64 只從 System32 載入 `wow64log.dll`，System32／SysWOW64 都沒有這個檔，`C:\wow64log_beacon.txt` 也不存在。看起來是作者開發時留下的工具 |
-| `dxdiagn.dll`、`dxdiag_local.dll`（x86，兩個檔 SHA1 相同 `e4e0ea07…`） | DxDiag COM 的假實作，載入時寫 `D:\dxdiagn_stub.log` | 應該沒有：D3D9Drv 已經跳過 DxDiag，COM 也會依登錄檔去載 System32 的正版。這台沒有 D: 槽，無法用 log 確認 🟡 |
+| `dxdiagn.dll`、`dxdiag_local.dll`（x86，兩個檔 SHA1 相同 `e4e0ea07…`） | DxDiag COM 的假實作，載入時寫 `D:\dxdiagn_stub.log` | **沒有**：D3D9Drv 已經跳過 DxDiag，COM 也會依登錄檔去載 System32 的正版；D: 槽存在但沒有 `D:\dxdiagn_stub.log` |
 
 `dinterface.dll`／`dinterface.original.dll` 在 2022 年巴哈分享的舊客戶端就有，不是這次修正加的。
 
