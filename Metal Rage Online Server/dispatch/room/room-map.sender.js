@@ -34,8 +34,10 @@ const MAP_CHANGE_ORDER_MODE = 'disabled'; // 'disabled' | 'enabled'
 // rooms and the disabled path are byte-identical to before.
 // `let` + accessor (same pattern as rooms.js's roomJoinMode) so
 // test/map-list-single.js can flip it on for its own run without touching
-// the shipped default.
-let mapAllSingleEntryMode = 'disabled'; // 'disabled' | 'enabled'
+// the shipped default. SWITCH-CONVERGE: verified live
+// (docs/journal/2026-09-19-1000-maplist-single-entry.md), default flipped
+// to 'enabled'.
+let mapAllSingleEntryMode = 'enabled'; // 'disabled' | 'enabled'
 
 function isMapAllSingleEntryEnabled() {
     return mapAllSingleEntryMode === 'enabled';
