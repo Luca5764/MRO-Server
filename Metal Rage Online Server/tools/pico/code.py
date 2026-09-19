@@ -71,6 +71,11 @@ KEY_MAP = {
     "F1": Keycode.F1, "F2": Keycode.F2, "F3": Keycode.F3, "F4": Keycode.F4,
     "F5": Keycode.F5, "F6": Keycode.F6, "F7": Keycode.F7, "F8": Keycode.F8,
     "F9": Keycode.F9, "F10": Keycode.F10, "F11": Keycode.F11, "F12": Keycode.F12,
+    # F13-F24: F24 is the MetalRage console hotkey (ConsoleHotKey=135=IK_F24), which
+    # ordinary keyboards can't press.
+    "F13": Keycode.F13, "F14": Keycode.F14, "F15": Keycode.F15, "F16": Keycode.F16,
+    "F17": Keycode.F17, "F18": Keycode.F18, "F19": Keycode.F19, "F20": Keycode.F20,
+    "F21": Keycode.F21, "F22": Keycode.F22, "F23": Keycode.F23, "F24": Keycode.F24,
     # Navigation / Control
     "ENTER": Keycode.ENTER, "RETURN": Keycode.RETURN, "ESC": Keycode.ESCAPE,
     "ESCAPE": Keycode.ESCAPE, "TAB": Keycode.TAB, "SPACE": Keycode.SPACE,

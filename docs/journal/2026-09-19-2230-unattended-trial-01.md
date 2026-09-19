@@ -25,3 +25,5 @@
 - [SRC] `ZModePve/ZPvePlayercontroller.uc:904` `exec function GameCampaign(int Action)` 直接呼叫 `ZNetwork_DJ.Game_Campaign(Action)`，沒有任何權限檢查（高階已看過原始碼）。Action=1 由房主送出 `Campaign_CN 0x00230139`，我們的伺服器收到就回 `EndGame_SN` 判勝利。另有 `PveNextRound_BD`（:1140，原始碼註解明寫是作弊鍵）、`CoreHpMax`（:1151）。
 - 卡點：這些 exec 只能從 console 下，console 熱鍵是 `IK_F24`（135），一般鍵盤按不到。**Pico 是 USB 鍵盤，送得出 F24**（adafruit_hid `Keycode.F24`），可能是可行路徑 🟡，還沒測。要先問操作者同意再測。
 - 風險（記進 backlog）：任何玩家只要能按 F24（硬體巨集、特殊鍵盤）就能用 `GameCampaign 1` 直接過關，因為伺服器不驗證 Campaign_CN。朋友私服可以接受，但要知道有這件事。
+- ✅ [TEST][SHOT] 操作者同意後，韌體 KEY_MAP 加入 F13–F24。在大廳用 Pico 送 `KEY F24`，畫面左側出現主控台提示 `(> _`；送 `KEY ESC` 後提示消失（`shots/f24-compare.png`，上＝F24 之後，下＝ESC 之後）。→ Pico 的 F24 能打開客戶端主控台。還沒有下任何 exec 指令。未經跨公司審查。
+- 下一步（要操作者核准清單）：在 PvE 開戰後由房主下 `GameCampaign 1`，確認伺服器收到 `Campaign_CN 0x00230139` body[2]=1 並進入結算。
