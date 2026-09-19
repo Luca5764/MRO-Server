@@ -276,12 +276,14 @@ class ZLobbyDispatch
                             `[ZLobbyDispatch] >> Campaign_CN action=1 pveRoundsCleared_=` +
                             `${client.pveRoundsCleared_}/${playRound} -> Sent EndRound_SN 0x00222211`
                         );
+                        packetlog.marker(`R-ROUND: cleared=${client.pveRoundsCleared_} playRound=${playRound} -> EndRound_SN 0x00222211`, 'auto');
                         return true;
                     }
                     console.log(
                         `[ZLobbyDispatch] >> Campaign_CN action=1 pveRoundsCleared_=` +
                         `${client.pveRoundsCleared_}/${playRound} (last round) -> falling through to EndGame_SN`
                     );
+                    packetlog.marker(`R-ROUND: cleared=${client.pveRoundsCleared_} playRound=${playRound} -> last round, EndGame_SN`, 'auto');
                 }
 
                 // Player team is red (0) in Game_Info_SN; which value the result
