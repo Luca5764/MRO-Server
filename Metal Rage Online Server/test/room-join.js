@@ -521,6 +521,84 @@ function main()
         rooms._resetForTests();
     }
 
+    // --- 9 (KICK, docs/backlog.md 2026-09-19): host presses "kick" on a
+    // member -- [LOG] session-20260919-111258.jsonl ms 2121418, [OBS] the
+    // kicked player disappeared from the host's own screen but stayed fully
+    // in the room server-side (still able to chat) because there was no
+    // handler for Kickout_CQ 0x00220337 and it fell through to the generic
+    // odd-opcode fallback, which echoes a *success* Kickout_SA without
+    // touching `rooms`. Covers: host kicking a real member (success SA to
+    // the host, Leave_SN(self, kickout=1) to the kicked member, room
+    // membership actually drops), and a non-host member trying to kick the
+    // host (must fail, no state change).
+    rooms._resetForTests();
+    rooms._setRoomJoinModeForTests('enabled');
+    rooms._setLobbyRoomListModeForTests('enabled');
+    const fakeTimers4 = installFakeTimers();
+    try {
+        const hostG = makeFakeClient(51, 30907);
+        hostG.accountId_ = 51;
+        hostG.nickname_ = 'Grace';
+        const joinerH = makeFakeClient(52, 30907);
+        joinerH.accountId_ = 52;
+        joinerH.nickname_ = 'Heidi';
+        rooms.registerLobbyClientSource([hostG, joinerH]);
+
+        const createHandled5 = gate.dispatch(hostG, CQ_CREATE, makeCreateBody('Grace Room'));
+        assert.strictEqual(createHandled5, true, 'CQ_CREATE must be handled');
+        const roomId5 = hostG.createdRoomIndex_;
+        while (fakeTimers4.fireNext()) { /* drain the CQ_CREATE retry schedule */ }
+
+        const enterHandled5 = gate.dispatch(joinerH, ENTER_CQ, makeEnterBody(roomId5));
+        assert.strictEqual(enterHandled5, true, 'Enter_CQ must be handled');
+        while (fakeTimers4.fireNext()) { /* drain the 350ms joiner room-state send */ }
+
+        assert.ok(rooms.getRoom(roomId5).members.has(52), 'Heidi must be a member before either kick attempt');
+
+        hostG._sent.length = 0;
+        joinerH._sent.length = 0;
+
+        // Non-host (Heidi) tries to kick the host (Grace) -- must fail, no
+        // state change, no packet reaches Grace at all.
+        const kickBodyByNonHost = Buffer.alloc(2);
+        kickBodyByNonHost.writeUInt16LE(51, 0); // target = Grace (the host)
+        const kickHandled1 = gate.dispatch(joinerH, 0x00220337, kickBodyByNonHost);
+        assert.strictEqual(kickHandled1, true, 'Kickout_CQ from a non-host must still be handled (with a failure reply)');
+
+        const nonHostSa = joinerH._sent.filter((s) => s.op === '0x00220338');
+        assert.strictEqual(nonHostSa.length, 1, 'non-host kicker must get exactly one Kickout_SA');
+        assert.notStrictEqual(nonHostSa[0].hex, '000000000000', 'non-host Kickout_SA must be a failure (non-zero header), not the 0/0 success header');
+        assert.strictEqual(hostG._sent.length, 0, 'the target (host) must receive nothing when a non-host tries to kick her');
+        assert.ok(rooms.getRoom(roomId5).members.has(51), 'the host must still be a member after a failed kick attempt');
+        assert.ok(rooms.getRoom(roomId5).members.has(52), 'the non-host kicker must still be a member after her own failed kick attempt');
+        console.log('[room-join test] PASS: a non-host Kickout_CQ against the host fails and changes nothing');
+
+        joinerH._sent.length = 0;
+
+        // Host (Grace) kicks the member (Heidi) -- must succeed.
+        const kickBodyByHost = Buffer.alloc(2);
+        kickBodyByHost.writeUInt16LE(52, 0); // target = Heidi
+        const kickHandled2 = gate.dispatch(hostG, 0x00220337, kickBodyByHost);
+        assert.strictEqual(kickHandled2, true, 'Kickout_CQ from the host must be handled');
+
+        const hostSa = hostG._sent.filter((s) => s.op === '0x00220338');
+        assert.strictEqual(hostSa.length, 1, 'host kicker must get exactly one Kickout_SA');
+        assert.strictEqual(hostSa[0].hex, '000000000000', 'host Kickout_SA must be a success (0/0 header)');
+
+        const kickedLeaveSn = joinerH._sent.filter((s) => s.op === LEAVE_SN);
+        assert.strictEqual(kickedLeaveSn.length, 1, 'the kicked member must receive exactly one Leave_SN');
+        assert.strictEqual(kickedLeaveSn[0].hex, '340001', 'Leave_SN to the kicked member must be UserIndex=52 (LE u16 0x0034) + Kickout=1');
+
+        assert.strictEqual(rooms.getRoomByAccount(52), undefined, 'the kicked member must no longer be tracked as a room member');
+        assert.ok(rooms.getRoomByAccount(51), 'the host must still be in the room after kicking someone else');
+        assert.strictEqual(rooms.getRoom(roomId5).members.size, 1, 'the room must have exactly one member (the host) left');
+
+        console.log('[room-join test] PASS: a host Kickout_CQ against a real member succeeds -- success SA to the host, Leave_SN(kicked, kickout=1) to the kicked member, room membership actually drops');
+    } finally {
+        fakeTimers4.restore();
+        rooms._resetForTests();
+    }
+
     console.log('[room-join test] ALL CHECKS PASS');
     process.exit(0);
 }

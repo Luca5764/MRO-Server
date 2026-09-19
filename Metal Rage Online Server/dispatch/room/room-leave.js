@@ -54,7 +54,21 @@ function getExactMessageBuffer(type, bodySize) {
  * (gate.game.dispatch.js ~line 800) instead of double-gating on
  * ROOM_JOIN_MODE as well.
  */
-function leaveRoomAndNotify(accountId) {
+// KICK task (docs/backlog.md, 2026-09-19): `kickout` lets the Kickout_CQ
+// 0x00220337 handler (gate.game.dispatch.js) reuse this same remove-member/
+// Leave_SN/host-reassign path instead of duplicating it, per that task's
+// contract. Per the DLL (0x107edb70, ZDispatchRoom::Leave_SN, decompiled for
+// this task), the Kickout byte only changes behaviour for a client reading
+// UserIndex==itself (fires NETWORK_ROOM_KICKOUT_ME in addition to
+// NETWORK_GOTO_LOBBY, both gated on the "self" branch); a client reading a
+// *different* UserIndex (the "someone else left" branch, `uVar3 != uVar4`)
+// never loads the Kickout byte at all, it just calls Room_User_Delete either
+// way. That means it is safe to send Kickout=1 to every remaining member
+// below (host included) without changing their behaviour -- the kicked
+// account's own self-targeted Leave_SN (sent separately by the Kickout_CQ
+// handler *before* calling this function, since the kicked account is never
+// part of `remainingMembers`) is the one where Kickout=1 actually matters.
+function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
     const room = rooms.getRoomByAccount(accountId);
     if (!room) return;
 
@@ -69,10 +83,10 @@ function leaveRoomAndNotify(accountId) {
             if (!member.client) continue;
             const [leaveMsg, leaveBody] = getExactMessageBuffer(0x00220236, 0x03);
             leaveBody.writeUInt16LE(accountId, 0x00);
-            leaveBody.writeUInt8(0, 0x02); // Kickout=0: voluntary leave/disconnect, not a kick
+            leaveBody.writeUInt8(kickout ? 1 : 0, 0x02); // 0: voluntary leave/disconnect; 1: kicked (see fn comment)
             member.client.send(leaveMsg);
         }
-        console.log(`[room-leave] >> Sent Leave_SN 0x220236 to ${remainingMembers.length} remaining room member(s) (left=${accountId})`);
+        console.log(`[room-leave] >> Sent Leave_SN 0x220236 to ${remainingMembers.length} remaining room member(s) (left=${accountId}, kickout=${kickout})`);
 
         if (wasHost) {
             // rooms.js's Member map preserves insertion (join) order, so the
