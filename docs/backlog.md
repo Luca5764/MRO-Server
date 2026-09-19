@@ -595,3 +595,11 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
    - 懷疑方向一：伺服器和遊戲跑在同一台，機庫一次送約 1850 包，每包都印 console log，戰鬥中每次擊殺也印很多。
    - 懷疑方向二：Win11 本身。
    - 查法：卡的時候在聊天打「卡」當 marker，高階對照伺服器 log 和 CPU。如果跟伺服器有關，就減少 log；無關的話再試關閉全螢幕最佳化、改用高效能電源計畫。暫時擱置，操作者之後再處理。
+
+> **LOBBY-ENTRY-A 分析（2026-09-19，explorer 🟡）：**
+> - SCENE：0 SERVER、1 WAIT、2 ACCOUNT、3 GATE、4 LOBBY、5 ROOM、6 GAME。`Scene_Change`（`0x1070148d`→`0x10738910`）每次都會對已註冊的所有 ZDispatch* 呼叫 Check(scene)。
+> - 新登入**唯一**進 scene 4 的路徑：`ZDispatchGate::Enter_SA 0x00220112`（`0x107dc630`）成功分支，會依序執行 Account_Index_Set、Location_Channel_Set、Gate_Data_Save、**Lobby_Data_Clear()**、Event_Call NETWORK_GOTO_LOBBY，最後 Scene_Change(4)。我們在 30907 對 Channel_Enter_CQ 0x00220111 回全 0 的 0x00220112，符合成功條件，所以**進大廳的路徑本身是對的**（大廳功能正常）。
+> - `Lobby_Data_Clear()`（`0x1070192e`→`0x1072b010`）每次登入都會清空 CDO 上兩個元素大小 0x4c 的 TArray。它是不是 m_MapList 遺失的根因 ⬜：元素大小不一樣（MAP_LIST_INFO 只有 4 bytes），所以可能性不高。
+> - `Leave_CQ 0x00220114` 的回應是 **`Leave_SA 0x00220115`**（`0x107e4250`，6 bytes 全 0 表示成功）。成功後客戶端 Event_Call NETWORK_GOTO_GATE → 回到頻道選擇（scene 3）。**伺服器目前沒有 0x00220114 的 handler。**
+> - LOBBY-BACK 的謎：ZDispatchLobby 的旗標只有在 Scene_Change(4) 那一刻它已經註冊時才會成立。如果 ZPage_Lobby／ZDispatchLobby 是在 Scene_Change(4) **之後**才建立，旗標就是假的，這是客戶端的時序問題，伺服器可能修不了。
+> - 最小修法：(a) 補上 0x00220114 → 0x00220115 的 handler（便宜、獨立）；(b) 用客戶端 log 或反組譯確認註冊時序。每次登入都會走這條路，所以 0x00220112 維持不動。
