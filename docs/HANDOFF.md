@@ -7,9 +7,22 @@
 
 ## ⚡ 交接快照（2026-09-19 晚，Claude 高階組長）
 
-> 目標與里程碑看 `docs/roadmap.md`。PM 是 Fable（tmux `fable`，SendMessage 找 `mro-reverse-68`），只在四個關卡找他（實作前核 bytes、合併前機械核對、里程碑判定、跟 ✅ 衝突），有進度時另外主動回報一則。
+> 目標與里程碑看 `docs/roadmap.md`。PM 是 Fable（tmux `fable`；SendMessage 名稱會跟著 session 標題變，2026-09-20 是 `xigncode bypass script`，連不到就先 ListAgents），只在四個關卡找他（實作前核 bytes、合併前機械核對、里程碑判定、跟 ✅ 衝突），有進度時另外主動回報一則。
 > 跨公司審查：Sol（tmux `sol`，Codex gpt-5.6-sol）**目前沒額度**。沒額度期間，高階自審的項目在 `docs/research/2026-09-19-sol-review/` 的處置段落裡寫明「高階自審」，等 Sol 恢復後補審。已審過的是 batch1–5。
 > 本段每次交接**整段改寫**。
+
+### 2026-09-20 凌晨：無人時段（操作者在睡覺，結論一律 🟡）
+- **客戶端**：XIGNCODE 修補已還原成原版（00:50）；軟體輸入和 taskkill 修補前後都無效，AI 操作遊戲只能走 Pico。
+- **Pico runner 全部實跑 PASS**：U-pve-fullmatch（原版客戶端）、U-shop-tabs、U-shop-tabs-idle（閒置 120 秒沒被踢）、U-pve-escort（護送 9007，新的地圖無關戰場判斷）。登入動作會處理注音輸入法（第一次被吃掉就按 SHIFT 重試一次）。見 `journal/2026-09-19-2230-unattended-trial-01.md`、`journal/2026-09-20-0110-escort-smoke.md`。
+- **等操作者醒著才做**：
+  1. 計畫性重開＋自動登入的第一次實測（`U-relaunch-login`，會用 Pico 點 X 關掉客戶端）→ 通過之後才能跑 H1 ×20；
+  2. `U-pve-fail`（GameCampaign 2）：不在核准清單上；
+  3. **P3 第 1、2 步在分支 `p3-step12`（worktree `~/mro-wt/p3-step12`，f56b43e＋94be5b7），PM 已過 bytes 關卡，但規定等操作者說一聲才合併、`/reload`，再跑 U-pve-fullmatch 並看機庫數字**。第 1 步會改 9211 的 RecordInfo_SN（修正舊的錯誤佈局，每次登入都會送），第 2 步 MATCH_STATS_MODE 預設關閉。
+  4. 卡頓 trace 要管理員權限：最高權限排程工作要不要建；
+  5. 上游作者卡頓影片的連結；
+  6. AGENTS 第 1 條補「靜態分析 y0da 可以，修改不行」；
+  7. 中斷的場不寫戰績（`match-stats.js` 的 `ABORTED_MATCHES_ARE_NOT_PERSISTED`）要操作者拍板。
+- P3 第 3 步（migration）等 Sol。Y0DA-STUTTER、BOSS 已開 backlog。
 
 ### 環境
 
