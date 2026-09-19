@@ -685,6 +685,100 @@ function main()
         rooms._resetForTests();
     }
 
+    // --- 11 (READY-IMPL, docs/backlog.md): a non-host member pressing
+    // "Ready" (0x00222101, see the case handler's READY-IMPL comment in
+    // gate.game.dispatch.js) must broadcast User_State_SN 0x00220401 raw
+    // state 2 (READY once client-normalized) to every room member,
+    // including herself, and a member joining afterward must see that same
+    // ready state in her own room-state burst. Switch off (default): no
+    // such broadcast at all. rooms.isRoomReadyStateEnabled() lives in
+    // rooms.js (not a gate.game.dispatch.js-local switch), same pattern as
+    // roomJoinMode/lobbyRoomListMode -- see the READY-IMPL comment there.
+    const USER_STATE_SN = '0x00220401';
+    function decodeUserState(hex) {
+        const buf = Buffer.from(hex, 'hex');
+        return { userIndex: buf.readUInt16LE(0x02), raw: buf.readUInt32LE(0x04) };
+    }
+    rooms._resetForTests();
+    rooms._setRoomJoinModeForTests('enabled');
+    rooms._setLobbyRoomListModeForTests('enabled');
+    const fakeTimers6 = installFakeTimers();
+    try {
+        const hostK = makeFakeClient(71, 30907);
+        hostK.accountId_ = 71;
+        hostK.nickname_ = 'Kara';
+        const joinerL = makeFakeClient(72, 30907);
+        joinerL.accountId_ = 72;
+        joinerL.nickname_ = 'Liam';
+        rooms.registerLobbyClientSource([hostK, joinerL]);
+
+        const createHandled7 = gate.dispatch(hostK, CQ_CREATE, makeCreateBody('Kara Room'));
+        assert.strictEqual(createHandled7, true, 'CQ_CREATE must be handled');
+        const roomId7 = hostK.createdRoomIndex_;
+        while (fakeTimers6.fireNext()) { /* drain the CQ_CREATE retry schedule */ }
+
+        const enterHandled7 = gate.dispatch(joinerL, ENTER_CQ, makeEnterBody(roomId7));
+        assert.strictEqual(enterHandled7, true, 'Enter_CQ must be handled');
+        while (fakeTimers6.fireNext()) { /* drain the 350ms joiner room-state send */ }
+
+        // --- 11a: switch off (default) -- pressing Ready must not
+        // broadcast anything to the host (resendRoomState only ever
+        // unicasts to the presser herself, see scenario 8 above).
+        hostK._sent.length = 0;
+        joinerL._sent.length = 0;
+        const readyBodyOff = Buffer.from('270a000001', 'hex'); // observed CQ body: +0x00 u32 unknown, +0x04 u8 ready=1
+        const readyHandledOff = gate.dispatch(joinerL, 0x00222101, readyBodyOff);
+        assert.strictEqual(readyHandledOff, true, 'Ready 0x00222101 must be handled with the switch off');
+        assert.strictEqual(hostK._sent.length, 0, 'ROOM_READY_STATE off (default): the host must receive nothing at all from a joiner pressing Ready');
+        console.log('[room-join test] PASS: rooms.isRoomReadyStateEnabled() off (default) -- pressing Ready broadcasts no User_State_SN');
+
+        // --- 11b: switch on -- both host and joiner must see raw state 2
+        // for the joiner's own UserIndex (72).
+        rooms._setRoomReadyStateModeForTests('enabled');
+        hostK._sent.length = 0;
+        joinerL._sent.length = 0;
+        // A second "first occurrence" resend isn't needed here -- the ready
+        // broadcast added by READY-IMPL fires on every call regardless of
+        // client.roomEnterAcked_, only the room-state resend above is
+        // first-occurrence-only. joinerL already pressed Ready once in 11a,
+        // so roomEnterAcked_ is already true here and this call only
+        // exercises the ACK + broadcast.
+        const readyHandledOn = gate.dispatch(joinerL, 0x00222101, Buffer.from('270a000001', 'hex'));
+        assert.strictEqual(readyHandledOn, true, 'Ready 0x00222101 must be handled with the switch on');
+
+        const hostReadyHits = hostK._sent.filter((s) => s.op === USER_STATE_SN).map((s) => decodeUserState(s.hex));
+        assert.strictEqual(hostReadyHits.length, 1, 'the host must receive exactly one User_State_SN broadcast');
+        assert.deepStrictEqual(hostReadyHits[0], { userIndex: 72, raw: 2 }, "the host's User_State_SN must name the joiner (72) READY (raw 2)");
+
+        const joinerReadyHits = joinerL._sent.filter((s) => s.op === USER_STATE_SN).map((s) => decodeUserState(s.hex));
+        const joinerOwnReadyBroadcast = joinerReadyHits.filter((h) => h.userIndex === 72 && h.raw === 2);
+        assert.strictEqual(joinerOwnReadyBroadcast.length, 1, 'the joiner must also receive her own User_State_SN broadcast (raw 2), sendAll includes the sender');
+        console.log('[room-join test] PASS: rooms.isRoomReadyStateEnabled() on -- pressing Ready broadcasts User_State_SN raw=2 to every room member including the presser');
+
+        // --- 11c: a member joining afterward must see the joiner's ready
+        // state (raw 2) in her own room-state burst (buildMemberUserCtx
+        // reading member.ready off the shared Room, not a stale constant).
+        const freshM = makeFakeClient(73, 30907);
+        freshM.accountId_ = 73;
+        freshM.nickname_ = 'Mona';
+        rooms.registerLobbyClientSource([hostK, joinerL, freshM]);
+        const enterHandled8 = gate.dispatch(freshM, ENTER_CQ, makeEnterBody(roomId7));
+        assert.strictEqual(enterHandled8, true, 'Enter_CQ for the third member must be handled');
+        while (fakeTimers6.fireNext()) { /* drain the 350ms newcomer room-state send */ }
+
+        const newcomerReadyHits = freshM._sent.filter((s) => s.op === USER_STATE_SN).map((s) => decodeUserState(s.hex));
+        const joinerAsSeenByNewcomer = newcomerReadyHits.filter((h) => h.userIndex === 72);
+        assert.strictEqual(joinerAsSeenByNewcomer.length, 1, 'the newcomer must receive exactly one User_State_SN for the already-ready joiner');
+        assert.strictEqual(joinerAsSeenByNewcomer[0].raw, 2, "the newcomer's room-state burst must show the joiner already READY (raw 2)");
+        const hostAsSeenByNewcomer = newcomerReadyHits.filter((h) => h.userIndex === 71);
+        assert.strictEqual(hostAsSeenByNewcomer.length, 1, 'the newcomer must also receive exactly one User_State_SN for the host');
+        assert.strictEqual(hostAsSeenByNewcomer[0].raw, 1, "the host has not pressed Ready -- newcomer's burst must show raw 1 for her");
+        console.log('[room-join test] PASS: a member joining afterward sees the already-ready joiner\'s User_State_SN raw=2 in her own room-state burst');
+    } finally {
+        fakeTimers6.restore();
+        rooms._resetForTests();
+    }
+
     console.log('[room-join test] ALL CHECKS PASS');
     process.exit(0);
 }
