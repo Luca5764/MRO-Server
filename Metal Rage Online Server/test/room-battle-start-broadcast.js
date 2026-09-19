@@ -138,7 +138,48 @@ async function main()
 
         assert.strictEqual(countOp(clientA._sent, BEGIN_ROUND_SN), 1, 'A must receive exactly one BeginRound_SN');
         assert.strictEqual(countOp(clientB._sent, BEGIN_ROUND_SN), 1, 'B must receive exactly one BeginRound_SN');
+        const genAfterFirstAccept = rooms.getRoom(roomId).beginRoundGen;
+        assert.strictEqual(genAfterFirstAccept, 1, 'room.beginRoundGen must be 1 after the first accepted host CN');
         console.log('[room-battle-start-broadcast test] PASS: BeginRound_SN reaches both room members');
+
+        clientA._sent.length = 0;
+        clientB._sent.length = 0;
+
+        // SOL-REVIEW-2 point 5: a non-host BeginRound_CN must be ignored --
+        // no reply to anyone, no state change.
+        const nonHostBeginHandled = lobby.dispatch(clientB, BEGIN_ROUND_CN, Buffer.alloc(0));
+        assert.strictEqual(nonHostBeginHandled, true, 'the opcode is still claimed (handled=true), just ignored internally');
+        assert.strictEqual(clientA._sent.length, 0, 'A must receive nothing from a non-host BeginRound_CN');
+        assert.strictEqual(clientB._sent.length, 0, 'B (the non-host sender) must receive nothing either');
+        assert.strictEqual(rooms.getRoom(roomId).beginRoundGen, genAfterFirstAccept, 'a non-host CN must not bump beginRoundGen');
+        console.log('[room-battle-start-broadcast test] PASS: a non-host BeginRound_CN is ignored, no reply to anyone');
+
+        // SOL-REVIEW-2 point 5: a second host CN that arrives immediately
+        // after (well within the 2s dedup window) must also be ignored.
+        const dupBeginHandled = lobby.dispatch(clientA, BEGIN_ROUND_CN, Buffer.alloc(0));
+        assert.strictEqual(dupBeginHandled, true, 'the opcode is still claimed (handled=true), just ignored internally');
+        assert.strictEqual(clientA._sent.length, 0, 'A must receive nothing for a duplicate host BeginRound_CN inside the dedup window');
+        assert.strictEqual(clientB._sent.length, 0, 'B must receive nothing for a duplicate host BeginRound_CN inside the dedup window');
+        assert.strictEqual(rooms.getRoom(roomId).beginRoundGen, genAfterFirstAccept, 'a deduped CN must not bump beginRoundGen');
+        console.log('[room-battle-start-broadcast test] PASS: a duplicate host BeginRound_CN inside the 2s window is ignored');
+
+        // Past the dedup window (mock Date.now() forward, same technique as
+        // fake-timers.js but for wall-clock time instead of setTimeout --
+        // this handler reads Date.now() directly, not the fake timer
+        // queue's virtual clock), a new round's host CN must broadcast again
+        // and bump the generation.
+        const realDateNow = Date.now;
+        try {
+            Date.now = () => realDateNow() + 2500;
+            const secondRoundHandled = lobby.dispatch(clientA, BEGIN_ROUND_CN, Buffer.alloc(0));
+            assert.strictEqual(secondRoundHandled, true, 'BeginRound_CN 0x00230151 must be handled');
+            assert.strictEqual(countOp(clientA._sent, BEGIN_ROUND_SN), 1, 'A must receive exactly one BeginRound_SN for the new round');
+            assert.strictEqual(countOp(clientB._sent, BEGIN_ROUND_SN), 1, 'B must receive exactly one BeginRound_SN for the new round');
+            assert.strictEqual(rooms.getRoom(roomId).beginRoundGen, genAfterFirstAccept + 1, 'beginRoundGen must bump past the dedup window');
+        } finally {
+            Date.now = realDateNow;
+        }
+        console.log('[room-battle-start-broadcast test] PASS: a host CN past the dedup window starts a new round and bumps beginRoundGen');
     } finally {
         fakeTimers.restore();
         rooms._resetForTests();

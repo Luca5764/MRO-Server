@@ -14,6 +14,16 @@ const { getGameInfoRound } = require('./gate.game.dispatch.js');
 // handler below.
 const serverConfig = require('../config/server.js');
 
+// SOL-REVIEW-2 point 5 (docs/research/2026-09-19-sol-review/batch2.md,
+// D1-6-IMPL fix round): dedup window for the room-broadcast branch of case
+// 0x00230151 (BeginRound_CN) below -- a second host CN accepted within this
+// many ms of the last one is treated as a duplicate and ignored (no reply).
+// 2000ms is an operator-facing round number, not derived from any DLL
+// timing constant; picked to comfortably exceed normal network jitter
+// between a client's own CN and any resend, while staying well under the
+// multi-second gaps between real rounds.
+const BEGIN_ROUND_DEDUP_WINDOW_MS = 2000;
+
 // How the PvE player's first mech gets spawned.
 //   'client': the original flow. After BeginRound_SN the client's
 //             ZPvePlayercontroller.PlayerSelectMech opens ZSlotSelectPage; the
@@ -185,38 +195,71 @@ class ZLobbyDispatch
             // is the native path that calls AGameInfo::SelectUnitSlot_BD.
             case 0x00230151:
             {
-                // BeginRound_CN starts a battle: reset the per-player battle
-                // totals that Death_SN carries (see case 0x00230123).
-                // battleStats_ itself stays per-connection here -- moving it
-                // to the Room (design §4) is D1-6-IMPL's step 3, out of this
-                // step's scope.
-                client.battleStats_ = {};
-
                 // D1-6-IMPL (design doc §5 step 2, §1 row 10): with
                 // rooms.isRoomBattleStartBroadcastEnabled() +
                 // rooms.isRoomJoinEnabled(), broadcast BeginRound_SN to every
                 // room member instead of only the connection that sent this
-                // BeginRound_CN -- a 1-person room's rooms.sendAll iterates
-                // one member (this same connection), byte-identical to the
-                // unconditional client.send() below. ⬜ untested against a
-                // real second client whether every room member's own
-                // connection independently sends its own BeginRound_CN (this
-                // handler's own comment above only ever confirmed it for a
-                // "listen host"), which would make this broadcast fire once
-                // per member instead of once per room -- flagged in the
-                // journal, not resolved here.
+                // BeginRound_CN. A 1-person room's rooms.sendAll iterates one
+                // member (this same connection), byte-identical to the
+                // unconditional client.send() in the `else` branch below.
+                //
+                // SOL-REVIEW-2 point 5 (docs/research/2026-09-19-sol-review/
+                // batch2.md): the earlier version broadcast on every CN from
+                // any member, with no host check or per-round dedup -- the
+                // DLL evidence the review cites (StartMatch/EndRound_BD) says
+                // this is a listen-host-driven, once-per-round event. The
+                // broadcast branch below now only accepts a CN from the
+                // room's current host, and ignores (no reply, no state
+                // change) a second accepted-looking CN within
+                // BEGIN_ROUND_DEDUP_WINDOW_MS of the last one actually
+                // accepted, using a small per-room counter/timestamp
+                // (rooms.js's Room objects gain no new typed fields for this
+                // -- `room.beginRoundGen`/`beginRoundAcceptedAt` are plain
+                // ad-hoc properties, same pattern as other D1-6-IMPL runtime
+                // state that does not need serializing). ⬜ still open (see
+                // the journal): whether every room member's own connection
+                // independently sends its own BeginRound_CN, or only the
+                // host's does -- if every member does, the host check below
+                // is exactly what makes that safe (non-host CNs are now
+                // ignored instead of each re-triggering a broadcast).
+                const accountIdForBeginRound = Number(client.accountIndex_ || client.accountId_ || 1);
                 const roomForBeginRound = (rooms.isRoomBattleStartBroadcastEnabled() && rooms.isRoomJoinEnabled())
-                    ? rooms.getRoomByAccount(Number(client.accountIndex_ || client.accountId_ || 1))
+                    ? rooms.getRoomByAccount(accountIdForBeginRound)
                     : undefined;
+
                 if (roomForBeginRound) {
+                    if (accountIdForBeginRound !== roomForBeginRound.hostAccountId) {
+                        console.log(`[ZLobbyDispatch] >> Ignored BeginRound_CN 0x00230151 from non-host account=${accountIdForBeginRound} (host=${roomForBeginRound.hostAccountId}, room #${roomForBeginRound.id}) -- no reply`);
+                        return true;
+                    }
+                    const now = Date.now();
+                    const lastAccepted = roomForBeginRound.beginRoundAcceptedAt || 0;
+                    if (now - lastAccepted < BEGIN_ROUND_DEDUP_WINDOW_MS) {
+                        console.log(`[ZLobbyDispatch] >> Ignored duplicate host BeginRound_CN 0x00230151 for room #${roomForBeginRound.id} (${now - lastAccepted}ms since last accepted CN, dedup window ${BEGIN_ROUND_DEDUP_WINDOW_MS}ms) -- no reply`);
+                        return true;
+                    }
+                    roomForBeginRound.beginRoundAcceptedAt = now;
+                    roomForBeginRound.beginRoundGen = (roomForBeginRound.beginRoundGen || 0) + 1;
+
+                    // BeginRound_CN starts a battle: reset the per-player
+                    // battle totals that Death_SN carries (see case
+                    // 0x00230123). battleStats_ itself stays per-connection
+                    // here -- moving it to the Room (design §4) is
+                    // D1-6-IMPL's step 3, out of this step's scope. Only
+                    // reset on an accepted (host, non-duplicate) CN.
+                    client.battleStats_ = {};
+
                     rooms.sendAll(roomForBeginRound.id, (target) => {
                         const [msg, body] = target.getMessageBuffer(0x00230152, 0x06);
                         body.writeUint16LE(0, 0);
                         body.writeUint32LE(0, 2);
                         return msg;
                     });
-                    console.log(`[ZLobbyDispatch] >> Broadcast BeginRound_SN 0x00230152 to room #${roomForBeginRound.id} (${roomForBeginRound.members.size} member(s))`);
+                    console.log(`[ZLobbyDispatch] >> Broadcast BeginRound_SN 0x00230152 to room #${roomForBeginRound.id} (${roomForBeginRound.members.size} member(s), round gen=${roomForBeginRound.beginRoundGen})`);
                 } else {
+                    // Switch off, or this connection is not tracked as a
+                    // room member at all -- unchanged from before this fix.
+                    client.battleStats_ = {};
                     const [beginMsg, beginBody] = client.getMessageBuffer(0x00230152, 0x06);
                     beginBody.writeUint16LE(0, 0);
                     beginBody.writeUint32LE(0, 2);
