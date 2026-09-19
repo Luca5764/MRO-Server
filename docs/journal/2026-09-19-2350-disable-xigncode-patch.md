@@ -81,3 +81,10 @@
 3. 驗證 WSL 軟體輸入（`tools/win/drive.sh` / `SendInput`）是否已可正常送入遊戲。
 4. 提醒：`MetalRage.exe` 本體的 `y0da Protector`（反除錯與 `.text` CRC）未受影響，若有附加除錯器需求需另行處置。
 
+
+## 待驗證 3 的結果（高階，2026-09-20 00:25）
+- ❌ [TEST] 在**已修補**的客戶端上（pid 38048，00:12:04 啟動，比 ZNetwork.dll 修補的 23:54:19 晚），軟體輸入**仍然進不了遊戲**：
+  - 遊戲在前景（已確認），大廳。
+  - `tools/win/drive.sh key {ENTER}` → `type 'sw input test'` → `key {ENTER}`：聊天框是空的，伺服器沒收到聊天（[SHOT] `shots/sw-test.png`）。
+  - `drive.sh click 615,90`（商城按鈕，SetCursorPos＋mouse_event）：畫面分類器判斷仍是 lobby，沒有換頁（`shots/sw-click.png`）。
+- 同一個畫面、同一個按鈕，用 Pico 的硬體點擊可以換頁（`journal/2026-09-19-2230`）。→ 擋住注入輸入的不是（或不只是）XIGNCODE；可能是 DirectInput 或 y0da 那一層 🟡。**Pico 仍然是主力客戶端唯一可用的輸入方式。**
