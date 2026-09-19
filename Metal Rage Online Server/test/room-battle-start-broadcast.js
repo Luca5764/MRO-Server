@@ -1,10 +1,12 @@
 'use strict';
 
 // D1-6-IMPL (docs/backlog.md, docs/design/d1-step6-battle-broadcast.md §5
-// step 2): unit test for ROOM_BATTLE_START_BROADCAST_MODE
-// (rooms.isRoomBattleStartBroadcastEnabled()), added to
+// step 2): unit test for the room-wide battle-start broadcast (rooms.js's
+// isRoomJoinEnabled() finding a tracked room), added to
 // dispatch/gate.game.dispatch.js and dispatch/lobby.dispatch.js. Same
-// technique as test/room-game-user-broadcast.js.
+// technique as test/room-game-user-broadcast.js. SWITCH-CONVERGE: the
+// ROOM_BATTLE_START_BROADCAST_MODE switch this used to gate was removed
+// once verified live.
 //
 // Scenario: A creates a PvE room (host), B is added directly as a second
 // member. A presses F5 (0x00222103) -- both A and B's connections must
@@ -81,7 +83,6 @@ async function main()
 {
     rooms._resetForTests();
     rooms._setRoomJoinModeForTests('enabled');
-    rooms._setRoomBattleStartBroadcastModeForTests('enabled');
     // This file doesn't cover HOST_ADDRESS_REQUIRE_MODE (that's
     // test/room-host-address-require.js's job) -- SWITCH-CONVERGE flipped
     // its production default to 'enabled', so force it off here or the

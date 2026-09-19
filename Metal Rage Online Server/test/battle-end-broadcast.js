@@ -246,10 +246,8 @@ async function main()
         // --- Sol batch3 review (docs/research/2026-09-19-sol-review/
         // batch3.md, Part B "需修改 -- round/reset ownership"): a
         // BeginRound_CN rejected by the host/dedup check must NOT wipe
-        // room.battleStats. This needs ROOM_BATTLE_START_BROADCAST_MODE
-        // enabled too, since the reset now lives inside that acceptance
-        // branch (lobby.dispatch.js's case 0x00230151). ---
-        rooms._setRoomBattleStartBroadcastModeForTests('enabled');
+        // room.battleStats -- the reset lives inside that acceptance branch
+        // (lobby.dispatch.js's case 0x00230151). ---
         const statsBeforeBeginRound = room.battleStats.get(1).kills;
         assert.strictEqual(statsBeforeBeginRound, 2, 'sanity: room.battleStats still has 2 kills going into the BeginRound_CN case');
 

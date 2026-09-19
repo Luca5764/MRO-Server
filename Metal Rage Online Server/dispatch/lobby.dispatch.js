@@ -202,7 +202,6 @@ class ZLobbyDispatch
             case 0x00230151:
             {
                 // D1-6-IMPL (design doc §5 step 2, §1 row 10): with
-                // rooms.isRoomBattleStartBroadcastEnabled() +
                 // rooms.isRoomJoinEnabled(), broadcast BeginRound_SN to every
                 // room member instead of only the connection that sent this
                 // BeginRound_CN. A 1-person room's rooms.sendAll iterates one
@@ -229,7 +228,7 @@ class ZLobbyDispatch
                 // is exactly what makes that safe (non-host CNs are now
                 // ignored instead of each re-triggering a broadcast).
                 const accountIdForBeginRound = Number(client.accountIndex_ || client.accountId_ || 1);
-                const roomForBeginRound = (rooms.isRoomBattleStartBroadcastEnabled() && rooms.isRoomJoinEnabled())
+                const roomForBeginRound = rooms.isRoomJoinEnabled()
                     ? rooms.getRoomByAccount(accountIdForBeginRound)
                     : undefined;
 
@@ -242,10 +241,7 @@ class ZLobbyDispatch
                 // still wipe stats already accumulated this round. The reset
                 // now only runs inside the `if (roomForBeginRound)` branch,
                 // after both the host check and the dedup check have
-                // actually accepted this CN -- which also means it now
-                // requires ROOM_BATTLE_START_BROADCAST_MODE in addition to
-                // BATTLE_END_BROADCAST_MODE (both are meant to be turned on
-                // together for a real multiplayer match, design doc §5).
+                // actually accepted this CN.
                 const battleEndBroadcastEnabledForBegin = rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled();
 
                 if (roomForBeginRound) {

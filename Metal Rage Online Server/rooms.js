@@ -152,25 +152,6 @@ function _setLobbyRoomListModeForTests(mode) {
     lobbyRoomListMode = mode;
 }
 
-// D1-6-IMPL (docs/design/d1-step6-battle-broadcast.md §5 step 2): whether
-// Game_Wait_SN 0x00420111, both Game_Info_SN 0x00222111 sends, Game_Ready_SN
-// 0x00222102, Game_Start_SN 0x00222104 (gate.game.dispatch.js's case
-// 0x00222103) and BeginRound_SN 0x00230152 (lobby.dispatch.js's case
-// 0x00230151, a *different* file -- the reason this lives here instead of a
-// local `let` in either) go to every room member instead of just whichever
-// connection triggered the opcode. SWITCH-CONVERGE: verified live
-// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
-// 'enabled'.
-let roomBattleStartBroadcastMode = 'enabled'; // 'disabled' | 'enabled'
-
-function isRoomBattleStartBroadcastEnabled() {
-    return roomBattleStartBroadcastMode === 'enabled';
-}
-
-function _setRoomBattleStartBroadcastModeForTests(mode) {
-    roomBattleStartBroadcastMode = mode;
-}
-
 // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4, backlog D1-6):
 // whether EndRound_SN 0x00222211, User_Score_SN 0x00222221, EndGame_SN
 // 0x00222213 (lobby.dispatch.js's case 0x00230139, Campaign_CN) and
@@ -178,8 +159,7 @@ function _setRoomBattleStartBroadcastModeForTests(mode) {
 // only the connection that sent the triggering CN, and whether the
 // per-player kill/death totals those packets carry live on the Room
 // (room.battleStats, a Map<accountId, {kills, deaths}>) instead of
-// client.battleStats_. Its own switch, separate from
-// roomBattleStartBroadcastMode above, for the same reason every other
+// client.battleStats_. Its own switch, for the same reason every other
 // D1-6-IMPL step has its own switch (design §5): each broadcast surface
 // needs independent regression coverage. SWITCH-CONVERGE: verified live
 // (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
@@ -508,7 +488,6 @@ function _resetForTests() {
     roomJoinMode = 'disabled';
     lobbyRoomListMode = 'disabled';
     roomReadyStateMode = 'disabled';
-    roomBattleStartBroadcastMode = 'disabled';
     battleEndBroadcastMode = 'disabled';
     roomPlayingStateMode = 'disabled';
     roomOptionSourceMode = 'disabled';
@@ -535,8 +514,6 @@ module.exports = {
     _setLobbyRoomListModeForTests,
     isRoomReadyStateEnabled,
     _setRoomReadyStateModeForTests,
-    isRoomBattleStartBroadcastEnabled,
-    _setRoomBattleStartBroadcastModeForTests,
     isBattleEndBroadcastEnabled,
     _setBattleEndBroadcastModeForTests,
     isRoomPlayingStateEnabled,
