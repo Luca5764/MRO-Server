@@ -453,21 +453,24 @@ function main()
         assert.strictEqual(Buffer.from(hostBurst['0x00220203'], 'hex').readUInt8(4), 1, 'host roomType byte must be 1 (PvE)');
         assert.strictEqual(Buffer.from(joinerBurst['0x00220203'], 'hex').readUInt8(4), 1, 'joiner roomType byte must be 1 (PvE), not 2 (PvP shell)');
 
-        // Room_Boundary_SN (0x00220213) carries `currentUsers` at byte 1 --
+        // Room_Boundary_SN (0x00220213) carries `currentUsers` at byte 0 --
         // legitimately different here because the two bursts were captured
         // at different points in room membership (host's burst: 1 member,
         // right after CQ_CREATE; joiner's burst: 2 members, right after her
         // own Enter_CQ added her). This is not an identity field and not the
         // bug under test -- room.members.size is genuinely different at the
         // two send times, same as it would be for two real connections.
-        // maxPlayers (byte 0) is not time-dependent and must still match.
+        // maxPlayers (byte 1) is not time-dependent and must still match.
+        // BOUNDARY-SWAP [DLL 0x107ea8e0]: currentUsers/maxPlayers order
+        // swapped to match Room_Boundary_SN's real body (currentUsers at
+        // body+0, maxPlayers at body+1) -- see room-state.sender.js.
         assert.strictEqual(
-            hostBurst['0x00220213'].slice(0, 2),
-            joinerBurst['0x00220213'].slice(0, 2),
+            hostBurst['0x00220213'].slice(2, 4),
+            joinerBurst['0x00220213'].slice(2, 4),
             'Room_Boundary_SN maxPlayers byte must match'
         );
-        assert.strictEqual(Buffer.from(hostBurst['0x00220213'], 'hex').readUInt8(1), 1, 'host burst currentUsers must be 1 (captured solo, right after CQ_CREATE)');
-        assert.strictEqual(Buffer.from(joinerBurst['0x00220213'], 'hex').readUInt8(1), 2, 'joiner burst currentUsers must be 2 (captured after her own Enter_CQ added her)');
+        assert.strictEqual(Buffer.from(hostBurst['0x00220213'], 'hex').readUInt8(0), 1, 'host burst currentUsers must be 1 (captured solo, right after CQ_CREATE)');
+        assert.strictEqual(Buffer.from(joinerBurst['0x00220213'], 'hex').readUInt8(0), 2, 'joiner burst currentUsers must be 2 (captured after her own Enter_CQ added her)');
 
         // The remaining opcodes carry no identity- or membership-count-
         // dependent fields at all -- must be byte-for-byte identical.

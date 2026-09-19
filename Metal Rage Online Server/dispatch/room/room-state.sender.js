@@ -116,11 +116,20 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
     }
 
     {
+        // BOUNDARY-SWAP [DLL 0x107ea8e0] Room_Boundary_SN real body: 0x107ea95d
+        // `movzx ecx,[eax+0x10]` -> [esi+0x1c] = ROOM_INFO.CurrentUser (body+0),
+        // 0x107ea964 `movzx edx,[eax+0x11]` -> [esi+0x18] = ROOM_INFO.MaxUser
+        // (body+1). Previous order (max at +0, current at +1) made the client
+        // read MaxUser into CurrentUser's slot and vice versa; ZPage_Room.uc:768
+        // `m_MaxUser = MaxUser/2` then divided garbage, and [SHOT]
+        // shots/room-ready-host.png showed all 16 room slots drawn closed.
+        // Room_Default_SN (0x00220203) +7/+8 are a separate, still-wrong pair
+        // -- not touched here, left as a follow-up.
         const [msg, respBody] = getExactMessageBuffer(SN_ROOM_BOUNDARY, 0x02);
-        respBody.writeUint8(maxPlayers, 0x00);
-        respBody.writeUint8(currentUsers, 0x01);
+        respBody.writeUint8(currentUsers, 0x00);
+        respBody.writeUint8(maxPlayers, 0x01);
         client.send(msg);
-        console.log(`[ZRoomDispatch] >> Sent SN_ROOM_BOUNDARY 0x220213 (max=${maxPlayers}, current=${currentUsers})`);
+        console.log(`[ZRoomDispatch] >> Sent SN_ROOM_BOUNDARY 0x220213 (current=${currentUsers}, max=${maxPlayers})`);
     }
 
     {
