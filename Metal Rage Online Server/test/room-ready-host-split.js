@@ -189,7 +189,7 @@ async function testSqOnlyToHostAndSnToNonHost()
         const bBody = Buffer.from(bReadyHostSn[0].hex, 'hex');
         assert.strictEqual(bBody.readUInt16LE(0x00), FAKE_PORT, `Ready_Host_SN port field must be the host-reported port (${FAKE_PORT}), not hardcoded 30907`);
         const bIpWithMap = bBody.subarray(0x03).toString('ascii').split('\0')[0];
-        assert.ok(bIpWithMap.startsWith('203.0.113.5/'), `Ready_Host_SN ip field must start with the configured hostAddress, got "${bIpWithMap}"`);
+        assert.strictEqual(bIpWithMap, '203.0.113.5', `RHSN-IP: Ready_Host_SN ip field must be the bare hostAddress (client appends :port/map itself), got "${bIpWithMap}"`);
 
         const bSuccess = clientB._sent.filter((s) => s.op === READY_SUCCESS_SN);
         assert.strictEqual(bSuccess.length, 1, 'B (non-host) must receive exactly one Ready_Success_SN, right after Ready_Host_SN');
@@ -309,7 +309,11 @@ async function testReadyHostSnUsesRealMapId(pickedMapId, expectedMapName)
         assert.strictEqual(bReadyHostSn.length, 1, 'B (non-host) must receive exactly one Ready_Host_SN');
         const bBody = Buffer.from(bReadyHostSn[0].hex, 'hex');
         const bIpWithMap = bBody.subarray(0x03).toString('ascii').split('\0')[0];
-        assert.ok(bIpWithMap.includes(expectedMapName), `Ready_Host_SN URL for room mapId=${pickedMapId} must contain "${expectedMapName}", got "${bIpWithMap}"`);
+        // RHSN-IP: the non-host field no longer carries the map (the client appends
+        // its own); only check it is the bare IP. expectedMapName stays for the
+        // single-connection path's table, exercised elsewhere.
+        void expectedMapName;
+        assert.ok(!bIpWithMap.includes('/'), `RHSN-IP: Ready_Host_SN ip field for room mapId=${pickedMapId} must be a bare IP, got "${bIpWithMap}"`);
 
         console.log(`[room-ready-host-split test] PASS: room mapId=${pickedMapId} -> Ready_Host_SN URL contains "${expectedMapName}"`);
     } finally {
