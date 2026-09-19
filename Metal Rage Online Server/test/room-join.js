@@ -463,6 +463,64 @@ function main()
         rooms._resetForTests();
     }
 
+    // --- 8 (J1b, docs/backlog.md): a non-host member pressing "Ready"
+    // (0x00222101, ZDispatchRoom's scene-load-complete/ready notification --
+    // see the case handler's comment in gate.game.dispatch.js) after
+    // joining someone else's room must not get a room-state resend built
+    // from her own (unset/stale) client.xxx_ fields. Regression test for
+    // [LOG] session-20260919-111258.jsonl:231-246 ([OBS] "加入者以為自己
+    // 變成房主、地圖變成動力奪取戰" -- MAP_ID_DEFAULT_PVE,
+    // dispatch/room.dispatch.js:180 = 9001, is exactly what the old
+    // client.xxx_-based resendRoomState() path fell back to for any
+    // campaign room whose real map/host identity it could not read off a
+    // joiner's own connection). Uses a map (9007) distinct from
+    // MAP_ID_DEFAULT_PVE (9001) so a coincidental match cannot hide the bug.
+    rooms._resetForTests();
+    rooms._setRoomJoinModeForTests('enabled');
+    rooms._setLobbyRoomListModeForTests('enabled');
+    const fakeTimers3 = installFakeTimers();
+    try {
+        const hostE = makeFakeClient(41, 30907);
+        hostE.accountId_ = 41;
+        hostE.nickname_ = 'Erin';
+        const joinerF = makeFakeClient(42, 30907);
+        joinerF.accountId_ = 42;
+        joinerF.nickname_ = 'Frank';
+        rooms.registerLobbyClientSource([hostE, joinerF]);
+
+        const createBody4 = makeCreateBody('Erin Room');
+        createBody4.writeUInt16LE(9007, 2); // createWord1: picked PvE map (9001..9012 range)
+        const createHandled4 = gate.dispatch(hostE, CQ_CREATE, createBody4);
+        assert.strictEqual(createHandled4, true, 'CQ_CREATE must be handled');
+        const roomId4 = hostE.createdRoomIndex_;
+        assert.strictEqual(rooms.getRoom(roomId4).mapId, 9007, 'room.mapId must be the map Erin picked');
+        while (fakeTimers3.fireNext()) { /* drain the CQ_CREATE retry schedule */ }
+
+        const enterHandled4 = gate.dispatch(joinerF, ENTER_CQ, makeEnterBody(roomId4));
+        assert.strictEqual(enterHandled4, true, 'Enter_CQ must be handled');
+        while (fakeTimers3.fireNext()) { /* drain the 350ms joiner room-state send */ }
+
+        joinerF._sent.length = 0;
+        const readyBody = Buffer.from('270a000001', 'hex'); // observed CQ body; unused by the handler
+        const readyHandled = gate.dispatch(joinerF, 0x00222101, readyBody);
+        assert.strictEqual(readyHandled, true, 'Ready/Room_Enter_CN 0x00222101 must be handled');
+
+        const roomDefaultHits = joinerF._sent.filter((s) => s.op === '0x00220203');
+        assert.ok(roomDefaultHits.length > 0, 'Ready resend must include Room_Default_SN');
+        const mapIndex = Buffer.from(roomDefaultHits[0].hex, 'hex').readUInt16LE(0x05);
+        assert.strictEqual(mapIndex, 9007, "Ready resend must carry the room's actual map (9007), not MAP_ID_DEFAULT_PVE (9001) or any other joiner-side fallback");
+
+        const masterHits = joinerF._sent.filter((s) => s.op === USER_MASTER_SN);
+        assert.ok(masterHits.length > 0, 'Ready resend must include User_Master_SN');
+        const masterAccountIndex = Buffer.from(masterHits[0].hex, 'hex').readUInt16LE(0x00);
+        assert.strictEqual(masterAccountIndex, 41, 'User_Master_SN in the Ready resend must name the host (Erin, account 41), not the joiner (Frank, account 42) who pressed Ready');
+
+        console.log('[room-join test] PASS: joiner pressing Ready (0x00222101) after joining gets a room-state resend read from the shared Room, not her own client fields -- correct map and host identity');
+    } finally {
+        fakeTimers3.restore();
+        rooms._resetForTests();
+    }
+
     console.log('[room-join test] ALL CHECKS PASS');
     process.exit(0);
 }

@@ -582,9 +582,92 @@ function buildMapChangeOneSaFields(body, client)
     };
 }
 
+// J1b (docs/backlog.md, docs/journal/2026-09-19-0330-d1-step4-room-join.md
+// "J1 重測"): a non-host room member pressing "Ready" (0x00222101, see the
+// case handler below) triggered a full room-state resend built from this
+// connection's own client.xxx_ fields -- those are only ever populated for
+// the room's *creator* (CQ_CREATE) plus the handful of fields Enter_CQ
+// mirrors onto a joiner's connection (see that handler's own comment), so a
+// joiner's client.rawRoomType_/gameMode_/createWord2_/campaignMapCacheKey_/
+// playRound_/mapChangeOne*_ stay unset or stale. [LOG]
+// session-20260919-111258.jsonl:231-246: joiner (conn4, accountId 4) sent
+// 0x00222101 at ms 706969, and the resend that followed sent Room_Default_SN
+// with the joiner's own accountId in the room-link field and User_Master_SN
+// naming the joiner as host, with the room's actual PvE map (9010) replaced
+// by whatever the joiner's own unset fields defaulted to (9001). Pulled the
+// Enter_CQ joiner ctx (D1-4c) out into buildRoomCtxFromRoom()/
+// sendFullRoomStateToClient() below so any resend path can reuse it for a
+// non-host connection.
+function buildRoomCtxFromRoom(room, accountId) {
+    return {
+        roomIndex: room.id,
+        accountIndex: accountId,
+        roomType: room.rawRoomType,
+        mapId: room.mapId,
+        maxPlayers: room.maxPlayers,
+        currentUsers: room.members.size,
+        gameMode: room.gameMode,
+        mapIndex: room.mapId,
+        roomName: room.name,
+        roomSettingGoal: room.campaign ? 0 : room.members.size,
+        roomSettingTime: room.campaign ? 0 : room.maxPlayers,
+        roomSettingRound: room.campaign ? 1 : 0,
+        roomDefaultEntryCount: room.campaign
+            ? ROOM_DEFAULT_ENTRY_HINTS.length
+            : Math.min(Math.max(room.maxPlayers, 1), ROOM_DEFAULT_ENTRY_HINTS.length),
+        roomDefaultEntryHints: ROOM_DEFAULT_ENTRY_HINTS,
+        primaryBodyCacheIndex: CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[room.createMapId || 1] || ROOM_DEFAULT_ENTRY_HINTS[0] || 8,
+        selectedMech: 1,
+        isCampaignRoom: room.campaign,
+        optionMask: room.optionMask || 0,
+        isTrueCampaign: room.isTrueCampaign,
+        campaignMapCacheKey: room.mapId,
+        campaignMapHints: computeCampaignMapAllHints(),
+        // No per-room override history yet for these four (same fallback
+        // chain sendMapChangeOnePacket already uses, see the Enter_CQ
+        // handler's own comment below).
+        mapChangeOneTime: room.playTime,
+        mapChangeOneRound: room.playRound,
+        playRound: room.playRound,
+        mapChangeOneKill: undefined,
+        mapChangeOneGoal: undefined,
+    };
+}
+
+// J1b: room-state + map + per-member user packets, all built from the
+// shared Room object rather than any single connection's client.xxx_
+// fields. Used by Enter_CQ's own joiner send (moved here verbatim from its
+// former inline setTimeout body) and by resendRoomState()'s non-host branch
+// below.
+function sendFullRoomStateToClient(client, room, accountId, tag) {
+    const roomStateCtx = buildRoomCtxFromRoom(room, accountId);
+    sendRoomStatePackets(client, roomStateCtx, getExactMessageBuffer);
+    sendRoomMapPackets(client, roomStateCtx, getExactMessageBuffer, { mapChangeOneResponse: true });
+    if (room.campaign) {
+        const { sendCampaignBootstrap } = require('./room/room-map.sender');
+        sendCampaignBootstrap(client, getExactMessageBuffer);
+    }
+    const allMembers = Array.from(room.members.values());
+    for (const member of allMembers) {
+        sendRoomUserPackets(client, buildMemberUserCtx(member), getExactMessageBuffer, {
+            includeMaster: member.accountId === room.hostAccountId,
+        });
+    }
+    console.log(`[ZGateGameDispatch] >> Sent full room state from Room #${room.id} to account ${accountId} (members=${allMembers.length})${tag ? ` [${tag}]` : ''}`);
+}
+
 function resendRoomState(client, tag)
 {
     try {
+        const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
+        // J1b: only take the Room-sourced path for a non-host member --
+        // the room creator's own client.xxx_ fields are still the correct
+        // (and byte-identical to before) source for their own resends.
+        const room = rooms.isRoomJoinEnabled() ? rooms.getRoomByAccount(accountId) : undefined;
+        if (room && accountId !== room.hostAccountId) {
+            sendFullRoomStateToClient(client, room, accountId, tag);
+            return;
+        }
         const ZRoomDispatch = require('./room.dispatch');
         const roomDispatch = new ZRoomDispatch();
         roomDispatch.sendRoomState(client);
@@ -610,6 +693,27 @@ function clearPendingRoomStateRetries(client, reason)
 function resendRoomMapOnly(client, tag)
 {
     try {
+        // J1b: same non-host-member branch as resendRoomState() above --
+        // this connection's own client.isTrueCampaign_/campaignMapCacheKey_/
+        // mapChangeOne*_ are unset or stale for a joiner, so read the shared
+        // Room instead. The room creator's own resends are unaffected
+        // (falls through to the client.xxx_-based path below, byte-
+        // identical to before).
+        const accountIdForRoom = Number(client.accountIndex_ || client.accountId_ || 1);
+        const roomForResend = rooms.isRoomJoinEnabled() ? rooms.getRoomByAccount(accountIdForRoom) : undefined;
+        if (roomForResend && accountIdForRoom !== roomForResend.hostAccountId) {
+            const roomCtx = buildRoomCtxFromRoom(roomForResend, accountIdForRoom);
+            if (!roomCtx.isTrueCampaign) {
+                console.log(`[ZGateGameDispatch] >> Skipped map-only resend [${tag}] (not true campaign room)`);
+                return;
+            }
+            const { sendRoomMapPackets, sendCampaignBootstrap } = require('./room/room-map.sender');
+            sendRoomMapPackets(client, roomCtx, getExactMessageBuffer, { mapChangeOneResponse: true });
+            sendCampaignBootstrap(client, getExactMessageBuffer);
+            console.log(`[ZGateGameDispatch] >> Re-sent map packets only from Room #${roomForResend.id} [${tag}] (mapId=${roomCtx.mapId}, cacheKey=${roomCtx.campaignMapCacheKey})`);
+            return;
+        }
+
         if (!client.isTrueCampaign_) {
             console.log(`[ZGateGameDispatch] >> Skipped map-only resend [${tag}] (not true campaign room)`);
             return;
@@ -1179,7 +1283,7 @@ class ZGateGameDispatch
                 // SNs. One retry (not the creator's two) -- see journal.
                 setTimeout(() => {
                     // D1-4c fix (docs/backlog.md, PM contract): every field
-                    // below comes from the shared Room object, not any
+                    // sent below comes from the shared Room object, not any
                     // client.xxx_ field -- a joiner's own connection never
                     // went through CQ_CREATE, so those fields are either
                     // unset or (worse) stale from whatever this connection
@@ -1188,79 +1292,25 @@ class ZGateGameDispatch
                     // session). [LOG] session-20260919-104728.jsonl:118 (host
                     // Room_Default_SN, roomType byte=1, PvE) vs :164 (joiner,
                     // same field=2, PvP room shell) traced to the old
-                    // `roomType: room.roomType` line below -- `room.roomType`
-                    // is the Room_List_SN-*normalized* value
+                    // `roomType: room.roomType` line -- `room.roomType` is
+                    // the Room_List_SN-*normalized* value
                     // (room-list.sender.js's ROOM_TYPE_NORM_TO_RAW), not the
                     // raw CQ_CREATE type Room_Default_SN's own roomType byte
                     // needs (room.dispatch.js sendRoomState()'s `rawRoomType`
-                    // local) -- room.rawRoomType (new field, dual-written at
-                    // CQ_CREATE) is that raw value. Also [LOG] :158-174 vs
-                    // :115-146: this block never called sendRoomMapPackets()
-                    // or sendCampaignBootstrap() at all, so a joiner never
-                    // got Map_Change_ALL/ONE (0x00220226/0x00220223) or
+                    // local) -- room.rawRoomType (dual-written at CQ_CREATE)
+                    // is that raw value. Also [LOG] :158-174 vs :115-146:
+                    // this block used to never call sendRoomMapPackets() or
+                    // sendCampaignBootstrap() at all, so a joiner never got
+                    // Map_Change_ALL/ONE (0x00220226/0x00220223) or
                     // Campaign_SN (0x0023013a) -- matching [OBS] marker at
-                    // line 295, "中間地圖設定還有房間設定都為空".
-                    const roomStateCtx = {
-                        roomIndex: room.id,
-                        accountIndex: accountId,
-                        roomType: room.rawRoomType,
-                        mapId: room.mapId,
-                        maxPlayers: room.maxPlayers,
-                        currentUsers: room.members.size,
-                        gameMode: room.gameMode,
-                        mapIndex: room.mapId,
-                        roomName: room.name,
-                        roomSettingGoal: room.campaign ? 0 : room.members.size,
-                        roomSettingTime: room.campaign ? 0 : room.maxPlayers,
-                        roomSettingRound: room.campaign ? 1 : 0,
-                        roomDefaultEntryCount: room.campaign
-                            ? ROOM_DEFAULT_ENTRY_HINTS.length
-                            : Math.min(Math.max(room.maxPlayers, 1), ROOM_DEFAULT_ENTRY_HINTS.length),
-                        roomDefaultEntryHints: ROOM_DEFAULT_ENTRY_HINTS,
-                        // D1-4c fix: was a bare ROOM_DEFAULT_ENTRY_HINTS[0]
-                        // (constant 8, ignoring the room entirely) --
-                        // test/room-join.js caught this as a real byte
-                        // mismatch (first mech-slot entry, Room_Default_SN
-                        // offset 0x20) once the roomType bug above was fixed.
-                        // room.dispatch.js sendRoomState()'s own
-                        // primaryMapCacheIndex does the identical
-                        // CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID lookup off the
-                        // creator's client.mapId_ -- room.createMapId is that
-                        // same raw value, dual-written at CQ_CREATE.
-                        primaryBodyCacheIndex: CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[room.createMapId || 1] || ROOM_DEFAULT_ENTRY_HINTS[0] || 8,
-                        selectedMech: 1,
-                        isCampaignRoom: room.campaign,
-                        optionMask: room.optionMask || 0,
-                        isTrueCampaign: room.isTrueCampaign,
-                        campaignMapCacheKey: room.mapId,
-                        campaignMapHints: computeCampaignMapAllHints(),
-                        // No per-room override history yet for these four
-                        // (Room only carries the creation-time
-                        // mapId/playTime/playRound, updated by Map_Change_One_CQ
-                        // below via rooms.updateRoomMapSelection) -- same
-                        // fallback chain sendMapChangeOnePacket already uses
-                        // (falls through to roomSettingTime/Goal above), so a
-                        // freshly created room's joiner lands on the same
-                        // values a freshly created room's own creator would.
-                        mapChangeOneTime: room.playTime,
-                        mapChangeOneRound: room.playRound,
-                        playRound: room.playRound,
-                        mapChangeOneKill: undefined,
-                        mapChangeOneGoal: undefined,
-                    };
-                    sendRoomStatePackets(client, roomStateCtx, getExactMessageBuffer);
-                    sendRoomMapPackets(client, roomStateCtx, getExactMessageBuffer, { mapChangeOneResponse: true });
-                    if (room.campaign) {
-                        const { sendCampaignBootstrap } = require('./room/room-map.sender');
-                        sendCampaignBootstrap(client, getExactMessageBuffer);
-                    }
-
-                    for (const member of allMembers) {
-                        sendRoomUserPackets(client, buildMemberUserCtx(member), getExactMessageBuffer, {
-                            includeMaster: member.accountId === room.hostAccountId,
-                        });
-                    }
-                    console.log(`[ZGateGameDispatch] >> Sent full room state to joiner (room=${room.id}, members=${allMembers.length})`);
+                    // line 295, "中間地圖設定還有房間設定都為空". J1b
+                    // (docs/backlog.md) pulled the ctx-building and send
+                    // calls out into buildRoomCtxFromRoom()/
+                    // sendFullRoomStateToClient() above so resendRoomState()
+                    // can reuse the same Room-sourced path for a later
+                    // resend on this same joiner connection (e.g. pressing
+                    // "Ready", 0x00222101 below).
+                    sendFullRoomStateToClient(client, room, accountId);
                 }, 350);
 
                 // Tell whoever was already in the room about the new
