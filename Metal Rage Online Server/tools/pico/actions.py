@@ -82,6 +82,18 @@ LEAVE_ROOM_BUTTON = BACK_BUTTON
 CONSOLE_CMD_WHITELIST = {"GameCampaign 1", "GameCampaign 2"}
 DEFAULT_ROUND_SETTLE_S = 12.0
 MAX_CAMPAIGN_ROUNDS = 12
+# How long campaign_fail() waits for the EndGame_SN 0x00222213 send packet
+# after GameCampaign 2 (see campaign_fail()'s docstring for why there is no
+# marker to wait on for the failure path).
+CAMPAIGN_FAIL_ENDGAME_TIMEOUT_S = 20.0
+# How long deltest() waits, after sending delTest, before it reads back the
+# Death_CN/Death_SN packet counts (best-effort, not a pass/fail condition --
+# see deltest()'s docstring).
+DEFAULT_DELTEST_WAIT_S = 20.0
+# keepalive_wait()'s default ping interval -- well under the ~80s AFK-kick
+# popup timing observed 2026-09-19 (docs/journal/2026-09-19-2230-unattended-
+# trial-01.md「因長時間未動作，所以被強制退場」), leaving margin either side.
+DEFAULT_KEEPALIVE_INTERVAL_S = 30.0
 # R-ROUND markers, written by dispatch/lobby.dispatch.js's PVE_ROUND_ADVANCE
 # path (see lobby.dispatch.js:435/442): "R-ROUND: cleared=N playRound=M -> "
 # followed by either "...EndRound_SN 0x00222211" (more rounds to go) or
@@ -161,6 +173,13 @@ def key(ctx, key_name):
     return run_pico(ctx, "key", key_name)
 
 
+def mouse_wiggle(ctx, distance=1):
+    """Zero-net mouse movement (MOVE <distance> 0 then MOVE <-distance> 0),
+    used only as a harmless "still here" input by keepalive_wait() below --
+    see its docstring for why a mouse move was chosen over a key press."""
+    return [run_pico(ctx, "move", distance, 0), run_pico(ctx, "move", -distance, 0)]
+
+
 def type_text(ctx, text):
     if not all(0x20 <= ord(c) <= 0x7E for c in text):
         raise ActionError("console_cmd text must be printable ASCII (see pico_ctl.py TYPE gate)")
@@ -219,6 +238,36 @@ def wait_for_log_markers(ctx, timeout_s, predicates, poll_interval_s=1.0, baseli
             text = str(entry.get("text", ""))
             for name, pred in predicates.items():
                 if found[name] is None and pred(text):
+                    found[name] = entry
+        if all(v is not None for v in found.values()):
+            break
+        if time.monotonic() - t0 >= timeout_s:
+            break
+        time.sleep(poll_interval_s)
+    ok = all(v is not None for v in found.values())
+    return ok, found, time.monotonic() - t0
+
+
+def wait_for_log_pkts(ctx, timeout_s, predicates, poll_interval_s=1.0, baseline_ms=None):
+    """Same contract as wait_for_log_markers() above, but polls
+    find_pkts_since()'s raw {ev:'pkt', dir, op, ...} lines instead of
+    {ev:'marker'} text -- predicates are fn(entry: dict) -> bool over the
+    whole pkt record (not a text sentence), for signals that have no
+    packetlog.marker() call to poll (see campaign_fail()'s docstring for why
+    this exists: action=2's Campaign_CN reply has no R-ROUND marker).
+
+    Returns (ok: bool, found: dict[name, entry|None], elapsed_s). In dry-run
+    mode returns (True, {}, 0.0) immediately without reading anything."""
+    if ctx.dry_run:
+        return True, {}, 0.0
+    t0 = time.monotonic()
+    if baseline_ms is None:
+        baseline_ms = _newest_log_ms(ctx.logs_dir)
+    found = {name: None for name in predicates}
+    while True:
+        for entry in find_pkts_since(ctx.logs_dir, baseline_ms):
+            for name, pred in predicates.items():
+                if found[name] is None and pred(entry):
                     found[name] = entry
         if all(v is not None for v in found.values()):
             break
@@ -603,6 +652,154 @@ def campaign_win_all(ctx, settle_s=DEFAULT_ROUND_SETTLE_S, max_rounds=MAX_CAMPAI
                          None, None, steps, rounds)
 
 
+def campaign_fail(ctx):
+    """Triggered by: opening the client console (F24) once in battle, then
+    running the ZPvePlayercontroller exec `GameCampaign 2` ("mission failed",
+    see ZModePve/ZPvePlayercontroller.uc:904 and docs/reference/console-
+    commands.md) exactly once -- the failure counterpart to
+    campaign_win_all()'s `GameCampaign 1` loop.
+
+    dispatch/lobby.dispatch.js's Campaign_CN handler (case 0x00230139) only
+    runs its R-ROUND round-advance branch for action===1
+    (PVE_ROUND_ADVANCE_MODE, see the comment right above that case); action===2
+    is explicitly left untouched and falls straight through to a single
+    EndGame_SN broadcast that is logged with console.log only, not
+    packetlog.marker() -- so unlike campaign_win_all there is no
+    'R-ROUND: ...' text marker to poll here (confirmed by reading that
+    handler for this task, not guessed). Completion is instead read straight
+    off the session log's own packet record: an {ev:'pkt', dir:'send',
+    op:'0x00222213', ...} line (EndGame_SN), via wait_for_log_pkts() -- this
+    task's contract asked for exactly this fallback when no marker exists.
+
+    🟡 not run live yet -- only campaign_win_all's GameCampaign 1 path has an
+    actual [TEST] result (docs/journal/2026-09-19-2230-unattended-trial-01.md)."""
+    t0 = time.monotonic()
+    steps = []
+    if not ctx.dry_run:
+        ok, gray, detail, score, shot, _ = wait_for(ctx, "campaign_fail-battle", 60.0, _marker_check("battle"))
+        if not ok:
+            return ActionResult("campaign_fail", False, gray, time.monotonic() - t0,
+                                 f"battle HUD not seen within 60s: {detail}", shot, score, steps)
+        st, _w = screens.console_prompt_state(take_screenshot(ctx, "campaign_fail-console-pre"))
+        if st == "unknown":
+            return ActionResult("campaign_fail", False, True, time.monotonic() - t0,
+                                 f"console prompt state unknown before F24 (white_px={_w})", None, float(_w), steps)
+        if st == "closed":
+            steps.append(key(ctx, "F24"))
+    ok, gray, detail, score, shot, _ = wait_for(ctx, "campaign_fail-console", 5.0, _console_check("open", variant="battle"))
+    if not ok:
+        return ActionResult("campaign_fail", False, gray, time.monotonic() - t0,
+                             f"console did not open over the battle HUD: {detail}", shot, score, steps)
+
+    if ctx.dry_run:
+        return ActionResult("campaign_fail", True, False, time.monotonic() - t0,
+                             "dry-run: skipped the GameCampaign 2 send", None, None, steps)
+
+    base = _newest_log_ms(ctx.logs_dir)
+    steps.append(type_text(ctx, "GameCampaign 2"))
+    steps.append(key(ctx, "ENTER"))
+    ok, found, elapsed = wait_for_log_pkts(
+        ctx, CAMPAIGN_FAIL_ENDGAME_TIMEOUT_S,
+        {"endgame": lambda e: e.get("dir") == "send" and e.get("op") == "0x00222213"},
+        baseline_ms=base,
+    )
+    detail = f"EndGame_SN 0x00222213 send: {'seen' if ok else 'MISSING'} (waited {elapsed:.1f}s, no marker exists for action=2)"
+    return ActionResult("campaign_fail", ok, False, time.monotonic() - t0, detail, None, None, steps)
+
+
+def deltest(ctx, wait_s=DEFAULT_DELTEST_WAIT_S):
+    """Triggered by: opening the client console (F24) once in battle, then
+    running the ZModePve exec `delTest` exactly once (docs/reference/console-
+    commands.md: "場上所有機體（包括自己）KilledBy(none)" -- 🟡 read from
+    source only, never run live before this task either).
+
+    delTest is deliberately NOT added to console_cmd()'s CONSOLE_CMD_WHITELIST
+    -- this task's contract asked for it "in the console whitelist ONLY for
+    this action", so it is hardcoded here instead, unreachable through the
+    generic console_cmd(text) action or any other experiment file.
+
+    Completion is best-effort and always ok=True (a delTest that kills no one
+    -- e.g. an empty room -- is not a runner failure): after sending, it waits
+    wait_s and then counts Death_CN 0x00230123 recv / Death_SN 0x00230124 send
+    packets in the session log since the send (dispatch/lobby.dispatch.js's
+    case 0x00230123, its "Broadcast/Sent Death_SN 0x00230124" log lines) --
+    the counts requested by this task's report go in `detail`.
+
+    🟡 mark: this action must never be run against a live session without an
+    explicit go-ahead (see its experiment file's own 🟡 note)."""
+    t0 = time.monotonic()
+    steps = []
+    if not ctx.dry_run:
+        ok, gray, detail, score, shot, _ = wait_for(ctx, "deltest-battle", 60.0, _marker_check("battle"))
+        if not ok:
+            return ActionResult("deltest", False, gray, time.monotonic() - t0,
+                                 f"battle HUD not seen within 60s: {detail}", shot, score, steps)
+        st, _w = screens.console_prompt_state(take_screenshot(ctx, "deltest-console-pre"))
+        if st == "unknown":
+            return ActionResult("deltest", False, True, time.monotonic() - t0,
+                                 f"console prompt state unknown before F24 (white_px={_w})", None, float(_w), steps)
+        if st == "closed":
+            steps.append(key(ctx, "F24"))
+    ok, gray, detail, score, shot, _ = wait_for(ctx, "deltest-console", 5.0, _console_check("open", variant="battle"))
+    if not ok:
+        return ActionResult("deltest", False, gray, time.monotonic() - t0,
+                             f"console did not open over the battle HUD: {detail}", shot, score, steps)
+
+    if ctx.dry_run:
+        return ActionResult("deltest", True, False, time.monotonic() - t0,
+                             f"dry-run: skipped delTest send + {wait_s}s Death_CN/Death_SN wait", None, None, steps)
+
+    base = _newest_log_ms(ctx.logs_dir)
+    steps.append(type_text(ctx, "delTest"))
+    steps.append(key(ctx, "ENTER"))
+    time.sleep(wait_s)
+    pkts = find_pkts_since(ctx.logs_dir, base)
+    death_cn = [p for p in pkts if p.get("dir") == "recv" and p.get("op") == "0x00230123"]
+    death_sn = [p for p in pkts if p.get("dir") == "send" and p.get("op") == "0x00230124"]
+    detail = (f"delTest sent; after {wait_s}s: Death_CN(recv 0x00230123)={len(death_cn)}, "
+              f"Death_SN(send 0x00230124)={len(death_sn)}")
+    return ActionResult("deltest", True, False, time.monotonic() - t0, detail, None, None, steps)
+
+
+def keepalive_wait(ctx, seconds, interval_s=DEFAULT_KEEPALIVE_INTERVAL_S):
+    """Triggered by nothing the player would see -- a deliberate idle wait
+    (e.g. sitting in the lobby before a shop pass, to reproduce how long an
+    unattended session can actually be left alone) that periodically sends a
+    zero-net mouse move (mouse_wiggle(), see above) so the client's own
+    AFK-kick idle timer does not fire and dim the screen with the 提示 popup
+    (docs/journal/2026-09-19-2230-unattended-trial-01.md's
+    「因長時間未動作，所以被強制退場」 -- ~80s observed once, exact timer
+    unconfirmed).
+
+    🟡 [GUESS], not DLL-backed: this task did not read the client's idle-timer
+    / input-handling source, so no specific key is claimed to be a confirmed
+    no-op in lobby/room/shop. A mouse move (no click) was chosen over a key
+    press because every key this module already knows how to send has some
+    in-game effect in at least one of those three screens (F1-F12 hotkeys,
+    ESC closes dialogs/menus, ENTER submits chat/buttons/dialogs, arrow keys
+    likely navigate menus, F24 opens the console) -- this task's contract
+    explicitly sanctions the mouse-wiggle fallback for exactly this case.
+    Whether the idle timer actually resets on a cursor move with no click is
+    itself unconfirmed ⬜ -- a PASS on U-shop-tabs-idle only shows the client
+    did not show the AFK popup during the wait, not which specific mechanism
+    (if any) caused that; do not upgrade this reasoning past 🟡 without an
+    operator watching it live or reading the relevant UnrealScript."""
+    t0 = time.monotonic()
+    if ctx.dry_run:
+        return ActionResult("keepalive_wait", True, False, 0.0,
+                             f"dry-run: would idle {seconds}s, mouse_wiggle every {interval_s}s", None, None, [])
+    steps = []
+    elapsed = 0.0
+    while elapsed < seconds:
+        chunk = min(interval_s, seconds - elapsed)
+        time.sleep(chunk)
+        elapsed += chunk
+        steps.extend(mouse_wiggle(ctx))
+    return ActionResult("keepalive_wait", True, False, time.monotonic() - t0,
+                         f"idled {seconds}s, sent {len(steps) // 2} keepalive ping(s) every {interval_s}s",
+                         None, None, steps)
+
+
 def wait_result_then_room(ctx, result_timeout_s=15.0, room_timeout_s=20.0):
     """Triggered by nothing -- a pure wait/observe action for what the client
     does on its own after EndGame_SN (docs/journal/2026-09-19-2230-unattended-
@@ -650,6 +847,9 @@ ACTIONS = {
     "create_pve_room": create_pve_room,
     "start_battle": start_battle,
     "campaign_win_all": campaign_win_all,
+    "campaign_fail": campaign_fail,
+    "deltest": deltest,
+    "keepalive_wait": keepalive_wait,
     "wait_result_then_room": wait_result_then_room,
     "leave_room": leave_room,
 }
@@ -738,6 +938,38 @@ def find_markers_since(logs_dir, since_ms, limit=200):
                 except json.JSONDecodeError:
                     continue
                 if entry.get("ev") != "marker":
+                    continue
+                if entry.get("ms", 0) <= since_ms:
+                    continue
+                out.append(entry)
+    except OSError:
+        return []
+    return out[-limit:]
+
+
+def find_pkts_since(logs_dir, since_ms, limit=200):
+    """Returns up to `limit` most recent {ev:'pkt', dir, op, len, hex, ...}
+    lines (see packetlog.js's packet()) with ms > since_ms from the newest
+    session log, oldest first. Same shape/semantics as find_markers_since()
+    above but over raw packet records instead of {ev:'marker'} text -- used
+    when no packetlog.marker() call exists for the signal this task needs
+    (campaign_fail's EndGame_SN, deltest's Death_CN/Death_SN counts). Empty
+    list (not an error) if there is no logs dir / file."""
+    path = newest_session_log(logs_dir)
+    if path is None:
+        return []
+    out = []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("ev") != "pkt":
                     continue
                 if entry.get("ms", 0) <= since_ms:
                     continue

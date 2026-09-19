@@ -1,0 +1,18 @@
+{
+  "id": "U-pve-deltest",
+  "purpose": "Death/respawn packet check: lobby -> create a PvE room -> F5 start -> run the delTest exec once (kills every mech on the field, including self -- docs/reference/console-commands.md, 🟡 source-only, never run live before) -> wait and count Death_CN 0x00230123 recv / Death_SN 0x00230124 send packets in the session log -> finish the match normally with GameCampaign 1 x N (campaign_win_all) -> leave the room. delTest is intentionally NOT reachable through console_cmd()'s generic CONSOLE_CMD_WHITELIST -- it is hardcoded to deltest() alone (this task's contract: 'add to the console whitelist ONLY for this action'), so no other experiment file can send it by accident. 🟡 mark: do NOT run this experiment for real without an explicit operator go-ahead -- it has never been run live.",
+  "preconditions": {"screen": "lobby"},
+  "steps": [
+    {"action": "dismiss_notice"},
+    {"action": "create_pve_room"},
+    {"action": "dismiss_notice"},
+    {"action": "start_battle"},
+    {"action": "deltest", "params": {"wait_s": 20}},
+    {"action": "campaign_win_all", "params": {"settle_s": 12, "max_rounds": 12}},
+    {"action": "wait_result_then_room"},
+    {"action": "dismiss_notice"},
+    {"action": "leave_room"}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_image_reviews": 0
+}

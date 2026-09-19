@@ -105,6 +105,17 @@ def validate_experiment(exp):
                 raise ExperimentError(f"step {i}: campaign_win_all params.settle_s must be a positive number")
             if not isinstance(max_rounds, int) or max_rounds <= 0:
                 raise ExperimentError(f"step {i}: campaign_win_all params.max_rounds must be a positive int")
+        if name == "deltest":
+            wait_s = params.get("wait_s", actions.DEFAULT_DELTEST_WAIT_S)
+            if not isinstance(wait_s, (int, float)) or wait_s <= 0:
+                raise ExperimentError(f"step {i}: deltest params.wait_s must be a positive number")
+        if name == "keepalive_wait":
+            seconds = params.get("seconds")
+            interval_s = params.get("interval_s", actions.DEFAULT_KEEPALIVE_INTERVAL_S)
+            if not isinstance(seconds, (int, float)) or seconds <= 0:
+                raise ExperimentError(f"step {i}: keepalive_wait needs params.seconds as a positive number")
+            if not isinstance(interval_s, (int, float)) or interval_s <= 0:
+                raise ExperimentError(f"step {i}: keepalive_wait params.interval_s must be a positive number")
     sc = exp.get("stop_conditions", {})
     if not isinstance(sc, dict):
         raise ExperimentError("'stop_conditions' must be an object")
@@ -144,6 +155,22 @@ def describe_step(step):
         return (f"campaign_win_all: precondition=battle marker, key F24, wait<=5s for console_state(battle)=open, "
                 f"then up to {max_rounds}x: TYPE 'GameCampaign 1'+ENTER, wait<=30s for an R-ROUND session-log marker, "
                 f"sleep {settle_s}s before the next send, stop at the EndGame_SN R-ROUND marker")
+    if name == "campaign_fail":
+        return ("campaign_fail: precondition=battle HUD (<=60s), key F24 if console closed, "
+                "wait<=5s for console_state(battle)=open, then TYPE 'GameCampaign 2'+ENTER, "
+                f"wait<={actions.CAMPAIGN_FAIL_ENDGAME_TIMEOUT_S}s for an EndGame_SN 0x00222213 send pkt "
+                "in the session log (no R-ROUND marker exists for action=2, see actions.py)")
+    if name == "deltest":
+        wait_s = params.get("wait_s", actions.DEFAULT_DELTEST_WAIT_S)
+        return (f"deltest: precondition=battle HUD (<=60s), key F24 if console closed, "
+                f"wait<=5s for console_state(battle)=open, then TYPE 'delTest'+ENTER (NOT in "
+                f"console_cmd's whitelist -- hardcoded to this action only), sleep {wait_s}s, "
+                f"then count Death_CN(recv 0x00230123)/Death_SN(send 0x00230124) pkts in the session log")
+    if name == "keepalive_wait":
+        seconds = params.get("seconds")
+        interval_s = params.get("interval_s", actions.DEFAULT_KEEPALIVE_INTERVAL_S)
+        return (f"keepalive_wait: no precondition, idle {seconds}s sending a zero-net mouse_wiggle "
+                f"every {interval_s}s (🟡 guess, see actions.py docstring)")
     if name == "wait_result_then_room":
         return "wait_result_then_room: wait<=15s for result marker (best-effort), then wait<=20s for room or notice_popup marker"
     if name == "leave_room":
@@ -338,6 +365,94 @@ def write_report(report):
 
 
 # ---------------------------------------------------------------------------
+# Suite: several experiment files run back to back, stopping (fail-closed) on
+# the first one that does not PASS. Each experiment still writes its own
+# report via run_experiment(); this only adds one summary on top, same
+# id+timestamp naming as write_report() above.
+# ---------------------------------------------------------------------------
+class SuiteError(Exception):
+    pass
+
+
+def load_suite(path):
+    """Loads and validates a suite file, resolving each entry in
+    'experiments' relative to the suite file's own directory (so a suite can
+    be invoked from any cwd, same as how experiments/*.json is written
+    relative to tools/pico/ regardless of invocation directory). Also
+    load_experiment()s every entry up front -- fail-closed before anything
+    runs, not partway through the suite."""
+    with open(path, "r", encoding="utf-8") as f:
+        suite = json.load(f)
+    for req in ("id", "purpose", "experiments"):
+        if req not in suite:
+            raise SuiteError(f"suite missing required field '{req}'")
+    if not isinstance(suite["id"], str) or not suite["id"]:
+        raise SuiteError("'id' must be a non-empty string")
+    if not isinstance(suite["purpose"], str) or not suite["purpose"]:
+        raise SuiteError("'purpose' must be a non-empty string")
+    if not isinstance(suite["experiments"], list) or not suite["experiments"]:
+        raise SuiteError("'experiments' must be a non-empty list")
+    base_dir = os.path.dirname(os.path.abspath(path))
+    resolved = []
+    for entry in suite["experiments"]:
+        if not isinstance(entry, str) or not entry:
+            raise SuiteError(f"suite experiment entry must be a non-empty string, got {entry!r}")
+        exp_path = entry if os.path.isabs(entry) or os.sep in entry else os.path.join(base_dir, entry)
+        if not os.path.exists(exp_path):
+            raise SuiteError(f"suite experiment file not found: {exp_path}")
+        load_experiment(exp_path)  # raises ExperimentError up front if any file is bad
+        resolved.append(exp_path)
+    return suite, resolved
+
+
+def run_suite(suite_path, dry_run=False, shots_dir=None, logs_dir=None):
+    """Runs each experiment in the suite, in order, via run_experiment() --
+    same fail-closed policy as a single experiment's steps: the first
+    experiment whose result is not PASS (rc != 0, includes the DRY_RUN_OK
+    case which always has rc=0) stops the suite immediately. No experiment
+    after that point is attempted."""
+    suite, exp_paths = load_suite(suite_path)
+    summary = {
+        "id": suite["id"], "purpose": suite["purpose"], "dry_run": dry_run,
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "experiments": [], "result": None, "stopped_at": None,
+    }
+    for exp_path in exp_paths:
+        print(f"=== suite {suite['id']}: {os.path.basename(exp_path)} ===")
+        report, rc = run_experiment(exp_path, dry_run=dry_run, shots_dir=shots_dir, logs_dir=logs_dir)
+        summary["experiments"].append({
+            "path": exp_path, "id": report["id"], "result": report["result"], "rc": rc,
+        })
+        if rc != 0:
+            summary["result"] = "FAIL"
+            summary["stopped_at"] = os.path.basename(exp_path)
+            write_suite_report(summary)
+            return summary, 1
+    summary["result"] = "PASS"
+    write_suite_report(summary)
+    return summary, 0
+
+
+def write_suite_report(summary):
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    base = os.path.join(REPORTS_DIR, f"{summary['id']}-{ts}")
+    with open(base + ".json", "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    with open(base + ".txt", "w", encoding="utf-8") as f:
+        f.write(f"{summary['id']} - {summary['result']}\n")
+        f.write(f"purpose: {summary['purpose']}\n")
+        f.write(f"started_at: {summary['started_at']}\n")
+        f.write("experiments:\n")
+        for e in summary["experiments"]:
+            f.write(f"  {e['id']}: {e['result']} (rc={e['rc']}) [{e['path']}]\n")
+        if summary["result"] == "FAIL":
+            f.write(f"stopped_at: {summary.get('stopped_at')}\n")
+    print(f"[SUITE REPORT] {base}.json / .txt")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 def main():
@@ -352,6 +467,13 @@ def main():
 
     p_val = sub.add_parser("validate", help="validate an experiment file's structure, no plan printed")
     p_val.add_argument("experiment")
+
+    p_suite = sub.add_parser("suite", help="run (or --dry-run plan) a suite file: sequential experiments, "
+                                            "stops on the first non-PASS (fail-closed)")
+    p_suite.add_argument("suite")
+    p_suite.add_argument("--dry-run", action="store_true")
+    p_suite.add_argument("--shots-dir")
+    p_suite.add_argument("--logs-dir")
 
     args = ap.parse_args()
 
@@ -372,6 +494,16 @@ def main():
             print(f"[INVALID] {ex}")
             sys.exit(1)
         print(f"[{report['result']}] {report['id']}")
+        sys.exit(rc)
+
+    if args.cmd == "suite":
+        try:
+            summary, rc = run_suite(args.suite, dry_run=args.dry_run,
+                                     shots_dir=args.shots_dir, logs_dir=args.logs_dir)
+        except (SuiteError, ExperimentError, FileNotFoundError, json.JSONDecodeError) as ex:
+            print(f"[INVALID] {ex}")
+            sys.exit(1)
+        print(f"[{summary['result']}] {summary['id']}")
         sys.exit(rc)
 
 

@@ -11,6 +11,13 @@
 #   wait_ready <timeoutMs> poll until a MetalRage window with a nonzero
 #                          MainWindowHandle appears, or timeoutMs elapses
 #
+# 2026-09-19 [TEST]: taskkill could not terminate a hung MetalRage process
+# (likely XIGNCODE's anti-cheat driver protecting it -- see docs/journal/
+# 2026-09-19-2230-unattended-trial-01.md). client_ctl.py's `restart` no
+# longer calls `kill`/`wait_exit` for that reason -- it halts and waits for
+# an operator instead whenever the process is still present. Both actions
+# are left here as manual/low-level primitives only.
+#
 # This script only does process bookkeeping -- it never sends keyboard/mouse input,
 # so none of pico_serial.ps1's foreground/click/STOP gates apply here. It is not a
 # substitute for those; client_ctl.py enforces its own session/STOP/limit gates

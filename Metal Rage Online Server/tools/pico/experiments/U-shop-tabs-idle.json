@@ -1,0 +1,16 @@
+{
+  "id": "U-shop-tabs-idle",
+  "purpose": "Variant of U-shop-tabs.json: idle in the lobby for 120s with keepalive pings before doing the shop pass, to check the client's AFK-kick popup (docs/journal/2026-09-19-2230-unattended-trial-01.md) does not fire mid-run when a runner is deliberately idling (e.g. between other steps). keepalive_wait's mouse-wiggle ping is 🟡 [GUESS] -- see actions.py's keepalive_wait() docstring for why, and do not read a PASS here as proof the mechanism is what kept the popup away.",
+  "preconditions": {"screen": "lobby"},
+  "steps": [
+    {"action": "keepalive_wait", "params": {"seconds": 120, "interval_s": 30}},
+    {"action": "goto_shop"},
+    {"action": "shop_tab", "params": {"name": "aux"}},
+    {"action": "shop_tab", "params": {"name": "equip"}},
+    {"action": "shop_tab", "params": {"name": "item"}},
+    {"action": "shop_tab", "params": {"name": "mshop"}},
+    {"action": "back_to_lobby"}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_image_reviews": 0
+}

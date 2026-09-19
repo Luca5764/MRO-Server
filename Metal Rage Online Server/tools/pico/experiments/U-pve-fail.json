@@ -1,0 +1,17 @@
+{
+  "id": "U-pve-fail",
+  "purpose": "PvE failure-path regression, the counterpart to U-pve-fullmatch.json's win path: lobby -> create a PvE room -> F5 start -> send GameCampaign 2 (exec, 'mission failed') exactly once instead of the GameCampaign 1 win loop -> wait for the automatic return to the room -> leave the room -> back in the lobby. dispatch/lobby.dispatch.js's Campaign_CN handler (0x00230139) only runs the R-ROUND round-advance branch for action===1 -- action===2 always falls straight through to a single EndGame_SN broadcast with no round advance and, unlike the win path, no packetlog.marker() call, so campaign_fail()'s completion signal is the raw {ev:'pkt', dir:'send', op:'0x00222213'} record in the session log instead of a marker line (see campaign_fail() in actions.py). 🟡 not run live yet.",
+  "preconditions": {"screen": "lobby"},
+  "steps": [
+    {"action": "dismiss_notice"},
+    {"action": "create_pve_room"},
+    {"action": "dismiss_notice"},
+    {"action": "start_battle"},
+    {"action": "campaign_fail"},
+    {"action": "wait_result_then_room"},
+    {"action": "dismiss_notice"},
+    {"action": "leave_room"}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_image_reviews": 0
+}
