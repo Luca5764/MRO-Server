@@ -78,3 +78,4 @@
 2. 確認 `data/System/xigncode.log` 時間戳不再更新。
 3. 驗證 WSL 軟體輸入（`tools/win/drive.sh` / `SendInput`）是否已可正常送入遊戲。
 4. 提醒：`MetalRage.exe` 本體的 `y0da Protector`（反除錯與 `.text` CRC）未受影響，若有附加除錯器需求需另行處置。
+

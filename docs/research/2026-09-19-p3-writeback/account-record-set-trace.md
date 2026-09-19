@@ -85,3 +85,14 @@
    不需要伺服器額外處理。
 3. 若之後要顯示「勝率」，可以直接用伺服器自己存的 wins/losses/draws 算 `wins*100/(wins+losses+draws)`，
    不需要理解 `Account_Record_Set` 的內部欄位。
+
+## 更正（verifier 2026-09-20，高階採納）
+- 上表的偏移全部是從 **raw 封包指標**（`eax`）算的；專案慣用的 body＝raw＋0x10，所以每個偏移都要**減 0x10**。
+  - 驗證方式：用兩個已經 ✅ 的欄位對照。Coupon 在 `0x107c1170`／`0x107c1174` 讀 raw `eax+0x24/0x28`，等於 body+0x14/0x18；Point 在 `0x107c1154`／`0x107c1158` 讀 raw `eax+0x58/0x5c`，等於 body+0x48/0x4c。
+- 修正之後完全對齊：body+0x1c/0x20/0x24/0x28/0x2c＝Win/Draw/Lose/Kill/Death。
+  - 對應到被呼叫端：`ebp+0x2c..0x3c` → `esi+0x53c/0x540/0x544/0x548/0x54c`。
+  - `esi+0x550` 存總場數，`esi+0x554` 存勝率＝Win*100/total（`0x107173da`）。
+  - Kill 在 `0x107c10e7` 讀取，直接存進 `0x10717307`。
+- 「矛盾」不存在。反過來說，這是 Win/Draw/Lose/Kill/Death 偏移的第二個獨立佐證。
+- `esi+0x51c` 不是固定清零：預設 0（`0x107172da`），但在 `0x10717388` 會用 body+0x04/0x08/0x0c/0x10/0x40/0x44 做 64-bit 相減，結果為正時覆寫。
+- Reward_Record_User_SN 的呼叫點（`0x107ed598`）所有欄位整體往前移 8 bytes，跟 progression notes 一致。

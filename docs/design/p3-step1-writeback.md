@@ -255,3 +255,7 @@ CREATE TABLE IF NOT EXISTS `match_participants` (
   版（已修正、M1 ✅ 涵蓋）不一致——這是既有缺口，不是本次新發現，但 P3 若要送
   `Reward_Record_User_SN`／`RecordInfo_SN` 的一致更新，這個舊 builder 遲早要一起修，順序留給
   高階排。
+
+
+## 更正（2026-09-20）
+§1 提到的 Account_Record_Set「欄位對不齊」是偏移算錯了（多算了 0x10），見 `research/2026-09-19-p3-writeback/account-record-set-trace.md` 文末的更正。修正後它跟 RecordInfo_SN 的 Win/Draw/Lose/Kill/Death 完全對齊，是客戶端的勝率快取，直接吃同一組欄位。§1 的實務結論（伺服器只要送對 W/D/L/K/D）不變。
