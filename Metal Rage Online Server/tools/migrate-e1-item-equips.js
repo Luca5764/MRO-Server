@@ -18,6 +18,14 @@
 // constraint says can't happen but the script checks explicitly instead of
 // trusting that.
 //
+// E1 fix round (Sol batch4, docs/research/2026-09-19-sol-review/batch4.md
+// "Must fix before migration", item 1): CREATE TABLE now runs BEFORE
+// beginTransaction(). MySQL DDL implicitly commits, so having it inside the
+// transaction meant a later collision's rollback could not undo it (or
+// anything else the implicit commit had already flushed) -- not truly
+// atomic. The transaction now only wraps the SELECT/INSERT work, so a
+// collision rolls all of that back.
+//
 // Usage (once a high-tier has reviewed this and taken a backup):
 //   node tools/migrate-e1-item-equips.js
 // The script itself refuses to run without ALLOW_REAL_DB_WRITE=1 in the
@@ -41,8 +49,11 @@ async function runMigration(pool, opts = {})
 
     const conn = await pool.getConnection();
     try {
-        await conn.beginTransaction();
-
+        // DDL first, outside any transaction: MySQL implicitly commits DDL,
+        // so running it inside a transaction would make the whole thing
+        // non-atomic (a later collision's rollback cannot undo a DDL's
+        // implicit commit, nor anything else that implicit commit already
+        // flushed). Safe to run every time -- IF NOT EXISTS.
         await conn.execute(`
             CREATE TABLE IF NOT EXISTS item_equips (
               id INT AUTO_INCREMENT PRIMARY KEY,
@@ -53,6 +64,8 @@ async function runMigration(pool, opts = {})
               UNIQUE KEY uniq_mech_part (account_id, mech_slot, part_slot)
             )
         `);
+
+        await conn.beginTransaction();
 
         const [[{ itemsTotal }]] = await conn.execute('SELECT COUNT(*) AS itemsTotal FROM items');
         const [[{ before }]] = await conn.execute('SELECT COUNT(*) AS before FROM item_equips');
