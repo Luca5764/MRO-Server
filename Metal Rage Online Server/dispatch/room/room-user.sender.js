@@ -27,6 +27,9 @@ const rooms = require('../../rooms.js');
 // path, not this switch). This experiment tests that timing hypothesis
 // directly: resend the same client's own record set, byte-identical, a
 // fixed delay after it was first sent.
+// SWITCH-CONVERGE: judged useless -- BOUNDARY-SWAP was the real cause of
+// the missing avatars, not timing. Kept 'disabled', slated for deletion (C
+// task), not removed in this pass.
 let ROOM_SELF_RECORD_RESEND_MODE = 'disabled'; // 'disabled' | 'enabled'
 const ROOM_SELF_RECORD_RESEND_DELAY_MS = 1500;
 
