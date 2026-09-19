@@ -35,3 +35,12 @@ MetalRage.exe -globalid=TW&ip=127.0.0.1&port=9211&age=30
 > y0da 的監控執行緒**不要砍**——文件明講停掉它們反而會崩潰。
 
 這些合起來解釋了為什麼這個專案只能從伺服器端觀察封包：客戶端那側幾乎所有常規手段都被擋住了。**伺服器 log 就是我們唯一的窗口**，這也是為什麼封包紀錄值得做得這麼講究。
+
+## 第二份客戶端：台版舊版本（2026-09-19 取得）
+
+- 位置：`C:\Games\鐵影特攻(MetalRage Online)`（WSL：`/mnt/c/Games/鐵影特攻(MetalRage Online)`），約 1.9 GB。操作者從巴哈 2022 年的分享下載。
+- 版本比我們主力用的 `C:\Games\MetalRage Online` 舊：`ZNetwork.dll`、`Core.dll`、`Engine.dll` 都是 2010-09-05 版（主力是 2010-11 版），`MetalRage.exe` 2010-07-20 原版，`Build.ini` Label `MR_Build_[2009-12-10_09.30]`。
+- `Cache.Bin` 2010-09-05，439516 bytes，和主力的不同（sha1 前綴 `1f0284ed29bb` vs `704275e19f09`）。
+- `MetalRage.ini` 的 `ServerIP=172.31.23.56`（內網位址）、`ServerPort=9211`、`GamePort=30907`，和主力相同。
+- `data/Log/MetalRage.log` 是空的；`xigncode.log`（2010-08-04）內容是加密或二進位，讀不出東西。
+- 用途：只當參考資料，拿來對照舊版 DLL、Cache.Bin 和 UnrealScript 的差異（例如駕駛員代碼、頭像、台版中文字串）。**不要拿來連我們的伺服器**，協定可能不同，除非另外確認過。
