@@ -31,6 +31,23 @@ const CONFIG_PATH = path.join(__dirname, 'allowed-users.json');
 // a re-derivation of a new number.
 const HOST_ADDRESS_MAX_CHARS = 15;
 
+// SOL-REVIEW-2 point/new-doubt (docs/research/2026-09-19-sol-review/
+// batch2.md, "新疑點"): hostAddress only had a length check, not a format
+// check -- a typo'd value would go straight into Ready_Host_SN's
+// "hostAddress/MapName" ANSI string unvalidated, and the joining client
+// would silently try to ClientTravel to garbage. Requires four dot-separated
+// decimal octets, each 0-255, no leading/trailing/extra content (`^...$`,
+// not a substring match). Deliberately IPv4-only -- hostAddress feeds a
+// fixed "IP/Map" ANSI string format (battle-host.md), and this project has
+// no IPv6 evidence anywhere else (config/server.js's publicHost has the same
+// implicit assumption).
+const IPV4_LITERAL_RE = /^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$/;
+
+function isDottedIpv4Literal(value)
+{
+    return IPV4_LITERAL_RE.test(value);
+}
+
 // undefined = not loaded yet; null = load failed/missing (whitelist off,
 // matches pre-W1 behaviour); Map = loaded and on.
 let cached = undefined;
@@ -75,6 +92,12 @@ function load()
                             `[whitelist] hostAddress "${trimmed}" for user "${entry.name}" is longer than `
                             + `${HOST_ADDRESS_MAX_CHARS} chars -- ignoring (battle start as host in a room `
                             + `with other members will be refused for this account until it is shortened)`
+                        );
+                    } else if (!isDottedIpv4Literal(trimmed)) {
+                        console.warn(
+                            `[whitelist] hostAddress "${trimmed}" for user "${entry.name}" is not a dotted `
+                            + `IPv4 literal (e.g. "192.168.1.42") -- ignoring (battle start as host in a room `
+                            + `with other members will be refused for this account until it is fixed)`
                         );
                     } else {
                         hostAddress = trimmed;
