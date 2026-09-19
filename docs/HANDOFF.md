@@ -5,46 +5,57 @@
 
 ---
 
-## ⚡ 交接快照（2026-09-19 02:30，Claude 高階組長，額度約剩 11%）
+## ⚡ 交接快照（2026-09-19 晚，Claude 高階組長）
 
-> **目標與里程碑：`docs/roadmap.md`**。PM 是 Fable（tmux `fable`，session 名 `mro-reverse-68`，可以用 SendMessage 溝通）。高階組長負責派工、審查、合併、部署；實作和分析都交給 `.claude/agents/` 的 Sonnet 子 agent。
-> 規則：本段每次交接**整段改寫**。規則看 `AGENTS.md`（`mro-config` 管版本），現況看 `docs/state.md`，任務看 `docs/backlog.md`。
-> **跨公司審查暫缺**（Sol 無額度）：新標的 ✅ 一律加註「未經跨公司審查」，Sol 恢復後用 `grep -rl 未經跨公司審查 docs/` 補審。
+> 目標與里程碑看 `docs/roadmap.md`。PM 是 Fable（tmux `fable`，SendMessage 找 `mro-reverse-68`），只在四個關卡找他（實作前核 bytes、合併前機械核對、里程碑判定、跟 ✅ 衝突），有進度時另外主動回報一則。
+> 跨公司審查：Sol（tmux `sol`，Codex gpt-5.6-sol）**目前沒額度**。沒額度期間，高階自審的項目在 `docs/research/2026-09-19-sol-review/` 的處置段落裡寫明「高階自審」，等 Sol 恢復後補審。已審過的是 batch1–5。
+> 本段每次交接**整段改寫**。
 
 ### 環境
 
-- 主目錄固定停在 `reverse-work`。執行者各開 `~/mro-wt/<名稱>`，**子 agent 絕對不可以動主目錄的工作區**（已經發生兩次誤寫主目錄再用 checkout 還原的事，契約裡要寫明）。
-- 伺服器：tmux `server`，跑在 `~/mro-wt/test`（`test-server@df89287`，**dirty**：`GAME_INFO_TIME_LIMIT_MODE='room'` 開著，沒有 commit，build 事件有記錄）。`config/server.json`（publicHost=192.168.1.105）、`config/allowed-users.json`（Lucas、dusk）、`database/config.json` 放在主目錄，worktree 用 symlink 指過去。portproxy 已由操作者用 `lan-open.ps1` 開啟。
-- 改 `dispatch/` 以內的檔案 → `/reload`；改 `rooms.js`、`auth-tokens.js`、`server.js`、`packetlog.js`、`config/`、`db.js` → 要完整重啟，操作者要重登。
-- console 指令：`/reload`、`/conns`、`/drop <accountId>`。
-- 測試：在 `Metal Rage Online Server/` 底下執行 `node test/replay-golden.js`（4 個黃金樣本）以及 `test/*.js` 的 7 個單元測試，合併前都要全綠。
-- push：`reverse-work` 領先 origin 53 個 commit。這個 shell 沒有 GitHub 憑證，請操作者執行 `! git -C /home/lucas/mro-reverse -c credential.helper= -c credential.helper="/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe" push origin reverse-work`。
+- 主目錄固定停在 `reverse-work`。執行者各自開 `~/mro-wt/<名稱>`，新開的 worktree 要 symlink `MetalRage`（不然 golden 會壞）和 `node_modules`。子 agent 絕對不可以動主目錄的工作區。
+- 伺服器：tmux `server`，跑在 `~/mro-wt/test`（dirty＝一堆驗證中的開關，開關收斂任務進行中，見「進行中」）。設定檔都在主目錄，用 symlink 指過去：
+  - `config/server.json`：publicHost 192.168.1.105、pveExtraLives 7、pveFixedRank 10
+  - `config/allowed-users.json`：dusk、Lucas 帶 hostAddress 192.168.1.105、test 帶 hostAddress 192.168.1.103
+  - `database/config.json`
+- 動 `dispatch/` 以內的檔案 → `/reload`；動 `rooms.js`、`database/db.js`、`config/`、`server.js`、`packetlog.js` → 要完整重啟，操作者要重登。重啟前先下 `/conns` 確認沒人在線。
+- 機器：
+  - 主機 Lucas（Win11，192.168.1.105，有線）
+  - 第二台 dusk（Win10，要用原廠 exe）
+  - 筆電 test（Win11，192.168.1.103）。筆電的客戶端 log 可以從 `\\192.168.1.103\MROLog` 讀（主機已經存好帳密）。客戶端 log 每 4 KB 才寫一次檔：出事時先別關遊戲，請操作者進出機庫把緩衝擠出來。
+- 戰鬥是 P2P，房主監聽 UDP 30907。每台可能當房主的機器都要跑 `tools/win/p2p-open.ps1` 或同效果的規則，而且網路要設成 Private。
+- 頻寬：dusk 的 `User.ini` Configured*Speed 和主機 `MetalRage.ini` MaxClientRate 都改成 100000，閃現改善了（🟡）。
+- 資料庫備份：`~/mro-backups/mro-before-e1-20260919-170807.sql`（E1 遷移前）。
+- push：`reverse-work` 領先 origin 100 多個 commit，請操作者執行 `! git -C /home/lucas/mro-reverse -c credential.helper= -c credential.helper="/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe" push origin reverse-work`。
 
-### 這一輪完成（M0 結案）
+### 今天達成（細節在 `journal/2026-09-19-0330-d1-step4-room-join.md`）
 
-C1 開關收斂、A6b PvE 黃金樣本、X1 例外防護、W1 白名單、N0／N1 區網連線（第二台 dusk 已實際登入遊玩）、T1 時間上限跟隨房間 ✅、D1 第 0 步 token（單人實測帶回的值完全一致 ✅）、第 1 步 rooms.js、第 2 步房間聊天（單人實測 ✅）、K2 console 指令、E1 設計（ShareType +0x4F；IsShare 由客戶端自己查 Cache 算出）。全部未經跨公司審查。
+- M1 ✅。房間：踢人、準備 READY、難度／地圖同步、登入後就看得到房間列表、中文介面（`switch.cmd`）。
+- **BOUNDARY-SWAP**：Room_Boundary_SN 兩個欄位寫反，16 格全部關掉。修好後頭像、READY 都正常。R14／R15 和 SELF-AVATAR 的推論都已經更正。
+- **兩人同場：** D1-6 step 1/2/4/5 開戰廣播，加上三個修正：
+  - RHSN-MAP：地圖名稱；
+  - RHSN-IP：非房主只送 IP，因為客戶端自己組 `%s:%d/%s`；
+  - RESPAWN-IDX：Respawn_SN 讀 body 的 UserIndex。
+  → 兩人一起打完 5 回合。Rank 固定成 S 也有效。
+- D1-6 step 3（結算廣播）已上線，但**兩人都進結算這件事還沒實測** → 這是 M2 最後一項。
+- **E1**：item_equips 已在真 DB 遷移，並合併了 23 個重複的共享副武器（`journal/2026-09-19-1710-e1-migration-run.md`）。
+- **H7 換圖**：MapInfo_SN 在 30907 登入時要再送一次（9211 那次會在切場景時遺失）。選圖視窗和換圖都可以用，加入者會同步。ROOMSET MaxUser 16 讓「房間設定變更」列出地圖。
+- 機庫 WearInfo 欄位順序：live bug，已修。
 
-### 更正過的錯誤結論（接手的人要知道）
+### 進行中
 
-- 「換地圖會斷線重連」、「客戶端被斷線後會自動重連」**都是錯的**：每一條 30907 連線前面都有完整的 9211 登入（`journal/2026-09-19-0230` 更正段）。所以不需要寬限時間，斷線就等於離開房間。
-- P2 的「ShareType 是根因」❌。
+1. **ROOMNAME-BIG5**（worker，`flash-wip-roomname`）：房名改用原始 Big5 bytes，並補上 `Name_Change_CQ 0x00220218` 的 handler。現在按「房間設定變更」的確認會卡在載入中，要等這個修好；之後可能還要處理 `0x00220215`、`0x00220224`。
+2. **SWITCH-CONVERGE**（worker，`flash-wip-converge`）：把驗證過的開關預設改成 enabled，讓測試伺服器不再 dirty。PM 要求 M2 判定前，nonDefault 只能剩當輪在驗的那一個。
+3. **P1b**（程式已合併，開關關著）：清理腳本 `tools/p1b-remove-default-items.js`。Sol batch5 的 NO-GO 兩點已修。下一步是停機、備份，只對帳號 4（test）試跑，再實測機庫預設裝備和出場武器。
 
-### 進行中（交接時還在跑）
+### 下一步
 
-1. **D1 第 4 步修正：已完成，等 PM 核對後合併**（`~/mro-wt/d1s4`，分支 `flash-wip-d1s4`，`20c8707`）。兩項都修好了：`enter-sa.md` 已更正（Room_Open 的 index＝Enter_CQ 的 RoomIndex；`0x107086c5`＝`RoomList_Name_Get`）；build 事件的掃描器改成也認得 `let`、camelCase 寫法和 rooms.js。已知限制：`lobbyRoomListMode` 要等合併後、reverse-work 有了同名基準，才會出現在 nonDefault。worker 回報 8 組測試全綠。**下一位高階合併前要自己重跑一次測試。**
-2. **R-ROUND 分析：已完成**（`research/2026-09-19-r-round/notes.md`）。Campaign_CN 不帶回合數（✅ [DLL]），伺服器要自己記錄回合；候選回應是 EndRound_SN 0x00222211；它是否真的會觸發 EndRound_BD 還是 ⬜，要靠實驗確認。
-
-### 下一步（照 PM 定的順序）
-
-1. D1 第 4 步合併 → 完整重啟 → 只開 `LOBBY_ROOM_LIST_MODE`，單人確認大廳看得到自己的房間、房名和人數正確（截圖）。
-2. 再開 `ROOM_JOIN_MODE`，兩台進同一房（**M1 主測**）：房名、槽位互見、聊天互通、離開時對方看得到。同時補 D1 第 0 步兩人版驗收：兩人帶回的 key 各自等於伺服器最近一次發給自己的那一組。
-3. R-ROUND 實作（開關 `PVE_ROUND_ADVANCE_MODE`，用初級 5 回合測），排在 M1 之後、D1 第 6 步之前。
-4. D1 第 5 步（房主、斷線即離開，已部分做在第 4 步）→ 第 6 步（開戰廣播；房主由收到 `Ready_Host_SQ` 決定，房主 IP 走設定檔、缺漏就拒絕開戰；每人一包 Game_User_SN）→ N2（房主 UDP 30907 防火牆，先用 netstat 確認埠）。
-5. 收斂：C2（T1 開關，09-26 前）；ROOM_CHAT_BROADCAST_MODE（實測通過後 7 天內）。
-6. E1（M2 之後）；P2 剩 `m_MySlot` 候選；H6 有新觀察（「按初級卻跳到高級」）。
+1. 合併上面兩個 worker 的分支，完整重啟，請操作者兩人打完一整場 → 確認兩人都進結算、回房間 → 找 PM 判定 M2。
+2. 房間設定視窗剩下的 CQ（Room_Option_Change 0x00220215、Room_Map_Change_All 0x00220224：格式已查到，還沒實作）。
+3. P1b 試跑。
+4. 收斂或刪除：ROOM_SELF_RECORD_RESEND_MODE（沒用）；其他開關 ✅ 後 7 天內處理。
 
 ### 等操作者的
 
-- 第二台 `data\System\xigncode.log` 的修改時間（M3 前要有答案）。
-- `.claude/agents/verifier.md` 要不要加 PM 建議的檢查：「A 之後發生 B」的敘述必須附間隔時間和目的埠。這是設定檔，要操作者同意。
-
+- push reverse-work。
+- 第二台 `xigncode.log` 的時間戳。
