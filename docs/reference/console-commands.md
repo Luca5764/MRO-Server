@@ -51,3 +51,5 @@
 - `User.ini` 的 `[Engine.PlayerInput]`／`[Engine.Input]` 自訂綁定**沒有作用**：按鍵是遊戲執行時由腳本 `setinput_BD`（`Engine/OptionAll.uc`）設定的，連 `End=ShowScores` 都沒反應（`journal/2026-09-17-08-account-level-gm-keybinds.md:60,103`）。所以「在 ini 綁 F9=SPMaxUP_BD」這條路預期行不通 🟡。
 - 玩家要用主控台，只能靠能送出 F24 的硬體（Pico、鍵盤滑鼠的硬體巨集）。軟體改鍵工具送出的按鍵屬於注入輸入，預期會跟 drive.sh 一樣被擋 🟡。
 - P7 作弊清單：`SPMaxUP_BD` **伺服器端看不到任何訊號**（不像 GameCampaign 還有 Death_CN 數可以查），用了它的場次目前無法辨識。只影響 PvE。
+- 🟡 **比較便宜的做法（PM，未實測）：** `setinput_BD` 本身就是主控台指令（`Engine/OptionAll.uc:779-799`，按鍵是執行時逐條用它設定的）。開一次主控台輸入 `setinput_BD F9 SPMaxUP_BD`，之後 F9 應該就會觸發，直到下次 OptionAll 重新套用按鍵（可能在換圖或開選項頁時）。主控台熱鍵 `ConsoleHotKey` 不是 config 變數（`Engine/Console.uc:34`），F24 省不掉。待實測：Grade 0 能不能用；綁定能撐多久（換圖之後還在不在）；兩人場裡加入者按 F9 有沒有效。
+- dusk 怎麼送 F24：先看他的鍵盤或滑鼠驅動，能不能把某顆鍵設成 F24 並**存進裝置的板載記憶體**。不行的話，就用第二顆 Pico 當「一顆按鈕的巨集鍵」：按一下＝F24 → 打指令 → Enter → F24。
