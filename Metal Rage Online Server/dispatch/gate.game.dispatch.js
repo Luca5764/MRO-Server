@@ -1544,12 +1544,6 @@ class ZGateGameDispatch
                 }
 
                 if (SERVER_DRIVEN_START_MODE === 'enabled') {
-                    // Push to scene 6 first, then set the map there.
-                    if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
-                        client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
-                    client.gameStarted_ = true;
-                    client.campaignStarted_ = (Number(client.rawRoomType_) === 1) ||
-                        (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5);
                     // D1-6-IMPL (design doc §5 step 2): broadcast Game_Wait_SN
                     // to every room member instead of just the trigger
                     // connection -- pushing the trigger into scene 6 is not
@@ -1558,6 +1552,47 @@ class ZGateGameDispatch
                     // scene 6 too, so a non-host that never receives this
                     // never leaves the room scene at all.
                     const useRoomBattleBroadcast = rooms.isRoomBattleStartBroadcastEnabled() && !!roomForBattleBroadcast;
+
+                    // SOL-REVIEW-2 must-fix list (docs/research/
+                    // 2026-09-19-sol-review/batch2.md): this PvE-map default
+                    // fallback plus gameStarted_/campaignStarted_ used to
+                    // only ever be set on the triggering connection's own
+                    // client -- a non-host member's own gameStarted_/
+                    // campaignStarted_ stayed false forever, so its later
+                    // 0x00230111 (lobby poll) got treated as a genuine
+                    // return to the lobby (lobby.dispatch.js's channel-enter
+                    // handler) instead of "already in a started battle".
+                    // With useRoomBattleBroadcast, every live room member's
+                    // OWN client gets these set: campaignMapCacheKey_'s
+                    // fallback still gates on that same member's own
+                    // isTrueCampaign_ (Enter_CQ already mirrors
+                    // room.isTrueCampaign onto a joiner's connection, so this
+                    // reads the same value the host's own field would);
+                    // campaignStarted_ reads room.isTrueCampaign directly
+                    // (CQ_CREATE computed both isTrueCampaign_ and
+                    // rawRoomType_ === 1 / gameMode_ === 4|5 from the exact
+                    // same CQ_CREATE fields, so this is the identical value
+                    // for the host too, not a behaviour change for them).
+                    // Switch off (or no tracked room) falls straight back to
+                    // the original single-client-only assignment below,
+                    // byte-for-byte unchanged.
+                    if (useRoomBattleBroadcast) {
+                        for (const member of roomForBattleBroadcast.members.values()) {
+                            if (!member.client) continue;
+                            if (member.client.isTrueCampaign_ && !member.client.campaignMapCacheKey_)
+                                member.client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
+                            member.client.gameStarted_ = true;
+                            member.client.campaignStarted_ = !!roomForBattleBroadcast.isTrueCampaign;
+                        }
+                    } else {
+                        // Push to scene 6 first, then set the map there.
+                        if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
+                            client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
+                        client.gameStarted_ = true;
+                        client.campaignStarted_ = (Number(client.rawRoomType_) === 1) ||
+                            (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5);
+                    }
+
                     if (useRoomBattleBroadcast) {
                         sendRoomGameWaitSnBroadcast(roomForBattleBroadcast, 'server-driven: to scene 6');
                     } else {
