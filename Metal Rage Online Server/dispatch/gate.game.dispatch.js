@@ -100,6 +100,18 @@ const ROOM_CHAT_BROADCAST_MODE = 'enabled'; // 'disabled' | 'enabled'
 // its own switch, defaulted OFF, so 0x00220503 keeps the pre-D1-2 fallback
 // ACK behaviour until a real 0x00220503 capture justifies turning it on.
 let ROOM_TEAM_CHAT_MODE = 'disabled'; // 'disabled' | 'enabled' ('let' only so test/room-chat.js's test-only setter below can flip it; nothing else reassigns it)
+// READY-IMPL (docs/backlog.md, analysis docs/research/2026-09-19-ready/notes.md
+// READY-FMT/READY-FMT-2, 🟡 未經跨公司審查): a non-host room member pressing
+// 準備完畢(F5) sends Game_Ready_CN 0x00222101 [DLL 0x107ef8f0] -- the case
+// 0x00222101 handler below. rooms.isRoomReadyStateEnabled() ('disabled' by
+// default, see rooms.js) additionally has that handler mark the member ready
+// in rooms.js and broadcast User_State_SN 0x00220401 [DLL 0x107eaf30] raw
+// state 2 (normalized READY, ZPage_Room.uc:2450) to every room member
+// including the presser, so the READY label actually shows up on everyone's
+// screen. The switch lives in rooms.js, not here, because room-user.sender.js
+// (buildMemberUserCtx, used for the room-state-resend path below too) also
+// needs to read it, same reasoning as roomJoinMode/lobbyRoomListMode living
+// there instead of in a single dispatch file.
 // T1 [DLL] 0x107d4fa7 movzx ebp, word ptr [eax+0x23] (handler body 0x107d4f50):
 // Game_Info_SN body+0x13 is TimeLimit in minutes. 'room' makes it follow the
 // room's PlayTime (Map_Change_One_CQ 0x00220221 w2, client.mapChangeOneTime_,
@@ -1077,6 +1089,45 @@ class ZGateGameDispatch
                     client.roomEnterAcked_ = true;
                     resendRoomState(client, 'room-enter cn (first)');
                 }
+
+                // READY-IMPL (docs/backlog.md, docs/research/2026-09-19-ready/
+                // notes.md READY-FMT/READY-FMT-2, 🟡 未經跨公司審查): per
+                // that analysis, 0x00222101 is ZDispatchRoom::Game_Ready_CN
+                // [DLL 0x107ef8f0] -- its sole client call site (0x1072cb13)
+                // fires when a *non-host* room member presses 準備完畢(F5);
+                // the host's F5 takes the Game_Start_CN (0x00222103) branch
+                // instead. Body+0x04 (u8) is the ready flag (the call site
+                // hardcodes 1, no cancel-ready call site was found, but 0 is
+                // still honoured here in case one exists). Broadcasts
+                // User_State_SN 0x00220401 [DLL 0x107eaf30] raw state 2
+                // (READY once client-normalized, ZPage_Room.uc:2450
+                // `bReady = State==1`) so the label shows on every room
+                // member's screen, including the presser's own. Deliberately
+                // placed AFTER the resend above: resendRoomState() (when it
+                // fires, first occurrence only) still sends this member's own
+                // per-member User_State_SN through room-user.sender.js's
+                // buildMemberUserCtx, which carries the old constant (raw 1)
+                // since member.ready has not been updated yet at that point
+                // -- this broadcast corrects it right after instead of racing it.
+                if (rooms.isRoomReadyStateEnabled() && rooms.isRoomJoinEnabled()) {
+                    const accountIdForReady = Number(client.accountIndex_ || client.accountId_ || 1);
+                    const roomForReady = rooms.getRoomByAccount(accountIdForReady);
+                    if (roomForReady && accountIdForReady !== roomForReady.hostAccountId) {
+                        const readyFlag = body.length >= 5 ? body.readUInt8(4) !== 0 : false;
+                        const member = roomForReady.members.get(accountIdForReady);
+                        if (member) member.ready = readyFlag;
+                        const rawState = readyFlag ? 2 : 1;
+                        rooms.sendAll(roomForReady.id, () => {
+                            const [msg, respBody] = getExactMessageBuffer(0x00220401, 0x08);
+                            respBody.writeUint8(0, 0x00);
+                            respBody.writeUint8(1, 0x01);
+                            respBody.writeUint16LE(accountIdForReady, 0x02);
+                            respBody.writeUint32LE(rawState, 0x04);
+                            return msg;
+                        });
+                        console.log(`[ZGateGameDispatch] >> Broadcast User_State_SN 0x220401 (account=${accountIdForReady}, ready=${readyFlag}, raw=${rawState})`);
+                    }
+                }
                 return true;
             }
 
@@ -1102,6 +1153,26 @@ class ZGateGameDispatch
                 // below (SERVER_DRIVEN_START_MODE or not) actually sends
                 // Game_Start_SN.
                 client.pveRoundsCleared_ = 0;
+
+                // READY-IMPL (docs/backlog.md): the host pressing F5 (this
+                // opcode, see the case 0x00222101 comment above for why the
+                // host's F5 lands here instead) starts the match, so every
+                // member's Ready state from the lobby is stale afterward --
+                // clear it so a later return to this same room (e.g. after a
+                // Campaign clear) does not show a leftover READY label. Only
+                // resets the shared Room registry's `ready` flags, not
+                // anything already-sent to a client; the next broadcast (a
+                // future non-host Ready press, or a state resend once one
+                // exists) is what would need to reflect this.
+                if (rooms.isRoomReadyStateEnabled() && rooms.isRoomJoinEnabled()) {
+                    const accountIdForStart = Number(client.accountIndex_ || client.accountId_ || 1);
+                    const roomForStart = rooms.getRoomByAccount(accountIdForStart);
+                    if (roomForStart) {
+                        for (const member of roomForStart.members.values()) {
+                            member.ready = false;
+                        }
+                    }
+                }
 
                 if (SERVER_DRIVEN_START_MODE === 'enabled') {
                     // Push to scene 6 first, then set the map there.

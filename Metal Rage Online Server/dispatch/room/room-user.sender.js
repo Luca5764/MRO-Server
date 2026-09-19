@@ -4,6 +4,10 @@ const SN_USER_MASTER = 0x00220319;
 const SN_USER_NAME = 0x00220421;
 const SN_USER_PILOT = 0x00220402;
 const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
+// READY-IMPL (docs/backlog.md): buildMemberUserCtx below reads the switch
+// and each Member's `ready` flag from here. rooms.js does not require
+// anything under dispatch/, so this has no cycle risk.
+const rooms = require('../../rooms.js');
 
 // R12 verified [DLL][OBS]: User_Name_SN body+0x1B is ANSI, converted to
 // UTF-16LE client-side by winToUNICODE (0x107eb0ce). Sending UTF-16LE here
@@ -29,6 +33,14 @@ function sendRoomUserPackets(client, ctx, getExactMessageBuffer, options = {}) {
         teamIndex,
         userHiddenRaw,
         userStateRaw,
+        // READY-IMPL (docs/backlog.md): separate from userStateRaw above --
+        // that one still feeds User_Default_SN 0x00220233's body+0x0F field
+        // (semantics unverified, room.dispatch.js:1478's comment) and
+        // User_Master_SN 0x00220319, unchanged. This one only feeds
+        // User_State_SN 0x00220401 below. Defaults to userStateRaw so any
+        // caller that does not set it (room.dispatch.js's own sendRoomState())
+        // stays byte-identical.
+        readyStateRaw = userStateRaw,
         packedIp,
         nickname,
     } = ctx;
@@ -86,9 +98,9 @@ function sendRoomUserPackets(client, ctx, getExactMessageBuffer, options = {}) {
         respBody.writeUint8(0, 0x00);
         respBody.writeUint8(1, 0x01);
         respBody.writeUint16LE(accountIndex, 0x02);
-        respBody.writeUint32LE(userStateRaw, 0x04);
+        respBody.writeUint32LE(readyStateRaw, 0x04);
         client.send(msg);
-        console.log(`[ZRoomDispatch] >> Sent SN_USER_STATE 0x220401 (count=1, userIndex=${accountIndex}, state=${userStateRaw})`);
+        console.log(`[ZRoomDispatch] >> Sent SN_USER_STATE 0x220401 (count=1, userIndex=${accountIndex}, state=${readyStateRaw})`);
     }
 
     // Always, not once per connection.
@@ -131,6 +143,12 @@ function buildMemberUserCtx(member) {
         teamIndex: member.team || 0,
         userHiddenRaw: 0,
         userStateRaw: 1,
+        // READY-IMPL (docs/backlog.md): raw 2 = READY once client-normalized
+        // (ZPage_Room.uc:2450, see the ROOM_READY_STATE_MODE comment in
+        // gate.game.dispatch.js) if this member has pressed Ready and the
+        // switch is on; otherwise the same constant 1 as userStateRaw above
+        // (switch off -> byte-identical to before this changed).
+        readyStateRaw: rooms.isRoomReadyStateEnabled() && member.ready ? 2 : 1,
         packedIp: 0x0100007F,
         nickname: member.nickname || 'Player',
     };
