@@ -608,3 +608,9 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - 戰鬥內隊伍聊天 0x00220507：改成對同隊廣播（目前只回送給自己）；房內隊伍頻道要先拿到一筆 [LOG]，才開 ROOM_TEAM_CHAT_MODE。
 - 能量柱沒有 HP 條（高級第 9 回合）：歸在 P4，可能跟 Assist_SN／Campaign_Damage 系列有關，現在不追。
 - NET 實驗表加一欄「房主是誰」。
+
+> **NET 更新（2026-09-19，M2 同一輪）：** dusk 當房主時，Lucas 這個加入者沒有任何症狀；Lucas 當房主時，dusk 有閃現、沒射出的問題。→ NET-2 和 NET-3 合併成「Lucas 這台（Win11）當 listen server 時的效能問題」。下一個實驗（一次只改一項，都在 Lucas 這台上做，而且都由 Lucas 當房主）：
+> (1) 對 MetalRage.exe 停用全螢幕最佳化；
+> (2) 電源計畫改成高效能；
+> (3) 測試時暫停 WSL 的其他負載（例如子 agent 跑的工作）。
+> 每次都記下 dusk 當加入者時的感受。
