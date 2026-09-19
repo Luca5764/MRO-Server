@@ -133,3 +133,5 @@
 - `tools/grant-legend-mechs.js --account 4`：插入 8 筆，serial 200118–200125，equipped=0。重跑 dry-run 全部顯示 already-owned，確認冪等。
 - 伺服器維持目前版本；`BODY_INDEX_GIR_MODE` 關閉。30907 登入時的 WearInfo 身體欄位原本就送原始 item_id，8 台原型機一直顯示正常，所以先照原樣看傳說機會不會顯示。如果圖示錯了，再打開開關（公式 GIR 位置 + 84 已經對 16 個 id 驗證過）。
 - 待實測：用 test 登入後，機庫看不看得到傳說機、能不能換上、出場有沒有加成。
+- ✅ [OBS] 2026-09-19：操作者用 test 帳號實測，回報「看起來是通過了」，傳說機可以使用（未經跨公司審查）。
+- 19:37 發給帳號 1（Lucas）和 3（dusk）。備份在 `~/mro-backups/mro-before-legend-all-20260919-193749.sql`，各插入 8 筆；重跑 dry-run 16 筆全部顯示 already-owned。兩人當時在線上，要重新登入才看得到。
