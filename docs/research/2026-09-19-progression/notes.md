@@ -26,3 +26,12 @@
 | 勳章門檻 | 27 級貢獻度門檻（韓版和日版一致，見 progression.md） | 用原版 |
 | Rank 公式 | 沒找到 | 要自訂 |
 | 修理費 | 沒找到 | 待決 |
+
+## P3-STEP1-A（explorer，🟡）補充與更正
+
+- **RecordInfo_SN 0x00210103**（`0x107c0fa0`）：body+0x00 Level u32、+0x14 Coupon i64（`0x107089cc`）、+0x40 LevelExp i64、+0x48 Point i64（`0x10706e24`）；另外有 9 個 u32（+0x04/08/0c/10/1c/20/24/28/2c）交給 `Account_Record_Set 0x107056aa`，各對應哪個欄位還沒逐一追到。還有一組 i64（推測是 LevelExpMax，可能在 +0x50），兩邊都沒寫。只有這個 handler 會呼叫 `Account_Record_Save`／`Account_Record_Login_Save`。
+- 9211 的 builder（`account.dispatch.js`）是**錯的**：wins/draws 寫在 +0x14/+0x18，會蓋到 Coupon；exp_max 寫在 +0x48，其實那是 Point。30907 的 builder 在已確認的欄位上都正確。
+- **更正：** `Reward_Record_User_SN 0x00220412` 在 **ZDispatchRoom**（`0x107ed440`），而且**跟 RecordInfo_SN 的格式不同**：中段欄位整體往前移 8 bytes，不會設定 Coupon，也不呼叫 Login_Save。推論：RecordInfo_SN 設定 LoginRecord 快照，Reward_Record 只更新 CurrentRecord，所以 `ZPopup_Experience.uc:77` 可以比較兩者判斷有沒有升級。
+- Death_SN 的 Kill/Death/Exp/Point 是**直接覆寫**，不是累加（`0x1072d720`），伺服器要自己維護累計值。
+- DB：三個帳號的 records 全是 0，exp_max 都是 1000（預設值）；mech_levels 也全是初始值 → 確認打完一場後沒有寫回。Point：1＝71000、3＝69000、4＝99000。
+- 缺口：`Account_Record_Set` 的 push 順序（`0x107c1082-0x107c1107`、`0x107ed570-0x107ed5b4`）要追完，9 個 u32 才能對應到具體名稱。
