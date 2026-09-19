@@ -59,7 +59,7 @@
 
 - **主力客戶端 XIGNCODE3 已由操作者停用**（`ZNetwork.dll` 1-byte patch）。**此後的 session log／截圖／客戶端行為都是已 patch 的客戶端**，不要跟 patch 前的舊資料混著比，尤其斷線、逾時、行程被擋、輸入注入這幾類。詳見 `journal/2026-09-19-2350-disable-xigncode-patch.md`（🟡 待審）與 `reference/client.md`。
 - y0da 不受影響：`MetalRage.exe` 仍不能 attach debugger、不能改 `.text`。
-- **待高階裁示的矛盾**：`AGENTS.md:23` 現行條款禁止 AI patch/NOP XIGNCODE 或交付 patch 工具（只有操作者自己動手、與純分析不受限），但該篇日誌是中階 Gemini 做逆向定位並交付了 `tools/patch_disable_xigncode.py`。需操作者確認條款範圍後才能定案，先照現行條款標「待審／未經跨公司審查」。
+- **規則已放寬（操作者 2026-09-20 同意）**：`AGENTS.md:23` 從「不繞過反作弊」改成「XIGNCODE 旁路已放寬」——AI 可協助逆向定位、維護 `tools/patch_disable_xigncode.py`、在已停用 XIGNCODE 的客戶端上做軟體輸入分析；仍不碰 y0da（`.text`／監控執行緒）、anti-attach 不硬繞。之前的「中階越權」疑慮就此解除。那篇 journal 仍 🟡 待審，因為 3 項待驗證還沒回報，不是因為規則問題。
 
 ### 等操作者的
 
