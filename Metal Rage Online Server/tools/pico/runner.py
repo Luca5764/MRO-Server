@@ -94,6 +94,9 @@ def validate_experiment(exp):
         if name == "shop_tab":
             if "name" not in params or params["name"] not in actions.TAB_COORDS:
                 raise ExperimentError(f"step {i}: shop_tab needs params.name in {sorted(actions.TAB_COORDS)}")
+        if name == "select_map":
+            if "name" not in params or params["name"] not in actions.MAP_ENTRIES:
+                raise ExperimentError(f"step {i}: select_map needs params.name in {sorted(actions.MAP_ENTRIES)}")
         if name == "console_cmd":
             text = params.get("text")
             if text not in actions.CONSOLE_CMD_WHITELIST:
@@ -167,6 +170,14 @@ def describe_step(step):
                 f"wait<=6s for create_dialog marker, click client{actions.CREATE_PVE_TAB} (協力模式), "
                 f"wait<=4s for dialog_pve tab active, click client{actions.CREATE_CONFIRM_BUTTON} (確認), "
                 f"wait<=10s for room or notice_popup marker")
+    if name == "select_map":
+        map_name = params.get("name")
+        entry = actions.MAP_ENTRIES.get(map_name, {})
+        return (f"select_map({map_name!r}): precondition=room marker, click client{actions.SELECT_MAP_DROPDOWN} "
+                f"(選擇地圖▼), wait<=6s for mapsel marker, click client{entry.get('coords')} "
+                f"({entry.get('label')}, {'tested' if entry.get('tested') else 'UNTESTED'}), "
+                f"wait<={actions.DEFAULT_MAP_SELECT_TIMEOUT_S}s for a {actions.MAP_SELECT_CQ_OPCODE} recv pkt "
+                "in the session log")
     if name == "start_battle":
         return ("start_battle: precondition=room marker, key F5, wait<=25s for session-log markers "
                 "'gameStarted_ false -> true' + 'Game_Start_SN sent'")

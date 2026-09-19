@@ -1,0 +1,18 @@
+{
+  "id": "U-pve-escort",
+  "purpose": "Unattended full Escort (護送) PvE match, the map-selection counterpart to U-pve-fullmatch.json: lobby -> dismiss any AFK popup -> create a PvE room -> dismiss any host-transfer popup -> select_map('defense', i.e. 防衛作戰/Map_PC02, the only click-tested map entry -- see actions.py's MAP_ENTRIES) -> F5 start -> win every round with GameCampaign 1 -> wait for the result screen and the automatic return to the room -> dismiss any popup -> leave the room -> back in the lobby. Exercises the map-independent battle-HUD detector (screens.battle_hud_state(), see actions.py's campaign_win_all docstring) on a map other than the one its predecessor reference shots came from -- this is the one 2026-09-20 escort-smoke run already confirmed live end to end minus the select_map click itself (docs/journal/2026-09-20-0110-escort-smoke.md: 5 rounds via GameCampaign 1, EndGame, room). 🟡 select_map step not run live yet as part of this experiment file.",
+  "preconditions": {"screen": "lobby"},
+  "steps": [
+    {"action": "dismiss_notice"},
+    {"action": "create_pve_room"},
+    {"action": "dismiss_notice"},
+    {"action": "select_map", "params": {"name": "defense"}},
+    {"action": "start_battle"},
+    {"action": "campaign_win_all", "params": {"settle_s": 12, "max_rounds": 12}},
+    {"action": "wait_result_then_room"},
+    {"action": "dismiss_notice"},
+    {"action": "leave_room"}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_image_reviews": 0
+}

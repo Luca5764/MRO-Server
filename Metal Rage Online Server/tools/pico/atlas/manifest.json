@@ -15,7 +15,7 @@
     "console_battle_accept": 8.0,
     "marker_accept": 12.0
   },
-  "built_at": "2026-09-20T00:26:56",
+  "built_at": "2026-09-20T01:09:00",
   "built_from": {
     "screen_lobby": "u-20260919-01-00-start.png",
     "screen_shop": "u-20260919-01-01-shop.png",
@@ -35,7 +35,8 @@
     "marker_battle": "ref-05-battle.png",
     "marker_result": "ref-06-end-3.png",
     "marker_create_dialog": "ref-01-create.png",
-    "marker_notice_popup": "lobby-now.png"
+    "marker_notice_popup": "lobby-now.png",
+    "marker_mapsel": "esc-01-mapsel.png"
   },
   "screens": {
     "lobby": {
@@ -197,6 +198,15 @@
         570
       ],
       "crop": "marker_notice_popup.png"
+    },
+    "mapsel": {
+      "box": [
+        415,
+        495,
+        650,
+        535
+      ],
+      "crop": "marker_mapsel.png"
     }
   }
 }
