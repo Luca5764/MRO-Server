@@ -1210,7 +1210,12 @@ class ZRoomDispatch
         }
 
         try {
-            const items = await db.getItems(client.accountId_);
+            // E1 fix round (Sol batch4 (6)): equippedMain below reads
+            // "what's equipped on this mech" (account ownership state), not
+            // the catalog -- must come from item_equips when the mode is on,
+            // same as every other E1 reader. Byte-identical to
+            // db.getItems() when db.ITEM_EQUIPS_MODE is 'disabled'.
+            const items = await db.getItemsWithEquipViews(client.accountId_);
             const mechItems = weaponItems.filter(({ item }) => Number(item.mech_type) === Number(selectedSlot));
             if (mechItems.length > 0) {
                 console.log(`[ZRoomDispatch] >> Shop refresh for slot=${selectedSlot}: catalogMech=${selectedSlot}, items=${mechItems.length}`);
@@ -1298,6 +1303,10 @@ class ZRoomDispatch
         console.log(`[ZRoomDispatch] >> Sent Packege_Coupon_SN 0x240133: coupon=${coupon}`);
     }
 
+    // E1 fix round (Sol batch4 (6)): no call sites anywhere in this codebase
+    // (confirmed by grep) -- bypasses E1 entirely (reads items.equipped/
+    // items.mech_type directly) and must be migrated to
+    // db.getItemsWithEquipViews()/item_equips before ever being wired up.
     async sendHangarItemInfo(client)
     {
         try {
@@ -1339,6 +1348,14 @@ class ZRoomDispatch
         }
     }
 
+    // E1 fix round (Sol batch4 (6)): no call sites anywhere in this codebase
+    // (confirmed by grep) -- bypasses E1 entirely (reads items.equipped/
+    // items.mech_type directly) and must be migrated to
+    // db.getItemsWithEquipViews()/item_equips before ever being wired up.
+    // Also has a pre-existing, unrelated bug: the bodyItems loop below
+    // references an undeclared `slot` variable (E1-IMPL journal entry,
+    // 2026-09-19-1639-e1-item-equips.md) -- still not fixed here, still
+    // out of scope, still dead code.
     async sendHangarAccountData(client)
     {
         try {
