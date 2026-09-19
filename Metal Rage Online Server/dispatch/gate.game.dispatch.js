@@ -358,7 +358,7 @@ const MAP_ID_TO_MAP_NAME_GG = {
 // Pulled out verbatim from the old sendReadyHostSn() body -- same
 // truncation-warning comment/logic, just parameterized instead of reading
 // straight off a `client`.
-function buildReadyHostSnMsg(ip, port, mapCacheKey)
+function buildReadyHostSnMsg(ip, port, mapCacheKey, ipOnly = false)
 {
     // RHSN-MAP: mapCacheKey is a real Cache.Bin map id (9001..9012,
     // 1011..1081, from room.mapId -- community.dispatch.js's
@@ -373,7 +373,15 @@ function buildReadyHostSnMsg(ip, port, mapCacheKey)
         || 'Map_PC01';
     // 실제 서버: IP:Port/MapName?team=0 형식으로 ClientTravel (real server: ClientTravel in IP:Port/MapName?team=0 format)
     // ip 필드에 "IP/MapName" 형식으로 전달 시도 (attempt to pass in "IP/MapName" format in the ip field)
-    const ipWithMap = ip + '/' + mapName;
+    // RHSN-IP: the client itself builds "%s:%d/%s" from this field, the
+    // port and its own map, and keeps only the first 15 chars of the field.
+    // [LOG] laptop MetalRage.log 2026-09-19 15:20:49 (joiner): we sent
+    // "192.168.1.105/Map_PC04" and the client did
+    //   [ ZPage_Room ][ GameStart ]  start 192.168.1.105/M:30907/Map_PC04?team=0
+    //   Browse: 192.168.1.105/M:30907?team=0?Name=4#Map_PC04 -> Attemp LoadMap Failed
+    // So the multi-member path (ipOnly) sends the bare IP. The legacy
+    // single-connection path keeps the old "IP/Map" string unchanged.
+    const ipWithMap = ipOnly ? ip : ip + '/' + mapName;
 
     // The body was a fixed 0x13, leaving 16 bytes for the string after the
     // port and the zero byte, and the write was additionally capped at 0x10.
@@ -428,7 +436,7 @@ function sendReadyHostSn(client)
 // sendReadyHostSn() above still is for the single-connection path).
 function sendReadyHostSnToRoomMember(targetClient, ip, port, mapCacheKey)
 {
-    const { msg, ipWithMap, bodySize, written, urlBytes } = buildReadyHostSnMsg(ip, port, mapCacheKey);
+    const { msg, ipWithMap, bodySize, written, urlBytes } = buildReadyHostSnMsg(ip, port, mapCacheKey, true);
 
     if (written < urlBytes + 1)
         console.log(`[ZGateGameDispatch] !! Ready_Host_SN URL TRUNCATED (room member): wrote ${written} of ${urlBytes + 1} bytes — client will travel to a map that does not exist`);
