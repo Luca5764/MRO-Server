@@ -1513,6 +1513,13 @@ class ZGateGameDispatch
                 // below (SERVER_DRIVEN_START_MODE or not) actually sends
                 // Game_Start_SN.
                 client.pveRoundsCleared_ = 0;
+                // D1-6-STEP3: with BATTLE_END_BROADCAST_MODE the round counter lives
+                // on the Room; reset it here too, or a rematch in the same room
+                // would start from the previous match's cleared count.
+                {
+                    const roomForRoundReset = rooms.getRoomByAccount(Number(client.accountIndex_ || client.accountId_ || 1));
+                    if (roomForRoundReset) roomForRoundReset.pveRoundsCleared_ = 0;
+                }
 
                 // READY-IMPL (docs/backlog.md): the host pressing F5 (this
                 // opcode, see the case 0x00222101 comment above for why the
