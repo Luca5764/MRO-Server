@@ -36,6 +36,8 @@ MetalRage.exe -globalid=TW&ip=127.0.0.1&port=9211&age=30
 
 這些合起來解釋了為什麼這個專案只能從伺服器端觀察封包：客戶端那側幾乎所有常規手段都被擋住了。**伺服器 log 就是我們唯一的窗口**，這也是為什麼封包紀錄值得做得這麼講究。
 
+> **2026-09-19 起：主力客戶端（`C:\Games\MetalRage Online`）的 XIGNCODE3 已由操作者停用**（`ZNetwork.dll` 1-byte patch，細節與逆向依據見 `journal/2026-09-19-2350-disable-xigncode-patch.md`，🟡 待審）。影響：(1) `MetalRage.exe` 本體的 **y0da（反除錯、`.text` CRC）不受影響，仍不能 attach debugger、仍不能改 `.text`**；(2) 此後所有 session log／截圖／客戶端行為都是**已 patch 的客戶端**，跟 patch 前的舊資料分開比對，尤其斷線、逾時、行程被擋、輸入注入這幾類。引用時在日誌註明「XIGNCODE 已停用」。第二份台版舊客戶端未 patch。
+
 ## 第二份客戶端：台版舊版本（2026-09-19 取得）
 
 - 位置：`C:\Games\鐵影特攻(MetalRage Online)`（WSL：`/mnt/c/Games/鐵影特攻(MetalRage Online)`），約 1.9 GB。操作者從巴哈 2022 年的分享下載。

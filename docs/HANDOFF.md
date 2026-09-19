@@ -55,6 +55,12 @@
 3. P1b 試跑。
 4. 收斂或刪除：ROOM_SELF_RECORD_RESEND_MODE（沒用）；其他開關 ✅ 後 7 天內處理。
 
+### 客戶端狀態變更（2026-09-19）
+
+- **主力客戶端 XIGNCODE3 已由操作者停用**（`ZNetwork.dll` 1-byte patch）。**此後的 session log／截圖／客戶端行為都是已 patch 的客戶端**，不要跟 patch 前的舊資料混著比，尤其斷線、逾時、行程被擋、輸入注入這幾類。詳見 `journal/2026-09-19-2350-disable-xigncode-patch.md`（🟡 待審）與 `reference/client.md`。
+- y0da 不受影響：`MetalRage.exe` 仍不能 attach debugger、不能改 `.text`。
+- **待高階裁示的矛盾**：`AGENTS.md:23` 現行條款禁止 AI patch/NOP XIGNCODE 或交付 patch 工具（只有操作者自己動手、與純分析不受限），但該篇日誌是中階 Gemini 做逆向定位並交付了 `tools/patch_disable_xigncode.py`。需操作者確認條款範圍後才能定案，先照現行條款標「待審／未經跨公司審查」。
+
 ### 等操作者的
 
 - push reverse-work。
