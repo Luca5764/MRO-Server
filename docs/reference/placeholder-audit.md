@@ -121,3 +121,7 @@
 - 已有依據的標準成功 header、ItemInfo／Death／Game_User 的明確保留欄位、Cache map／loadout 值分別列為 (a) 或 (b)。
 - 房間狀態、地圖設定、貨幣、商店尾欄、WearInfo header、Game_Info 的時間／目標，是目前最可能造成畫面或持久化錯誤的 (c)；沒有因現行測試能登入就升級成確定值。
 - 本篇沒有提出程式修改或實驗，也沒有改任何 `dispatch/` 檔案。下一步若要處理 (c)，每次只能選一個欄位，先補 DLL／腳本／實際 frame 證據再改。
+
+## 補充（2026-09-19，D2 PvP 分析）
+
+- `gate.game.dispatch.js` 約 1254-1258 行：`campaignMapCacheKey_` 只接受 9001..9012。PvP 地圖 id（1011..1081）會被**默默換成 PvE 的預設地圖**，`room.mapId` 也會跟著變。這是 PvP 開戰的第二個阻擋點，見 `design/d2-pvp-tdm.md` §0。🟡
