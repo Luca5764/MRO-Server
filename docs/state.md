@@ -73,10 +73,10 @@
 
 ### 任務結束（2026-09-19 補記）
 
-- 收到 `Campaign_CN 0x00230139` 回 `EndGame_SN 0x00222213` → 會進結算頁、回到房間：✅ [LOG][OBS]（`journal/2026-09-17-14-campaign-result.md`）。**只驗證過「會進結算頁」，沒有驗證過「時機正確」**：每一場都在第一回合就結算，見 backlog R-ROUND 🟡（未經跨公司審查）。
-- 回合推進：Campaign_CN 達標但還沒到 MapInfo.Round 時，回 `EndRound_SN 0x00222211`（30 bytes：WinTeam 0、Team A/B TeamIndex 0/1、分數全 0）→ 客戶端進入下一回合：✅ [LOG][OBS]（`session-20260919-083650.jsonl:1450-1453`，`journal/2026-09-19-0900-r-round-impl.md`，未經跨公司審查；開關 `PVE_ROUND_ADVANCE_MODE`）。最後一回合改回 EndGame_SN 的時機還沒實測。
-- PvE 多命測試設定 `pveExtraLives`（`config/server.json`）：寫在 Game_User_SN rec+0x64＝GAME_ITEM_INFO.PveRespawnAddCount → 命數＝3＋設定值，實測 HUD 顯示 10 ✅ [LOG][OBS]（未經跨公司審查）。每回合開始命數會補滿，這是原版設計（`ZModePve.uc` ModeReset_BD）。完整打通初級 5 回合、最後一回合才結算 ✅（`journal/2026-09-19-0900-r-round-impl.md`）。
-- 時間上限跟隨房間設定（`GAME_INFO_TIME_LIMIT_MODE='room'`，body+0x13 分鐘）：✅ [LOG] 實測 640 秒沒有停住（`journal/*-t1-time-limit.md`，未經跨公司審查）。
+- 收到 `Campaign_CN 0x00230139` 回 `EndGame_SN 0x00222213` → 會進結算頁、回到房間：✅ [LOG][OBS]（`journal/2026-09-17-14-campaign-result.md`）。加上 R-ROUND 後，最後一回合（cleared=5/5）才送 EndGame 也已實測（`session-20260919-090430.jsonl` ms 2296184；當場同時開著 `pveExtraLives=7`）（Sol 審查 `research/2026-09-19-sol-review/batch1.md`：部分成立，已照意見更新）。
+- 回合推進：Campaign_CN 達標但還沒到 MapInfo.Round 時，回 `EndRound_SN 0x00222211`（30 bytes：WinTeam 0、Team A/B TeamIndex 0/1、分數全 0）→ 客戶端進入下一回合：✅ [LOG][OBS]（`session-20260919-083650.jsonl:1450-1453`，`journal/2026-09-19-0900-r-round-impl.md`；開關 `PVE_ROUND_ADVANCE_MODE`；Sol 審查 `research/2026-09-19-sol-review/batch1.md`：成立）。最後一回合改送 EndGame_SN 已實測，見上一條。
+- PvE 多命測試設定 `pveExtraLives`（`config/server.json`）：寫在 Game_User_SN rec+0x64＝GAME_ITEM_INFO.PveRespawnAddCount → 命數＝3＋設定值，實測 HUD 顯示 10 ✅ [DLL] `0x10734495`（p8 寫 entry+0xe0）[LOG][OBS]（Sol 審查 `research/2026-09-19-sol-review/batch1.md`：部分成立，HUD 10 只有 [OBS]、沒有截圖）。每回合開始命數會補滿，這是原版設計（`ZModePve.uc` ModeReset_BD）。完整打通初級 5 回合、最後一回合才結算 ✅（`journal/2026-09-19-0900-r-round-impl.md`）。
+- 時間上限跟隨房間設定（`GAME_INFO_TIME_LIMIT_MODE='room'`，body+0x13 分鐘）：✅ [LOG] [DLL] `0x107d4fa7` 讀 body+0x13；實測 640 秒沒有停住（`journal/*-t1-time-limit.md`；Sol 審查 `research/2026-09-19-sol-review/batch1.md`：成立）。
 
 ### 尚未實作（S→C 名稱已由 DLL 確認）
 
@@ -139,13 +139,13 @@
 
 | 項目 | 狀態 | 依據 |
 |---|---|---|
-| 30907 登入的身分：Gate `Leave_SA 0x00220132` body+0x06／+0x0A 兩個 u32，客戶端透過 `Certify_Away_Set`（`0x10715f70`）存起來，再放進 `Login_Again_CQ 0x00110124` body+0／+4 原樣帶回。目前伺服器送 0，所以用 last_login 猜帳號 | ✅ [DLL] `0x107dc7d3`–`0x107dc846`、`0x107c3ef5`；[LOG] 單人實測帶回的值完全一致（`session-20260919-012749.jsonl:26,32`）；D1 第 0 步已改用 token 認人（未經跨公司審查；PM 機械核對相符） | `journal/2026-09-18-2350-game-login-token-chain.md` |
+| 30907 登入的身分：Gate `Leave_SA 0x00220132` body+0x06／+0x0A 兩個 u32，客戶端透過 `Certify_Away_Set`（`0x10715f70`）存起來，再放進 `Login_Again_CQ 0x00110124` body+0／+4 原樣帶回。伺服器已改成送非零 token 並用它認人（只有單帳號缺 token 時才退回 last_login） | ✅ [DLL] `0x107dc7d3`–`0x107dc846`、`0x10715f70`、`0x107c3ef5`；[LOG] 帶回的值完全一致（`session-20260919-012749.jsonl:26,32`）（Sol 審查 `research/2026-09-19-sol-review/batch1.md`：部分成立，原文「目前送 0」已過期，已更正） | `journal/2026-09-18-2350-game-login-token-chain.md` |
 | 房間聊天：客戶端送 `0x00220505`（258 bytes，與 SN 同 opcode），伺服器目前只回 ACK、不廣播 | ✅ [LOG] | `logs/session-20260918-225741.jsonl` |
 | 單人假設清單（M1 15 列、M2 8 列） | 🟡 [CODE] | `docs/reference/multiplayer-audit.md` |
-| 區網第二台可以登入並進大廳、商城：需要 portproxy（N0）＋ `publicHost`（N1，`Server_Add_SN 0x00220101` 原本寫死 127.0.0.1）＋白名單。經過 portproxy 後來源 IP 全是 `192.168.208.1`，不能用 IP 認人 | ✅ [LOG][OBS]（未經跨公司審查） | `journal/2026-09-19-0030-second-host-first-login.md` |
-| 房間格子開放數：`Room_Boundary_SN 0x00220213` body+0 CurrentUser、+1 MaxUser（原本寫反）；UC `ZPage_Room.uc:768` `m_MaxUser = MaxUser/2`，超過的格子 bClosed，頭像、等級、READY 都不畫。對調後雙方頭像與 READY（`User_State_SN 0x00220401` raw 2）都正常顯示 | ✅ [DLL] `0x107ea95d`/`0x107ea964`（PM 機械核對）；[SHOT] `shots/room-ready-host.png`（修正前 16 格全關）、`shots/room-after-boundary-swap.png`（修正後開 4 格、兩個頭像、test 有 READY）（未經跨公司審查） | `journal/2026-09-19-0330-d1-step4-room-join.md` |
+| 區網第二台可以登入並進大廳、商城：portproxy（N0）＋ `publicHost`（N1，`Server_Add_SN 0x00220101` 原本寫死 127.0.0.1）＋白名單**這個組合可用**（三者是一起加上的，個別是否必要沒有分開驗證）。經過 portproxy 後來源 IP 全是 `192.168.208.1`，不能用 IP 認人 | ✅ [LOG][OBS]（Sol 審查 `research/2026-09-19-sol-review/batch1.md`：部分成立，已照意見改寫） | `journal/2026-09-19-0030-second-host-first-login.md` |
+| 房間格子開放數：`Room_Boundary_SN 0x00220213` body+0 CurrentUser、+1 MaxUser（原本寫反）；UC `ZPage_Room.uc:768` `m_MaxUser = MaxUser/2`，超過的格子 bClosed，頭像、等級、READY 都不畫。對調後雙方頭像與 READY（`User_State_SN 0x00220401` raw 2）都正常顯示 | ✅ [DLL] `0x107ea95d`/`0x107ea964`（PM 機械核對）；[SHOT] `shots/room-ready-host.png`（修正前 16 格全關）、`shots/room-after-boundary-swap.png`（修正後開 4 格、兩個頭像、test 有 READY）（Sol 審查 `research/2026-09-19-sol-review/batch1.md`：成立） | `journal/2026-09-19-0330-d1-step4-room-join.md` |
 | `Room_Default_SN 0x00220203` body+7 是 CurrentUser、+8 是 MaxUser（`0x107ea50f`/`0x107ea516`），伺服器目前在 +7 寫 max、+8 寫 gameMode；目前被後送的 Boundary 蓋掉 | 🟡 [DLL]，待另開單變數任務修 | 同上 |
-| 房主踢人：`Kickout_CQ 0x00220337` body u16 UserIndex；回房主 `Kickout_SA 0x00220338` 0/0，對被踢者送 `Leave_SN 0x00220236`（UserIndex＝自己、Kickout=1）→ 客戶端跳「被強制離開房間」並回大廳；其他人收 `Leave_SN`（Kickout 位元組不讀）。被踢者可重新加入 | ✅ [DLL] `0x107eeed0`、`0x107ebe30`、`0x107edc40`（PM 機械核對）；[LOG][OBS] `session-20260919-111258.jsonl` ms 2829050、2876878（未經跨公司審查） | `journal/2026-09-19-0330-d1-step4-room-join.md` |
+| 房主踢人：`Kickout_CQ 0x00220337` body u16 UserIndex；回房主 `Kickout_SA 0x00220338` 0/0，對被踢者送 `Leave_SN 0x00220236`（UserIndex＝自己、Kickout=1）→ 客戶端跳「被強制離開房間」並回大廳；其他人收 `Leave_SN`（Kickout 位元組不讀）。被踢者可重新加入 | ✅ [DLL] `0x107eeed0`、`0x107ebe30`、`0x107edc40`（PM 機械核對）；[LOG][OBS] `session-20260919-111258.jsonl` ms 2829050、2876878（Sol 審查 `research/2026-09-19-sol-review/batch1.md`：成立） | `journal/2026-09-19-0330-d1-step4-room-join.md` |
 
 ## 5. 程式碼裡已知錯誤的名稱與無效封包（尚未修正）
 
