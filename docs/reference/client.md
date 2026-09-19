@@ -36,7 +36,7 @@ MetalRage.exe -globalid=TW&ip=127.0.0.1&port=9211&age=30
 
 這些合起來解釋了為什麼這個專案只能從伺服器端觀察封包：客戶端那側幾乎所有常規手段都被擋住了。**伺服器 log 就是我們唯一的窗口**，這也是為什麼封包紀錄值得做得這麼講究。
 
-> **2026-09-19 起：主力客戶端（`C:\Games\MetalRage Online`）的 XIGNCODE3 已由操作者停用**（`ZNetwork.dll` 1-byte patch，細節與逆向依據見 `journal/2026-09-19-2350-disable-xigncode-patch.md`，🟡 待審）。影響：(1) `MetalRage.exe` 本體的 **y0da（反除錯、`.text` CRC）不受影響，仍不能 attach debugger、仍不能改 `.text`**；(2) 此後所有 session log／截圖／客戶端行為都是**已 patch 的客戶端**，跟 patch 前的舊資料分開比對，尤其斷線、逾時、行程被擋、輸入注入這幾類。引用時在日誌註明「XIGNCODE 已停用」。第二份台版舊客戶端未 patch。
+> **主力客戶端目前是原廠狀態（XIGNCODE 啟用）。** 2026-09-19 23:54 到 2026-09-20 00:50 之間曾用 `ZNetwork.dll` 1-byte patch 停用 XIGNCODE，但修補後軟體輸入（drive.sh）與 taskkill 仍然無效（[TEST] journal 2026-09-19-2350 末段、2026-09-19-2230），沒有已驗證的好處，操作者同意還原；修補版留在 `data\System\ZNetwork.dll.patched`。那段時間的 session log 要跟其他時段分開看。y0da（`MetalRage.exe` 反除錯、`.text` CRC）一直都在，不受影響。AI 操作遊戲走 Pico（`tools/pico/`）。
 
 ## 第二份客戶端：台版舊版本（2026-09-19 取得）
 
