@@ -614,3 +614,18 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 > (2) 電源計畫改成高效能；
 > (3) 測試時暫停 WSL 的其他負載（例如子 agent 跑的工作）。
 > 每次都記下 dusk 當加入者時的感受。
+
+## AUTO：Pico 無人回歸測試（PM 2026-09-19 排序）
+- 依據：`journal/2026-09-19-2230-unattended-trial-01.md`、`reference/unattended.md`、`research/2026-09-19-dev-grade-cheats/notes.md`。
+- 優先序：
+  1. 整場流程回歸：`GameCampaign 1` ×N → EndGame → 結算 → 回房間。P3 做好之後，同一支腳本順便驗 DB 寫回。目標是每晚跑。
+  2. `GameCampaign 2` 失敗路徑（目前只有單元測試，沒有實機驗過）。
+  3. `delTest` 驗死亡／重生封包。
+  4. `CoreHpMax`／`GiveMeAmmo` 撐長時間的場，配 PresentMon／WPR 量卡頓。
+  - 不用 `PveNextRound_BD`：可能只在客戶端跳回合，會跟伺服器的回合計數不一致。
+- 約束：
+  - 只做單人。
+  - 只用**專用測試帳號**跑（要開一個，加進白名單，名稱一看就是測試用）。
+  - P3 寫回 DB 時，比賽紀錄要帶「測試」標記，避免污染戰績。
+- P3 schema 先留欄位：每回合秒數、該回合 Death_CN 數、suspicious 旗標（給 P7 的合理性檢查用）。
+- [LOG] 目前所有帳號的 Grade_Info_SN 都寫死送 0（`dispatch/account.dispatch.js:283,399`、`community.dispatch.js:284`）。這次測試用的是 Lucas（accountId 1），也就是 **Grade 0 帳號就能用 F24 + GameCampaign**。
