@@ -124,10 +124,11 @@ function main()
             const saBody = Buffer.from(hostSa[0].hex, 'hex');
             assert.strictEqual(saBody.readUInt16LE(0x00), 0, 'Name_Change_SA result word must be 0 (success)');
             assert.strictEqual(saBody.readUInt32LE(0x02), 0, 'Name_Change_SA error dword must be 0 (success)');
-            const nameField = saBody.subarray(0x10, 0x10 + 'New Name'.length);
-            assert.strictEqual(nameField.toString('ascii'), 'New Name', 'Name_Change_SA body+0x10 must carry the new name (🟡 offset per docs/journal, not independently confirmed live)');
+            // The client takes the name from its own pending CQ (DLL 0x107eb22d/0x107eb2a8),
+            // so the SA is just the 6-byte header.
+            assert.strictEqual(saBody.length, 6, 'Name_Change_SA body is the 6-byte success header');
         }
-        console.log('[room-name-change test] PASS: host renaming gets a success Name_Change_SA with the new name at body+0x10');
+        console.log('[room-name-change test] PASS: host renaming gets a success Name_Change_SA (6-byte header)');
 
         const hostRoomName = host._sent.filter((s) => s.op === ROOM_NAME_SN);
         const otherRoomName = other._sent.filter((s) => s.op === ROOM_NAME_SN);

@@ -2279,26 +2279,19 @@ class ZGateGameDispatch
                 // field above.
                 const requestedName = decodeAnsiBytes(body.subarray(0, Math.min(body.length, 25)));
 
-                // ROOMNAME-BIG5 SA body [DLL 0x107eb160 -> real body
-                // 0x107eb1cb]: client-side Name_Change_SA reads a standard
-                // u16 Result/u32 ErrorCode header (0/0 = success, matching
-                // this file's other _SA acks), and on success ALSO reads an
-                // ANSI name starting at body+0x10, up to 0x19 (25) bytes
-                // (0x107eb2a8 `lea edi,[ebx+0x10]` / `mov eax,0x19`, the
-                // same 25-byte max as the CQ sender's own truncation) into
-                // its own room-name field. 🟡 not independently confirmed
-                // live -- the 10 bytes between the header and body+0x10
-                // were not identified from static disassembly alone; see
-                // docs/journal/2026-09-19-*-room-name-big5.md. Total body
-                // size is therefore 0x10 + 0x19 = 0x29.
+                // Name_Change_SA body [DLL 0x10708a6c -> 0x107eb160]: the client
+                // checks the standard u16 Result/u32 ErrorCode header at
+                // frame+0x10/+0x12 (esi = this SA). On success it copies the name
+                // from `lea edi,[ebx+0x10]` (0x107eb2a8), where ebx is the
+                // handler's SECOND argument ([esp+0x48] at 0x107eb22d) -- the
+                // client's own pending Name_Change_CQ frame, same convention as
+                // Kickout_SA (PM check 2026-09-19). So the name comes from the
+                // client's own CQ, not from this SA: a 6-byte header is enough.
+                // (High-tier correction of the worker's 0x29-byte guess.)
                 const sendNameChangeSa = (ok, name) => {
-                    const bodySize = 0x29;
-                    const [msg, respBody] = getExactMessageBuffer(SA_ROOM_NAME_CHANGE, bodySize);
+                    const [msg, respBody] = getExactMessageBuffer(SA_ROOM_NAME_CHANGE, 0x06);
                     respBody.writeUInt16LE(ok ? 0 : 1, 0x00);
                     respBody.writeUInt32LE(ok ? 0 : 1, 0x02);
-                    if (ok) {
-                        writeAnsiStringField(respBody, name, 0x10, 0x19);
-                    }
                     client.send(msg);
                     console.log(`[ZGateGameDispatch] >> Sent Name_Change_SA 0x220219 (${ok ? 'success' : 'failure'}, account=${accountId}${ok ? `, name="${name}"` : ''})`);
                 };
