@@ -157,3 +157,4 @@
 | 2026-09-19 | `2026-09-19-2120-m2-acceptance.md` | `0x00222211`、`0x00222213`、`0x00222221` | — | M2 驗收：區網兩人（Lucas 房主＋dusk）打完高級 10 回合，兩人都進結算並回到房間；記錄了 NET 設定；另有同步和卡頓問題（不擋 M2）。 |
 | 2026-09-19 | `2026-09-19-2150-pico-hid-first-test.md` | — | — | Pico 2 W 硬體鍵盤輸入第一次進到遊戲（大廳聊天）；滑鼠相對移動不準。 |
 | 2026-09-19 | `2026-09-19-2230-unattended-trial-01.md` | — | — | Pico 無人流程試跑：商店分頁盤點成功，前景檢查擋下 VS Code；閉迴路加速度修正。 |
+| 2026-09-19 | `2026-09-19-2350-disable-xigncode-patch.md` | `0x0002008D` | — | XIGNCODE 旁路修補（中階，待審，操作者審批）：逆向定位全客戶端唯一載入 XIGNCODE 的模組為 ZNetwork.dll（內嵌 zwave_sdk_client_dll.dll）；利用 GameHi 原廠 dedicated server 旁路機制，在 ZNetwork.dll 0x70301 套用 1-byte patch（74 5E -> EB 5E），無條件傳入 (0, 0) 跳過 XIGNCODE 初始化、註冊與探針發送；交付 tools/patch_disable_xigncode.py（含自動備份與還原）；cmp -l 驗證剛好 1 byte 變更；已套用修補。 |
