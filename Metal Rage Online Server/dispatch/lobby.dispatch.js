@@ -502,16 +502,21 @@ class ZLobbyDispatch
                 return true;
             }
 
-            // Respawn_CN. Its payload is not needed by Respawn_SN; the server
-            // identifies the player from the connection.
+            // Respawn_CN, sent by the battle host's client (the P2P listen
+            // server) when a player picks a mech and respawns. Body is the u16
+            // UserIndex of the player to spawn -- not necessarily the sender:
+            // [LOG] session-20260919-150041.jsonl ms 1436862 the host (conn8,
+            // UserIndex 1) sent `0400` for the joiner, we answered Respawn_SN
+            // for UserIndex 1, and [OBS] the joiner became a spectator after
+            // choosing its mech. Use the body's index; fall back to the
+            // connection's own when the body is short.
             case 0x00230103:
             {
                 client.respawnGeneration_ = (client.respawnGeneration_ || 0) + 1;
-                this.sendRespawn(
-                    client,
-                    Number(client.accountIndex_ || client.accountId_ || 1),
-                    'Respawn_CN'
-                );
+                const respawnIndex = body.length >= 2
+                    ? body.readUInt16LE(0)
+                    : Number(client.accountIndex_ || client.accountId_ || 1);
+                this.sendRespawn(client, respawnIndex, 'Respawn_CN');
                 return true;
             }
 
