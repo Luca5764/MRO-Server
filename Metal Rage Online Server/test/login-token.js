@@ -124,6 +124,11 @@ function makeMultiAccountDb()
         // catch at :435-436, and bootstrap silently stops partway -- same
         // shape as getItems() above since no test account here has items.
         async getItemsWithEquipViews() { return []; },
+        // SWITCH-CONVERGE: mapInfoOnGameLoginMode's new default 'enabled'
+        // means the same bootstrap path now also calls db.getMaps(account.id)
+        // (see mapInfoOnGameLoginMode's resend below gamelogin.dispatch.js's
+        // case 0x00110124) -- same reasoning as getItemsWithEquipViews above.
+        async getMaps() { return []; },
     };
 }
 

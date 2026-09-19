@@ -38,8 +38,11 @@ const { MAX_MECH_COUNT, MAX_SLOT_COUNT } = require('../datatypes/enums');
 // empty, even with RoomType==2 correctly drawn on screen. Data sent on this
 // 30907 login (ItemInfo/WearInfo below) survives that travel, so trigger:
 // 30907 game-server login (Login_Again_CQ 0x00110124) — resend MapInfo_SN
-// here too when this switch is on. 🟡 hypothesis, default off.
-let mapInfoOnGameLoginMode = 'disabled'; // 'disabled' | 'enabled'
+// here too when this switch is on. Verified ✅ together with
+// mapInfoRealIdMode: the map-select popup lists all 4 PvE maps
+// (docs/state.md H7 row, docs/journal/2026-09-19-1000-maplist-single-entry.md,
+// 未經跨公司審查). SWITCH-CONVERGE: default flipped to 'enabled'.
+let mapInfoOnGameLoginMode = 'enabled'; // 'disabled' | 'enabled'
 
 function _setMapInfoOnGameLoginModeForTests(mode) {
     mapInfoOnGameLoginMode = mode;
@@ -335,7 +338,7 @@ class ZGameLoginDispatch
 
                 // SN_MAP_INFO (0x00210115) resend — trigger: 30907 game-server
                 // login (Login_Again_CQ 0x00110124). See mapInfoOnGameLoginMode
-                // comment above for why. Off by default.
+                // comment above for why.
                 if (mapInfoOnGameLoginMode === 'enabled') {
                     const dbMaps = await db.getMaps(account.id);
                     const fallbackIds = dbMaps.map((map) => map.map_id);
