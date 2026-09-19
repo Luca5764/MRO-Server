@@ -132,6 +132,8 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 
 ## R-ROUND：PvE 回合推進（PM 開立 2026-09-19）
 
+> **2026-09-19 實測 ✅（未經跨公司審查）：** EndRound_SN 讓 PvE 進入第 2 回合（`session-20260919-083650.jsonl:1450-1453`，`journal/2026-09-19-0900-r-round-impl.md`）。剩下：打到最後一回合，確認結算（EndGame_SN）；多命 pveExtraLives=7 另外單獨驗證。
+
 > **2026-09-19 分析完成**（`docs/research/2026-09-19-r-round/notes.md`，🟡）：✅ [DLL] Campaign_CN body 固定是 `01 00 01／02`，**沒有回合數**（高階抽驗 `0x107dac1e`–`0x107dac43`）→ 伺服器要自己記錄回合。候選回應是 `EndRound_SN 0x00222211`（`0x107d7a50`）；⬜ 還沒證明它會觸發 EndRound_BD，body 格式 🟡。實驗設計寫在 notes 最後。
 
 > **狀態：分析已派出（唯讀）。實作與實測排在 M1 主測之後、D1 第 6 步之前**（第 6 步要廣播的就是這段開戰／結算流程，先把單人的流程弄對再廣播）。
