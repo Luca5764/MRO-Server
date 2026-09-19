@@ -1,5 +1,25 @@
 const mysql = require('mysql2/promise');
 const path = require('path');
+const { getShareType } = require('./item-share-type');
+
+// E1 (docs/design/e1-item-ownership.md, docs/backlog.md): ownership
+// (`items`) vs. equipped-where (`item_equips`) split, so a ShareType=1
+// item (副武器/裝備) can be equipped on more than one mech at once instead
+// of only the mech its `items.mech_type` column happens to point at.
+// 'disabled' (default) = every read/write path below is byte-identical to
+// pre-E1 behaviour; saveEquippedLoadout() never touches item_equips and
+// still rewrites items.mech_type the old way. 🟡 未經跨公司審查.
+// `let`, not `const`: test/item-equips.js needs to flip this at runtime (via
+// _setItemEquipsModeForTests below) to exercise the 'enabled' path without
+// changing the default every other test/golden sample runs against. Every
+// production code path only ever reads it, never writes it.
+let ITEM_EQUIPS_MODE = 'disabled'; // 'disabled' | 'enabled'
+
+// Test-only: see test/item-equips.js. Not used by any production code path.
+function _setItemEquipsModeForTests(mode)
+{
+    ITEM_EQUIPS_MODE = mode === 'enabled' ? 'enabled' : 'disabled';
+}
 
 // Load DB config from config.json (editable per-machine)
 let dbConfig = { host: '127.0.0.1', port: 3306, user: 'root', password: '', database: 'mro' };
@@ -139,6 +159,60 @@ async function getItems(accountId)
 }
 
 /**
+ * E1: get this account's item_equips rows (which serial is equipped on
+ * which mech/part slot). Empty when ITEM_EQUIPS_MODE is 'disabled' -- the
+ * table is only ever written by saveEquippedLoadout() in that mode.
+ * @param {number} accountId
+ * @returns {Promise<object[]>} rows of {id, account_id, item_id, mech_slot, part_slot}
+ */
+async function getItemEquips(accountId)
+{
+    const [rows] = await pool.execute(
+        'SELECT * FROM item_equips WHERE account_id = ? ORDER BY id', [accountId]
+    );
+    return rows;
+}
+
+/**
+ * E1: `getItems()` rows, but with one synthetic view row per item_equips
+ * entry instead of relying on items.mech_type/equipped. A ShareType=1
+ * serial equipped on two mechs therefore appears twice (same `id`, two
+ * different `mech_type`), which is what lets it show up in both mechs'
+ * WearInfo/Game_User_SN/Slot_Change_SA output -- the three read paths that
+ * already filter `items` by `item.equipped && item.mech_type === X &&
+ * item.part_slot === Y` work unmodified against this list.
+ *
+ * ITEM_EQUIPS_MODE 'disabled': returns getItems(accountId) unchanged
+ * (byte-identical to pre-E1 behaviour). Ownership-only readers (shop,
+ * package/inventory list, ItemInfo_SN's per-serial rows) must keep calling
+ * getItems() directly -- this function's rows are not 1:1 with owned
+ * serials once a serial is equipped on more than one mech.
+ * @param {number} accountId
+ * @returns {Promise<object[]>}
+ */
+async function getItemsWithEquipViews(accountId)
+{
+    const items = await getItems(accountId);
+    if (ITEM_EQUIPS_MODE !== 'enabled') {
+        return items;
+    }
+    const equips = await getItemEquips(accountId);
+    const byId = new Map(items.map(item => [Number(item.id), item]));
+    const views = items.map(item => ({ ...item, equipped: 0 }));
+    for (const equip of equips) {
+        const base = byId.get(Number(equip.item_id));
+        if (!base) continue; // stale row (serial no longer owned) -- migration/manual DB edit, not expected in normal play
+        views.push({
+            ...base,
+            mech_type: Number(equip.mech_slot),
+            part_slot: Number(equip.part_slot),
+            equipped: 1,
+        });
+    }
+    return views;
+}
+
+/**
  * Save one hangar slot's six equipped item serials.
  *
  * The client sends item serials (the `items.id` values), not catalog item IDs.
@@ -173,16 +247,20 @@ async function saveEquippedLoadout(accountId, mechType, serials)
     try {
         await conn.beginTransaction();
 
+        // E1: also fetch item_id here (not just id) so the item_equips block
+        // below can look up ShareType per serial without a second query.
+        const itemIdBySerial = new Map();
         if (uniqueSerials.length > 0) {
             const placeholders = uniqueSerials.map(() => '?').join(', ');
             const [rows] = await conn.execute(
-                `SELECT id FROM items WHERE account_id = ? AND id IN (${placeholders})`,
+                `SELECT id, item_id FROM items WHERE account_id = ? AND id IN (${placeholders})`,
                 [accountId, ...uniqueSerials]
             );
             const found = new Set(rows.map(row => Number(row.id)));
             if (uniqueSerials.some(serial => !found.has(serial))) {
                 throw new Error('equipped serial is not owned by account');
             }
+            for (const row of rows) itemIdBySerial.set(Number(row.id), Number(row.item_id));
         }
 
         // Clear the complete target slot first; zero serials intentionally
@@ -204,10 +282,50 @@ async function saveEquippedLoadout(accountId, mechType, serials)
         for (let partSlot = 0; partSlot < serials.length; partSlot++) {
             const serial = Number(serials[partSlot]);
             if (serial === 0) continue;
+            // E1: items.mech_type stops meaning "equipped on this mech" once
+            // item_equips is the source of truth (a ShareType=1 serial can be
+            // equipped on more than one mech at once, which a single column
+            // cannot represent) -- see docs/design/e1-item-ownership.md
+            // section 3. Left untouched when the mode is off.
+            if (ITEM_EQUIPS_MODE === 'enabled') {
+                await conn.execute(
+                    'UPDATE items SET equipped = 1, part_slot = ? WHERE account_id = ? AND id = ?',
+                    [partSlot, accountId, serial]
+                );
+            } else {
+                await conn.execute(
+                    'UPDATE items SET equipped = 1, mech_type = ?, part_slot = ? WHERE account_id = ? AND id = ?',
+                    [mechType, partSlot, accountId, serial]
+                );
+            }
+        }
+
+        // E1 item_equips write (ITEM_EQUIPS_MODE 'enabled' only): clear this
+        // mech's rows, then for each newly-equipped serial, drop its rows on
+        // every other mech first when ShareType==0 (ZPage_Hangar.uc:917-924
+        // ItemFree() -- equipping on B unequips A), before inserting. A
+        // ShareType==1 serial keeps whatever rows it already had on other
+        // mechs, so it can show up equipped on several at once.
+        if (ITEM_EQUIPS_MODE === 'enabled') {
             await conn.execute(
-                'UPDATE items SET equipped = 1, mech_type = ?, part_slot = ? WHERE account_id = ? AND id = ?',
-                [mechType, partSlot, accountId, serial]
+                'DELETE FROM item_equips WHERE account_id = ? AND mech_slot = ?',
+                [accountId, mechType]
             );
+            for (let partSlot = 0; partSlot < serials.length; partSlot++) {
+                const serial = Number(serials[partSlot]);
+                if (serial === 0) continue;
+                const itemId = itemIdBySerial.get(serial);
+                if (getShareType(itemId) === 0) {
+                    await conn.execute(
+                        'DELETE FROM item_equips WHERE account_id = ? AND item_id = ?',
+                        [accountId, serial]
+                    );
+                }
+                await conn.execute(
+                    'INSERT INTO item_equips (account_id, item_id, mech_slot, part_slot) VALUES (?, ?, ?, ?)',
+                    [accountId, serial, mechType, partSlot]
+                );
+            }
         }
 
         await conn.commit();
@@ -338,10 +456,20 @@ async function createAccount(username, nickname, pilot)
         ];
 
         for (const [mechType, partSlot, itemId] of starterLoadouts) {
-            await conn.execute(
+            const [result] = await conn.execute(
                 'INSERT INTO items (account_id, item_id, slot, mech_type, part_slot, quantity, equipped) VALUES (?, ?, ?, ?, ?, 1, 1)',
                 [accountId, itemId, partSlot, mechType, partSlot]
             );
+            // E1: keep item_equips in sync so a fresh account's first
+            // WearInfo_SN/Game_User_SN looks identical whether
+            // ITEM_EQUIPS_MODE is on or off (see saveEquippedLoadout's own
+            // item_equips write for the general case).
+            if (ITEM_EQUIPS_MODE === 'enabled') {
+                await conn.execute(
+                    'INSERT INTO item_equips (account_id, item_id, mech_slot, part_slot) VALUES (?, ?, ?, ?)',
+                    [accountId, result.insertId, mechType, partSlot]
+                );
+            }
         }
 
         await conn.commit();
@@ -409,9 +537,22 @@ module.exports = {
     getMaps,
     getTutorials,
     getItems,
+    getItemEquips,
+    getItemsWithEquipViews,
     getItemCatalog,
     createAccount,
     saveEquippedLoadout,
     completeTutorial,
     updateLastLogin,
+    _setItemEquipsModeForTests,
 };
+
+// Live getter, not a plain property: ITEM_EQUIPS_MODE is a `let` (see its
+// declaration above) that test/item-equips.js flips at runtime, and every
+// dispatch/*.js call site reads it as `db.ITEM_EQUIPS_MODE` on demand -- a
+// plain `ITEM_EQUIPS_MODE,` shorthand here would freeze in the value from
+// when this module first loaded instead of tracking later test changes.
+Object.defineProperty(module.exports, 'ITEM_EQUIPS_MODE', {
+    enumerable: true,
+    get() { return ITEM_EQUIPS_MODE; },
+});
