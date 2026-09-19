@@ -1,0 +1,15 @@
+{
+  "id": "U-shop-tabs",
+  "purpose": "Reproduce U-20260919-01 (docs/journal/2026-09-19-2230-unattended-trial-01.md) under the deterministic runner: lobby -> shop -> each item-type sub-tab -> back to lobby. No purchases, no gifting.",
+  "preconditions": {"screen": "lobby"},
+  "steps": [
+    {"action": "goto_shop"},
+    {"action": "shop_tab", "params": {"name": "aux"}},
+    {"action": "shop_tab", "params": {"name": "equip"}},
+    {"action": "shop_tab", "params": {"name": "item"}},
+    {"action": "shop_tab", "params": {"name": "mshop"}},
+    {"action": "back_to_lobby"}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_image_reviews": 0
+}

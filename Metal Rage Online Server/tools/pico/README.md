@@ -198,6 +198,38 @@ PICO_TRANSPORT=http python3 tools/pico/pico_ctl.py ping
 
 ---
 
+## 無模型的決定性實驗跑者（`runner.py`）
+
+`pico_ctl.py`／`client_ctl.py` 只管單一指令或行程重啟。`runner.py` 再往上一層：把一份「劇本」（experiment JSON）從頭跑到尾，**每一步自己判斷成功或失敗**（文字訊號 + 本機圖片比對），完全不呼叫任何模型。跑完寫一份 JSON + 文字報告，操作者／領頭 AI 事後只讀報告。
+
+組成：
+- `screens.py` — 螢幕分類器。拿 `shot.sh` 拍的整個遊戲視窗（1616×1239，client area 1600×1200、偏移 (8,31)）跟 `atlas/` 底下的小張參考裁圖比對「平均絕對誤差」（MAD，numpy 算，沒有裝 OpenCV）。`atlas/manifest.json` 記每個標記的裁切框跟門檻，裁圖檔案很小（幾 KB 到幾十 KB），全部進 repo；完整參考截圖留在 `shots/`（已在 `.gitignore`，不進 repo）。
+  - `classify_screen(img)` → 回傳 `lobby` / `shop` / `console_open` / `unknown`，附分數、次佳分數的差距（margin）、`gray`（灰色地帶）旗標。
+  - `console_state(img)` → 獨立判斷主控台開／關（`open`/`closed`/`unknown`）。
+  - `is_tab_active(img, tab_name)` → 商店分頁（`shop_main`/`shop_aux`/`shop_equip`/`shop_item`/`shop_mshop`）目前是否被選取。
+  - `python3 screens.py build-atlas --shots-dir <參考截圖目錄>` 重建 atlas；`classify` / `console` / `tab` 三個子指令可以單獨對一張圖片跑分類，方便除錯。
+- `actions.py` — 參數化動作：`goto_shop`、`shop_tab(name)`、`back_to_lobby`、`open_console`、`close_console`、`console_cmd(text)`。每個動作＝送指令前先單張截圖檢查前置畫面（不符合就不送任何輸入）→ 呼叫 `pico_ctl.py`（沒改它的行為，直接照 README 的 CLI 呼叫）→ 用 `screens.py` 輪詢確認完成條件，逾時就回報失敗。`購買`／`送禮`等按鈕座標寫死擋掉（`FORBIDDEN_CLICKS`），就算實驗檔手滑寫錯座標也點不到。
+- `runner.py run <experiment.json>` — 開 pico session → 檢查起始畫面 → 依序執行每一步 → **任何一步失敗或灰色地帶分類就整個停下**（送 `RESET`、結束 session，不重試、不繼續）→ 寫報告。`--dry-run` 只驗證檔案格式、印出每一步會做什麼，完全不送任何輸入、不開 session。
+
+實驗檔格式（`experiments/*.json`）：`id`／`purpose`／`preconditions.screen`／`steps`（每步 `action` + `params`）／`stop_conditions.max_consecutive_failures`／`max_image_reviews`（**必須是 0**——這版 runner 沒有接模型，非 0 會直接判定檔案無效；欄位保留給以後真的要接模型審查的版本用）。
+
+報告輸出在 `tools/pico/logs/reports/<id>-<時間戳>.json`（結構化：`build_event`、`precondition`、每步 `ok`/`gray`/`duration_s`/`detail`/`screenshot`/`score`、`anomalies`、`result`）與同名 `.txt`（人看的摘要）。`build_event` 是最新 `logs/session-*.jsonl` 裡最後一筆 `{ev:"build"}` 紀錄（伺服器啟動／`/reload` 寫的，見 `packetlog.js` 的 `recordBuild`）；找不到就在 `anomalies` 註明，不是致命錯誤。
+
+```bash
+python3 tools/pico/runner.py validate tools/pico/experiments/U-shop-tabs.json
+python3 tools/pico/runner.py run tools/pico/experiments/U-shop-tabs.json --dry-run
+python3 tools/pico/runner.py run tools/pico/experiments/U-shop-tabs.json   # 真的跑：會開 pico session、送輸入
+```
+
+已知限制／待審查（見這次任務的報告，交給主力）：
+- `classify_screen` 目前只認得 `lobby`／`shop`／`console_open` 三種畫面，別的畫面一律回 `unknown`（等同灰色地帶，runner 會停）。
+- `console_open` 只驗證過「主控台疊在大廳上面」這個組合（`f24-after.png`），疊在商店上面的畫面沒有參考截圖，分類器對那個組合的行為未驗證。
+- `console_cmd(text)` 只實作了結構（前置檢查主控台開著、ASCII 檢查、TYPE+ENTER），完成條件是「主控台看起來還開著」，**不驗證指令是否真的執行**——刻意不去猜測任何 opcode 當文字訊號。目前沒有任何實驗檔用到它。
+- 文字訊號目前只用 `pico:` marker（送出/被擋），沒有用任何協定層 opcode 當完成訊號，避免在不熟的封包上亂猜。
+- 分類器的門檻是拿 2026-09-19 的參考截圖組互相比對出來的（同一批照片，不是獨立驗證集），實機截圖噪訊多大還沒有實測過。
+
+---
+
 ## 常見問題排查
 
 1. **序列埠自動偵測不到板子怎麼辦？**
