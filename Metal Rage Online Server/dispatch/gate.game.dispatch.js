@@ -288,6 +288,18 @@ function sendGameUserSn(client, tag)
         .catch(err => console.error(`[ZGateGameDispatch] >> Game_User_SN failed: ${err.message}`));
 }
 
+// R-ROUND (docs/backlog.md): the "target round for this map" value. Shared
+// by sendGameInfoSn's body+0x15 below (Game_Info_SN's MapInfo.Round) and
+// lobby.dispatch.js's Campaign_CN handler, which needs the same number to
+// know whether a Campaign_CN success is the last round -- extracted rather
+// than recomputed independently in both files, so PVE_ROUND_ADVANCE_MODE
+// cannot see a different round count than what Game_Info_SN already told
+// the client.
+function getGameInfoRound(client)
+{
+    return Number(client.playRound_) || 0;
+}
+
 function sendGameInfoSn(client, tag)
 {
     const BODY_SIZE = 0x1A;
@@ -368,7 +380,7 @@ function sendGameInfoSn(client, tag)
     // [0xfd0] is GAME_INFO.MapInfo.Round (handler log string 0x1083a240 names body+0x15 "Round").
     // ZModePve.ModeReset_BD returns without starting any round while CurrentRound >= Round,
     // so 0 here meant the PvE round system (AI, objectives) never started.
-    const playRound = Number(client.playRound_) || 0;
+    const playRound = getGameInfoRound(client);
     body.writeUInt8(playRound & 0xFF, 0x15);    // -> [0xfd0], MapInfo.Round
     body.writeUInt16LE(goalScore, 0x16);        // -> [0xfd8], goal score 0/1
     body.writeUInt16LE(goalScore, 0x18);        // -> [0xfdc], goal score 5
@@ -915,6 +927,16 @@ class ZGateGameDispatch
                 console.log(`[ZGateGameDispatch] >> Room Game_Start_CQ`);
                 clearPendingRoomStateRetries(client, 'game-start cq');
 
+                // R-ROUND (docs/backlog.md): client pressing F5 to start the
+                // match is the confirmed PvE battle-start path ([LOG]
+                // session-20260919-012749.jsonl -- 0x00222103 fires, the
+                // room.dispatch.js 0x00240301 path never does). Reset the
+                // per-connection round counter here so PVE_ROUND_ADVANCE_MODE
+                // starts each match at round 1, regardless of which branch
+                // below (SERVER_DRIVEN_START_MODE or not) actually sends
+                // Game_Start_SN.
+                client.pveRoundsCleared_ = 0;
+
                 if (SERVER_DRIVEN_START_MODE === 'enabled') {
                     // Push to scene 6 first, then set the map there.
                     if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
@@ -1382,3 +1404,7 @@ module.exports._setRoomTeamChatModeForTest = function setRoomTeamChatModeForTest
 {
     ROOM_TEAM_CHAT_MODE = mode;
 };
+
+// R-ROUND (docs/backlog.md): shared with lobby.dispatch.js's Campaign_CN
+// handler -- see the comment on the function itself.
+module.exports.getGameInfoRound = getGameInfoRound;

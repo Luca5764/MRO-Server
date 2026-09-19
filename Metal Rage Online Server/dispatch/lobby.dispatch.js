@@ -5,6 +5,10 @@ const packetlog = require("../packetlog.js");
 // the lobby is opened/refreshed.
 const rooms = require('../rooms.js');
 const { sendFullRoomList } = require('./room/room-list.sender');
+// R-ROUND (docs/backlog.md): the same "target round" value Game_Info_SN's
+// body+0x15 already sends the client, so the Campaign_CN handler below
+// compares against exactly what the client was told, not a second guess.
+const { getGameInfoRound } = require('./gate.game.dispatch.js');
 
 // How the PvE player's first mech gets spawned.
 //   'client': the original flow. After BeginRound_SN the client's
@@ -15,6 +19,18 @@ const { sendFullRoomList } = require('./room/room-list.sender');
 //   'auto':   the older shortcut: send Respawn_SN 250 ms after BeginRound_CN,
 //             which spawns whatever slot Game_User_SN installed (always 1).
 const PVE_SLOT_SELECT_FLOW = 'client'; // 'client' | 'auto'
+
+// R-ROUND (docs/backlog.md, docs/research/2026-09-19-r-round/notes.md):
+// Campaign_CN 0x00230139 carries no round number ([DLL] 0x107dac1e-0x107dac43
+// confirmed body is always `01 00 01/02`), so the server has to count rounds
+// itself. 'disabled' (default) keeps every Campaign_CN success answered with
+// EndGame_SN, unchanged from before this switch existed. 'enabled' replies
+// with EndRound_SN 0x00222211 while client.pveRoundsCleared_ is still below
+// getGameInfoRound(client), and only sends EndGame_SN on the last round.
+// EndRound_SN actually advancing the client's PvE round (ZModePve.uc:716-722
+// EndRound_BD) is ⬜ -- this is an experimental candidate, not a confirmed
+// fix; see the journal entry for the pass/partial/fail criteria.
+let PVE_ROUND_ADVANCE_MODE = 'disabled'; // 'disabled' | 'enabled' ('let' only so test/round-advance.js's test-only setter below can flip it; nothing else reassigns it)
 
 // ZDispatchLobby - Handles lobby operations after entering a channel
 //
@@ -53,6 +69,19 @@ const LOBBY_IDS = [
 //   0x230121/22 = Leave_CQ/SA
 //   0x230131/32 = Create_CQ/SA
 //   0x230141/42 = Request_CQ/SA
+
+// Mirrors gate.game.dispatch.js's getExactMessageBuffer (same file-local
+// duplication precedent as ROOM_DEFAULT_ENTRY_HINTS elsewhere in this
+// codebase) -- client.getMessageBuffer pads bodies to a 16-byte boundary,
+// which EndRound_SN's client-side length check does not tolerate (see the
+// R-ROUND switch comment above).
+function getExactMessageBuffer(type, bodySize)
+{
+    const msg = Buffer.alloc(0x10 + bodySize);
+    msg.writeUint16BE(msg.length, 0x6);
+    msg.writeUint32BE(type, 0xC);
+    return [msg, msg.subarray(0x10)];
+}
 
 module.exports =
 class ZLobbyDispatch
@@ -216,6 +245,45 @@ class ZLobbyDispatch
             case 0x00230139:
             {
                 const action = body.length >= 3 ? body[2] : 2;
+
+                // R-ROUND (docs/backlog.md, PVE_ROUND_ADVANCE_MODE):
+                // action==1 (objective achieved) but not yet the map's last
+                // round -> answer EndRound_SN instead of ending the match.
+                // action==2 (failure) is left completely untouched, same as
+                // when the switch is disabled.
+                if (PVE_ROUND_ADVANCE_MODE === 'enabled' && action === 1) {
+                    client.pveRoundsCleared_ = (Number(client.pveRoundsCleared_) || 0) + 1;
+                    const playRound = getGameInfoRound(client);
+                    if (client.pveRoundsCleared_ < playRound) {
+                        // EndRound_SN 0x00222211, ZDispatchGame::EndRound_SN
+                        // (thunk 0x10701794 -> 0x107d7a50). Body (frame+0x10,
+                        // 0x1E bytes total, docs/research/2026-09-19-r-round/
+                        // notes.md "補查" section):
+                        //   +0x00 u16 WinTeamIndex
+                        //   +0x02..0x0F Team A block (u16 TeamIndex, u16, u8,
+                        //     u8, u16, u16, u32) -- all zero except TeamIndex=0
+                        //   +0x10..0x1D Team B block, same layout,
+                        //     TeamIndex=1
+                        // Whether this actually drives the client's script-side
+                        // EndRound_BD (ZModePve.uc:716-722) is ⬜ -- experimental
+                        // candidate only, see the journal entry for pass/
+                        // partial/fail criteria.
+                        const [msg, eb] = getExactMessageBuffer(0x00222211, 0x1E);
+                        eb.writeUInt16LE(0, 0x02);   // Team A TeamIndex = 0
+                        eb.writeUInt16LE(1, 0x10);   // Team B TeamIndex = 1
+                        client.send(msg);
+                        console.log(
+                            `[ZLobbyDispatch] >> Campaign_CN action=1 pveRoundsCleared_=` +
+                            `${client.pveRoundsCleared_}/${playRound} -> Sent EndRound_SN 0x00222211`
+                        );
+                        return true;
+                    }
+                    console.log(
+                        `[ZLobbyDispatch] >> Campaign_CN action=1 pveRoundsCleared_=` +
+                        `${client.pveRoundsCleared_}/${playRound} (last round) -> falling through to EndGame_SN`
+                    );
+                }
+
                 // Player team is red (0) in Game_Info_SN; which value the result
                 // page expects for a PvE failure is not confirmed yet.
                 const winTeam = action === 1 ? 0 : 1;
@@ -435,4 +503,14 @@ class ZLobbyDispatch
             `(userIndex=${userIndex}, source=${sourceTag})`
         );
     }
+};
+
+// Test-only hook (R-ROUND, docs/backlog.md), same pattern as
+// gate.game.dispatch.js's _setRoomTeamChatModeForTest: lets
+// test/round-advance.js exercise the PVE_ROUND_ADVANCE_MODE='enabled'
+// branch without changing the shipped default. Not called anywhere
+// outside test/.
+module.exports._setPveRoundAdvanceModeForTest = function setPveRoundAdvanceModeForTest(mode)
+{
+    PVE_ROUND_ADVANCE_MODE = mode;
 };
