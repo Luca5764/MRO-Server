@@ -313,6 +313,11 @@ def send_cmd(cmd_str, ip=None, port=8080, timeout=3.0):
         sys.exit(1)
 
 def send_http_cmd(cmd_str, ip=None, port=8080, timeout=3.0):
+    # The foreground/click/ASCII/STOP gates live in pico_serial.ps1, which HTTP never
+    # passes through, so HTTP may only carry the non-input commands.
+    if cmd_str.strip().split()[:1] not in (["PING"], ["RESET"]):
+        print(f"[BLOCKED] http transport carries only PING/RESET (no safety gates) {cmd_str.strip()}")
+        sys.exit(3)
     pico_ip = ip or get_pico_ip()
     if not pico_ip:
         print("[ERR] Pico IP not set. Run './pico_ctl.py set_ip <IP>' or set PICO_IP environment variable.")
