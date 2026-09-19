@@ -541,3 +541,22 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 ### 完成條件
 
 五個開關都從程式中移除；回歸測試全綠；`switch-audit.md` 對應列標為已收斂。
+
+## S2：遊戲系統覆蓋率盤點（PM 2026-09-19 開立，B 線、唯讀、中階）
+
+> **狀態：已派出（worker，只寫 `docs/reference/system-coverage.md`）。**
+
+- 目標：列出客戶端支援的所有遊戲系統，標出我們各做到哪裡，得到一張可以直接排工作的覆蓋率表。
+- 範圍：
+  - (1) S→C：`docs/client-dispatch-map.md` 依 ZDispatch* 分組，每個 opcode 標 ✅／🟡／⬜（空包或 fallback）／❌（從沒送過）。
+  - (2) C→S：統計所有 session log 裡客戶端送過的 opcode，以及伺服器怎麼回；沒出現在 log 的，用 `ZNetwork_DJ.uc` 的 native 宣告補上。
+  - (3) 依玩家看得到的系統分類。
+- 限制：只盤點，不實作；不確定一律標 ⬜；不要從名稱猜語意。
+- 交付：`docs/reference/system-coverage.md`，最上面放總表，每個系統一節（opcode、現況、UI 入口、S/M/L、相依）。
+- 完成條件：dispatch map 裡每個 opcode 都歸到某一列。
+
+## 留門（不擋 M2/M3，排進空檔）
+
+- (a) 全部 DB 查詢是否參數化，出一張清單。
+- (b) accounts 表和白名單預留密碼雜湊欄位（只加欄位和腳本，不改登入行為；**DB 結構變更要先經操作者同意**）。
+- (c) 找出寫死 192.168.1.x、WSL、portproxy 的假設，讓伺服器之後能原生跑在 Linux VPS 上。
