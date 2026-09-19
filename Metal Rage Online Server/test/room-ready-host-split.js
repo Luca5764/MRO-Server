@@ -135,9 +135,9 @@ function setUpRoom()
     return { gate, community, clientA, clientB };
 }
 
-async function startBattleUpToReadyHostSq({ gate, clientA, clientB, fakeTimers })
+async function startBattleUpToReadyHostSq({ gate, clientA, clientB, fakeTimers, createBody })
 {
-    const createHandled = gate.dispatch(clientA, CQ_CREATE, makeCreateBody('Alice Room'));
+    const createHandled = gate.dispatch(clientA, CQ_CREATE, createBody || makeCreateBody('Alice Room'));
     assert.strictEqual(createHandled, true, 'CQ_CREATE must be handled');
     const roomId = clientA.createdRoomIndex_;
     assert.ok(roomId, 'A must have a createdRoomIndex_ after CQ_CREATE');
@@ -282,12 +282,50 @@ async function testListenFailureResultSendsNothingToAnyone()
     }
 }
 
+// RHSN-MAP (docs/journal/2026-09-19-0330-d1-step4-room-join.md's RHSN-MAP
+// note): buildReadyHostSnMsg() in gate.game.dispatch.js used to look up
+// room.mapId in CACHE_INDEX_TO_MAP_NAME_GG, a table keyed by legacy
+// invented cache indexes (58/70/64/77...) -- room.mapId is actually a real
+// Cache.Bin map id (9001..9012 PvE, 1011..1081 PvP), so every lookup
+// missed and the non-host always got 'Map_PC01' regardless of the real
+// map. CQ_CREATE body[2..3] (createWord1) is the picked PvE map id this
+// room ends up with (client action: room UI's difficulty pick before
+// pressing Create Room) -- see gate.game.dispatch.js's CQ_CREATE handler.
+async function testReadyHostSnUsesRealMapId(pickedMapId, expectedMapName)
+{
+    installFakeWhitelist({ alice: '203.0.113.5' });
+    const { gate, community, clientA, clientB } = setUpRoom();
+
+    const fakeTimers = installFakeTimers();
+    try {
+        const createBody = makeCreateBody('Alice Room');
+        createBody.writeUInt16LE(pickedMapId, 2);
+        await startBattleUpToReadyHostSq({ gate, clientA, clientB, fakeTimers, createBody });
+
+        const caHandled = community.dispatch(clientA, READY_HOST_CA, makeReadyHostCaBody(12345, 0));
+        assert.strictEqual(caHandled, true, 'Ready_Host_CA 0x00420114 must be handled');
+
+        const bReadyHostSn = clientB._sent.filter((s) => s.op === READY_HOST_SN);
+        assert.strictEqual(bReadyHostSn.length, 1, 'B (non-host) must receive exactly one Ready_Host_SN');
+        const bBody = Buffer.from(bReadyHostSn[0].hex, 'hex');
+        const bIpWithMap = bBody.subarray(0x03).toString('ascii').split('\0')[0];
+        assert.ok(bIpWithMap.includes(expectedMapName), `Ready_Host_SN URL for room mapId=${pickedMapId} must contain "${expectedMapName}", got "${bIpWithMap}"`);
+
+        console.log(`[room-ready-host-split test] PASS: room mapId=${pickedMapId} -> Ready_Host_SN URL contains "${expectedMapName}"`);
+    } finally {
+        fakeTimers.restore();
+        rooms._resetForTests();
+    }
+}
+
 async function main()
 {
     await testSqOnlyToHostAndSnToNonHost();
     await testMissingHostAddressSendsNothingToNonHost();
     await testMalformedCaSendsNothingToAnyone();
     await testListenFailureResultSendsNothingToAnyone();
+    await testReadyHostSnUsesRealMapId(9010, 'Map_PC04');
+    await testReadyHostSnUsesRealMapId(9001, 'Map_PC01');
     console.log('[room-ready-host-split test] ALL CHECKS PASS');
     process.exit(0);
 }

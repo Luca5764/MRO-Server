@@ -317,6 +317,41 @@ const CACHE_INDEX_TO_MAP_NAME_GG = {
     1: 'Map_Ptuto',
 };
 
+// RHSN-MAP: real Cache.Bin map id -> map name, keyed by the ids
+// room.dispatch.js's MAP_IDS_PVE/MAP_IDS_PVP actually send (9001..9012,
+// 1011..1081) -- NOT the invented cache indexes CACHE_INDEX_TO_MAP_NAME_GG
+// above uses. Every entry independently re-derived and verified two ways:
+//   1. [CACHE] Direct read of
+//      /mnt/c/Games/MetalRage Online/data/System/Cache.Bin: for each id,
+//      located its 4-byte LE id, then the length-prefixed ASCII name string
+//      (1 length byte incl. terminator + name + '\0') sitting ~32-34 bytes
+//      after it -- same "name near the id's bytes" record layout
+//      room.dispatch.js's own comment (~line 174) describes. 9001-9003 and
+//      9010 match the two anchors this task was given (9001-3 = Map_PC01
+//      per room.dispatch.js's comment; 9010 = Map_PC04 per the host's own
+//      MetalRage.log ClientTravel URL, [LOG] session-20260919-150041.jsonl).
+//   2. Cross-checked against the pre-existing, independently-sourced
+//      docs/gemini-gameinfo-findings.md table (ZNetwork.dll disassembly +
+//      Cache.Bin, journal docs/journal/2026-09-15-10-map-id-always-wrong-root-cause.md's
+//      "14/14 verified" set) -- identical names for every id below,
+//      including the two odd PvP ones (1041/1051, see note).
+// PvE ids come in groups of 3 (easy/mid/hard), matching
+// ZPanel_PVE.uc:328's `(MapIndex-9001)/3` grouping.
+// 1041 and 1051's own Cache.Bin name fields genuinely are 'Map_N05_de' and
+// 'Desert' (not 'Map_N05'/'Map_DesertStorm') -- length-prefixed string
+// bytes checked exactly, not a truncation artifact. Both flagged 🟡 in
+// docs/journal/2026-09-19-0330-d1-step4-room-join.md pending review, since
+// no real second client has confirmed the client accepts these two names.
+const MAP_ID_TO_MAP_NAME_GG = {
+    9001: 'Map_PC01', 9002: 'Map_PC01', 9003: 'Map_PC01',
+    9004: 'Map_PC03', 9005: 'Map_PC03', 9006: 'Map_PC03',
+    9007: 'Map_PC02', 9008: 'Map_PC02', 9009: 'Map_PC02',
+    9010: 'Map_PC04', 9011: 'Map_PC04', 9012: 'Map_PC04',
+    1011: 'Map_C08', 1021: 'Map_C06', 1031: 'Map_C01',
+    1041: 'Map_N05_de', 1051: 'Desert', 1061: 'Map_N01',
+    1071: 'Map_C20', 1081: 'Map_N17',
+};
+
 // D1-6-IMPL (design doc §5 step 4): body-building shared by sendReadyHostSn()
 // (below, unchanged single-target behaviour) and
 // sendReadyHostSnToRoomMember() (community.dispatch.js's non-host send).
@@ -325,7 +360,17 @@ const CACHE_INDEX_TO_MAP_NAME_GG = {
 // straight off a `client`.
 function buildReadyHostSnMsg(ip, port, mapCacheKey)
 {
-    const mapName = CACHE_INDEX_TO_MAP_NAME_GG[mapCacheKey] || 'Map_PC01';
+    // RHSN-MAP: mapCacheKey is a real Cache.Bin map id (9001..9012,
+    // 1011..1081, from room.mapId -- community.dispatch.js's
+    // sendReadyHostSnToRoomMember caller) for every id range
+    // MAP_ID_TO_MAP_NAME_GG covers, so try that table first. Only fall back
+    // to the legacy invented-cache-index table (CACHE_INDEX_TO_MAP_NAME_GG)
+    // when the key isn't one of those real ids -- the two tables' key
+    // ranges never overlap (real ids are all >= 1011, legacy indexes are
+    // all <= 83), so this can't misfire on either caller.
+    const mapName = MAP_ID_TO_MAP_NAME_GG[mapCacheKey]
+        || CACHE_INDEX_TO_MAP_NAME_GG[mapCacheKey]
+        || 'Map_PC01';
     // 실제 서버: IP:Port/MapName?team=0 형식으로 ClientTravel (real server: ClientTravel in IP:Port/MapName?team=0 format)
     // ip 필드에 "IP/MapName" 형식으로 전달 시도 (attempt to pass in "IP/MapName" format in the ip field)
     const ipWithMap = ip + '/' + mapName;
