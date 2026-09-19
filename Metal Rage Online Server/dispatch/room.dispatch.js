@@ -3,7 +3,7 @@ const packetlog = require("../packetlog.js");
 const db = require('../database/db');
 const ZCommunityDispatch = require('./community.dispatch');
 const { sendRoomStatePackets } = require('./room/room-state.sender');
-const { sendRoomUserPackets } = require('./room/room-user.sender');
+const { sendRoomUserPackets, scheduleSelfRecordResend } = require('./room/room-user.sender');
 const { sendRoomMapPackets, sendCampaignBootstrap, ROOM_MAP_SYNC_MODE } = require('./room/room-map.sender');
 const { sendGameUserBootstrap } = require('./room/room-game-user.sender');
 // D1-4 (docs/backlog.md): real Room_List_SN alongside the existing
@@ -1542,6 +1542,11 @@ class ZRoomDispatch
         sendRoomStatePackets(client, ctx, getExactMessageBuffer);
         sendRoomMapPackets(client, ctx, getExactMessageBuffer);
         sendRoomUserPackets(client, ctx, getExactMessageBuffer);
+        // SELF-AVATAR-EXP (docs/backlog.md): triggered by the same room
+        // CREATE burst that just sent this client its own User_Default/Name/
+        // Pilot/State/Master records (host path). Default off; see
+        // room-user.sender.js for the switch and hypothesis.
+        scheduleSelfRecordResend(client, ctx, getExactMessageBuffer, true, 'room create (host)');
         if (CAMPAIGN_GAME_USER_BOOTSTRAP_MODE === 'enabled' && client.campaignRoom_) {
             Promise.resolve(sendGameUserBootstrap(client, ctx, getExactMessageBuffer)).catch((err) => {
                 console.error(`[ZRoomDispatch] >> Game_User_SN bootstrap error: ${err.message}`);
