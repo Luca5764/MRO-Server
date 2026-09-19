@@ -1,6 +1,7 @@
 ﻿const NetworkClient = require("../client");
 const packetlog = require("../packetlog.js");
 const db = require('../database/db');
+const { getShareType, getUseTimeSeconds } = require('../database/item-share-type');
 const ZCommunityDispatch = require('./community.dispatch');
 const { sendRoomStatePackets } = require('./room/room-state.sender');
 const { sendRoomUserPackets, scheduleSelfRecordResend } = require('./room/room-user.sender');
@@ -827,7 +828,10 @@ class ZRoomDispatch
         }
 
         try {
-            const items = await db.getItems(client.accountId_);
+            // E1 (docs/design/e1-item-ownership.md): item_equips per-mech
+            // view -- `items` unchanged when db.ITEM_EQUIPS_MODE is
+            // 'disabled', so the filter below is byte-identical to before.
+            const items = await db.getItemsWithEquipViews(client.accountId_);
             const equipped = new Map();
             for (const item of items) {
                 if (Number(item.mech_type) !== Number(slot) || Number(item.equipped) !== 1) {
@@ -898,18 +902,47 @@ class ZRoomDispatch
                                 ? (Number(client.currentHangarSlot_) || 1)
                                 : (Number(item.mech_type) || 0);
 
+                            // E1 (docs/design/e1-item-ownership.md): a
+                            // ShareType==1 permanent item (UseTime==0, the
+                            // already-anchored Cache.Bin offset +0x43 this
+                            // codebase calls "period" -- room.dispatch.js's
+                            // CACHE_INDEX_DATA) can be equipped on several
+                            // mechs at once, so buying a second copy would
+                            // just be a wasted duplicate row. UseType itself
+                            // is not parsed anywhere in this codebase yet
+                            // (no verified offset), so rentals (UseTime>0)
+                            // are left alone and keep stacking as before --
+                            // per task contract's explicit fallback for the
+                            // "unclear" case.
+                            let alreadyOwnedPermanentShared = false;
+                            if (db.ITEM_EQUIPS_MODE === 'enabled'
+                                && getShareType(itemId) === 1
+                                && getUseTimeSeconds(itemId) === 0) {
+                                const [ownedRows] = await connection.execute(
+                                    'SELECT id FROM items WHERE account_id = ? AND item_id = ? LIMIT 1',
+                                    [client.accountId_, itemId]
+                                );
+                                alreadyOwnedPermanentShared = ownedRows.length > 0;
+                            }
+
                             await connection.execute(
                                 'UPDATE accounts SET point = ? WHERE id = ?',
                                 [newPoint, client.accountId_]
                             );
-                            await connection.execute(
-                                'INSERT INTO items (account_id, item_id, slot, mech_type, part_slot, quantity, equipped) VALUES (?, ?, ?, ?, ?, 1, 0)',
-                                [client.accountId_, itemId, partSlot, mechType, partSlot]
-                            );
+                            if (!alreadyOwnedPermanentShared) {
+                                await connection.execute(
+                                    'INSERT INTO items (account_id, item_id, slot, mech_type, part_slot, quantity, equipped) VALUES (?, ?, ?, ?, ?, 1, 0)',
+                                    [client.accountId_, itemId, partSlot, mechType, partSlot]
+                                );
+                            }
                             await connection.commit();
                             client.point_ = newPoint;
                             responsePoint = newPoint;
-                            console.log(`[ZRoomDispatch] >> Shop Buy persisted: account=${client.accountId_} point=${newPoint} item_id=${itemId} mech=${mechType} part=${partSlot}`);
+                            if (alreadyOwnedPermanentShared) {
+                                console.log(`[ZRoomDispatch] >> Shop Buy charged but reused existing serial (ShareType=1 permanent, already owned): account=${client.accountId_} point=${newPoint} item_id=${itemId}`);
+                            } else {
+                                console.log(`[ZRoomDispatch] >> Shop Buy persisted: account=${client.accountId_} point=${newPoint} item_id=${itemId} mech=${mechType} part=${partSlot}`);
+                            }
                         }
                     }
                 }
@@ -931,7 +964,7 @@ class ZRoomDispatch
         if (result === 0 && (PURCHASE_ITEMINFO_REFRESH === 'enabled' || SHOP_UNBLOCK_MODE === 'enabled')) {
             try {
                 const items = await db.getItems(client.accountId_);
-                require('./item-info.sender').sendItemInfo(
+                await require('./item-info.sender').sendItemInfo(
                     client,
                     items,
                     client.accountId_,
@@ -1041,7 +1074,10 @@ class ZRoomDispatch
             const HEADER_SIZE = 14;
             const defaultMech = 1;
 
-            const items = await db.getItems(client.accountId_);
+            // E1 (docs/design/e1-item-ownership.md): item_equips per-mech
+            // view -- byte-identical to db.getItems() when db.ITEM_EQUIPS_MODE
+            // is 'disabled'.
+            const items = await db.getItemsWithEquipViews(client.accountId_);
             const mechSlots = {};
             for (let m = 1; m <= MAX_MECH_COUNT; m++) {
                 mechSlots[m] = Array.from({length: 6}, () => ({uniqueKey: 0, itemIndex: 0}));
@@ -1174,7 +1210,12 @@ class ZRoomDispatch
         }
 
         try {
-            const items = await db.getItems(client.accountId_);
+            // E1 fix round (Sol batch4 (6)): equippedMain below reads
+            // "what's equipped on this mech" (account ownership state), not
+            // the catalog -- must come from item_equips when the mode is on,
+            // same as every other E1 reader. Byte-identical to
+            // db.getItems() when db.ITEM_EQUIPS_MODE is 'disabled'.
+            const items = await db.getItemsWithEquipViews(client.accountId_);
             const mechItems = weaponItems.filter(({ item }) => Number(item.mech_type) === Number(selectedSlot));
             if (mechItems.length > 0) {
                 console.log(`[ZRoomDispatch] >> Shop refresh for slot=${selectedSlot}: catalogMech=${selectedSlot}, items=${mechItems.length}`);
@@ -1262,6 +1303,10 @@ class ZRoomDispatch
         console.log(`[ZRoomDispatch] >> Sent Packege_Coupon_SN 0x240133: coupon=${coupon}`);
     }
 
+    // E1 fix round (Sol batch4 (6)): no call sites anywhere in this codebase
+    // (confirmed by grep) -- bypasses E1 entirely (reads items.equipped/
+    // items.mech_type directly) and must be migrated to
+    // db.getItemsWithEquipViews()/item_equips before ever being wired up.
     async sendHangarItemInfo(client)
     {
         try {
@@ -1303,6 +1348,14 @@ class ZRoomDispatch
         }
     }
 
+    // E1 fix round (Sol batch4 (6)): no call sites anywhere in this codebase
+    // (confirmed by grep) -- bypasses E1 entirely (reads items.equipped/
+    // items.mech_type directly) and must be migrated to
+    // db.getItemsWithEquipViews()/item_equips before ever being wired up.
+    // Also has a pre-existing, unrelated bug: the bodyItems loop below
+    // references an undeclared `slot` variable (E1-IMPL journal entry,
+    // 2026-09-19-1639-e1-item-equips.md) -- still not fixed here, still
+    // out of scope, still dead code.
     async sendHangarAccountData(client)
     {
         try {

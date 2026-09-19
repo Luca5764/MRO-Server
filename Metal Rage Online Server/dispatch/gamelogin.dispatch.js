@@ -233,7 +233,7 @@ class ZGameLoginDispatch
 
 
                 // SN_ITEM_INFO — see dispatch/item-info.sender.js (chunked, ≤0x400 per frame).
-                require('./item-info.sender').sendItemInfo(client, items, account.id, 'gamelogin');
+                await require('./item-info.sender').sendItemInfo(client, items, account.id, 'gamelogin');
 
                 // SN_WEAR_INFO (0x210113) — DLL: WearInfo_SN
                 // Header: [u8 suc][u8 cnt][u32 pilotSerialIndex][u32 pilotItemIndex][u32 selectedMechType]
@@ -249,8 +249,13 @@ class ZGameLoginDispatch
                         mechSlots[m] = Array.from({length: 6}, () => ({uniqueKey: 0, itemIndex: 0}));
                     }
 
+                    // E1 (docs/design/e1-item-ownership.md): item_equips
+                    // per-mech view -- `items` unchanged when db.ITEM_EQUIPS_MODE
+                    // is 'disabled'.
+                    const wearItems = await db.getItemsWithEquipViews(account.id);
+
                     // All items: slot 0 = body/chassis, slots 1-5 = weapons/equipment
-                    for (const item of items) {
+                    for (const item of wearItems) {
                         if (item.equipped && item.mech_type >= 1 && item.mech_type <= MAX_MECH_COUNT) {
                             const slot = Number(item.part_slot);
                             if (slot >= 0 && slot < 6 && mechSlots[item.mech_type]) {

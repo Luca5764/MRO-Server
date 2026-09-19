@@ -23,8 +23,25 @@ const SN_ITEM_INFO = 0x00210111;
 const ITEM_RECORD_SIZE = 35;
 const HEADER_SIZE = 6;
 
-function sendItemInfo(client, items, accountId, tag)
+// E1 (docs/design/e1-item-ownership.md): with db.ITEM_EQUIPS_MODE
+// 'enabled', record+0x08 ("equipped" -> client IsActive bit, per
+// Item_Add's bit7 packing, IS2 correction in the design doc) becomes "does
+// this serial have any item_equips row on any mech", not the items.equipped
+// column -- a ShareType=1 serial equipped on a second mech would otherwise
+// still read equipped=0 here if items.equipped were only ever flipped for
+// the mech it was first equipped on. record+0x10 (mech_type) is left as
+// today's items.mech_type value; ⬜ what the client actually does with it
+// is still unconfirmed (design doc section 3), so this task does not touch
+// it -- reported alongside the rest of this change.
+async function sendItemInfo(client, items, accountId, tag)
 {
+    const db = require('../database/db');
+    let equippedSerialIds = null;
+    if (db.ITEM_EQUIPS_MODE === 'enabled') {
+        const equips = await db.getItemEquips(accountId);
+        equippedSerialIds = new Set(equips.map(equip => Number(equip.item_id)));
+    }
+
     const rows = ITEM_INFO_INCLUDE_BODY
         ? items
         : items.filter(item => Number(item.part_slot) !== 0);
@@ -38,13 +55,16 @@ function sendItemInfo(client, items, accountId, tag)
         body.writeUint32LE(accountId || 0, 2);      // AccountKey
         let offset = HEADER_SIZE;
         for (const item of chunk) {
+            const isEquipped = equippedSerialIds
+                ? equippedSerialIds.has(Number(item.id))
+                : !!item.equipped;
             body.writeUint32LE(item.id || 0, offset);
             body.writeUint32LE(item.item_id, offset + 0x04);
-            body.writeUint32LE(item.equipped ? 1 : 0, offset + 0x08);
+            body.writeUint32LE(isEquipped ? 1 : 0, offset + 0x08);
             body.writeUint32LE(0, offset + 0x0C);
             body.writeUint16LE(item.mech_type || 0, offset + 0x10);
             body.writeUint32LE(item.part_slot || 0, offset + 0x12);
-            body.writeUint8(item.equipped ? 2 : 0, offset + 0x16);   // use type: 2 = equipment
+            body.writeUint8(isEquipped ? 2 : 0, offset + 0x16);   // use type: 2 = equipment (same source as +0x08 above)
             body.writeUint32LE(item.quantity || 1, offset + 0x17);
             body.writeUint32LE(0xFFFFFFFF, offset + 0x1B);           // expiration = permanent
             body.writeUint32LE(0xFFFFFFFF, offset + 0x1F);           // expiration2 = permanent
