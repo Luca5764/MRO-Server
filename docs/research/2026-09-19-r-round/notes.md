@@ -30,3 +30,11 @@ body＝`01 00 01`（達標）或 `01 00 02`。**沒有回合數。** backlog 原
 ## 單變數實驗（PVE_ROUND_ADVANCE_MODE，預設關閉）
 
 伺服器記錄每一場的目前回合（初值 1）。收到 Campaign_CN body[2]==1 時回合 +1：還沒超過 MapInfo.Round → 回 EndRound_SN（先用最小長度，body 格式 🟡）；已經到了 → 維持回 EndGame_SN。body[2]==2 的失敗路徑不動。用初級（5 回合）實測，看第二個 `BeginRound_CN 0x00230151` 有沒有出現；如果客戶端卡住或沒反應，代表上面的缺口猜錯了。
+
+## 補查（2026-09-19，中階 explorer＋高階核對；🟡 未經跨公司審查）
+
+- ✅ [DLL]（高階核對）：`Game_End_Quater`（thunk `0x107079ff` → `0x1071b390`）在 `0x1071b3d1` 執行 `inc [ecx+0xff8]`，再呼叫 callback `[0x108e550c]+0x14c` 的 vtable `+0xb8`；`Game_End_Round`（`0x10703a12` → `0x1072e310`）**不會**遞增 +0xff8，呼叫的是 vtable `+0xb4`。
+- EndRound_SN（`0x107d7a50`）和 EndQuater_SN（`0x107d7c90`）除了最後一個 helper 以外完全相同：先檢查 `[this+4]`（dispatcher 是否 active）→ 用 frame+0x12.. 和 +0x20.. 兩組呼叫 `Game_Score_Set` → `Game_Score_Update` → `Game_End_Round`／`Game_End_Quater`（WinTeamIndex）。handler 不會 queue NetworkMessage；ZNetwork.dll 裡也沒有 `RoundEnd_BD` 等 event 名稱字串 → event 是透過 callback 介面觸發的（實作不在 ZNetwork.dll 裡，⬜）。
+- body（frame+0x10 起共 0x1e bytes）：+0x00 u16 WinTeamIndex；+0x02..+0x0F Team A 區塊（u16 TeamIndex、u16、u8、u8、u16、u16、u32）；+0x10..+0x1D Team B 區塊，結構相同。+0x08／+0x0A 兩個 u16 的參數順序 🟡。
+- [SRC]：PvE 只覆寫了 `EndRound_BD`（`ZModePve.uc:717` → `ModeReset_BD(true)`）；`EndQuater_BD` 只在 `DefaultGameInfo.uc:293` 寫 log。`ZPvePlayercontroller.uc:1137` 把 PlayerController 端的 `RoundEnd_BD` 覆寫成空的（所以真正生效的是 `Level.Game.EndRound_BD()`）。`GetPveCurrentRound_BD`（`ZModePve.uc:661`）讀的是腳本端的回合數，不是 native 的 +0xff8。
+- **結論：第一個候選維持 EndRound_SN**（它的 callback 對應 PvE 唯一覆寫的 EndRound_BD）；EndQuater_SN 當備案（它會多推 native 計數器，但 PvE 腳本不處理 EndQuater_BD）。
