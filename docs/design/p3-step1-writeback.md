@@ -286,3 +286,7 @@ CREATE TABLE IF NOT EXISTS `match_participants` (
    3. migration＋寫回（開關關著）；
    4. `Reward_Record_User_SN`。
    - 每一步都用 Pico 的 `U-pve-fullmatch` 驗證。第 3 步起動 DB 結構，要等 Sol 審過。
+
+## 操作者裁定（2026-09-20，經 PM 轉達）
+- **中斷的場（沒有 EndGame_SN 就結束：房主斷線、全員離開）不寫戰績**，只留一行 `MATCH-ABORTED` log。任務失敗（有 EndGame、result=2）照寫。對應 `p3-step12` 分支 `dispatch/room/match-stats.js` 的 `ABORTED_MATCHES_ARE_NOT_PERSISTED`，已拍板，不用再問。
+- P3 第 1、2 步由操作者在場時合併部署。
