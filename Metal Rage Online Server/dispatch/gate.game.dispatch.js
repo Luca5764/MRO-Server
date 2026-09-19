@@ -429,29 +429,66 @@ function sendGameUserSn(client, tag)
 // mech shows up on the host's screen and vice versa. Deliberately never
 // batches more than one record per packet (game-user-sn-multi.md: N>=3
 // records already exceeds the client's 0x400 frame cap).
-function sendGameUserSnRoomBroadcast(room, tag)
+//
+// SOL-REVIEW-2 point 2 (docs/research/2026-09-19-sol-review/batch2.md)
+// asked to also move this whole batch to *after* the target's own
+// Game_Info_SN (150ms) instead of staying in the existing 60ms-after-Wait
+// slot. Deliberately NOT done: the same review's point 1 confirms the
+// single-player path -- this exact 60ms slot, unchanged since before D1-6
+// -- already works byte-identically today, and moving it risks exactly the
+// "changed two variables at once" failure mode AGENTS.md warns against, for
+// a slot that is not what the review actually flagged as broken. What the
+// review's point 2 actually objected to (see below) is fixed without
+// touching timing: every packet in a target's N-packet sequence is now
+// awaited in strict order (no more fire-and-forget `Promise.resolve().catch()`
+// letting DB completions interleave arbitrarily), and room/target/source
+// membership is re-read from the live registry immediately before each
+// send, so a member who leaves mid-loop (their own multi-await DB lookup
+// included) cannot still receive a packet or be sent as a stale record.
+async function sendGameUserSnRoomBroadcast(room, tag)
 {
-    const members = Array.from(room.members.values());
-    for (const target of members) {
-        if (!target.client) continue;
-        for (const source of members) {
-            const sourceClient = source.client;
+    const targetAccountIds = Array.from(room.members.keys());
+    const sourceAccountIdsSnapshot = Array.from(room.members.keys());
+
+    for (const targetAccountId of targetAccountIds) {
+        for (const sourceAccountId of sourceAccountIdsSnapshot) {
+            // Re-read the room fresh before every single packet -- not just
+            // once per target -- because each await below is a point where
+            // a leave/disconnect can land.
+            const currentRoom = rooms.getRoom(room.id);
+            if (!currentRoom) {
+                console.log(`[ZGateGameDispatch] >> Game_User_SN room broadcast aborted: room #${room.id} no longer tracked [${tag}]`);
+                return;
+            }
+            const currentTarget = currentRoom.members.get(targetAccountId);
+            if (!currentTarget || !currentTarget.client) {
+                // Target is gone/disconnected -- nothing left to send it for
+                // any source, skip straight to the next target.
+                break;
+            }
+            const currentSource = currentRoom.members.get(sourceAccountId);
+            if (!currentSource) continue;
+
+            const sourceClient = currentSource.client;
             const ctx = {
-                accountIndex: Number(source.accountId),
-                nickname: source.nickname || 'Player',
+                accountIndex: Number(currentSource.accountId),
+                nickname: currentSource.nickname || 'Player',
                 teamIndex: 0,
                 userLevelText: '1',
                 selectedMech: Number(sourceClient && sourceClient.currentHangarSlot_) || 1,
                 pilotId: Number(sourceClient && sourceClient.pilot_) || 101,
             };
-            console.log(`[ZGateGameDispatch] >> Game_User_SN [room #${room.id} broadcast, target=${target.accountId}, source=${source.accountId}, ${tag}]`);
-            // `client` (1st arg) is unused beyond its accountId_ fallback,
-            // which opts.itemsAccountId below always overrides -- target.client
-            // (guaranteed non-null, checked above) is passed for clarity only.
-            Promise.resolve(sendGameUserBootstrap(target.client, ctx, getExactMessageBuffer, {
-                sendTo: target.client,
-                itemsAccountId: source.accountId,
-            })).catch(err => console.error(`[ZGateGameDispatch] >> Game_User_SN (room broadcast) failed: ${err.message}`));
+            console.log(`[ZGateGameDispatch] >> Game_User_SN [room #${currentRoom.id} broadcast, target=${currentTarget.accountId}, source=${currentSource.accountId}, ${tag}]`);
+            try {
+                // Awaited in order -- see the function comment above for why
+                // this replaced the old fire-and-forget send.
+                await sendGameUserBootstrap(currentTarget.client, ctx, getExactMessageBuffer, {
+                    sendTo: currentTarget.client,
+                    itemsAccountId: currentSource.accountId,
+                });
+            } catch (err) {
+                console.error(`[ZGateGameDispatch] >> Game_User_SN (room broadcast) failed: ${err.message}`);
+            }
         }
     }
 }
