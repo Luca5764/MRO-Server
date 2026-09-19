@@ -1,9 +1,11 @@
 'use strict';
 
 // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4, backlog D1-6):
-// unit test for BATTLE_END_BROADCAST_MODE (rooms.isBattleEndBroadcastEnabled()),
-// added to dispatch/lobby.dispatch.js's Campaign_CN 0x00230139 and Death_CN
-// 0x00230123 handlers. Same technique as test/room-battle-start-broadcast.js
+// unit test for the room-wide battle-end broadcast (rooms.js's
+// isRoomJoinEnabled() finding a tracked room), added to dispatch/
+// lobby.dispatch.js's Campaign_CN 0x00230139 and Death_CN 0x00230123
+// handlers. SWITCH-CONVERGE: the BATTLE_END_BROADCAST_MODE switch this used
+// to gate was removed once verified live. Same technique as test/room-battle-start-broadcast.js
 // and test/round-advance.js: calls the real ZLobbyDispatch.dispatch()
 // directly (no socket, no server.js) against two fake clients sharing
 // rooms.js's module-level registry, with a fake config/server.js (same
@@ -124,7 +126,6 @@ async function main()
 {
     rooms._resetForTests();
     rooms._setRoomJoinModeForTests('enabled');
-    rooms._setBattleEndBroadcastModeForTests('enabled');
     LobbyDispatch._setPveRoundAdvanceModeForTest('enabled');
     // This file doesn't cover HOST_ADDRESS_REQUIRE_MODE (that's
     // test/room-host-address-require.js's job) -- SWITCH-CONVERGE flipped
@@ -246,10 +247,8 @@ async function main()
         // --- Sol batch3 review (docs/research/2026-09-19-sol-review/
         // batch3.md, Part B "需修改 -- round/reset ownership"): a
         // BeginRound_CN rejected by the host/dedup check must NOT wipe
-        // room.battleStats. This needs ROOM_BATTLE_START_BROADCAST_MODE
-        // enabled too, since the reset now lives inside that acceptance
-        // branch (lobby.dispatch.js's case 0x00230151). ---
-        rooms._setRoomBattleStartBroadcastModeForTests('enabled');
+        // room.battleStats -- the reset lives inside that acceptance branch
+        // (lobby.dispatch.js's case 0x00230151). ---
         const statsBeforeBeginRound = room.battleStats.get(1).kills;
         assert.strictEqual(statsBeforeBeginRound, 2, 'sanity: room.battleStats still has 2 kills going into the BeginRound_CN case');
 

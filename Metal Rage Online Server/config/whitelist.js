@@ -152,8 +152,8 @@ function status()
 /**
  * D1-6-IMPL (docs/design/d1-step6-battle-broadcast.md §3.1, §5 step 5): the
  * configured hostAddress for an account, used by gate.game.dispatch.js's
- * HOST_ADDRESS_REQUIRE_MODE check and community.dispatch.js's
- * READY_HOST_SPLIT_MODE non-host Ready_Host_SN send.
+ * HOST_ADDRESS_REQUIRE_MODE check and community.dispatch.js's non-host
+ * Ready_Host_SN send.
  * @param {string} username
  * @returns {string|null} the configured hostAddress, or null if the
  *   whitelist is off, the username is not in it, or it has no hostAddress

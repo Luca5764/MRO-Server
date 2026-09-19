@@ -1,8 +1,10 @@
 'use strict';
 
 // D1-6-IMPL (docs/backlog.md, docs/design/d1-step6-battle-broadcast.md §5
-// step 4): unit test for rooms.isReadyHostSplitEnabled(), added to
-// dispatch/gate.game.dispatch.js and dispatch/community.dispatch.js.
+// step 4): unit test for the host-vs-non-host Ready_Host split, added to
+// dispatch/gate.game.dispatch.js and dispatch/community.dispatch.js
+// (SWITCH-CONVERGE: the readyHostSplitMode switch this used to gate was
+// removed once verified live -- see rooms.js history).
 //
 // Scenario: A (host) and B (non-host) are both members of a room. A presses
 // F5 -- only A's connection must receive Ready_Host_SQ 0x00420113, never B's.
@@ -115,7 +117,6 @@ function setUpRoom()
 
     rooms._resetForTests();
     rooms._setRoomJoinModeForTests('enabled');
-    rooms._setReadyHostSplitModeForTests('enabled');
 
     const gate = new GateGameDispatch();
     const community = new CommunityDispatch();

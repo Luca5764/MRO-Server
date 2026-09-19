@@ -166,6 +166,8 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - 規則：每個開關實測 ✅ 後 7 天內收斂，一個開關一個 commit，每個都要跑回歸測試；開關翻掉不會讓回歸測試變紅的，要先補樣本。
 - 同時列入收斂候選：`lobby.dispatch.js` 的 `0x00230131`「Lobby Room Create CQ (guessed)」路徑（[LOG] 86 份 log 都沒出現過，而且它不註冊 Room）；`room.dispatch.js` 的 `0x00240301` 開戰路徑（[LOG] PvE 開戰實際走的是 `0x00222103`，`0x00240301` 在 session-20260919-012749 裡從沒被觸發過）。
 
+**待審（中階，2026-09-20，worktree `~/mro-wt/conv-c` 分支 `conv-c`）：** `readyHostSplitMode`／`roomBattleStartBroadcastMode`／`battleEndBroadcastMode`／`roomReadyStateMode` 四個已收斂（各一個 commit，`node test/*.js` 與 `node test/replay-golden.js` 全綠）。`lobbyRoomListMode` 卡住：拔掉開關後 `test/replay-golden.js` 三個樣本在 send #15 出現 byte diff（多送一筆 `Room_List_SN 0x00220204`，來源是 `gamelogin.dispatch.js` 的 channel-enter 送出點）——原因是 golden 樣本用 `rooms._resetForTests()` 強制把這個開關重設回 `disabled`，跟「拿掉 default 值」不同，這次是拿掉開關本身，讓 golden 樣本永遠測不到 `disabled` 那條路。正式伺服器的預設值本來就已經是 `enabled`（更早一輪收斂已經翻過 default），所以懷疑是 golden 樣本沒跟著重錄，不代表拔掉開關會動到「已驗證的 enabled 路徑」。契約要求「golden 有 byte diff 就停下回報」，所以沒有重錄，留給主力判斷要不要重錄 golden 或改用別的收斂方式。`roomJoinMode` 完全還沒動——它是其餘所有開關共用的基礎判斷，call site 比 `lobbyRoomListMode` 更多，很可能踩到同一類問題（甚至更大），這次沒有嘗試。
+
 ## RANK：結算評等永遠是 F（不擋 M2）
 
 > **2026-09-19 分析完成**（`research/2026-09-19-rank/notes.md`）：評等由伺服器送的 `User_Score_SN 0x00222221` 的 WinTeamRank 決定（1＝F … 11＝SS），我們從沒送過 → F。下一步：操作者決定評等公式；實驗先送固定值（例如 11），body 尾端的逐人資料先送 count=0（⬜ 是否安全）。

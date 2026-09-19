@@ -78,14 +78,13 @@
  *   CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID is keyed on, needed for
  *   Room_Default_SN's mech-slot entry table (offset 0x20).
  * @property {Map<number, {kills: number, deaths: number}>} [battleStats] -
- *   D1-6-STEP3 (design doc §4, gated by isBattleEndBroadcastEnabled()):
- *   room-shared Death_SN kill/death totals, keyed by accountId. Absent
- *   until the first BeginRound_CN this switch handles resets it; only
- *   written/read by lobby.dispatch.js's case 0x00230151/0x00230123.
+ *   D1-6-STEP3 (design doc §4): room-shared Death_SN kill/death totals,
+ *   keyed by accountId. Absent until the first BeginRound_CN resets it;
+ *   only written/read by lobby.dispatch.js's case 0x00230151/0x00230123.
  * @property {number} [pveRoundsCleared_] - D1-6-STEP3: room-level twin of
  *   the old client.pveRoundsCleared_ (lobby.dispatch.js case 0x00230139),
- *   used only when isBattleEndBroadcastEnabled() finds a tracked room --
- *   otherwise round counting stays on the trigger client, unchanged.
+ *   used whenever isRoomJoinEnabled() finds a tracked room -- otherwise
+ *   round counting stays on the trigger client, unchanged.
  */
 
 /** @type {Map<number, Room>} */
@@ -115,26 +114,6 @@ function _setRoomJoinModeForTests(mode) {
     roomJoinMode = mode;
 }
 
-// READY-IMPL (docs/backlog.md, analysis docs/research/2026-09-19-ready/
-// notes.md, 🟡 未經跨公司審查): non-host "Ready" (F5) state, gated
-// separately from roomJoinMode for the same reason roomJoinMode/
-// lobbyRoomListMode are separate switches from each other -- turning ready
-// broadcasts on changes traffic (an extra User_State_SN 0x00220401 send) on
-// its own, independent of whether joining itself works, so it needs its own
-// regression coverage. Also requires roomJoinMode (there is no tracked
-// Member to mark ready, or Room to broadcast to, without it). SWITCH-
-// CONVERGE: verified live (docs/journal/2026-09-19-0330-d1-step4-room-join.md),
-// default flipped to 'enabled'. Same `let` + accessor + test-setter pattern.
-let roomReadyStateMode = 'enabled'; // 'disabled' | 'enabled'
-
-function isRoomReadyStateEnabled() {
-    return roomReadyStateMode === 'enabled';
-}
-
-function _setRoomReadyStateModeForTests(mode) {
-    roomReadyStateMode = mode;
-}
-
 // D1-4 PM contract (docs/backlog.md): Room_List_SN 0x00220204 needs its OWN
 // switch, separate from roomJoinMode above, because sending it changes
 // single-player-visible behaviour on its own (the lobby starts showing your
@@ -150,70 +129,6 @@ function isLobbyRoomListEnabled() {
 
 function _setLobbyRoomListModeForTests(mode) {
     lobbyRoomListMode = mode;
-}
-
-// D1-6-IMPL (docs/backlog.md, docs/design/d1-step6-battle-broadcast.md §5
-// step 4): whether Ready_Host_SQ 0x00420113/Ready_Host_SN 0x00420115/
-// Ready_Success_SN 0x00420116 get split by host-vs-non-host membership
-// instead of all going to whichever connection triggered 0x00222103. Lives
-// here (not gate.game.dispatch.js or community.dispatch.js alone) because
-// both files need to read it: gate.game.dispatch.js's case 0x00222103
-// targets Ready_Host_SQ at the room's host connection, and
-// community.dispatch.js's 0x00420114 (Ready_Host_CA) handler uses it to
-// decide whether to also message the room's non-host members. Same `let` +
-// accessor + test-only setter pattern as roomJoinMode above. SWITCH-
-// CONVERGE: verified live (docs/journal/2026-09-19-0330-d1-step4-room-join.md),
-// default flipped to 'enabled'.
-let readyHostSplitMode = 'enabled'; // 'disabled' | 'enabled'
-
-function isReadyHostSplitEnabled() {
-    return readyHostSplitMode === 'enabled';
-}
-
-function _setReadyHostSplitModeForTests(mode) {
-    readyHostSplitMode = mode;
-}
-
-// D1-6-IMPL (docs/design/d1-step6-battle-broadcast.md §5 step 2): whether
-// Game_Wait_SN 0x00420111, both Game_Info_SN 0x00222111 sends, Game_Ready_SN
-// 0x00222102, Game_Start_SN 0x00222104 (gate.game.dispatch.js's case
-// 0x00222103) and BeginRound_SN 0x00230152 (lobby.dispatch.js's case
-// 0x00230151, a *different* file -- the reason this lives here instead of a
-// local `let` in either) go to every room member instead of just whichever
-// connection triggered the opcode. SWITCH-CONVERGE: verified live
-// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
-// 'enabled'.
-let roomBattleStartBroadcastMode = 'enabled'; // 'disabled' | 'enabled'
-
-function isRoomBattleStartBroadcastEnabled() {
-    return roomBattleStartBroadcastMode === 'enabled';
-}
-
-function _setRoomBattleStartBroadcastModeForTests(mode) {
-    roomBattleStartBroadcastMode = mode;
-}
-
-// D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4, backlog D1-6):
-// whether EndRound_SN 0x00222211, User_Score_SN 0x00222221, EndGame_SN
-// 0x00222213 (lobby.dispatch.js's case 0x00230139, Campaign_CN) and
-// Death_SN 0x00230124 (case 0x00230123) go to every room member instead of
-// only the connection that sent the triggering CN, and whether the
-// per-player kill/death totals those packets carry live on the Room
-// (room.battleStats, a Map<accountId, {kills, deaths}>) instead of
-// client.battleStats_. Its own switch, separate from
-// roomBattleStartBroadcastMode above, for the same reason every other
-// D1-6-IMPL step has its own switch (design §5): each broadcast surface
-// needs independent regression coverage. SWITCH-CONVERGE: verified live
-// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
-// 'enabled'.
-let battleEndBroadcastMode = 'enabled'; // 'disabled' | 'enabled'
-
-function isBattleEndBroadcastEnabled() {
-    return battleEndBroadcastMode === 'enabled';
-}
-
-function _setBattleEndBroadcastModeForTests(mode) {
-    battleEndBroadcastMode = mode;
 }
 
 // ROOM-PLAYING-STATE (docs/backlog.md INTRUDE, docs/research/
@@ -529,10 +444,6 @@ function _resetForTests() {
     nextRoomId = 1;
     roomJoinMode = 'disabled';
     lobbyRoomListMode = 'disabled';
-    roomReadyStateMode = 'disabled';
-    readyHostSplitMode = 'disabled';
-    roomBattleStartBroadcastMode = 'disabled';
-    battleEndBroadcastMode = 'disabled';
     roomPlayingStateMode = 'disabled';
     roomOptionSourceMode = 'disabled';
     battleLeaveMode = 'disabled';
@@ -556,14 +467,6 @@ module.exports = {
     _setRoomJoinModeForTests,
     isLobbyRoomListEnabled,
     _setLobbyRoomListModeForTests,
-    isRoomReadyStateEnabled,
-    _setRoomReadyStateModeForTests,
-    isReadyHostSplitEnabled,
-    _setReadyHostSplitModeForTests,
-    isRoomBattleStartBroadcastEnabled,
-    _setRoomBattleStartBroadcastModeForTests,
-    isBattleEndBroadcastEnabled,
-    _setBattleEndBroadcastModeForTests,
     isRoomPlayingStateEnabled,
     _setRoomPlayingStateModeForTests,
     isRoomOptionSourceEnabled,

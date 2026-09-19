@@ -128,15 +128,14 @@ let ROOM_TEAM_CHAT_MODE = 'disabled'; // 'disabled' | 'enabled' ('let' only so t
 // READY-IMPL (docs/backlog.md, analysis docs/research/2026-09-19-ready/notes.md
 // READY-FMT/READY-FMT-2, 🟡 未經跨公司審查): a non-host room member pressing
 // 準備完畢(F5) sends Game_Ready_CN 0x00222101 [DLL 0x107ef8f0] -- the case
-// 0x00222101 handler below. rooms.isRoomReadyStateEnabled() ('disabled' by
-// default, see rooms.js) additionally has that handler mark the member ready
-// in rooms.js and broadcast User_State_SN 0x00220401 [DLL 0x107eaf30] raw
-// state 2 (normalized READY, ZPage_Room.uc:2450) to every room member
-// including the presser, so the READY label actually shows up on everyone's
-// screen. The switch lives in rooms.js, not here, because room-user.sender.js
-// (buildMemberUserCtx, used for the room-state-resend path below too) also
-// needs to read it, same reasoning as roomJoinMode/lobbyRoomListMode living
-// there instead of in a single dispatch file.
+// 0x00222101 handler below marks the member ready in rooms.js and broadcasts
+// User_State_SN 0x00220401 [DLL 0x107eaf30] raw state 2 (normalized READY,
+// ZPage_Room.uc:2450) to every room member including the presser, so the
+// READY label actually shows up on everyone's screen, whenever
+// rooms.isRoomJoinEnabled() finds a tracked room. SWITCH-CONVERGE: verified
+// live (docs/journal/2026-09-19-0330-d1-step4-room-join.md's READY-IMPL
+// section); the roomReadyStateMode switch this used to require in addition
+// was removed.
 // T1 [DLL] 0x107d4fa7 movzx ebp, word ptr [eax+0x23] (handler body 0x107d4f50):
 // Game_Info_SN body+0x13 is TimeLimit in minutes. 'room' makes it follow the
 // room's PlayTime (Map_Change_One_CQ 0x00220221 w2, client.mapChangeOneTime_,
@@ -200,30 +199,32 @@ let GAME_USER_SN_BROADCAST_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 // D1-6-IMPL (design doc §5 step 2): same F5 sequence's Game_Wait_SN
 // 0x00420111, both Game_Info_SN 0x00222111 sends (150ms initial + 600ms
-// resend), Game_Ready_SN 0x00222102 and Game_Start_SN 0x00222104 -- all four
-// currently reach only the triggering (host) connection. rooms.js's
-// isRoomBattleStartBroadcastEnabled() (additionally requires
-// rooms.isRoomJoinEnabled()) broadcasts all of them to every room member via
+// resend), Game_Ready_SN 0x00222102 and Game_Start_SN 0x00222104 broadcast to
+// every room member (rooms.isRoomJoinEnabled() found a tracked room) via
 // rooms.sendAll, with Game_Info_SN's body sourced from the Room object
 // (design §1 "狀態從 client 搬到 Room") instead of the triggering client --
-// see sendGameInfoSnRoomBroadcast() below. Lives on rooms.js, not a local
-// `let` here, because lobby.dispatch.js's BeginRound_SN 0x00230152 (case
-// 0x00230151, design §1 row 10) shares the same switch. A 1-person room's
-// rooms.sendAll iterates one member, byte-identical to the old single-send
-// path (same design doc §5 step 2 regression method). Default 'disabled'.
+// see sendGameInfoSnRoomBroadcast() below. lobby.dispatch.js's BeginRound_SN
+// 0x00230152 (case 0x00230151, design §1 row 10) follows the same
+// rooms.isRoomJoinEnabled() gate. A 1-person room's rooms.sendAll iterates
+// one member, byte-identical to the old single-send path used when no room
+// is tracked at all (same design doc §5 step 2 regression method).
+// SWITCH-CONVERGE: verified live (docs/journal/2026-09-19-0330-d1-step4-room-
+// join.md, docs/journal/2026-09-19-2120-m2-acceptance.md); the
+// ROOM_BATTLE_START_BROADCAST_MODE switch this used to require in addition
+// to rooms.isRoomJoinEnabled() was removed.
 
 // D1-6-IMPL (design doc §5 step 4, §1 rows 6-9): Ready_Host_SQ 0x00420113
-// only ever goes to whichever connection triggered 0x00222103 -- correct
-// today because that connection is always the room's only member, but not
-// necessarily the host once a 2+ member room exists. 'enabled' (additionally
-// requires rooms.isRoomJoinEnabled()) sends Ready_Host_SQ to the room's
-// tracked host connection specifically (room.hostAccountId), and has the
-// community.dispatch.js 0x00420114 (Ready_Host_CA) handler additionally send
-// Ready_Host_SN 0x00420115 + Ready_Success_SN 0x00420116 to every non-host
-// member once the host's CA reports its listen port -- see
-// sendReadyHostSnToRoomMember() below and community.dispatch.js. Read by
-// both this file and community.dispatch.js, so it lives on rooms.js (same
-// reasoning as roomReadyStateMode there). Default 'disabled'.
+// goes to the room's tracked host connection specifically
+// (room.hostAccountId), not whichever connection triggered 0x00222103 --
+// those are the same connection in a 1-person room, but not necessarily once
+// a 2+ member room exists. The community.dispatch.js 0x00420114
+// (Ready_Host_CA) handler additionally sends Ready_Host_SN 0x00420115 +
+// Ready_Success_SN 0x00420116 to every non-host member once the host's CA
+// reports its listen port -- see sendReadyHostSnToRoomMember() below and
+// community.dispatch.js. SWITCH-CONVERGE: verified live
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md, docs/journal/
+// 2026-09-19-2120-m2-acceptance.md); the readyHostSplitMode switch this used
+// to require was removed.
 
 // D1-6-IMPL (design doc §5 step 5, §3.2): the host's account needs a
 // configured hostAddress (config/allowed-users.json, config/whitelist.js
@@ -455,8 +456,8 @@ function sendReadyHostSn(client)
 
 // D1-6-IMPL (design doc §5 step 4, §1 row 8): community.dispatch.js's
 // 0x00420114 (Ready_Host_CA) handler calls this for each non-host room
-// member once READY_HOST_SPLIT_MODE is on -- `ip` is the host's configured
-// hostAddress (config/whitelist.js getHostAddress(), design §3.1), `port` is
+// member -- `ip` is the host's configured hostAddress
+// (config/whitelist.js getHostAddress(), design §3.1), `port` is
 // the u16 LE the host's own Ready_Host_CA body+0x06 reported (its real
 // listen port -- see battle-host.md's DLL note, not hardcoded 30907 the way
 // sendReadyHostSn() above still is for the single-connection path).
@@ -694,7 +695,7 @@ function sendGameInfoSn(client, tag)
     );
 }
 
-// D1-6-IMPL (design doc §5 step 2): ROOM_BATTLE_START_BROADCAST_MODE's
+// D1-6-IMPL (design doc §5 step 2): the room-broadcast path for
 // enabled path for Game_Wait_SN 0x00420111 -- a fresh 0-byte-body buffer per
 // call (rooms.sendAll's build() contract), sent to every room member.
 function sendRoomGameWaitSnBroadcast(room, tag)
@@ -706,7 +707,7 @@ function sendRoomGameWaitSnBroadcast(room, tag)
     console.log(`[ZGateGameDispatch] >> Broadcast Game_Wait_SN 0x00420111 to room #${room.id} (${room.members.size} member(s)) [${tag}]`);
 }
 
-// D1-6-IMPL (design doc §5 step 2): ROOM_BATTLE_START_BROADCAST_MODE's
+// D1-6-IMPL (design doc §5 step 2): the room-broadcast path for
 // enabled path for Game_Ready_SN 0x00222102 / Game_Start_SN 0x00222104 --
 // both consume the same trivial "status=0,result=0" ACK body as sendOkSa()
 // above; kept as a separate small builder (not a refactor of sendOkSa, which
@@ -723,7 +724,7 @@ function sendAckBroadcast(room, type, tag)
     console.log(`[ZGateGameDispatch] >> Broadcast 0x${type.toString(16).padStart(8, '0')} to room #${room.id} (${room.members.size} member(s), status=0, result=0) [${tag}]`);
 }
 
-// D1-6-IMPL (design doc §5 step 2, §1 row 4): ROOM_BATTLE_START_BROADCAST_MODE's
+// D1-6-IMPL (design doc §5 step 2, §1 row 4): the room-broadcast path for
 // enabled path for Game_Info_SN 0x00222111. Unlike Game_User_SN (per-member
 // data), Game_Info_SN's body carries no per-user field at all (see the field
 // table in sendGameInfoSn() above) -- it is room-level state (map/time
@@ -1481,7 +1482,7 @@ class ZGateGameDispatch
                 // buildMemberUserCtx, which carries the old constant (raw 1)
                 // since member.ready has not been updated yet at that point
                 // -- this broadcast corrects it right after instead of racing it.
-                if (rooms.isRoomReadyStateEnabled() && rooms.isRoomJoinEnabled()) {
+                if (rooms.isRoomJoinEnabled()) {
                     const accountIdForReady = Number(client.accountIndex_ || client.accountId_ || 1);
                     const roomForReady = rooms.getRoomByAccount(accountIdForReady);
                     if (roomForReady && accountIdForReady !== roomForReady.hostAccountId) {
@@ -1561,9 +1562,10 @@ class ZGateGameDispatch
                 // below (SERVER_DRIVEN_START_MODE or not) actually sends
                 // Game_Start_SN.
                 client.pveRoundsCleared_ = 0;
-                // D1-6-STEP3: with BATTLE_END_BROADCAST_MODE the round counter lives
-                // on the Room; reset it here too, or a rematch in the same room
-                // would start from the previous match's cleared count.
+                // D1-6-STEP3: the round counter also lives on the Room when
+                // one is tracked; reset it here too, or a rematch in the
+                // same room would start from the previous match's cleared
+                // count.
                 //
                 // Sol batch3 review (docs/research/2026-09-19-sol-review/
                 // batch3.md Part B "需修改 -- round/reset ownership"): this
@@ -1572,7 +1574,7 @@ class ZGateGameDispatch
                 // lobby.dispatch.js's Campaign_CN/Death_CN/BeginRound_CN
                 // handlers gate their own room-state writes, so a non-host
                 // client cannot clear the shared round counter.
-                if (rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled()) {
+                if (rooms.isRoomJoinEnabled()) {
                     const accountIdForRoundReset = Number(client.accountIndex_ || client.accountId_ || 1);
                     const roomForRoundReset = rooms.getRoomByAccount(accountIdForRoundReset);
                     if (roomForRoundReset && accountIdForRoundReset === roomForRoundReset.hostAccountId) {
@@ -1590,7 +1592,7 @@ class ZGateGameDispatch
                 // anything already-sent to a client; the next broadcast (a
                 // future non-host Ready press, or a state resend once one
                 // exists) is what would need to reflect this.
-                if (rooms.isRoomReadyStateEnabled() && rooms.isRoomJoinEnabled()) {
+                if (rooms.isRoomJoinEnabled()) {
                     const accountIdForStart = Number(client.accountIndex_ || client.accountId_ || 1);
                     const roomForStart = rooms.getRoomByAccount(accountIdForStart);
                     if (roomForStart) {
@@ -1689,7 +1691,7 @@ class ZGateGameDispatch
                     // ZDispatchGame handlers (Game_User_SN etc.) only run in
                     // scene 6 too, so a non-host that never receives this
                     // never leaves the room scene at all.
-                    const useRoomBattleBroadcast = rooms.isRoomBattleStartBroadcastEnabled() && !!roomForBattleBroadcast;
+                    const useRoomBattleBroadcast = !!roomForBattleBroadcast;
 
                     // SOL-REVIEW-2 must-fix list (docs/research/
                     // 2026-09-19-sol-review/batch2.md): this PvE-map default
@@ -1784,19 +1786,19 @@ class ZGateGameDispatch
                     // The Game_Wait state is likely waiting on that host-ready
                     // handshake. Send it; if the client answers 0x420114, the
                     // 0x420114 handler (below) carries it forward.
-                    // D1-6-IMPL (design doc §5 step 4, §1 row 6): with
-                    // rooms.isReadyHostSplitEnabled(), send Ready_Host_SQ to
-                    // the room's tracked host connection specifically
-                    // (room.hostAccountId), not whichever connection
-                    // triggered 0x00222103 -- today those are always the same
-                    // connection, but this stops being guaranteed once a
-                    // non-host member exists (HOST_ADDRESS_REQUIRE_MODE,
-                    // step 5, is what actually blocks a non-host from
-                    // reaching this far; this switch is independent of that
-                    // one per the task contract, so it defends on its own).
+                    // D1-6-IMPL (design doc §5 step 4, §1 row 6): send
+                    // Ready_Host_SQ to the room's tracked host connection
+                    // specifically (room.hostAccountId), not whichever
+                    // connection triggered 0x00222103 -- today those are
+                    // always the same connection, but this stops being
+                    // guaranteed once a non-host member exists
+                    // (HOST_ADDRESS_REQUIRE_MODE, step 5, is what actually
+                    // blocks a non-host from reaching this far; this check
+                    // is independent of that one per the task contract, so
+                    // it defends on its own).
                     setTimeout(() => {
                         if (!battleStartStillValid('ready-host-sq @450ms')) return;
-                        if (rooms.isReadyHostSplitEnabled() && roomForBattleBroadcast) {
+                        if (roomForBattleBroadcast) {
                             // battleStartStillValid() above already confirmed
                             // roomForBattleBroadcast.hostAccountId (read live,
                             // this line) still equals startedHostAccountId --
@@ -1807,7 +1809,7 @@ class ZGateGameDispatch
                             if (hostMember && hostMember.client) {
                                 sendReadyHostSq(hostMember.client);
                             } else {
-                                console.error(`[ZGateGameDispatch] !! READY_HOST_SPLIT_MODE: room #${roomForBattleBroadcast.id}'s host (account=${roomForBattleBroadcast.hostAccountId}) has no live connection -- not sending Ready_Host_SQ`);
+                                console.error(`[ZGateGameDispatch] !! room #${roomForBattleBroadcast.id}'s host (account=${roomForBattleBroadcast.hostAccountId}) has no live connection -- not sending Ready_Host_SQ`);
                             }
                         } else {
                             sendReadyHostSq(client);
@@ -2613,11 +2615,6 @@ module.exports._setGameUserSnBroadcastModeForTest = function setGameUserSnBroadc
 {
     GAME_USER_SN_BROADCAST_MODE = mode;
 };
-
-// ROOM_BATTLE_START_BROADCAST_MODE's own test-only setter lives on rooms.js
-// (rooms._setRoomBattleStartBroadcastModeForTests) -- the switch itself
-// lives there too (see rooms.js's isRoomBattleStartBroadcastEnabled()
-// comment for why: lobby.dispatch.js needs to read it too).
 
 module.exports._setHostAddressRequireModeForTest = function setHostAddressRequireModeForTest(mode)
 {

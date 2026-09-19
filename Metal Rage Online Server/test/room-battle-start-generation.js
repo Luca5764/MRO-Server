@@ -6,9 +6,9 @@
 // 0x00222103 -- battleStartGen/battleStartStillValid().
 //
 // Same setup technique as test/room-battle-start-broadcast.js (two fake
-// clients sharing a room, ROOM_BATTLE_START_BROADCAST_MODE +
-// GAME_USER_SN_BROADCAST_MODE on so all five setTimeout callbacks actually
-// take the room-broadcast branch this guard protects). Game_Wait_SN itself
+// clients sharing a room, GAME_USER_SN_BROADCAST_MODE on so all five
+// setTimeout callbacks actually take the room-broadcast branch this guard
+// protects). Game_Wait_SN itself
 // is sent synchronously before any timer is scheduled, so it is unaffected
 // by any of these scenarios -- the guard only covers the 60/150/300/450/
 // 600ms callbacks.
@@ -78,7 +78,6 @@ function setUpTwoMemberRoom()
 {
     rooms._resetForTests();
     rooms._setRoomJoinModeForTests('enabled');
-    rooms._setRoomBattleStartBroadcastModeForTests('enabled');
     GateGameDispatch._setGameUserSnBroadcastModeForTest('enabled');
     // This file doesn't cover HOST_ADDRESS_REQUIRE_MODE (that's
     // test/room-host-address-require.js's job) -- SWITCH-CONVERGE flipped
