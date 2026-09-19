@@ -1,0 +1,17 @@
+{
+  "id": "U-pve-fullmatch",
+  "purpose": "Unattended full PvE match, no model in the loop: lobby -> dismiss any AFK popup -> create a PvE room -> dismiss any host-transfer popup -> F5 start -> win every round with GameCampaign 1 (exec, host-only, see docs/journal/2026-09-19-2230-unattended-trial-01.md) -> wait for the result screen and the automatic return to the room -> dismiss any popup -> leave the room -> back in the lobby. Every step's pass/fail comes from screens.py region matches or session-log text markers (session-*.jsonl), never a model call.",
+  "preconditions": {"screen": "lobby"},
+  "steps": [
+    {"action": "dismiss_notice"},
+    {"action": "create_pve_room"},
+    {"action": "dismiss_notice"},
+    {"action": "start_battle"},
+    {"action": "campaign_win_all", "params": {"settle_s": 12, "max_rounds": 12}},
+    {"action": "wait_result_then_room"},
+    {"action": "dismiss_notice"},
+    {"action": "leave_room"}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_image_reviews": 0
+}
