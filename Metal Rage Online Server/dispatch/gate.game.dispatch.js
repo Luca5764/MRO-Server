@@ -8,7 +8,7 @@ const rooms = require('../rooms.js');
 // D1-4 (docs/backlog.md): joining an existing room reuses the same
 // room-state/room-user sender chain the room creator already gets below,
 // plus the lobby room list broadcast that makes a room visible to join.
-const { sendRoomStatePackets } = require('./room/room-state.sender');
+const { sendRoomStatePackets, sendRoomNameOnly } = require('./room/room-state.sender');
 // D1-4c: sendRoomMapPackets top-level import (unlike sendCampaignBootstrap
 // below, still lazily required at its one call site) -- room-map.sender.js
 // has no requires of its own, so no cycle risk, same as sendRoomStatePackets
@@ -16,6 +16,11 @@ const { sendRoomStatePackets } = require('./room/room-state.sender');
 const { sendRoomMapPackets } = require('./room/room-map.sender');
 const { sendRoomUserPackets, buildMemberUserCtx, scheduleSelfRecordResend } = require('./room/room-user.sender');
 const { broadcastRoomListChange } = require('./room/room-list.sender');
+// ROOMNAME-BIG5 (docs/journal/2026-09-19-*-room-name-big5.md, 🟡): shared
+// switch (default disabled) for round-tripping Create_CQ's ANSI room
+// name/password bytes exactly instead of mangling non-ASCII (e.g. Big5)
+// bytes to '?'. See dispatch/room/room-string.js header comment.
+const { decodeAnsiBytes, decodeBig5ForLog, isRoomNameRawBytesEnabled, writeAnsiStringField } = require('./room/room-string');
 // D1-4 correction (design §4 "斷線即離開"): Leave_CQ and server.js's socket
 // close hook now share the same remove-member/Leave_SN/host-reassign path.
 const { leaveRoomAndNotify } = require('./room/room-leave');
@@ -38,6 +43,20 @@ const whitelist = require('../config/whitelist.js');
 
 const CQ_CREATE = 0x00220201;
 const SA_LOBBY_CREATE = 0x00220202;
+// ROOMNAME-BIG5 scope addition [LOG] logs/session-20260919-*.jsonl ms
+// 2365887 conn6: host's 房間設定變更 dialog "OK" button sends this CQ with
+// a 25-byte ANSI name body, no other fields observed. Its SA is
+// 0x00220219, NOT CQ+1 -- breaks this file's usual odd-CQ/even-SA=CQ+1
+// pairing, which is why the generic fallback (default case below, keyed on
+// type%2) never answered it and the client hung on a loading screen.
+// [DLL] confirmed via tools/disasm.py: the client-side sender
+// (0x107ee99a-0x107ee9e9, reached through
+// execRoom_Name_Change@UZNetwork_DJ 0x1070960b) truncates the name to 0x19
+// (25) chars before `Send(buffer, 0x220219)` -- Send()'s 2nd arg is the
+// *expected reply opcode*, same convention already noted for Create_CQ's
+// Send(...,0x220202) in the CQ_CREATE handler below, not a size.
+const CQ_ROOM_NAME_CHANGE = 0x00220218;
+const SA_ROOM_NAME_CHANGE = 0x00220219;
 const MAP_CHANGE_ONE_RESEND_MODE = 'map_only'; // 'full_room' | 'map_only' | 'none'
 // ROOM-OPT-BC (docs/backlog.md): the above resend only ever reaches the
 // host's own connection (getExactMessageBuffer/client.send are unicast) --
@@ -1149,13 +1168,18 @@ class ZGateGameDispatch
                 const roomNumberFlag = body.length > 11 ? body[11] : 0;
                 const roomNumberValue = body.length >= 14 ? body.readUInt16LE(12) : 1;
                 const gameMode = createWord4 & 0xFF;
+                // ROOMNAME-BIG5: decodeAnsiBytes() is 'ascii' (unchanged)
+                // unless ROOM_NAME_RAW_BYTES_MODE is on, in which case it's
+                // 'latin1' so Big5 (or any other ANSI codepage) bytes the
+                // client packed here survive byte-for-byte instead of being
+                // masked to 7-bit ASCII.
                 const rawName = body.length > 14
-                    ? body.subarray(14, Math.min(body.length, 39)).toString('ascii').split('\0').shift()
+                    ? decodeAnsiBytes(body.subarray(14, Math.min(body.length, 39)))
                     : '';
                 const roomName = rawName || `${nickname}`;
                 const hasPassword = body.length > 39 ? body[39] : 0;
                 const roomPassword = hasPassword
-                    ? body.subarray(40, Math.min(body.length, 51)).toString('ascii').split('\0').shift()
+                    ? decodeAnsiBytes(body.subarray(40, Math.min(body.length, 51)))
                     : '';
                 // isCampaignLike: roomType 1(캠페인)과 2(PvP) 모두 최대 8명 슬롯 유지용 (keeps max 8-player slots for both roomType 1 (campaign) and 2 (PvP))
                 const isCampaignLike = (roomType === 1) || (roomType === 2) || (gameMode === 4 || gameMode === 5);
@@ -1166,7 +1190,10 @@ class ZGateGameDispatch
                 // isTrueCampaign: 실제 캠페인 방 여부 (PvP는 false) (whether it is an actual campaign room, PvP=false)
                 const isTrueCampaign = (roomType === 1) || (gameMode === 4 || gameMode === 5);
 
-                console.log(`[ZGateGameDispatch] >> Creating room #${roomIndex} (type=${roomType}->${effectiveRoomType}, map=${mapId}, opt1=0x${createWord1.toString(16)}, opt2=0x${createWord2.toString(16)}, max=${maxPlayers}, mode=${gameMode}, valueFlag=${roomNumberFlag}, value=${roomNumberValue}) for "${nickname}"`);
+                // ROOMNAME-BIG5: decodeBig5ForLog() is a no-op (returns
+                // null) unless ROOM_NAME_RAW_BYTES_MODE is on.
+                const roomNameBig5Readable = decodeBig5ForLog(roomName);
+                console.log(`[ZGateGameDispatch] >> Creating room #${roomIndex} (type=${roomType}->${effectiveRoomType}, map=${mapId}, opt1=0x${createWord1.toString(16)}, opt2=0x${createWord2.toString(16)}, max=${maxPlayers}, mode=${gameMode}, valueFlag=${roomNumberFlag}, value=${roomNumberValue}) for "${nickname}"${roomNameBig5Readable ? ` name_big5="${roomNameBig5Readable}"` : ''}`);
 
                 // Store room info on client for other dispatchers to reference
                 client.createdRoomIndex_ = roomIndex;
@@ -1316,7 +1343,17 @@ class ZGateGameDispatch
                     respBody.writeUint32LE(0, 0x02);
                     respBody.writeUint16LE(enterRoomIndex, 0x06);
                     respBody.writeUint8(0, 0x0B);
-                    respBody.write(roomName + '\0', 0x0E, Math.min(Buffer.byteLength(roomName) + 1, 0x19), 'ascii');
+                    // ROOMNAME-BIG5: Create_SA also echoes the room name
+                    // back to the creator; 'latin1' round-trips the exact
+                    // bytes decodeAnsiBytes() decoded above when the switch
+                    // is on. Disabled path unchanged ('ascii' + the pre-
+                    // existing utf8 Buffer.byteLength() call, kept as-is for
+                    // byte-identical default behaviour).
+                    const createSaNameEncoding = isRoomNameRawBytesEnabled() ? 'latin1' : 'ascii';
+                    const createSaNameLengthBasis = isRoomNameRawBytesEnabled()
+                        ? Buffer.byteLength(roomName, 'latin1')
+                        : Buffer.byteLength(roomName);
+                    respBody.write(roomName + '\0', 0x0E, Math.min(createSaNameLengthBasis + 1, 0x19), createSaNameEncoding);
                     respBody.writeUint8(roomPassword ? 1 : 0, 0x27);
                     client.send(msg);
                     console.log(`[ZGateGameDispatch] >> Sent Create_SA 0x220202 (Lobby_Room_Create trigger, roomIndex=${enterRoomIndex}, body=${bodySize}, directName=1)`);
@@ -2210,6 +2247,96 @@ class ZGateGameDispatch
                 // same remove-member/Leave_SN path Leave_CQ and disconnect
                 // already share (room-leave.js), per this task's contract.
                 leaveRoomAndNotify(targetAccountId, { kickout: true });
+
+                return true;
+            }
+
+            // ==========================================
+            // Room Name Change CQ. Client action: host opens the 房間設定
+            // 變更 (Room Settings) dialog, edits the room name field, and
+            // presses OK (see CQ_ROOM_NAME_CHANGE's constant comment above
+            // for the [LOG]/[DLL] evidence this case exists at all).
+            // ==========================================
+            case CQ_ROOM_NAME_CHANGE:
+            {
+                if (!rooms.isRoomJoinEnabled()) {
+                    // Unchanged from before this case existed: 0x00220218 is
+                    // even, so the generic fallback's "type%2===1" odd-opcode
+                    // auto-ACK never applied to it -- packetlog.fallback with
+                    // no reply, same as falling through to the switch's
+                    // default case (see that case's own comment). This is
+                    // the exact behaviour the coordinator's live test
+                    // observed as "client stuck on the loading screen".
+                    packetlog.fallback(client, 'ZGateGameDispatch', type, body, null);
+                    return true;
+                }
+
+                const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
+
+                // ROOMNAME-BIG5: decodeAnsiBytes() is 'ascii' (unchanged)
+                // unless ROOM_NAME_RAW_BYTES_MODE is on, in which case it's
+                // 'latin1' -- same switch/reasoning as CQ_CREATE's name
+                // field above.
+                const requestedName = decodeAnsiBytes(body.subarray(0, Math.min(body.length, 25)));
+
+                // ROOMNAME-BIG5 SA body [DLL 0x107eb160 -> real body
+                // 0x107eb1cb]: client-side Name_Change_SA reads a standard
+                // u16 Result/u32 ErrorCode header (0/0 = success, matching
+                // this file's other _SA acks), and on success ALSO reads an
+                // ANSI name starting at body+0x10, up to 0x19 (25) bytes
+                // (0x107eb2a8 `lea edi,[ebx+0x10]` / `mov eax,0x19`, the
+                // same 25-byte max as the CQ sender's own truncation) into
+                // its own room-name field. 🟡 not independently confirmed
+                // live -- the 10 bytes between the header and body+0x10
+                // were not identified from static disassembly alone; see
+                // docs/journal/2026-09-19-*-room-name-big5.md. Total body
+                // size is therefore 0x10 + 0x19 = 0x29.
+                const sendNameChangeSa = (ok, name) => {
+                    const bodySize = 0x29;
+                    const [msg, respBody] = getExactMessageBuffer(SA_ROOM_NAME_CHANGE, bodySize);
+                    respBody.writeUInt16LE(ok ? 0 : 1, 0x00);
+                    respBody.writeUInt32LE(ok ? 0 : 1, 0x02);
+                    if (ok) {
+                        writeAnsiStringField(respBody, name, 0x10, 0x19);
+                    }
+                    client.send(msg);
+                    console.log(`[ZGateGameDispatch] >> Sent Name_Change_SA 0x220219 (${ok ? 'success' : 'failure'}, account=${accountId}${ok ? `, name="${name}"` : ''})`);
+                };
+
+                const room = rooms.getRoomByAccount(accountId);
+                if (!room || room.hostAccountId !== accountId) {
+                    console.log(`[ZGateGameDispatch] >> Name_Change_CQ: account ${accountId} is not the host of any room, refusing`);
+                    sendNameChangeSa(false);
+                    return true;
+                }
+                if (!requestedName) {
+                    console.log(`[ZGateGameDispatch] >> Name_Change_CQ: empty name from account ${accountId}, refusing`);
+                    sendNameChangeSa(false);
+                    return true;
+                }
+
+                room.name = requestedName;
+                client.roomName_ = requestedName;
+                sendNameChangeSa(true, requestedName);
+
+                // Broadcast the new name to every room member (host
+                // included -- rooms.sendAll iterates the whole membership).
+                // sendRoomNameOnly() already does its own client.send();
+                // rooms.sendAll's build() contract wants a msg it sends
+                // itself, so this dips into member.client directly instead
+                // of using sendAll -- same reasoning sendRoomNameOnly's own
+                // header comment gives for factoring it out of
+                // sendRoomStatePackets in the first place.
+                for (const member of room.members.values()) {
+                    if (!member.client) continue;
+                    sendRoomNameOnly(member.client, requestedName, getExactMessageBuffer);
+                }
+                console.log(`[ZGateGameDispatch] >> Broadcast Room_Name_SN 0x22021A to room #${room.id} (${room.members.size} member(s)) [rename]`);
+
+                if (rooms.isLobbyRoomListEnabled()) {
+                    broadcastRoomListChange(rooms.getLobbyClients(), room, 2, getExactMessageBuffer);
+                    console.log(`[ZGateGameDispatch] >> Broadcast room #${room.id} name change to the lobby`);
+                }
 
                 return true;
             }
