@@ -45,3 +45,13 @@
 - 沒有找到任何「不開 console 也能觸發這些 exec」的路徑；User.ini 綁定失敗是既有測試結果，但**這次沒有重新驗證**，只是引用。如果之後想走這條，`setinput_BD` 呼叫鏈（`Engine/OptionAll.uc`）本身理論上是可以被伺服器送的某個封包觸發的 script 函式呼叫，但沒有查過是否有伺服器可控的鍵位設定管道——純粹讀碼沒有進一步證據。
 - `Game_Host_Check()`／`Game_Play_Check()` 的細節（是不是只看本地旗標、有沒有可能繞過「回合進行中」限制讓 `GameCampaign` 在還沒開始或已結束時也能送出）沒有重新反組譯，直接引用既有 decompile 檔案的結論。
 - 完全沒有碰、沒有測試任何實際指令；這份筆記全部基於靜態程式碼與既有 [DLL]/[LOG] 記錄的交叉比對，沒有新的 [TEST]/[OBS]。
+
+## 補充盤點（高階，2026-09-19，只讀原始碼，全部未實測 🟡）
+- 解密的 `.uc` 裡共有 444 個 `exec function`。
+- 可能能用（PlayerController／武器端，不在 CheatManager 裡）：
+  - `GiveMeAmmo`（`ZBase/W_DPCForWeapon.uc:916`，韓文註解：子彈補滿，只有 host 能用）；
+  - `Cash_UJ`（`:934`，呼叫 `ServerSetAmmoByCash_UJ`，意思不明）。
+- 在 `DefaultCheet`／CheatManager 裡，listen server 下不會被建立，所以用不了：`FlyNWalkMode`、`FreeCameraMode`（`ZBase/DefaultCheet.uc:70,81`）、`CreateDoll`（`:119`）、`AllAmmo`（`:14`，只回報 cheat）。
+- `OnGod`（`ZBase/DefaultMech.uc:4552`）函式本體被註解掉，沒有作用。
+- Engine 的標準 Admin 指令（`Admin`、`AdminLogin`、`Kick`、`KillAll`…）要先登入管理員，沒查。
+- 遊戲模式目錄（原始碼裡有，是否上線過另查 `research/2026-09-19-original-features/pvp-modes.md`）：ZModeBlow、ZModeCapture、ZModeEscortPve、ZModeOccupation、ZModeRage、ZModeSuddenDeath、ZModeTutorial、ZModeBot、ZModeHangar。
