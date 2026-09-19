@@ -57,6 +57,7 @@ const GateGameDispatch = require('../dispatch/gate.game.dispatch.js');
 const LobbyDispatch = require('../dispatch/lobby.dispatch.js');
 
 const CQ_CREATE = 0x00220201;
+const GAME_START_CN = 0x00222103;
 const CAMPAIGN_CN = 0x00230139;
 const DEATH_CN = 0x00230123;
 const BEGIN_ROUND_CN = 0x00230151;
@@ -267,6 +268,25 @@ async function main()
         assert.strictEqual(nonHostBeginHandled, true, 'non-host BeginRound_CN is still claimed (handled=true)');
         assert.strictEqual(room.battleStats.get(1).kills, 1, 'a non-host BeginRound_CN must NOT reset room.battleStats either');
         console.log('[battle-end-broadcast test] PASS: BeginRound_CN only resets room.battleStats when actually accepted (host, past the dedup window)');
+
+        // --- Sol batch3 review (docs/research/2026-09-19-sol-review/
+        // batch3.md Part B "需修改 -- round/reset ownership"): the
+        // room.pveRoundsCleared_ reset on Game_Start_CN 0x00222103
+        // (gate.game.dispatch.js, commit dba178e) must only fire for the
+        // room's current host, not any tracked member. ---
+        room.pveRoundsCleared_ = 3; // simulate mid-match state from a previous battle
+        const nonHostStartHandled = gate.dispatch(clientB, GAME_START_CN, Buffer.alloc(0));
+        assert.strictEqual(nonHostStartHandled, true, 'non-host Game_Start_CN 0x00222103 is still claimed (handled=true)');
+        assert.strictEqual(room.pveRoundsCleared_, 3, 'a non-host Game_Start_CN must NOT reset room.pveRoundsCleared_');
+        while (fakeTimers.fireNext()) { /* drain whatever this (unintended, non-host) F5 press queued */ }
+        await flushMicrotasks();
+
+        const hostStartHandled = gate.dispatch(clientA, GAME_START_CN, Buffer.alloc(0));
+        assert.strictEqual(hostStartHandled, true, 'host Game_Start_CN 0x00222103 must be handled');
+        assert.strictEqual(room.pveRoundsCleared_, 0, 'the host Game_Start_CN must reset room.pveRoundsCleared_ to 0');
+        while (fakeTimers.fireNext()) { /* drain the host's own F5 press */ }
+        await flushMicrotasks();
+        console.log('[battle-end-broadcast test] PASS: Game_Start_CN 0x00222103 only resets room.pveRoundsCleared_ for the room host');
     } finally {
         fakeTimers.restore();
         rooms._resetForTests();
