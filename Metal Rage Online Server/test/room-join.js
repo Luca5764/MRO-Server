@@ -700,12 +700,11 @@ function main()
     // gate.game.dispatch.js) must broadcast User_State_SN 0x00220401 raw
     // state 2 (READY once client-normalized) to every room member,
     // including herself, and a member joining afterward must see that same
-    // ready state in her own room-state burst. Switch left 'disabled' (via
-    // rooms._resetForTests() below -- no longer the production default
-    // after SWITCH-CONVERGE): no such broadcast at all.
-    // rooms.isRoomReadyStateEnabled() lives in
-    // rooms.js (not a gate.game.dispatch.js-local switch), same pattern as
-    // roomJoinMode/lobbyRoomListMode -- see the READY-IMPL comment there.
+    // ready state in her own room-state burst. SWITCH-CONVERGE: this used to
+    // be gated by rooms.isRoomReadyStateEnabled(), now removed (verified
+    // live, see the READY-IMPL comment in gate.game.dispatch.js) -- the
+    // broadcast is unconditional whenever rooms.isRoomJoinEnabled() finds a
+    // tracked room.
     const USER_STATE_SN = '0x00220401';
     function decodeUserState(hex) {
         const buf = Buffer.from(hex, 'hex');
@@ -733,20 +732,18 @@ function main()
         assert.strictEqual(enterHandled7, true, 'Enter_CQ must be handled');
         while (fakeTimers6.fireNext()) { /* drain the 350ms joiner room-state send */ }
 
-        // --- 11a: switch left 'disabled' -- pressing Ready must not
-        // broadcast anything to the host (resendRoomState only ever
-        // unicasts to the presser herself, see scenario 8 above).
+        // --- 11a: prime roomEnterAcked_ with a throwaway first 0x00222101
+        // (its own first occurrence also fires a full resendRoomState()
+        // burst -- see the case handler -- which is not what 11b below wants
+        // to assert on), so 11b only exercises the ACK + Ready broadcast.
         hostK._sent.length = 0;
         joinerL._sent.length = 0;
-        const readyBodyOff = Buffer.from('270a000001', 'hex'); // observed CQ body: +0x00 u32 unknown, +0x04 u8 ready=1
-        const readyHandledOff = gate.dispatch(joinerL, 0x00222101, readyBodyOff);
-        assert.strictEqual(readyHandledOff, true, 'Ready 0x00222101 must be handled with the switch off');
-        assert.strictEqual(hostK._sent.length, 0, 'ROOM_READY_STATE disabled: the host must receive nothing at all from a joiner pressing Ready');
-        console.log('[room-join test] PASS: rooms.isRoomReadyStateEnabled() disabled -- pressing Ready broadcasts no User_State_SN');
+        const readyBody = Buffer.from('270a000001', 'hex'); // observed CQ body: +0x00 u32 unknown, +0x04 u8 ready=1
+        const readyHandledFirst = gate.dispatch(joinerL, 0x00222101, readyBody);
+        assert.strictEqual(readyHandledFirst, true, 'Ready 0x00222101 must be handled');
 
-        // --- 11b: switch on -- both host and joiner must see raw state 2
-        // for the joiner's own UserIndex (72).
-        rooms._setRoomReadyStateModeForTests('enabled');
+        // --- 11b: both host and joiner must see raw state 2 for the
+        // joiner's own UserIndex (72).
         hostK._sent.length = 0;
         joinerL._sent.length = 0;
         // A second "first occurrence" resend isn't needed here -- the ready
@@ -756,7 +753,7 @@ function main()
         // so roomEnterAcked_ is already true here and this call only
         // exercises the ACK + broadcast.
         const readyHandledOn = gate.dispatch(joinerL, 0x00222101, Buffer.from('270a000001', 'hex'));
-        assert.strictEqual(readyHandledOn, true, 'Ready 0x00222101 must be handled with the switch on');
+        assert.strictEqual(readyHandledOn, true, 'Ready 0x00222101 must be handled');
 
         const hostReadyHits = hostK._sent.filter((s) => s.op === USER_STATE_SN).map((s) => decodeUserState(s.hex));
         assert.strictEqual(hostReadyHits.length, 1, 'the host must receive exactly one User_State_SN broadcast');
@@ -765,7 +762,7 @@ function main()
         const joinerReadyHits = joinerL._sent.filter((s) => s.op === USER_STATE_SN).map((s) => decodeUserState(s.hex));
         const joinerOwnReadyBroadcast = joinerReadyHits.filter((h) => h.userIndex === 72 && h.raw === 2);
         assert.strictEqual(joinerOwnReadyBroadcast.length, 1, 'the joiner must also receive her own User_State_SN broadcast (raw 2), sendAll includes the sender');
-        console.log('[room-join test] PASS: rooms.isRoomReadyStateEnabled() on -- pressing Ready broadcasts User_State_SN raw=2 to every room member including the presser');
+        console.log('[room-join test] PASS: pressing Ready broadcasts User_State_SN raw=2 to every room member including the presser');
 
         // --- 11c: a member joining afterward must see the joiner's ready
         // state (raw 2) in her own room-state burst (buildMemberUserCtx

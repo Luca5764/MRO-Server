@@ -114,26 +114,6 @@ function _setRoomJoinModeForTests(mode) {
     roomJoinMode = mode;
 }
 
-// READY-IMPL (docs/backlog.md, analysis docs/research/2026-09-19-ready/
-// notes.md, 🟡 未經跨公司審查): non-host "Ready" (F5) state, gated
-// separately from roomJoinMode for the same reason roomJoinMode/
-// lobbyRoomListMode are separate switches from each other -- turning ready
-// broadcasts on changes traffic (an extra User_State_SN 0x00220401 send) on
-// its own, independent of whether joining itself works, so it needs its own
-// regression coverage. Also requires roomJoinMode (there is no tracked
-// Member to mark ready, or Room to broadcast to, without it). SWITCH-
-// CONVERGE: verified live (docs/journal/2026-09-19-0330-d1-step4-room-join.md),
-// default flipped to 'enabled'. Same `let` + accessor + test-setter pattern.
-let roomReadyStateMode = 'enabled'; // 'disabled' | 'enabled'
-
-function isRoomReadyStateEnabled() {
-    return roomReadyStateMode === 'enabled';
-}
-
-function _setRoomReadyStateModeForTests(mode) {
-    roomReadyStateMode = mode;
-}
-
 // D1-4 PM contract (docs/backlog.md): Room_List_SN 0x00220204 needs its OWN
 // switch, separate from roomJoinMode above, because sending it changes
 // single-player-visible behaviour on its own (the lobby starts showing your
@@ -464,7 +444,6 @@ function _resetForTests() {
     nextRoomId = 1;
     roomJoinMode = 'disabled';
     lobbyRoomListMode = 'disabled';
-    roomReadyStateMode = 'disabled';
     roomPlayingStateMode = 'disabled';
     roomOptionSourceMode = 'disabled';
     battleLeaveMode = 'disabled';
@@ -488,8 +467,6 @@ module.exports = {
     _setRoomJoinModeForTests,
     isLobbyRoomListEnabled,
     _setLobbyRoomListModeForTests,
-    isRoomReadyStateEnabled,
-    _setRoomReadyStateModeForTests,
     isRoomPlayingStateEnabled,
     _setRoomPlayingStateModeForTests,
     isRoomOptionSourceEnabled,

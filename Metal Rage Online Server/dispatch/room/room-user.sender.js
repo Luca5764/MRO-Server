@@ -65,9 +65,7 @@ function scheduleSelfRecordResend(client, ctx, getExactMessageBuffer, includeMas
         // ready press in between (which itself triggers a room-state resend
         // and so re-arms this timer) would otherwise be overwritten by a
         // stale raw 1 in User_State_SN 0x00220401. Read the current flag.
-        const resendCtx = rooms.isRoomReadyStateEnabled()
-            ? { ...ctx, readyStateRaw: member.ready ? 2 : 1 }
-            : ctx;
+        const resendCtx = { ...ctx, readyStateRaw: member.ready ? 2 : 1 };
         sendRoomUserPackets(client, resendCtx, getExactMessageBuffer, { includeMaster });
         console.log(`[ZRoomDispatch] >> SELF-AVATAR-EXP: resent own record set to account ${accountIndex} [${tag}]`);
     }, ROOM_SELF_RECORD_RESEND_DELAY_MS);
@@ -203,11 +201,10 @@ function buildMemberUserCtx(member) {
         userHiddenRaw: 0,
         userStateRaw: 1,
         // READY-IMPL (docs/backlog.md): raw 2 = READY once client-normalized
-        // (ZPage_Room.uc:2450, see the ROOM_READY_STATE_MODE comment in
-        // gate.game.dispatch.js) if this member has pressed Ready and the
-        // switch is on; otherwise the same constant 1 as userStateRaw above
-        // (switch off -> byte-identical to before this changed).
-        readyStateRaw: rooms.isRoomReadyStateEnabled() && member.ready ? 2 : 1,
+        // (ZPage_Room.uc:2450, see the READY-IMPL comment in
+        // gate.game.dispatch.js) if this member has pressed Ready; otherwise
+        // the same constant 1 as userStateRaw above.
+        readyStateRaw: member.ready ? 2 : 1,
         packedIp: 0x0100007F,
         nickname: member.nickname || 'Player',
     };

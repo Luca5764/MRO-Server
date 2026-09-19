@@ -128,15 +128,14 @@ let ROOM_TEAM_CHAT_MODE = 'disabled'; // 'disabled' | 'enabled' ('let' only so t
 // READY-IMPL (docs/backlog.md, analysis docs/research/2026-09-19-ready/notes.md
 // READY-FMT/READY-FMT-2, 🟡 未經跨公司審查): a non-host room member pressing
 // 準備完畢(F5) sends Game_Ready_CN 0x00222101 [DLL 0x107ef8f0] -- the case
-// 0x00222101 handler below. rooms.isRoomReadyStateEnabled() ('disabled' by
-// default, see rooms.js) additionally has that handler mark the member ready
-// in rooms.js and broadcast User_State_SN 0x00220401 [DLL 0x107eaf30] raw
-// state 2 (normalized READY, ZPage_Room.uc:2450) to every room member
-// including the presser, so the READY label actually shows up on everyone's
-// screen. The switch lives in rooms.js, not here, because room-user.sender.js
-// (buildMemberUserCtx, used for the room-state-resend path below too) also
-// needs to read it, same reasoning as roomJoinMode/lobbyRoomListMode living
-// there instead of in a single dispatch file.
+// 0x00222101 handler below marks the member ready in rooms.js and broadcasts
+// User_State_SN 0x00220401 [DLL 0x107eaf30] raw state 2 (normalized READY,
+// ZPage_Room.uc:2450) to every room member including the presser, so the
+// READY label actually shows up on everyone's screen, whenever
+// rooms.isRoomJoinEnabled() finds a tracked room. SWITCH-CONVERGE: verified
+// live (docs/journal/2026-09-19-0330-d1-step4-room-join.md's READY-IMPL
+// section); the roomReadyStateMode switch this used to require in addition
+// was removed.
 // T1 [DLL] 0x107d4fa7 movzx ebp, word ptr [eax+0x23] (handler body 0x107d4f50):
 // Game_Info_SN body+0x13 is TimeLimit in minutes. 'room' makes it follow the
 // room's PlayTime (Map_Change_One_CQ 0x00220221 w2, client.mapChangeOneTime_,
@@ -1483,7 +1482,7 @@ class ZGateGameDispatch
                 // buildMemberUserCtx, which carries the old constant (raw 1)
                 // since member.ready has not been updated yet at that point
                 // -- this broadcast corrects it right after instead of racing it.
-                if (rooms.isRoomReadyStateEnabled() && rooms.isRoomJoinEnabled()) {
+                if (rooms.isRoomJoinEnabled()) {
                     const accountIdForReady = Number(client.accountIndex_ || client.accountId_ || 1);
                     const roomForReady = rooms.getRoomByAccount(accountIdForReady);
                     if (roomForReady && accountIdForReady !== roomForReady.hostAccountId) {
@@ -1593,7 +1592,7 @@ class ZGateGameDispatch
                 // anything already-sent to a client; the next broadcast (a
                 // future non-host Ready press, or a state resend once one
                 // exists) is what would need to reflect this.
-                if (rooms.isRoomReadyStateEnabled() && rooms.isRoomJoinEnabled()) {
+                if (rooms.isRoomJoinEnabled()) {
                     const accountIdForStart = Number(client.accountIndex_ || client.accountId_ || 1);
                     const roomForStart = rooms.getRoomByAccount(accountIdForStart);
                     if (roomForStart) {
