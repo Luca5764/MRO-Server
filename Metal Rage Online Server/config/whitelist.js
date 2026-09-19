@@ -10,11 +10,29 @@ const path = require('path');
 // config/allowed-users.json is gitignored (per-operator, like
 // database/config.json); config/allowed-users.example.json is the committed
 // template.
+//
+// D1-6-IMPL (docs/backlog.md, docs/design/d1-step6-battle-broadcast.md §3.1,
+// §5 step 5): `users` entries may now be a plain string (old format,
+// unchanged behaviour, no hostAddress) or an object `{ name, hostAddress }`
+// -- the account that battle-starts a 2+ member PvE room as host needs a
+// configured LAN/VPN address to hand to the room's other members
+// (Ready_Host_SN 0x00420115, community.dispatch.js's 0x00420114 handler).
+// `cached` is now a Map<lowercaseName, { hostAddress: string|null }> instead
+// of a Set, so isAllowed()'s `.has()` behaviour is unchanged either way; the
+// new getHostAddress() reads the same entry.
 
 const CONFIG_PATH = path.join(__dirname, 'allowed-users.json');
+// Ready_Host_SN's ip field is "hostAddress/MapName" -- see
+// dispatch/gate.game.dispatch.js's READY_HOST_SN_URL_MODE='fixed_0x13'
+// comment (16 bytes total for that combined field in the old fixed-size
+// mode) and config/server.js's own publicHost precedent (same 15-char limit,
+// same SN_SERVER_ADD-sized reasoning) -- reused here per the design doc's
+// "apply the same length check/warning style as config/server.js" note, not
+// a re-derivation of a new number.
+const HOST_ADDRESS_MAX_CHARS = 15;
 
 // undefined = not loaded yet; null = load failed/missing (whitelist off,
-// matches pre-W1 behaviour); Set = loaded and on.
+// matches pre-W1 behaviour); Map = loaded and on.
 let cached = undefined;
 
 function load()
@@ -40,7 +58,34 @@ function load()
         // was not queried directly (no local MySQL socket in this worktree);
         // this is read from the schema + documented MySQL 8.0 default, not
         // a live SHOW TABLE STATUS.
-        cached = new Set(users.map((u) => String(u).toLowerCase()));
+        const map = new Map();
+        for (const entry of users) {
+            let name;
+            let hostAddress = null;
+            if (entry && typeof entry === 'object') {
+                name = String(entry.name || '').toLowerCase();
+                if (!name) {
+                    console.warn(`[whitelist] skipping a config/allowed-users.json entry with no "name": ${JSON.stringify(entry)}`);
+                    continue;
+                }
+                if (typeof entry.hostAddress === 'string' && entry.hostAddress.trim().length > 0) {
+                    const trimmed = entry.hostAddress.trim();
+                    if (trimmed.length > HOST_ADDRESS_MAX_CHARS) {
+                        console.warn(
+                            `[whitelist] hostAddress "${trimmed}" for user "${entry.name}" is longer than `
+                            + `${HOST_ADDRESS_MAX_CHARS} chars -- ignoring (battle start as host in a room `
+                            + `with other members will be refused for this account until it is shortened)`
+                        );
+                    } else {
+                        hostAddress = trimmed;
+                    }
+                }
+            } else {
+                name = String(entry).toLowerCase();
+            }
+            map.set(name, { hostAddress });
+        }
+        cached = map;
         console.log(`[whitelist] Loaded ${cached.size} allowed user(s) from config/allowed-users.json`);
     } catch (err) {
         if (err.code === 'ENOENT') {
@@ -66,10 +111,10 @@ function load()
  */
 function isAllowed(username)
 {
-    const set = load();
-    if (set === null)
+    const map = load();
+    if (map === null)
         return true;
-    return set.has(String(username).toLowerCase());
+    return map.has(String(username).toLowerCase());
 }
 
 /**
@@ -77,8 +122,27 @@ function isAllowed(username)
  */
 function status()
 {
-    const set = load();
-    return set === null ? 'off' : `on(${set.size} users)`;
+    const map = load();
+    return map === null ? 'off' : `on(${map.size} users)`;
 }
 
-module.exports = { isAllowed, status };
+/**
+ * D1-6-IMPL (docs/design/d1-step6-battle-broadcast.md §3.1, §5 step 5): the
+ * configured hostAddress for an account, used by gate.game.dispatch.js's
+ * HOST_ADDRESS_REQUIRE_MODE check and community.dispatch.js's
+ * READY_HOST_SPLIT_MODE non-host Ready_Host_SN send.
+ * @param {string} username
+ * @returns {string|null} the configured hostAddress, or null if the
+ *   whitelist is off, the username is not in it, or it has no hostAddress
+ *   set (old string-format entries always fall in this last case).
+ */
+function getHostAddress(username)
+{
+    const map = load();
+    if (map === null)
+        return null;
+    const entry = map.get(String(username).toLowerCase());
+    return entry ? entry.hostAddress : null;
+}
+
+module.exports = { isAllowed, status, getHostAddress };

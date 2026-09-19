@@ -19,6 +19,11 @@ const { broadcastRoomListChange } = require('./room/room-list.sender');
 // D1-4 correction (design §4 "斷線即離開"): Leave_CQ and server.js's socket
 // close hook now share the same remove-member/Leave_SN/host-reassign path.
 const { leaveRoomAndNotify } = require('./room/room-leave');
+// D1-6-IMPL (docs/design/d1-step6-battle-broadcast.md §5 step 5): the
+// HOST_ADDRESS_REQUIRE_MODE check at the top of case 0x00222103 below needs
+// getHostAddress() to decide whether a would-be host of a 2+ member room is
+// allowed to start a battle at all.
+const whitelist = require('../config/whitelist.js');
 
 // ZGateGameDispatch - Handles Gate-range (0x22XXXX) messages on the GAME server
 //
@@ -1349,6 +1354,42 @@ class ZGateGameDispatch
             // ==========================================
             case 0x00222103:
             {
+                // D1-6-IMPL (design doc §5 step 5, §3.2; PM correction: check
+                // moved to the top of this handler, before anything is sent
+                // -- see the design doc's "檢查時機提前" note). Client action:
+                // this whole case only ever fires from the host's F5 press
+                // (case 0x00222101's own comment explains why a non-host's F5
+                // lands there instead) -- but nothing here actually checked
+                // that until now, so a stray/forged 0x00222103 from a
+                // non-host connection would have started the battle sequence
+                // for the whole room anyway.
+                if (HOST_ADDRESS_REQUIRE_MODE === 'enabled' && rooms.isRoomJoinEnabled()) {
+                    const accountIdForGate = Number(client.accountIndex_ || client.accountId_ || 1);
+                    const roomForGate = rooms.getRoomByAccount(accountIdForGate);
+                    if (roomForGate) {
+                        if (accountIdForGate !== roomForGate.hostAccountId) {
+                            console.log(`[ZGateGameDispatch] >> Ignored Game_Start_CN 0x00222103 from non-host account=${accountIdForGate} (host=${roomForGate.hostAccountId}, room #${roomForGate.id})`);
+                            return true;
+                        }
+                        if (roomForGate.members.size > 1) {
+                            // design §3.2: hostAddress is looked up from
+                            // client.username_ (set at account login,
+                            // account.dispatch.js's CQ_LOGIN_WASABII), the
+                            // same identity whitelist.isAllowed() already
+                            // gates on. ⬜ not yet wired: gamelogin.dispatch.js
+                            // (this connection's own 30907 login) never sets
+                            // client.username_ itself -- see this worktree's
+                            // handback report for why that file was left
+                            // untouched.
+                            const hostAddress = client.username_ ? whitelist.getHostAddress(client.username_) : null;
+                            if (!hostAddress) {
+                                console.error(`[ZGateGameDispatch] !! Refusing battle start: no hostAddress configured for host account=${accountIdForGate} (username=${client.username_}, nickname=${client.nickname_}), room #${roomForGate.id} has ${roomForGate.members.size} members`);
+                                return true;
+                            }
+                        }
+                    }
+                }
+
                 // Static analysis confirms both Game_Ready_SN (0x222102) and
                 // Game_Start_SN (0x222104) consume the same simple SA body and
                 // emit NETWORK_ROOM_GAME_READY. Current runtime only sending
