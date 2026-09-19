@@ -227,6 +227,26 @@ class ZLobbyDispatch
                     ? rooms.getRoomByAccount(accountIdForBeginRound)
                     : undefined;
 
+                // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4):
+                // room.battleStats storage is gated by its OWN switch
+                // (BATTLE_END_BROADCAST_MODE), independent of
+                // ROOM_BATTLE_START_BROADCAST_MODE above -- BeginRound_SN
+                // broadcasting and Death_SN/EndGame_SN broadcasting are
+                // separate D1-6 steps with separate regression coverage, so
+                // this lookup and the host check below do not reuse
+                // roomForBeginRound/its dedup state. Only the room's current
+                // host resets the shared totals (design §4's "reset for the
+                // whole room on each accepted BeginRound"); a resend inside
+                // the dedup window just resets an already-empty map, which
+                // is harmless.
+                const battleEndBroadcastEnabledForBegin = rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled();
+                const roomForBattleStats = battleEndBroadcastEnabledForBegin
+                    ? rooms.getRoomByAccount(accountIdForBeginRound)
+                    : undefined;
+                if (roomForBattleStats && accountIdForBeginRound === roomForBattleStats.hostAccountId) {
+                    roomForBattleStats.battleStats = new Map();
+                }
+
                 if (roomForBeginRound) {
                     if (accountIdForBeginRound !== roomForBeginRound.hostAccountId) {
                         console.log(`[ZLobbyDispatch] >> Ignored BeginRound_CN 0x00230151 from non-host account=${accountIdForBeginRound} (host=${roomForBeginRound.hostAccountId}, room #${roomForBeginRound.id}) -- no reply`);
@@ -243,10 +263,11 @@ class ZLobbyDispatch
 
                     // BeginRound_CN starts a battle: reset the per-player
                     // battle totals that Death_SN carries (see case
-                    // 0x00230123). battleStats_ itself stays per-connection
-                    // here -- moving it to the Room (design §4) is
-                    // D1-6-IMPL's step 3, out of this step's scope. Only
-                    // reset on an accepted (host, non-duplicate) CN.
+                    // 0x00230123). client.battleStats_ is still reset
+                    // unconditionally here as the fallback storage Death_CN
+                    // uses when BATTLE_END_BROADCAST_MODE is off; the
+                    // room.battleStats reset (used instead when that switch
+                    // is on) happened above, gated on host + its own switch.
                     client.battleStats_ = {};
 
                     rooms.sendAll(roomForBeginRound.id, (target) => {
@@ -323,15 +344,60 @@ class ZLobbyDispatch
             {
                 const action = body.length >= 3 ? body[2] : 2;
 
+                // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4,
+                // backlog D1-6): with rooms.isBattleEndBroadcastEnabled() +
+                // rooms.isRoomJoinEnabled(), Campaign_CN is only accepted
+                // from the room's current host -- [LOG]
+                // session-20260919-150041.jsonl: every Campaign_CN in the
+                // recorded 2-player match came from the host connection
+                // (conn12, Lucas), because the host's client is the P2P
+                // listen server driving the battle. EndRound_SN/
+                // User_Score_SN/EndGame_SN below go to every live room
+                // member via rooms.sendAll instead of only the connection
+                // that sent this CN, and the round counter moves to the
+                // Room (see roomForCampaign.pveRoundsCleared_ below) so it
+                // is not lost/duplicated by always being driven from the
+                // same host connection. A 1-person room's rooms.sendAll
+                // iterates one member (the host itself), byte-identical to
+                // the unconditional client.send() calls this replaces.
+                const accountIdForCampaign = Number(client.accountIndex_ || client.accountId_ || 1);
+                const battleEndBroadcastEnabled = rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled();
+                const roomForCampaign = battleEndBroadcastEnabled
+                    ? rooms.getRoomByAccount(accountIdForCampaign)
+                    : undefined;
+
+                if (roomForCampaign && accountIdForCampaign !== roomForCampaign.hostAccountId) {
+                    console.log(`[ZLobbyDispatch] >> Ignored Campaign_CN 0x00230139 from non-host account=${accountIdForCampaign} (host=${roomForCampaign.hostAccountId}, room #${roomForCampaign.id}) -- no reply`);
+                    return true;
+                }
+
+                // Builds a fresh EndRound_SN buffer every call (rooms.js's
+                // sendAll() requires this -- see its doc comment -- even
+                // though this getExactMessageBuffer is not a per-connection
+                // scratch buffer like client.getMessageBuffer/
+                // getExactMessageBuffer are).
+                const buildEndRoundMsg = () => {
+                    const [msg, eb] = getExactMessageBuffer(0x00222211, 0x1E);
+                    eb.writeUInt16LE(0, 0x02);   // Team A TeamIndex = 0
+                    eb.writeUInt16LE(1, 0x10);   // Team B TeamIndex = 1
+                    return msg;
+                };
+
                 // R-ROUND (docs/backlog.md, PVE_ROUND_ADVANCE_MODE):
                 // action==1 (objective achieved) but not yet the map's last
                 // round -> answer EndRound_SN instead of ending the match.
                 // action==2 (failure) is left completely untouched, same as
                 // when the switch is disabled.
                 if (PVE_ROUND_ADVANCE_MODE === 'enabled' && action === 1) {
-                    client.pveRoundsCleared_ = (Number(client.pveRoundsCleared_) || 0) + 1;
+                    // D1-6-STEP3: round-tracking state lives on the Room
+                    // (roomForCampaign.pveRoundsCleared_) when broadcasting
+                    // is on, instead of client.pveRoundsCleared_ -- the
+                    // trigger is always the same host connection, but every
+                    // room member needs to see the same round progression.
+                    const roundsCounter = roomForCampaign || client;
+                    roundsCounter.pveRoundsCleared_ = (Number(roundsCounter.pveRoundsCleared_) || 0) + 1;
                     const playRound = getGameInfoRound(client);
-                    if (client.pveRoundsCleared_ < playRound) {
+                    if (roundsCounter.pveRoundsCleared_ < playRound) {
                         // EndRound_SN 0x00222211, ZDispatchGame::EndRound_SN
                         // (thunk 0x10701794 -> 0x107d7a50). Body (frame+0x10,
                         // 0x1E bytes total, docs/research/2026-09-19-r-round/
@@ -345,22 +411,28 @@ class ZLobbyDispatch
                         // EndRound_BD (ZModePve.uc:716-722) is ⬜ -- experimental
                         // candidate only, see the journal entry for pass/
                         // partial/fail criteria.
-                        const [msg, eb] = getExactMessageBuffer(0x00222211, 0x1E);
-                        eb.writeUInt16LE(0, 0x02);   // Team A TeamIndex = 0
-                        eb.writeUInt16LE(1, 0x10);   // Team B TeamIndex = 1
-                        client.send(msg);
-                        console.log(
-                            `[ZLobbyDispatch] >> Campaign_CN action=1 pveRoundsCleared_=` +
-                            `${client.pveRoundsCleared_}/${playRound} -> Sent EndRound_SN 0x00222211`
-                        );
-                        packetlog.marker(`R-ROUND: cleared=${client.pveRoundsCleared_} playRound=${playRound} -> EndRound_SN 0x00222211`, 'auto');
+                        if (roomForCampaign) {
+                            rooms.sendAll(roomForCampaign.id, buildEndRoundMsg);
+                            console.log(
+                                `[ZLobbyDispatch] >> Campaign_CN action=1 pveRoundsCleared_=` +
+                                `${roundsCounter.pveRoundsCleared_}/${playRound} -> Broadcast EndRound_SN 0x00222211 ` +
+                                `to room #${roomForCampaign.id} (${roomForCampaign.members.size} member(s))`
+                            );
+                        } else {
+                            client.send(buildEndRoundMsg());
+                            console.log(
+                                `[ZLobbyDispatch] >> Campaign_CN action=1 pveRoundsCleared_=` +
+                                `${roundsCounter.pveRoundsCleared_}/${playRound} -> Sent EndRound_SN 0x00222211`
+                            );
+                        }
+                        packetlog.marker(`R-ROUND: cleared=${roundsCounter.pveRoundsCleared_} playRound=${playRound} -> EndRound_SN 0x00222211`, 'auto');
                         return true;
                     }
                     console.log(
                         `[ZLobbyDispatch] >> Campaign_CN action=1 pveRoundsCleared_=` +
-                        `${client.pveRoundsCleared_}/${playRound} (last round) -> falling through to EndGame_SN`
+                        `${roundsCounter.pveRoundsCleared_}/${playRound} (last round) -> falling through to EndGame_SN`
                     );
-                    packetlog.marker(`R-ROUND: cleared=${client.pveRoundsCleared_} playRound=${playRound} -> last round, EndGame_SN`, 'auto');
+                    packetlog.marker(`R-ROUND: cleared=${roundsCounter.pveRoundsCleared_} playRound=${playRound} -> last round, EndGame_SN`, 'auto');
                 }
 
                 // RANK (docs/backlog.md, docs/research/2026-09-19-rank/notes.md):
@@ -394,29 +466,52 @@ class ZLobbyDispatch
                 // without touching the body at all (0x107ece66/0x107ece68).
                 const pveFixedRank = serverConfig.getPveFixedRank();
                 if (action === 1 && pveFixedRank !== undefined) {
-                    const [rankMsg, rb] = getExactMessageBuffer(0x00222221, 0x25);
-                    rb.writeUInt16LE(0, 0x00);            // WinTeamIndex
-                    rb.writeUInt16LE(pveFixedRank, 0x02); // WinTeamRank
-                    rb.writeUInt32LE(0, 0x04);            // WinTeamScore
-                    rb.writeUInt16LE(0, 0x08);             // Team A TeamIndex
-                    rb.writeUInt16LE(1, 0x16);             // Team B TeamIndex
-                    // rest (score blocks, +0x24 count) already zero from alloc
-                    client.send(rankMsg);
-                    console.log(
-                        `[ZLobbyDispatch] >> Sent User_Score_SN 0x00222221 `
-                        + `(pveFixedRank=${pveFixedRank}) before EndGame_SN`
-                    );
+                    const buildRankMsg = () => {
+                        const [rankMsg, rb] = getExactMessageBuffer(0x00222221, 0x25);
+                        rb.writeUInt16LE(0, 0x00);            // WinTeamIndex
+                        rb.writeUInt16LE(pveFixedRank, 0x02); // WinTeamRank
+                        rb.writeUInt32LE(0, 0x04);            // WinTeamScore
+                        rb.writeUInt16LE(0, 0x08);             // Team A TeamIndex
+                        rb.writeUInt16LE(1, 0x16);             // Team B TeamIndex
+                        // rest (score blocks, +0x24 count) already zero from alloc
+                        return rankMsg;
+                    };
+                    if (roomForCampaign) {
+                        rooms.sendAll(roomForCampaign.id, buildRankMsg);
+                        console.log(
+                            `[ZLobbyDispatch] >> Broadcast User_Score_SN 0x00222221 `
+                            + `(pveFixedRank=${pveFixedRank}) before EndGame_SN to room #${roomForCampaign.id} `
+                            + `(${roomForCampaign.members.size} member(s))`
+                        );
+                    } else {
+                        client.send(buildRankMsg());
+                        console.log(
+                            `[ZLobbyDispatch] >> Sent User_Score_SN 0x00222221 `
+                            + `(pveFixedRank=${pveFixedRank}) before EndGame_SN`
+                        );
+                    }
                 }
 
                 // Player team is red (0) in Game_Info_SN; which value the result
                 // page expects for a PvE failure is not confirmed yet.
                 const winTeam = action === 1 ? 0 : 1;
-                const [msg, eb] = client.getMessageBuffer(0x00222213, 0x1E);
-                eb.writeUInt16LE(winTeam, 0x00);
-                eb.writeUInt16LE(0, 0x02);   // team A = red
-                eb.writeUInt16LE(1, 0x10);   // team B = blue
-                client.send(msg);
-                console.log(`[ZLobbyDispatch] >> Campaign_CN action=${action} -> Sent EndGame_SN 0x00222213 (winTeam=${winTeam})`);
+                if (roomForCampaign) {
+                    rooms.sendAll(roomForCampaign.id, (target) => {
+                        const [msg, eb] = target.getMessageBuffer(0x00222213, 0x1E);
+                        eb.writeUInt16LE(winTeam, 0x00);
+                        eb.writeUInt16LE(0, 0x02);   // team A = red
+                        eb.writeUInt16LE(1, 0x10);   // team B = blue
+                        return msg;
+                    });
+                    console.log(`[ZLobbyDispatch] >> Campaign_CN action=${action} -> Broadcast EndGame_SN 0x00222213 (winTeam=${winTeam}) to room #${roomForCampaign.id} (${roomForCampaign.members.size} member(s))`);
+                } else {
+                    const [msg, eb] = client.getMessageBuffer(0x00222213, 0x1E);
+                    eb.writeUInt16LE(winTeam, 0x00);
+                    eb.writeUInt16LE(0, 0x02);   // team A = red
+                    eb.writeUInt16LE(1, 0x10);   // team B = blue
+                    client.send(msg);
+                    console.log(`[ZLobbyDispatch] >> Campaign_CN action=${action} -> Sent EndGame_SN 0x00222213 (winTeam=${winTeam})`);
+                }
                 return true;
             }
 
@@ -431,18 +526,6 @@ class ZLobbyDispatch
                 const weaponPart = body.length >= 7 ? body[0x06] : 0;
                 const auxiliaryValue = body.length >= 11 ? body.readUint32LE(0x07) : 0;
 
-                // Last field consumed by Death_SN is a u32 at body+0x4d.
-                const [deathMsg, deathBody] = client.getMessageBuffer(0x00230124, 0x51);
-                deathBody.writeUint16LE(0, 0x00);
-                deathBody.writeUint32LE(0, 0x02);
-                deathBody.writeUint32LE(0, 0x06);
-                deathBody.writeUint16LE(attackerIndex, 0x0A);
-                deathBody.writeUint16LE(victimIndex, 0x0C);
-                deathBody[0x0E] = deathType;
-                deathBody[0x0F] = specialFlag;
-                deathBody[0x10] = weaponPart;
-                deathBody.writeUint32LE(auxiliaryValue, 0x11);
-
                 // Killer / victim battle totals. Death_SN hands body+0x31 (killer)
                 // and body+0x41 (victim) to Game_User_Battle_Set (0x1072d720), which
                 // ASSIGNS them to the game-user record: +0x38 Kill, +0x40 Death,
@@ -451,29 +534,88 @@ class ZLobbyDispatch
                 // wiped the scoreboard on every death, so keep running totals.
                 // Records that are not game users (AI victims) are skipped by the
                 // client. Exp/point per kill are placeholders, not known values.
+                //
+                // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4):
+                // with rooms.isBattleEndBroadcastEnabled() +
+                // rooms.isRoomJoinEnabled(), the totals live on
+                // room.battleStats (Map<accountId, {kills, deaths}>) instead
+                // of client.battleStats_ -- only the P2P host ever sends
+                // Death_CN (design doc §4, [LOG] confirmed for the recorded
+                // 2-player match), so the old per-connection storage meant
+                // the scoreboard was tied to the host connection alone.
+                // Falls back to client.battleStats_, unchanged, when the
+                // switch is off.
                 const EXP_PER_KILL = 10;
                 const POINT_PER_KILL = 10;
-                const stats = client.battleStats_ || (client.battleStats_ = {});
-                const statFor = (index) => stats[index] || (stats[index] = { kills: 0, deaths: 0 });
+                const accountIdForDeath = Number(client.accountIndex_ || client.accountId_ || 1);
+                const battleEndBroadcastEnabledForDeath = rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled();
+                const roomForDeath = battleEndBroadcastEnabledForDeath
+                    ? rooms.getRoomByAccount(accountIdForDeath)
+                    : undefined;
+                let statFor;
+                if (roomForDeath) {
+                    if (!roomForDeath.battleStats)
+                        roomForDeath.battleStats = new Map();
+                    statFor = (index) => {
+                        let st = roomForDeath.battleStats.get(index);
+                        if (!st) {
+                            st = { kills: 0, deaths: 0 };
+                            roomForDeath.battleStats.set(index, st);
+                        }
+                        return st;
+                    };
+                } else {
+                    const stats = client.battleStats_ || (client.battleStats_ = {});
+                    statFor = (index) => stats[index] || (stats[index] = { kills: 0, deaths: 0 });
+                }
                 const killerStats = statFor(attackerIndex);
                 const victimStats = statFor(victimIndex);
                 if (attackerIndex !== victimIndex)
                     killerStats.kills++;
                 victimStats.deaths++;
-                const writeBattle = (offset, st) => {
-                    deathBody.writeUint16LE(st.kills & 0xFFFF, offset + 0x00);
-                    deathBody.writeUint16LE(st.deaths & 0xFFFF, offset + 0x02);
-                    deathBody.writeUint32LE(st.kills * EXP_PER_KILL, offset + 0x08);
-                    deathBody.writeUint32LE(st.kills * POINT_PER_KILL, offset + 0x0C);
+
+                // Builds a fresh Death_SN buffer every call (rooms.js's
+                // sendAll() requires this) via the target connection's own
+                // getMessageBuffer, same as the single-target
+                // client.getMessageBuffer() call this replaces.
+                const buildDeathMsg = (target) => {
+                    // Last field consumed by Death_SN is a u32 at body+0x4d.
+                    const [deathMsg, deathBody] = target.getMessageBuffer(0x00230124, 0x51);
+                    deathBody.writeUint16LE(0, 0x00);
+                    deathBody.writeUint32LE(0, 0x02);
+                    deathBody.writeUint32LE(0, 0x06);
+                    deathBody.writeUint16LE(attackerIndex, 0x0A);
+                    deathBody.writeUint16LE(victimIndex, 0x0C);
+                    deathBody[0x0E] = deathType;
+                    deathBody[0x0F] = specialFlag;
+                    deathBody[0x10] = weaponPart;
+                    deathBody.writeUint32LE(auxiliaryValue, 0x11);
+                    const writeBattle = (offset, st) => {
+                        deathBody.writeUint16LE(st.kills & 0xFFFF, offset + 0x00);
+                        deathBody.writeUint16LE(st.deaths & 0xFFFF, offset + 0x02);
+                        deathBody.writeUint32LE(st.kills * EXP_PER_KILL, offset + 0x08);
+                        deathBody.writeUint32LE(st.kills * POINT_PER_KILL, offset + 0x0C);
+                    };
+                    writeBattle(0x31, killerStats);
+                    writeBattle(0x41, victimStats);
+                    return deathMsg;
                 };
-                writeBattle(0x31, killerStats);
-                writeBattle(0x41, victimStats);
-                client.send(deathMsg);
-                console.log(
-                    `[ZLobbyDispatch] >> Sent Death_SN 0x00230124 ` +
-                    `(attacker=${attackerIndex}, victim=${victimIndex}, type=${deathType}, ` +
-                    `killer K/D=${killerStats.kills}/${killerStats.deaths})`
-                );
+
+                if (roomForDeath) {
+                    rooms.sendAll(roomForDeath.id, buildDeathMsg);
+                    console.log(
+                        `[ZLobbyDispatch] >> Broadcast Death_SN 0x00230124 to room #${roomForDeath.id} ` +
+                        `(${roomForDeath.members.size} member(s)) (attacker=${attackerIndex}, victim=${victimIndex}, ` +
+                        `type=${deathType}, killer K/D=${killerStats.kills}/${killerStats.deaths})`
+                    );
+                } else {
+                    client.send(buildDeathMsg(client));
+                    console.log(
+                        `[ZLobbyDispatch] >> Sent Death_SN 0x00230124 ` +
+                        `(attacker=${attackerIndex}, victim=${victimIndex}, type=${deathType}, ` +
+                        `killer K/D=${killerStats.kills}/${killerStats.deaths})`
+                    );
+                }
 
                 // Death_CN (ZDispatchGame 0x107d98a0) writes body+0 = killer,
                 // body+2 = victim, body+4 = type. Types 1-4 are player victims

@@ -68,6 +68,15 @@
  *   Cache.Bin 9001..9012 index). This is the small-number id
  *   CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID is keyed on, needed for
  *   Room_Default_SN's mech-slot entry table (offset 0x20).
+ * @property {Map<number, {kills: number, deaths: number}>} [battleStats] -
+ *   D1-6-STEP3 (design doc §4, gated by isBattleEndBroadcastEnabled()):
+ *   room-shared Death_SN kill/death totals, keyed by accountId. Absent
+ *   until the first BeginRound_CN this switch handles resets it; only
+ *   written/read by lobby.dispatch.js's case 0x00230151/0x00230123.
+ * @property {number} [pveRoundsCleared_] - D1-6-STEP3: room-level twin of
+ *   the old client.pveRoundsCleared_ (lobby.dispatch.js case 0x00230139),
+ *   used only when isBattleEndBroadcastEnabled() finds a tracked room --
+ *   otherwise round counting stays on the trigger client, unchanged.
  */
 
 /** @type {Map<number, Room>} */
@@ -168,6 +177,27 @@ function isRoomBattleStartBroadcastEnabled() {
 
 function _setRoomBattleStartBroadcastModeForTests(mode) {
     roomBattleStartBroadcastMode = mode;
+}
+
+// D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4, backlog D1-6):
+// whether EndRound_SN 0x00222211, User_Score_SN 0x00222221, EndGame_SN
+// 0x00222213 (lobby.dispatch.js's case 0x00230139, Campaign_CN) and
+// Death_SN 0x00230124 (case 0x00230123) go to every room member instead of
+// only the connection that sent the triggering CN, and whether the
+// per-player kill/death totals those packets carry live on the Room
+// (room.battleStats, a Map<accountId, {kills, deaths}>) instead of
+// client.battleStats_. Its own switch, separate from
+// roomBattleStartBroadcastMode above, for the same reason every other
+// D1-6-IMPL step has its own switch (design §5): each broadcast surface
+// needs independent regression coverage. Default 'disabled'.
+let battleEndBroadcastMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isBattleEndBroadcastEnabled() {
+    return battleEndBroadcastMode === 'enabled';
+}
+
+function _setBattleEndBroadcastModeForTests(mode) {
+    battleEndBroadcastMode = mode;
 }
 
 // D1-4: which live client objects count as "in the lobby" for the
@@ -408,6 +438,7 @@ function _resetForTests() {
     roomReadyStateMode = 'disabled';
     readyHostSplitMode = 'disabled';
     roomBattleStartBroadcastMode = 'disabled';
+    battleEndBroadcastMode = 'disabled';
     clientSource = [];
 }
 
@@ -434,6 +465,8 @@ module.exports = {
     _setReadyHostSplitModeForTests,
     isRoomBattleStartBroadcastEnabled,
     _setRoomBattleStartBroadcastModeForTests,
+    isBattleEndBroadcastEnabled,
+    _setBattleEndBroadcastModeForTests,
     registerLobbyClientSource,
     getLobbyClients,
     _resetForTests,
