@@ -629,3 +629,7 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
   - P3 寫回 DB 時，比賽紀錄要帶「測試」標記，避免污染戰績。
 - P3 schema 先留欄位：每回合秒數、該回合 Death_CN 數、suspicious 旗標（給 P7 的合理性檢查用）。
 - [LOG] 目前所有帳號的 Grade_Info_SN 都寫死送 0（`dispatch/account.dispatch.js:283,399`、`community.dispatch.js:284`）。這次測試用的是 Lucas（accountId 1），也就是 **Grade 0 帳號就能用 F24 + GameCampaign**。
+
+## TUT-LABEL：`0x00260111`／`0x00260121` 標籤疑點（explorer 2026-09-19，待審）
+- 目標：確認 `0x00260121` 是 `Tutorial_Start_CN`（DLL `0x107e9b70`），`0x00260111` 是 `Mech_License_CQ`（`0x107e9cf0`）；而伺服器 `community.dispatch.js:55-61` 目前分別把它們當成 License query、Quest complete。
+- 做法：用 `tools/disasm.py` 查兩個函式的所有呼叫端（xref），並逐一核對 body 欄位。動 handler 之前先交審。依據：`research/2026-09-19-pve-smoke/notes.md`。
