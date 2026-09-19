@@ -67,3 +67,17 @@ node test/console-commands.js / exception-guard.js / extra-lives.js / login-toke
 - [LOG] `session-20260919-100817.jsonl:645`：重新登入後 MapInfo_SN 送了 12 筆 0x2329–0x2334（9001–9012）。
 - [OBS] 下拉選單和 ◀▶ 箭頭仍然無效；客戶端完整重開後（`session-20260919-103330.jsonl` 200 行 marker）也一樣。H7 沒有變化。
 - ❌ 單靠送真實 map id 不夠。🟡 推測：`co_Map` 只在 `InitComponent` 時填一次，可能早在登入前就建立了；或 `Account_MapList_Check` 還比對了其他欄位。擱置，開關關回 disabled。
+
+## H7 重新調查（2026-09-19 晚，explorer 三輪＋高階抽驗，🟡）
+
+- **更正目標：** 房間的地圖欄按下去**不是**展開 `co_Map` 下拉清單，而是開 `ZPopup_MapSelect` 視窗。`ZPanel_RoomInfo.uc` 約 260-285 的 handler 會開這個視窗，`ZGUIComboBox.uc:138` 刻意不畫 co_Map 的清單。所以「清單是空的」指的是 `ZPopup_MapSelect`。
+- `ZPopup_MapSelect.InitButton()` 只在 InitComponent 建一次，資料來源是 `CacheManager.GetSortMapInfoList()`。篩選條件：
+  - MapIndex ≥ 1000；
+  - `Account_MapList_Check`（UC `ZNetwork_DJ.uc:1093`，只比對 `m_MapList[n].Index`）；
+  - PvE 房（RoomType==2）時 MapType==9；
+  - 相同 MapDescription 去重。
+  它**不看人數**。
+- [CACHE] 9001–9012 的 MapType=9、PlayPve=1/2/3，都會通過篩選；UserMin=UserMax=16。
+- [DLL] `Room_Default_SN` body+4 經跳表（`0x107ea4b5` → `0x107ea6d8`）把 raw 1 轉成 RoomType 2，所以 RoomType 沒問題（高階抽驗）。
+- **矛盾未解：** REAL_ID 實驗（`session-20260919-100817.jsonl:645`，12 筆 9001–9012、格式正確）照理已經通過所有篩選，實測卻還是空的。下一步重測時要截圖，並確認視窗是在 REAL_ID 登入之後才第一次建立。
+- `ZPopup_RoomSet.Update_MapList()`（:571）另外要求 `UserMin ≤ nUserMax ≤ UserMax`，也就是 nUserMax 必須剛好是 16。伺服器的 PvE `maxPlayers` 寫死 8（`gate.game.dispatch.js` 約 1163-1165）。16/2＝8 格，跟原版截圖開 8 格一致。→ 另一個單變數實驗：PvE MaxUser 送 16。
