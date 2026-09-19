@@ -51,3 +51,9 @@
 - ❌ [TEST] `client_ctl.py restart --step manual-test`：證據（截圖＋200 行 log）有存，但 `taskkill /IM MetalRage.exe /F` 回「無法終止 "MetalRage.exe" 處理程序 (PID 為 42340)」。工具照設計停下、session 鎖住，沒有嘗試重開。
 - 呼叫端不是管理員；遊戲行程的一般 handle 開得起來，但 WMI 看不到它的命令列。🟡 [GUESS] XIGNCODE 的驅動擋了終止權限（反作弊保護行程）。依硬性約束 1，**不嘗試繞過**，也不再用其他方式強制結束。
 - 結論：卡死但行程還在的客戶端，AI 無法結束它 → 停下來，等操作者處理。真正崩潰、行程已經消失的情況，才走「重開」那條路（這條路還沒實測過）。
+
+## 當掉重開實測（client_ctl.py）
+- 第一次（2026-09-19 23:40）：FAIL。證據有存，但 `kill` 那步 powershell 逾時，客戶端沒被關掉。當時跑的客戶端是 21:11 啟動的，比 XIGNCODE 修補（23:54）早，**還帶著 XIGNCODE**；舊紀錄就提過 XIGNCODE 會擋 taskkill 🟡。
+- 第二次（2026-09-20 00:12）：操作者手動關掉客戶端，再跑 `restart --step manual-test`。✅ [TEST] 證據存下 → 沒有行程所以不 kill → 用 bat 啟動 → READY pid 38048，count 1/3。接著用同一個 step 再跑一次 → ✅ `[BLOCKED] two consecutive crashes at the same step`，沒有動到客戶端。
+- 發現：新客戶端的 `MainWindowHandle` 是**啟動畫面**（420×260，rect 1070,590–1490,850），真正的遊戲視窗在它後面，已經到登入畫面，而啟動畫面一直疊在上面（[SHOT] `shots/relaunch-full2.png`）。`wait_ready` 把啟動畫面當成遊戲就緒；pico_serial.ps1 的前景／視窗檢查也用 MainWindowHandle，要改成挑最大的那個頂層視窗。
+- 還沒驗：對已修補（沒有 XIGNCODE）的客戶端真的 kill 一次。
