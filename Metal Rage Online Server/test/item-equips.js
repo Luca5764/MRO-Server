@@ -49,6 +49,9 @@ const { makeFakeClient } = require('./fixtures/fake-client.js');
 
 const SHARED_ITEM_ID = 32100101;    // [CACHE] verified ShareType=1, UseTime=0 (permanent sub-weapon)
 const NONSHARED_ITEM_ID = 26300101; // [CACHE] verified ShareType=0, UseTime=0 (permanent main weapon)
+// Real account 3 case, docs/design/e1-item-ownership.md section 5 / Sol
+// batch4 review item (2): [CACHE] verified ShareType=1, UseTime=0 (permanent).
+const SHARED_ITEM_ID_3X = 33800101;
 
 function installFakeModule(resolvedPath, exportsObj)
 {
@@ -114,9 +117,10 @@ async function testSharedItemOnTwoMechs()
 }
 
 // ---------------------------------------------------------------------
-// In-memory mock pool for database/db.js's real functions (tests 2 and 4).
-// Mirrors exactly the SQL shapes saveEquippedLoadout()/runMigration() issue
-// -- see database/db.js and tools/migrate-e1-item-equips.js.
+// In-memory mock pool for database/db.js's real functions. Mirrors exactly
+// the SQL shapes saveEquippedLoadout()/runMigration()/runMerge() issue --
+// see database/db.js, tools/migrate-e1-item-equips.js and
+// tools/merge-e1-shared-duplicates.js.
 // ---------------------------------------------------------------------
 function makeMockPool(state)
 {
@@ -137,6 +141,15 @@ function makeMockPool(state)
             return [[{ after: state.itemEquips.length }]];
         if (norm.startsWith('SELECT COUNT(*) AS existingCount FROM item_equips'))
             return [[{ existingCount: state.itemEquips.length }]];
+        // tools/merge-e1-shared-duplicates.js's own before/after counts.
+        if (norm.startsWith('SELECT COUNT(*) AS itemsBefore FROM items'))
+            return [[{ itemsBefore: state.items.length }]];
+        if (norm.startsWith('SELECT COUNT(*) AS itemEquipsBefore FROM item_equips'))
+            return [[{ itemEquipsBefore: state.itemEquips.length }]];
+        if (norm.startsWith('SELECT COUNT(*) AS itemsAfter FROM items'))
+            return [[{ itemsAfter: state.items.length }]];
+        if (norm.startsWith('SELECT COUNT(*) AS itemEquipsAfter FROM item_equips'))
+            return [[{ itemEquipsAfter: state.itemEquips.length }]];
 
         if (norm.startsWith('SELECT account_id, id AS item_id, mech_type AS mech_slot, part_slot FROM items WHERE equipped = 1'))
         {
@@ -144,6 +157,40 @@ function makeMockPool(state)
                 .filter(item => Number(item.equipped) === 1 && Number(item.part_slot) >= 0 && Number(item.part_slot) <= 5)
                 .map(item => ({ account_id: item.account_id, item_id: item.id, mech_slot: item.mech_type, part_slot: item.part_slot }));
             return [rows];
+        }
+
+        // tools/merge-e1-shared-duplicates.js's full-table reads.
+        if (norm.startsWith('SELECT id, account_id, item_id FROM items ORDER BY account_id, item_id, id'))
+        {
+            const rows = [...state.items]
+                .sort((a, b) => Number(a.account_id) - Number(b.account_id) || Number(a.item_id) - Number(b.item_id) || Number(a.id) - Number(b.id))
+                .map(item => ({ id: item.id, account_id: item.account_id, item_id: item.item_id }));
+            return [rows];
+        }
+        if (norm.startsWith('SELECT id, account_id, item_id, mech_slot, part_slot FROM item_equips'))
+        {
+            const rows = state.itemEquips.map(e => ({ id: e.id, account_id: e.account_id, item_id: e.item_id, mech_slot: e.mech_slot, part_slot: e.part_slot }));
+            return [rows];
+        }
+        if (norm.startsWith('UPDATE item_equips SET item_id = ? WHERE account_id = ? AND item_id = ?'))
+        {
+            const [newItemId, accountId, oldItemId] = params;
+            let affected = 0;
+            for (const e of state.itemEquips) {
+                if (Number(e.account_id) === Number(accountId) && Number(e.item_id) === Number(oldItemId)) {
+                    e.item_id = Number(newItemId);
+                    affected++;
+                }
+            }
+            return [{ affectedRows: affected }];
+        }
+        if (norm.startsWith('DELETE FROM items WHERE account_id = ? AND id IN'))
+        {
+            const accountId = params[0];
+            const ids = params.slice(1).map(Number);
+            const before = state.items.length;
+            state.items = state.items.filter(item => !(Number(item.account_id) === Number(accountId) && ids.includes(Number(item.id))));
+            return [{ affectedRows: before - state.items.length }];
         }
 
         if (norm.startsWith('SELECT item_id FROM item_equips WHERE account_id = ? AND mech_slot = ? AND part_slot = ?'))
@@ -271,11 +318,13 @@ function makeMockPool(state)
 // ---------------------------------------------------------------------
 async function testNonSharedMoveBetweenMechs()
 {
-    const { _setTablesForTests } = require(path.join(ROOT, 'database', 'item-share-type.js'));
-    _setTablesForTests(
-        { [SHARED_ITEM_ID]: 1, [NONSHARED_ITEM_ID]: 0 },
-        { [SHARED_ITEM_ID]: 0, [NONSHARED_ITEM_ID]: 0 },
-    );
+    // NONSHARED_ITEM_ID's ShareType/UseTime come from the real Cache.Bin
+    // (already [CACHE]-verified, see its declaration above) -- no need to
+    // force database/item-share-type.js's tables here. Forcing them was
+    // tried and reverted: _setTablesForTests() replaces the *entire*
+    // module-level table, which then stays forced for every later test in
+    // this same process (e.g. testMergeSharedDuplicates()'s own item id),
+    // not just for this function.
 
     // database/db.js's ITEM_EQUIPS_MODE defaults to 'disabled' (byte-identical
     // to pre-E1 behaviour for every other test/golden sample); this test-only
@@ -539,6 +588,135 @@ async function testSaveEquippedLoadoutLeavesLegacyColumnsUntouched()
     }
 }
 
+// ---------------------------------------------------------------------
+// tools/merge-e1-shared-duplicates.js tests. SHARED_ITEM_ID_3X (declared at
+// the top of this file) mirrors the real account 3 case from
+// docs/design/e1-item-ownership.md section 5 -- item_id=33800101,
+// [CACHE]-verified ShareType=1/UseTime=0 (permanent shared, Sol batch4
+// review item (2): `33800101@0x13a35` = UseTime=0, ShareType=1) -- owned
+// three times, two of the three equipped on different mechs.
+// ---------------------------------------------------------------------
+
+async function testMergeSharedDuplicates()
+{
+    const { runMerge } = require(path.join(ROOT, 'tools', 'merge-e1-shared-duplicates.js'));
+
+    // Three owned serials of the same permanent shared item; the lowest
+    // (100201) and the highest (100203) each have an item_equips row on a
+    // different mech, the middle one (100202) has none.
+    const state = {
+        items: [
+            { id: 100201, account_id: 3, item_id: SHARED_ITEM_ID_3X, mech_type: 5, part_slot: 2, equipped: 1 },
+            { id: 100202, account_id: 3, item_id: SHARED_ITEM_ID_3X, mech_type: 5, part_slot: 2, equipped: 0 },
+            { id: 100203, account_id: 3, item_id: SHARED_ITEM_ID_3X, mech_type: 1, part_slot: 2, equipped: 1 },
+        ],
+        itemEquips: [
+            { id: 1, account_id: 3, item_id: 100201, mech_slot: 5, part_slot: 2 },
+            { id: 2, account_id: 3, item_id: 100203, mech_slot: 1, part_slot: 2 },
+        ],
+    };
+    const pool = makeMockPool(state);
+    const silent = () => {};
+
+    const result = await runMerge(pool, { log: silent });
+    assert.strictEqual(result.groupsMerged, 1, `expected exactly 1 merged group, got ${result.groupsMerged}`);
+    assert.strictEqual(result.serialsRemoved, 2, `expected 2 serials removed, got ${result.serialsRemoved}`);
+
+    const remaining = state.items.filter(item => Number(item.item_id) === SHARED_ITEM_ID_3X);
+    assert.strictEqual(remaining.length, 1, `exactly one serial of ${SHARED_ITEM_ID_3X} should remain, got ${remaining.length}`);
+    const keptSerial = Number(remaining[0].id);
+    assert.strictEqual(keptSerial, 100201, `should keep the lowest-id serial that had item_equips rows (100201), got ${keptSerial}`);
+
+    const keptEquips = state.itemEquips.filter(e => Number(e.item_id) === keptSerial);
+    const mechSlots = keptEquips.map(e => Number(e.mech_slot)).sort();
+    assert.deepStrictEqual(mechSlots, [1, 5], `the kept serial should end up equipped on both mech 1 and mech 5, got [${mechSlots.join(', ')}]`);
+    assert.strictEqual(state.itemEquips.length, 2, `item_equips row count should be unchanged (repoint, not delete), got ${state.itemEquips.length}`);
+
+    console.log('[item-equips test] PASS: merge collapses 3 shared duplicates into 1 serial equipped on both mechs (account 3 case)');
+}
+
+async function testMergeLeavesNonSharedAlone()
+{
+    const { runMerge } = require(path.join(ROOT, 'tools', 'merge-e1-shared-duplicates.js'));
+
+    const state = {
+        items: [
+            // Two owned serials of the same non-shared main weapon --
+            // legitimate (e.g. bought before ever equipping either),
+            // must not be merged.
+            { id: 100301, account_id: 3, item_id: NONSHARED_ITEM_ID, mech_type: 1, part_slot: 1, equipped: 1 },
+            { id: 100302, account_id: 3, item_id: NONSHARED_ITEM_ID, mech_type: 2, part_slot: 1, equipped: 1 },
+        ],
+        itemEquips: [
+            { id: 1, account_id: 3, item_id: 100301, mech_slot: 1, part_slot: 1 },
+            { id: 2, account_id: 3, item_id: 100302, mech_slot: 2, part_slot: 1 },
+        ],
+    };
+    const pool = makeMockPool(state);
+    const silent = () => {};
+
+    const result = await runMerge(pool, { log: silent });
+    assert.strictEqual(result.groupsMerged, 0, `non-shared duplicates must not be merged, got groupsMerged=${result.groupsMerged}`);
+    assert.strictEqual(state.items.length, 2, 'both non-shared serials should still exist');
+    assert.strictEqual(state.itemEquips.length, 2, 'both item_equips rows should be untouched');
+
+    console.log('[item-equips test] PASS: merge leaves non-shared duplicate serials alone');
+}
+
+async function testMergeIdempotentSecondRun()
+{
+    const { runMerge } = require(path.join(ROOT, 'tools', 'merge-e1-shared-duplicates.js'));
+
+    const state = {
+        items: [
+            { id: 100401, account_id: 3, item_id: SHARED_ITEM_ID_3X, mech_type: 5, part_slot: 2, equipped: 1 },
+            { id: 100402, account_id: 3, item_id: SHARED_ITEM_ID_3X, mech_type: 1, part_slot: 2, equipped: 1 },
+        ],
+        itemEquips: [
+            { id: 1, account_id: 3, item_id: 100401, mech_slot: 5, part_slot: 2 },
+            { id: 2, account_id: 3, item_id: 100402, mech_slot: 1, part_slot: 2 },
+        ],
+    };
+    const pool = makeMockPool(state);
+    const silent = () => {};
+
+    const first = await runMerge(pool, { log: silent });
+    assert.strictEqual(first.groupsMerged, 1, 'first run should merge the one duplicate group');
+
+    const second = await runMerge(pool, { log: silent });
+    assert.strictEqual(second.groupsMerged, 0, `second run should find nothing to do, got groupsMerged=${second.groupsMerged}`);
+    assert.strictEqual(second.serialsRemoved, 0, `second run should remove nothing, got serialsRemoved=${second.serialsRemoved}`);
+    assert.strictEqual(state.items.length, 1, 'exactly one serial should remain after both runs');
+
+    console.log('[item-equips test] PASS: merge is idempotent -- a second run finds nothing to do');
+}
+
+async function testMergeDryRunMakesNoChanges()
+{
+    const { runMerge } = require(path.join(ROOT, 'tools', 'merge-e1-shared-duplicates.js'));
+
+    const state = {
+        items: [
+            { id: 100501, account_id: 3, item_id: SHARED_ITEM_ID_3X, mech_type: 5, part_slot: 2, equipped: 1 },
+            { id: 100502, account_id: 3, item_id: SHARED_ITEM_ID_3X, mech_type: 1, part_slot: 2, equipped: 1 },
+        ],
+        itemEquips: [
+            { id: 1, account_id: 3, item_id: 100501, mech_slot: 5, part_slot: 2 },
+            { id: 2, account_id: 3, item_id: 100502, mech_slot: 1, part_slot: 2 },
+        ],
+    };
+    const pool = makeMockPool(state);
+    const silent = () => {};
+
+    const result = await runMerge(pool, { log: silent, dryRun: true });
+    assert.strictEqual(result.plan.length, 1, 'dry-run should still compute the plan');
+    assert.strictEqual(state.items.length, 2, 'dry-run must not delete anything');
+    assert.strictEqual(state.itemEquips.length, 2, 'dry-run must not repoint anything');
+    assert.strictEqual(Number(state.itemEquips[1].item_id), 100502, 'dry-run must not have repointed item_equips');
+
+    console.log('[item-equips test] PASS: merge --dry-run computes the plan without writing anything');
+}
+
 async function main()
 {
     await testSharedItemOnTwoMechs();
@@ -549,6 +727,10 @@ async function main()
     await testMigrationAtomicOnCollision();
     await testMigrationRefusesInvalidMechSlot();
     await testSaveEquippedLoadoutLeavesLegacyColumnsUntouched();
+    await testMergeSharedDuplicates();
+    await testMergeLeavesNonSharedAlone();
+    await testMergeIdempotentSecondRun();
+    await testMergeDryRunMakesNoChanges();
     console.log('[item-equips test] ALL CHECKS PASS (or clearly SKIPped -- see above)');
     process.exit(0);
 }
