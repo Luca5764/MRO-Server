@@ -43,3 +43,11 @@ node test/console-commands.js / exception-guard.js / extra-lives.js / login-toke
 - 沒有動 `sendMapChangeOnePacket()`、送出順序、`R7/R7b` 的 `MAP_CHANGE_ORDER_MODE`。
 - 沒有處理「record+0x04 其實是 Round」的線索（backlog H6 停放清單提到的另一個變數），留給後續任務。
 - worktree：`~/mro-wt/maplist`，分支 `flash-wip-maplist`，未合併、未重啟伺服器。
+
+## 實機驗證（2026-09-19，單人，Claude 高階）
+
+- build：`test-server@f2a31c9 dirty=true nonDefault=[GAME_INFO_TIME_LIMIT_MODE, PVE_ROUND_ADVANCE_MODE, mapAllSingleEntryMode, lobbyRoomListMode] … pveExtraLives=7`（`/reload` 後）。
+- [OBS] (1) 中間清單只剩 1 筆 ✅；(2) 按一次「初級」燈號第一次就對、目標回合 5 ✅；(3) 「高級」燈號與 10 回合正確 ✅。→ H6 根因（最後一筆非 0 的 MapInfo 決定燈號）成立。
+- [OBS] ❌ **回歸：房內「選擇地圖」下拉選單只剩「潛入作戰」**，換不到別張地圖。state.md 4b「下拉選單全由客戶端從 Cache 算」看來不完全成立：下拉選項似乎也取自 MapInfo 清單。已派 MAPLIST-2 分析下拉資料來源與「每張地圖一筆」的送法。**在找到能同時滿足下拉與燈號的送法之前，這個開關不能設為預設。**
+- [OBS] H7（設定對話框地圖清單空）沒有變化。
+- 未經跨公司審查。
