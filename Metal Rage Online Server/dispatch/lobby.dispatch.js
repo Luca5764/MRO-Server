@@ -9,6 +9,10 @@ const { sendFullRoomList } = require('./room/room-list.sender');
 // body+0x15 already sends the client, so the Campaign_CN handler below
 // compares against exactly what the client was told, not a second guess.
 const { getGameInfoRound } = require('./gate.game.dispatch.js');
+// RANK (docs/backlog.md, config/server.json's pveFixedRank): test-mode
+// WinTeamRank sent via User_Score_SN 0x00222221 -- see the Campaign_CN
+// handler below.
+const serverConfig = require('../config/server.js');
 
 // How the PvE player's first mech gets spawned.
 //   'client': the original flow. After BeginRound_SN the client's
@@ -284,6 +288,51 @@ class ZLobbyDispatch
                         `${client.pveRoundsCleared_}/${playRound} (last round) -> falling through to EndGame_SN`
                     );
                     packetlog.marker(`R-ROUND: cleared=${client.pveRoundsCleared_} playRound=${playRound} -> last round, EndGame_SN`, 'auto');
+                }
+
+                // RANK (docs/backlog.md, docs/research/2026-09-19-rank/notes.md):
+                // config/server.json's pveFixedRank (test mode, undefined ->
+                // skip, unchanged behaviour). Only on a successful clear
+                // (action===1) and only immediately before EndGame_SN -- the
+                // failure path is left completely untouched.
+                //
+                // User_Score_SN 0x00222221, ZDispatchRoom::User_Score_SN
+                // (thunk 0x107051b9 -> 0x107ece60, function body confirmed
+                // 0x107ece60-0x107ed15d). Body offsets verified against the
+                // disassembly:
+                //   +0x00 u16 WinTeamIndex, +0x02 u16 WinTeamRank (1=F..11=SS,
+                //     0x107ece60's [this+4]-gated block reads packet+0x10/
+                //     +0x12/+0x14 = body+0x00/+0x02/+0x04 and passes them to
+                //     UZNetwork_DJ::Game_Result_Set at 0x107ecff6, matching
+                //     ZPage_PveResult.uc:113-165's m_Rank.Score = WinTeamRank-1),
+                //     +0x04 u32 WinTeamScore
+                //   +0x08 Team A Game_Score_Set block (14 bytes: u16
+                //     TeamIndex, u16 Score, u8 Round, u8 Alive, u16 Try,
+                //     u16 Goal, u32 Exp -- same layout as EndGame_SN/
+                //     EndRound_SN's team blocks above), TeamIndex=0, rest 0
+                //   +0x16 Team B block, same layout, TeamIndex=1, rest 0
+                //   +0x24 u8 per-user record count. count=0 makes the
+                //     handler's do-while loop never execute (jle at
+                //     0x107ed001 falls straight to the epilogue at
+                //     0x107ed156), so nothing past +0x24 is read -- 0x25
+                //     bytes is the minimum safe body length, sent exact
+                //     (getExactMessageBuffer) rather than padded.
+                // If [this+4] is clear the handler only logs and returns
+                // without touching the body at all (0x107ece66/0x107ece68).
+                const pveFixedRank = serverConfig.getPveFixedRank();
+                if (action === 1 && pveFixedRank !== undefined) {
+                    const [rankMsg, rb] = getExactMessageBuffer(0x00222221, 0x25);
+                    rb.writeUInt16LE(0, 0x00);            // WinTeamIndex
+                    rb.writeUInt16LE(pveFixedRank, 0x02); // WinTeamRank
+                    rb.writeUInt32LE(0, 0x04);            // WinTeamScore
+                    rb.writeUInt16LE(0, 0x08);             // Team A TeamIndex
+                    rb.writeUInt16LE(1, 0x16);             // Team B TeamIndex
+                    // rest (score blocks, +0x24 count) already zero from alloc
+                    client.send(rankMsg);
+                    console.log(
+                        `[ZLobbyDispatch] >> Sent User_Score_SN 0x00222221 `
+                        + `(pveFixedRank=${pveFixedRank}) before EndGame_SN`
+                    );
                 }
 
                 // Player team is red (0) in Game_Info_SN; which value the result

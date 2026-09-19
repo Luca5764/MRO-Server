@@ -87,10 +87,16 @@ function installFakeModule(resolvedPath, exportsObj)
 // against (no config/server.json in this repo/CI). pveExtraLives 0 matches
 // config/server.js's own DEFAULT_PVE_EXTRA_LIVES for the same reason (LIVES,
 // dispatch/room/room-game-user.sender.js); test/extra-lives.js exercises the
-// non-default value directly instead of through this fixture.
+// non-default value directly instead of through this fixture. pveFixedRank
+// undefined matches "not configured" (RANK, dispatch/lobby.dispatch.js);
+// test/fixed-rank.js exercises the non-default value directly instead.
 function makeFixtureServerConfig()
 {
-    return { getPublicHost() { return '127.0.0.1'; }, getPveExtraLives() { return 0; } };
+    return {
+        getPublicHost() { return '127.0.0.1'; },
+        getPveExtraLives() { return 0; },
+        getPveFixedRank() { return undefined; },
+    };
 }
 
 // Whitelist always off -- matches pre-W1 behaviour, what every existing

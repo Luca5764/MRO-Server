@@ -477,8 +477,12 @@ function recordBuild(reason)
     // LIVES (test mode): GAME_ITEM_INFO.PveRespawnAddCount bonus -- see
     // config/server.js and dispatch/room/room-game-user.sender.js.
     const pveExtraLives = serverConfig.getPveExtraLives();
+    // RANK (test mode): User_Score_SN 0x00222221 WinTeamRank -- see
+    // config/server.js and dispatch/lobby.dispatch.js's Campaign_CN handler.
+    // undefined = not sending User_Score_SN at all (default).
+    const pveFixedRank = serverConfig.getPveFixedRank();
 
-    write(Object.assign({ ev: 'build', reason }, identity, { switches, nonDefault, whitelist: whitelistStatus, publicHost, pveExtraLives }));
+    write(Object.assign({ ev: 'build', reason }, identity, { switches, nonDefault, whitelist: whitelistStatus, publicHost, pveExtraLives, pveFixedRank }));
 
     const nonDefaultList = Object.keys(nonDefault);
     console.log(`[packetlog] build: ${identity.branch}@${identity.commit}`
@@ -486,7 +490,8 @@ function recordBuild(reason)
         + (nonDefaultList.length > 0 ? ` nonDefault=[${nonDefaultList.join(', ')}]` : ' nonDefault=[]')
         + ` whitelist=${whitelistStatus}`
         + ` publicHost=${publicHost}`
-        + ` pveExtraLives=${pveExtraLives}`);
+        + ` pveExtraLives=${pveExtraLives}`
+        + ` pveFixedRank=${pveFixedRank}`);
 }
 
 module.exports = {

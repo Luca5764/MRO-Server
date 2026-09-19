@@ -20,9 +20,18 @@ const path = require('path');
 // SetNumLive(DefNumLive + ItemInfo.PveRespawnAddCount)). Missing/0 =
 // unchanged behaviour.
 
+// RANK (docs/backlog.md, test mode): pveFixedRank is an optional int 1-11
+// (1=F .. 11=SS, ZPage_PveResult.uc:113-165's m_Rank.Score = WinTeamRank-1)
+// sent as User_Score_SN 0x00222221's WinTeamRank right before EndGame_SN on
+// a successful PvE clear (dispatch/lobby.dispatch.js's Campaign_CN
+// handler). Missing/absent = User_Score_SN is not sent at all, unchanged
+// from before RANK. This is a fixed test value to prove the packet works,
+// not the real rank formula -- see docs/research/2026-09-19-rank/notes.md.
+
 const CONFIG_PATH = path.join(__dirname, 'server.json');
 const DEFAULT_PUBLIC_HOST = '127.0.0.1';
 const DEFAULT_PVE_EXTRA_LIVES = 0;
+// No DEFAULT_PVE_FIXED_RANK: absent/invalid both mean "don't send".
 
 // undefined = not loaded yet; string = loaded (either the configured host or
 // the default, if the file/field is missing or invalid).
@@ -30,6 +39,10 @@ let cachedPublicHost = undefined;
 // undefined = not loaded yet; number = loaded (either the configured value
 // or the default, if the file/field is missing or invalid).
 let cachedPveExtraLives = undefined;
+// Always reset by load() (see cachedPublicHost's own loaded-check above,
+// which load() is gated on): a number 1-11 when configured, undefined when
+// absent/invalid/config file missing.
+let cachedPveFixedRank = undefined;
 
 function load()
 {
@@ -76,12 +89,27 @@ function load()
             cachedPveExtraLives = lives;
             console.log(`[config/server] Loaded pveExtraLives=${lives} from config/server.json`);
         }
+
+        const rawRank = parsed.pveFixedRank;
+        if (rawRank === undefined) {
+            cachedPveFixedRank = undefined;
+        } else if (!Number.isInteger(rawRank) || rawRank < 1 || rawRank > 11) {
+            console.warn(
+                `[config/server] pveFixedRank "${rawRank}" is not an integer 1-11 -- `
+                + `not sending User_Score_SN`
+            );
+            cachedPveFixedRank = undefined;
+        } else {
+            cachedPveFixedRank = rawRank;
+            console.log(`[config/server] Loaded pveFixedRank=${rawRank} from config/server.json`);
+        }
     } catch (err) {
         if (err.code !== 'ENOENT') {
             console.warn(`[config/server] failed to read config/server.json (${err.message}) -- using ${DEFAULT_PUBLIC_HOST}`);
         }
         cachedPublicHost = DEFAULT_PUBLIC_HOST;
         cachedPveExtraLives = DEFAULT_PVE_EXTRA_LIVES;
+        cachedPveFixedRank = undefined;
     }
     return cachedPublicHost;
 }
@@ -106,4 +134,16 @@ function getPveExtraLives()
     return cachedPveExtraLives;
 }
 
-module.exports = { getPublicHost, getPveExtraLives };
+/**
+ * @returns {number|undefined} User_Score_SN 0x00222221 WinTeamRank to send
+ *   before EndGame_SN on a successful PvE clear (test mode), undefined when
+ *   config/server.json is absent or the field is missing/invalid -- in
+ *   which case User_Score_SN is not sent at all (matches pre-RANK behaviour).
+ */
+function getPveFixedRank()
+{
+    load();
+    return cachedPveFixedRank;
+}
+
+module.exports = { getPublicHost, getPveExtraLives, getPveFixedRank };
