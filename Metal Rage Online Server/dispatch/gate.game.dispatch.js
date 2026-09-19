@@ -1445,6 +1445,118 @@ class ZGateGameDispatch
             }
 
             // ==========================================
+            // KICK task (docs/backlog.md, 2026-09-19): 0x00220337 is
+            // Kickout_CQ, sent by the room host pressing "kick" on another
+            // member. [DLL 0x10705d7b] ZDispatchRoom::Kickout_CQ: body is a
+            // bare u16 UserIndex (the target's accountId, per rooms.js's
+            // "user index == accountId" convention), total frame length
+            // 0x12 (0x10 header + 2-byte body) -- matches the observed body
+            // `0400` for target account 4
+            // ([LOG] session-20260919-111258.jsonl ms 2121418). No other
+            // fields. Reply is Kickout_SA 0x00220338 [DLL 0x1070135c]
+            // ZDispatchRoom::Kickout_SA: same standard EVENT_INFO header
+            // (u16 result + u32 code, both 0 = success; client only removes
+            // the target / fires NETWORK_ROOM_USER_KICKOUT on the 0/0 case)
+            // as every other _SA in this file -- exact non-zero failure code
+            // unconfirmed, reusing this file's existing generic-failure
+            // convention of 1/1 (see Enter_CQ's sendEnterSa above).
+            //
+            // Before this handler existed, 0x00220337 fell through to the
+            // generic odd-opcode default case below, which echoed back a
+            // *success* Kickout_SA without touching the room at all: the
+            // host's own client-side list removed the kicked player (off
+            // that success header alone -- Kickout_SA's DLL handler reads a
+            // UserIndex from its own state, not from anything the server
+            // has to send), but the server never removed them from `rooms`
+            // and the kicked player was never told, so they stayed fully in
+            // the room and could keep chatting ([OBS] session above).
+            //
+            // Only the room's host may kick, and only an actual member who
+            // is not the host -- the DLL does not re-validate this
+            // server-side (ZPage_RoomMember's kick button UI presumably
+            // only renders for the host, but the server must not trust
+            // that). Gated by ROOM_JOIN_MODE like the rest of the
+            // room-membership handlers: with the switch off, rooms.js has
+            // no real membership to check against, so this keeps the
+            // previous fallback behaviour unchanged (same pattern as
+            // Enter_CQ 0x00220231 above).
+            // ==========================================
+            case 0x00220337:
+            {
+                if (!rooms.isRoomJoinEnabled()) {
+                    // Unchanged from before this case existed: the generic
+                    // odd-opcode fallback this used to fall through to
+                    // (packetlog.fallback + 6-byte 0/0 auto-ACK as type+1).
+                    // Keeping this byte-identical matters for
+                    // test/replay-golden.js's baselines.
+                    packetlog.fallback(client, 'ZGateGameDispatch', type, body, type + 1);
+                    const [msg, respBody] = client.getMessageBuffer(type + 1, 0x6);
+                    respBody.writeUint16LE(0x0000, 0);
+                    respBody.writeUint32LE(0x0000, 2);
+                    client.send(msg);
+                    return true;
+                }
+
+                const targetAccountId = body.length >= 2 ? body.readUInt16LE(0) : 0;
+                const kickerAccountId = Number(client.accountIndex_ || client.accountId_ || 1);
+
+                const sendKickoutSa = (ok) => {
+                    const [msg, respBody] = getExactMessageBuffer(0x00220338, 0x06);
+                    respBody.writeUInt16LE(ok ? 0 : 1, 0x00);
+                    respBody.writeUInt32LE(ok ? 0 : 1, 0x02);
+                    client.send(msg);
+                    console.log(`[ZGateGameDispatch] >> Sent Kickout_SA 0x220338 (${ok ? 'success' : 'failure'}, kicker=${kickerAccountId}, target=${targetAccountId})`);
+                };
+
+                const room = rooms.getRoomByAccount(kickerAccountId);
+                if (!room || room.hostAccountId !== kickerAccountId) {
+                    console.log(`[ZGateGameDispatch] >> Kickout_CQ: account ${kickerAccountId} is not the host of any room, refusing`);
+                    sendKickoutSa(false);
+                    return true;
+                }
+                if (targetAccountId === kickerAccountId || !room.members.has(targetAccountId)) {
+                    console.log(`[ZGateGameDispatch] >> Kickout_CQ: target ${targetAccountId} is not a kickable member of room #${room.id}`);
+                    sendKickoutSa(false);
+                    return true;
+                }
+
+                const targetClient = room.members.get(targetAccountId).client;
+
+                sendKickoutSa(true);
+
+                // Tell the kicked client directly: Leave_SN with UserIndex
+                // == itself and Kickout=1 -- per the DLL (0x107edb70,
+                // decompiled for this task) this is the "self" branch,
+                // which fires NETWORK_GOTO_LOBBY *and* (because Kickout!=0)
+                // NETWORK_ROOM_KICKOUT_ME. leaveRoomAndNotify() below only
+                // messages the *remaining* members (it filters the target
+                // out of that list by construction), so this has to happen
+                // separately -- same reasoning as Leave_CQ 0x00220234
+                // sending its own Leave_SA directly before calling
+                // leaveRoomAndNotify() for the room-registry side.
+                if (targetClient) {
+                    const [leaveMsg, leaveBody] = getExactMessageBuffer(0x00220236, 0x03);
+                    leaveBody.writeUInt16LE(targetAccountId, 0x00);
+                    leaveBody.writeUInt8(1, 0x02); // Kickout=1
+                    targetClient.send(leaveMsg);
+                    // Same room-flag reset Leave_CQ 0x00220234 does for a
+                    // voluntary leave (room.dispatch.js's
+                    // resetRoomSessionState) -- the kicked client never sent
+                    // a CQ of its own, so nothing else clears these.
+                    require('./room.dispatch').resetRoomSessionState(targetClient);
+                }
+                console.log(`[ZGateGameDispatch] >> Kickout_CQ: host ${kickerAccountId} kicked account ${targetAccountId} from room #${room.id}`);
+
+                // Mirror the removal into the Room registry and notify
+                // whoever is left in the room (host included) -- reuses the
+                // same remove-member/Leave_SN path Leave_CQ and disconnect
+                // already share (room-leave.js), per this task's contract.
+                leaveRoomAndNotify(targetAccountId, { kickout: true });
+
+                return true;
+            }
+
+            // ==========================================
             // Room Option Change CQ
             // ==========================================
             case 0x00220215:

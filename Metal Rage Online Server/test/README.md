@@ -141,5 +141,8 @@ Not covered yet, and why:
   Covers: Room_List_SN broadcast to the lobby on room create (and full list
   on lobby open), Enter_CQ join (Enter_SA + both sides getting each other's
   User_Default_SN, using `test/fixtures/fake-timers.js` to drain the
-  scene-change-race retry), and Leave_CQ notifying the remaining member
-  with Leave_SN.
+  scene-change-race retry), Leave_CQ notifying the remaining member with
+  Leave_SN, and (KICK, docs/backlog.md 2026-09-19) Kickout_CQ 0x00220337:
+  host kicking a real member (success Kickout_SA to the host, Leave_SN with
+  Kickout=1 to the kicked member, membership actually drops) and a non-host
+  trying to kick the host (failure SA, no state change).
