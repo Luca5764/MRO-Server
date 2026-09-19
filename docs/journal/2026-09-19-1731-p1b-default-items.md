@@ -42,3 +42,19 @@
 - `sendHangarWearInfo()` 的 `[uniqueKey, itemIndex]` 順序跟 DLL 已確認的順序不一致（見上），沒有修，需要高階判斷是否是既有問題、要不要開新契約。
 - 開關與清理腳本都還沒在真實伺服器上開過／跑過寫入，只有 `--dry-run` 對帳號 4 跑過。
 - 沒有實機驗證（沒有連過客戶端）。
+
+## 追加（2026-09-19，HANGAR-WEARINFO-ORDER，🟡 待審）
+
+依 Sol batch5 review（`docs/research/2026-09-19-sol-review/batch5.md` 第 4、5 點）修了上面留的兩個待決問題，在 worktree `~/mro-wt/hangarwear`（分支 `flash-wip-hangarwear`）：
+
+1. `dispatch/room.dispatch.js` 的 `sendHangarWearInfo()`（`~1105-1112`）把寫入順序從 `[uniqueKey, itemIndex]` 改成 `[itemIndex, uniqueKey]`，跟 `account.dispatch.js`／`gamelogin.dispatch.js` 一致，也跟 DLL `WearInfo_SN` `0x107c4877`/`0x107c4a13` 一致。同步改了 `test/item-equips.js` 的 `readSlot()`（原本把錯的順序當預期，現在加註解說明）。
+2. `test/login-token.js` 的 fake DB 補了 `getItemsWithEquipViews()`（回傳空陣列，跟既有 `getItems()` 同形狀），並在 `main()` 加了 `console.error` spy，任何含 `DB Error` 的訊息都會讓測試 fail（原本只是印出來、被 `gamelogin.dispatch.js:435-436` 的 catch 吞掉，測試仍 exit 0）。手動移除 mock 驗證過新的斷言真的會抓到（4 筆 swallowed DB Error，測試變 red），復原後綠燈。
+
+**`test/replay-golden.js`（不帶 `--record`）出現差異，沒有重錄：** `login-room-shop-buy` 與 `pve-full-match` 兩個 golden sample 在 `op=0x00210113`（`SN_WEAR_INFO`）都在 byte offset `0x12` 不一致：
+```
+expected .. 0100000001000000a18601006a090000 ..
+got      .. 01000000010000006a090000a1860100 ..
+```
+這正是機庫路徑欄位順序對調後預期會變的封包，其餘 golden sample（`login-dispatch`、`login-room-game`）不受影響。是否重錄兩份 baseline 留給高階決定。
+
+其餘 `test/*.js` 全綠（`test/extract-golden.js` exit 1 是缺 CLI 參數的既有行為，不是測試失敗）。

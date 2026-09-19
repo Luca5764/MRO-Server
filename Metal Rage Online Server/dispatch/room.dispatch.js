@@ -1102,12 +1102,16 @@ class ZRoomDispatch
             body.writeUint32LE(Number(client.pilot_) || 101, 6); // pilotItemIndex
             body.writeUint32LE(defaultMech, 10); // selectedMechType
 
+            // Entry (52 bytes): [u32 mechType] + 6x[u32 itemIndex, u32 uniqueKey]
+            // (DLL WearInfo_SN 0x107c4877/0x107c4a13 reads the second u32 at
+            // rec+0x08 as the ItemInfo key, i.e. itemIndex first -- matches
+            // account.dispatch.js and gamelogin.dispatch.js).
             let offset = HEADER_SIZE;
             for (let m = 1; m <= MAX_MECH_COUNT; m++) {
                 body.writeUint32LE(m, offset);
                 for (let s = 0; s < 6; s++) {
-                    body.writeUint32LE(mechSlots[m][s].uniqueKey, offset + 4 + s * 8);
-                    body.writeUint32LE(mechSlots[m][s].itemIndex, offset + 4 + s * 8 + 4);
+                    body.writeUint32LE(mechSlots[m][s].itemIndex, offset + 4 + s * 8);
+                    body.writeUint32LE(mechSlots[m][s].uniqueKey, offset + 4 + s * 8 + 4);
                 }
                 offset += ENTRY_SIZE;
             }

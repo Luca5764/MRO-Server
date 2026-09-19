@@ -119,6 +119,11 @@ function makeMultiAccountDb()
         async getMechLicenses() { return []; },
         async getTutorials() { return []; },
         async getItems() { return []; },
+        // Sol batch5 point 5: without this, gamelogin.dispatch.js:271's real
+        // path (db.getItemsWithEquipViews) throws, gets swallowed by the
+        // catch at :435-436, and bootstrap silently stops partway -- same
+        // shape as getItems() above since no test account here has items.
+        async getItemsWithEquipViews() { return []; },
     };
 }
 
@@ -303,17 +308,36 @@ async function testCaseD_OneAccountAllZeroBodyFallsBack()
     console.log('[login-token test] PASS (d): all-zero body with only 1 account seen -> falls back to last_login, with a warning marker');
 }
 
+// Sol batch5 point 5: gamelogin.dispatch.js's bootstrap try/catch
+// (dispatch/gamelogin.dispatch.js:433-436) swallows real DB errors and logs
+// "DB Error" instead of throwing, so a missing fake-DB mock (like the
+// getItemsWithEquipViews gap this fixed) used to leave the test exiting 0
+// with a half-run bootstrap. Spy on console.error for the whole run and fail
+// if any such swallowed error was logged -- none of the four cases below
+// expect one.
+const realConsoleError = console.error;
+const swallowedDbErrors = [];
+console.error = (...args) => {
+    realConsoleError(...args);
+    if (args.some((a) => typeof a === 'string' && /DB Error/i.test(a)))
+        swallowedDbErrors.push(args.map(String).join(' '));
+};
+
 async function main()
 {
     await testCaseA_ReconnectStaysAsSelf();
     await testCaseB_TokenNotOneTime();
     await testCaseC_TwoAccountsAllZeroBodyIsRefused();
     await testCaseD_OneAccountAllZeroBodyFallsBack();
+    console.error = realConsoleError;
+    assert.strictEqual(swallowedDbErrors.length, 0,
+        `expected no swallowed bootstrap DB errors, got: ${swallowedDbErrors.join(' | ')}`);
     console.log('[login-token test] ALL CHECKS PASS');
     process.exit(0);
 }
 
 main().catch((err) => {
+    console.error = realConsoleError;
     console.error('[login-token test] FAIL:', err);
     process.exit(1);
 });
