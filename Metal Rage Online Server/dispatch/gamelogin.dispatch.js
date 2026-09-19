@@ -10,6 +10,7 @@ const packetlog = require('../packetlog');
 // same helper and buffer style as that path.
 const rooms = require('../rooms.js');
 const { sendFullRoomList } = require('./room/room-list.sender');
+const { resolveRealMapIds, sendMapInfoSN } = require('./map-info.sender');
 
 // Game server login handler
 // After connecting to the game server (port 30907), the client sends
@@ -28,6 +29,21 @@ const SN_COMPLETE      = 0x00210121;
 const SA_LOBBY_ENTER   = 0x00230112;
 const SN_LICENSE_INFO  = 0x00260101;   // must be sent before SN_COMPLETE / lobby enter
 const { MAX_MECH_COUNT, MAX_SLOT_COUNT } = require('../datatypes/enums');
+
+// H7-MAPINFO-30907 (docs/backlog.md; docs/journal/2026-09-19-1000-maplist-
+// single-entry.md): 9211's MapInfo_SN 0x00210115 is only sent once, on
+// login (dispatch/account.dispatch.js). But the client's post-9211-login
+// level travel (Browse Index.tzp / Store_01) appears to reset ZNetwork_DJ's
+// default-object data — the room map selector then finds m_MapInfoList
+// empty, even with RoomType==2 correctly drawn on screen. Data sent on this
+// 30907 login (ItemInfo/WearInfo below) survives that travel, so trigger:
+// 30907 game-server login (Login_Again_CQ 0x00110124) — resend MapInfo_SN
+// here too when this switch is on. 🟡 hypothesis, default off.
+let mapInfoOnGameLoginMode = 'disabled'; // 'disabled' | 'enabled'
+
+function _setMapInfoOnGameLoginModeForTests(mode) {
+    mapInfoOnGameLoginMode = mode;
+}
 
 // Same helper as room.dispatch.js's sendLobbyBootstrapAfterRoomLeave --
 // Room_List_SN's own sender (room-list.sender.js) takes a
@@ -317,6 +333,16 @@ class ZGameLoginDispatch
                     console.log(`[ZGameLoginDispatch] >> Sent SN_LICENSE_INFO: ${licList.length} licenses`);
                 }
 
+                // SN_MAP_INFO (0x00210115) resend — trigger: 30907 game-server
+                // login (Login_Again_CQ 0x00110124). See mapInfoOnGameLoginMode
+                // comment above for why. Off by default.
+                if (mapInfoOnGameLoginMode === 'enabled') {
+                    const dbMaps = await db.getMaps(account.id);
+                    const fallbackIds = dbMaps.map((map) => map.map_id);
+                    sendMapInfoSN(client, resolveRealMapIds() || fallbackIds);
+                    console.log(`[ZGameLoginDispatch] >> Sent SN_MAP_INFO (mapInfoOnGameLoginMode): ${(resolveRealMapIds() || fallbackIds).length} maps`);
+                }
+
                 console.log(`[ZGameLoginDispatch] >> Sent DB account data for "${account.nickname}"`);
 
             } else {
@@ -504,3 +530,5 @@ class ZGameLoginDispatch
         }
     }
 };
+
+module.exports._setMapInfoOnGameLoginModeForTests = _setMapInfoOnGameLoginModeForTests;
