@@ -135,10 +135,10 @@ function makeMockPool(state)
 
         if (norm.startsWith('SELECT COUNT(*) AS itemsTotal FROM items'))
             return [[{ itemsTotal: state.items.length }]];
-        if (norm.startsWith('SELECT COUNT(*) AS before FROM item_equips'))
-            return [[{ before: state.itemEquips.length }]];
-        if (norm.startsWith('SELECT COUNT(*) AS after FROM item_equips'))
-            return [[{ after: state.itemEquips.length }]];
+        if (norm.startsWith('SELECT COUNT(*) AS n_before FROM item_equips'))
+            return [[{ n_before: state.itemEquips.length }]];
+        if (norm.startsWith('SELECT COUNT(*) AS n_after FROM item_equips'))
+            return [[{ n_after: state.itemEquips.length }]];
         if (norm.startsWith('SELECT COUNT(*) AS existingCount FROM item_equips'))
             return [[{ existingCount: state.itemEquips.length }]];
         // tools/merge-e1-shared-duplicates.js's own before/after counts.

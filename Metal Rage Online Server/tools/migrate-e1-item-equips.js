@@ -93,7 +93,7 @@ async function runMigration(pool, opts = {})
         await conn.beginTransaction();
 
         const [[{ itemsTotal }]] = await conn.execute('SELECT COUNT(*) AS itemsTotal FROM items');
-        const [[{ before }]] = await conn.execute('SELECT COUNT(*) AS before FROM item_equips');
+        const [[{ n_before: before }]] = await conn.execute('SELECT COUNT(*) AS n_before FROM item_equips'); // BEFORE/AFTER are reserved words in MySQL 8
         log(`[E1 migration] Before: items=${itemsTotal} item_equips=${before}`);
 
         const [equippedRows] = await conn.execute(
@@ -153,7 +153,7 @@ async function runMigration(pool, opts = {})
             inserted++;
         }
 
-        const [[{ after }]] = await conn.execute('SELECT COUNT(*) AS after FROM item_equips');
+        const [[{ n_after: after }]] = await conn.execute('SELECT COUNT(*) AS n_after FROM item_equips');
         log(`[E1 migration] After: item_equips=${after} (inserted=${inserted}, already-present=${skipped})`);
 
         await conn.commit();
