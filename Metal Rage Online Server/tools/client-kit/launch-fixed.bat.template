@@ -1,0 +1,26 @@
+@echo off
+title Metal Rage Online
+cd /d "%~dp0data\System"
+
+:: Disable SEHOP for y0da protector (requires admin on first run)
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\MetalRage.exe" /v DisableExceptionChainValidation >nul 2>&1
+if errorlevel 1 (
+    echo Setting up first-time Windows 11 compatibility fix...
+    reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\MetalRage.exe" /v DisableExceptionChainValidation /t REG_DWORD /d 1 /f >nul 2>&1
+    if errorlevel 1 (
+        echo.
+        echo ============================================
+        echo  FIRST RUN: Please right-click this file
+        echo  and select "Run as Administrator" once.
+        echo  After that, it works without admin.
+        echo ============================================
+        echo.
+        pause
+        exit /b
+    )
+    echo Done! This only needs to happen once.
+    echo.
+)
+
+:: Launch the game
+start "" MetalRage.exe -globalid=TW^&ip=__SERVER_IP__^&port=9211^&age=30
