@@ -198,7 +198,7 @@ function Get-MetalRageWindow {
             }
         }
         return $true
-    }, [IntPtr]::Zero) | Out-Null
+    }, [IntPtr]::Zero)
     if ($script:MrwBest -eq [IntPtr]::Zero) { return $null }
     return @{
         Handle = $script:MrwBest

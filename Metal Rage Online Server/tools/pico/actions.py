@@ -224,7 +224,7 @@ def keepalive_key_tap(ctx):
     return run_pico(ctx, "key", "SHIFT")
 
 
-KEEPALIVE_KEY = "SHIFT"
+KEEPALIVE_KEY = "SHIFT"  # unused for keepalive since 2026-09-20: SHIFT toggles the IME mode; wait_for uses mouse_wiggle
 
 
 def type_text(ctx, text):
@@ -264,7 +264,7 @@ def wait_for(ctx, label, timeout_s, check_fn, keepalive_interval_s=None):
         if time.monotonic() - t0 >= timeout_s:
             break
         if keepalive_interval_s is not None and (time.monotonic() - last_keepalive) >= keepalive_interval_s:
-            keepalive_key_tap(ctx)
+            mouse_wiggle(ctx)  # not SHIFT: SHIFT toggles the Bopomofo IME Chinese/English mode
             last_keepalive = time.monotonic()
         time.sleep(ctx.poll_interval_s)
     elapsed = time.monotonic() - t0
@@ -932,20 +932,34 @@ def login(ctx, account):
     if pre:
         return pre
     steps = []
-    base = None if ctx.dry_run else _newest_log_ms(ctx.logs_dir)
-    if not ctx.dry_run:
-        steps.append(run_pico(ctx, "raw", "IME_EN"))
-        steps.append(click_at(ctx, LOGIN_ACCOUNT_FIELD))
-        steps.append(type_text(ctx, account))
-        steps.append(key(ctx, "TAB"))
-        steps.append(type_text(ctx, LOGIN_DUMMY_PASSWORD))
-        steps.append(key(ctx, "ENTER"))
-
-    ok_pkt, found, elapsed_pkt = wait_for_log_pkts(
-        ctx, DEFAULT_LOGIN_TIMEOUT_S,
-        {"login_cq": lambda e: e.get("dir") == "recv" and e.get("op") == LOGIN_CQ_OPCODE},
-        baseline_ms=base,
-    )
+    # IME_EN (WM_INPUTLANGCHANGEREQUEST) did NOT stop the Bopomofo IME from eating
+    # the account text live on 2026-09-20 (client showed 「ID、密碼只能使用0~9、a~z、
+    # A~Z」). The IME's own Chinese/English mode is toggled by a SHIFT tap, but its
+    # current mode is not observable beforehand, so: try once; if that exact notice
+    # appears, dismiss it, tap SHIFT once, try again; a second failure stops.
+    ok_pkt, found, elapsed_pkt = False, {}, 0.0
+    for attempt in range(2):
+        base = None if ctx.dry_run else _newest_log_ms(ctx.logs_dir)
+        if not ctx.dry_run:
+            steps.append(run_pico(ctx, "raw", "IME_EN"))
+            steps.append(click_at(ctx, LOGIN_ACCOUNT_FIELD))
+            steps.append(type_text(ctx, account))
+            steps.append(key(ctx, "TAB"))
+            steps.append(type_text(ctx, LOGIN_DUMMY_PASSWORD))
+            steps.append(key(ctx, "ENTER"))
+        ok_pkt, found, elapsed_pkt = wait_for_log_pkts(
+            ctx, DEFAULT_LOGIN_TIMEOUT_S if attempt else 8.0,
+            {"login_cq": lambda e: e.get("dir") == "recv" and e.get("op") == LOGIN_CQ_OPCODE},
+            baseline_ms=base,
+        )
+        if ok_pkt or ctx.dry_run or attempt == 1:
+            break
+        present, nscore = screens.detect_marker(take_screenshot(ctx, f"login-attempt{attempt}-notice"), "notice_popup")
+        if not present:
+            break
+        steps.append(click_at(ctx, NOTICE_CONFIRM_BUTTON))
+        time.sleep(1.0)
+        steps.append(key(ctx, "SHIFT"))
     ok_lobby, gray, detail_lobby, score, shot, _ = wait_for(ctx, "login-lobby", 15.0, _screen_check("lobby"))
     ok = ok_pkt and ok_lobby
     detail = (f"login_cq({LOGIN_CQ_OPCODE}) recv: {'seen' if ok_pkt else 'MISSING'} "
@@ -1028,8 +1042,11 @@ ACTIONS = {
 # event written by recordBuild()), not guessed.
 # ---------------------------------------------------------------------------
 def newest_session_log(logs_dir):
-    files = sorted(glob.glob(os.path.join(logs_dir, "session-*.jsonl")))
-    return files[-1] if files else None
+    # By mtime, not name: test runs can create newer-named session files while the
+    # live server keeps writing an older-named one (2026-09-20: live 20260919-211100
+    # vs test-created 20260920-000304).
+    files = glob.glob(os.path.join(logs_dir, "session-*.jsonl"))
+    return max(files, key=os.path.getmtime) if files else None
 
 
 def find_build_event(logs_dir):

@@ -60,3 +60,11 @@
 - ❌ [TEST] 2026-09-20 00:35：對**已修補**的客戶端（pid 38048）執行 `taskkill /IM MetalRage.exe /F` → 「存取被拒」；`Stop-Process -Force` 也一樣。`client_ctl restart` 正確回 BLOCKED（cannot terminate），沒有接著啟動第二個客戶端。
   - [SRC] MetalRage.exe manifest 寫 `requireAdministrator`，所以客戶端是提權執行，而 WSL 叫出的 powershell 沒有提權。奇怪的是 `OpenProcess(PROCESS_TERMINATE)` 有拿到 handle（2792），終止時卻被拒；可能還有別的保護（例如 kernel callback 把權限剝掉）🟡。
   - → XIGNCODE 修補**沒有**讓 kill 變可行。無人重開需要提權的管道（操作者預先建立的最高權限排程工作），或者由操作者手動處理。
+
+## 還原 XIGNCODE 修補後（原版客戶端，2026-09-20 00:30–00:50）
+- 合併 pico-login（a101694）後，實跑時發現三個問題：
+  1. 三支 PowerShell 都把 `[void]EnumWindows(...) | Out-Null` 寫在一起，PS 5.1 會報「引數類型不能是 System.Void」→ 前景檢查丟例外（fail-closed 擋下，沒有送出輸入）、shot.sh 找不到視窗。已修（拿掉 `| Out-Null`）。
+  2. `IME_EN`（WM_INPUTLANGCHANGEREQUEST）擋不住注音輸入法。帳號打進去變成注音，客戶端跳「ID、密碼只能使用0~9、a~z、A~Z」。`login()` 改成：試一次 → 出現這個提示框就按確認 → 按一次 SHIFT（切換注音的中／英模式）→ 再試一次 → 還是失敗就停。✅ [TEST] 00:44 第二次成功，登入後到大廳。
+  3. `newest_session_log` 照檔名挑檔：00:03 有測試程式產生了檔名比較新的 session 檔，但伺服器實際一直寫在 `session-20260919-211100.jsonl`。改成照 mtime 挑。這一項在修之前，登入封包被判定 MISSING。
+- keepalive 原本選 SHIFT，會切換注音的中／英模式，改成 mouse_wiggle（滑鼠移 1 px 再移回來）。
+- ✅ [TEST] `U-pve-fullmatch` 在原版客戶端上 PASS（00:47，報告 `tools/pico/logs/reports/U-pve-fullmatch-20260920-0047*.txt`）。未經跨公司審查。
