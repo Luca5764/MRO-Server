@@ -1,9 +1,11 @@
 'use strict';
 
 // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4, backlog D1-6):
-// unit test for BATTLE_END_BROADCAST_MODE (rooms.isBattleEndBroadcastEnabled()),
-// added to dispatch/lobby.dispatch.js's Campaign_CN 0x00230139 and Death_CN
-// 0x00230123 handlers. Same technique as test/room-battle-start-broadcast.js
+// unit test for the room-wide battle-end broadcast (rooms.js's
+// isRoomJoinEnabled() finding a tracked room), added to dispatch/
+// lobby.dispatch.js's Campaign_CN 0x00230139 and Death_CN 0x00230123
+// handlers. SWITCH-CONVERGE: the BATTLE_END_BROADCAST_MODE switch this used
+// to gate was removed once verified live. Same technique as test/room-battle-start-broadcast.js
 // and test/round-advance.js: calls the real ZLobbyDispatch.dispatch()
 // directly (no socket, no server.js) against two fake clients sharing
 // rooms.js's module-level registry, with a fake config/server.js (same
@@ -124,7 +126,6 @@ async function main()
 {
     rooms._resetForTests();
     rooms._setRoomJoinModeForTests('enabled');
-    rooms._setBattleEndBroadcastModeForTests('enabled');
     LobbyDispatch._setPveRoundAdvanceModeForTest('enabled');
     // This file doesn't cover HOST_ADDRESS_REQUIRE_MODE (that's
     // test/room-host-address-require.js's job) -- SWITCH-CONVERGE flipped

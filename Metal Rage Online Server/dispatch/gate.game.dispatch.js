@@ -1563,9 +1563,10 @@ class ZGateGameDispatch
                 // below (SERVER_DRIVEN_START_MODE or not) actually sends
                 // Game_Start_SN.
                 client.pveRoundsCleared_ = 0;
-                // D1-6-STEP3: with BATTLE_END_BROADCAST_MODE the round counter lives
-                // on the Room; reset it here too, or a rematch in the same room
-                // would start from the previous match's cleared count.
+                // D1-6-STEP3: the round counter also lives on the Room when
+                // one is tracked; reset it here too, or a rematch in the
+                // same room would start from the previous match's cleared
+                // count.
                 //
                 // Sol batch3 review (docs/research/2026-09-19-sol-review/
                 // batch3.md Part B "需修改 -- round/reset ownership"): this
@@ -1574,7 +1575,7 @@ class ZGateGameDispatch
                 // lobby.dispatch.js's Campaign_CN/Death_CN/BeginRound_CN
                 // handlers gate their own room-state writes, so a non-host
                 // client cannot clear the shared round counter.
-                if (rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled()) {
+                if (rooms.isRoomJoinEnabled()) {
                     const accountIdForRoundReset = Number(client.accountIndex_ || client.accountId_ || 1);
                     const roomForRoundReset = rooms.getRoomByAccount(accountIdForRoundReset);
                     if (roomForRoundReset && accountIdForRoundReset === roomForRoundReset.hostAccountId) {

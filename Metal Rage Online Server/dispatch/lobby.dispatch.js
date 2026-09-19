@@ -242,7 +242,6 @@ class ZLobbyDispatch
                 // now only runs inside the `if (roomForBeginRound)` branch,
                 // after both the host check and the dedup check have
                 // actually accepted this CN.
-                const battleEndBroadcastEnabledForBegin = rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled();
 
                 if (roomForBeginRound) {
                     if (accountIdForBeginRound !== roomForBeginRound.hostAccountId) {
@@ -260,17 +259,15 @@ class ZLobbyDispatch
 
                     // Accepted (host, non-duplicate): now safe to reset the
                     // room-shared battle totals for the new round.
-                    if (battleEndBroadcastEnabledForBegin) {
-                        roomForBeginRound.battleStats = new Map();
-                    }
+                    roomForBeginRound.battleStats = new Map();
 
                     // BeginRound_CN starts a battle: reset the per-player
                     // battle totals that Death_SN carries (see case
                     // 0x00230123). client.battleStats_ is still reset
                     // unconditionally here as the fallback storage Death_CN
-                    // uses when BATTLE_END_BROADCAST_MODE is off; the
-                    // room.battleStats reset (used instead when that switch
-                    // is on) happened above, gated on host + its own switch.
+                    // uses when no room is tracked at all; the
+                    // room.battleStats reset (used instead whenever one is)
+                    // happened above, gated on host + the dedup check.
                     client.battleStats_ = {};
 
                     rooms.sendAll(roomForBeginRound.id, (target) => {
@@ -348,9 +345,9 @@ class ZLobbyDispatch
                 const action = body.length >= 3 ? body[2] : 2;
 
                 // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4,
-                // backlog D1-6): with rooms.isBattleEndBroadcastEnabled() +
-                // rooms.isRoomJoinEnabled(), Campaign_CN is only accepted
-                // from the room's current host -- [LOG]
+                // backlog D1-6): with rooms.isRoomJoinEnabled() finding a
+                // tracked room, Campaign_CN is only accepted from the room's
+                // current host -- [LOG]
                 // session-20260919-150041.jsonl: every Campaign_CN in the
                 // recorded 2-player match came from the host connection
                 // (conn12, Lucas), because the host's client is the P2P
@@ -364,8 +361,7 @@ class ZLobbyDispatch
                 // iterates one member (the host itself), byte-identical to
                 // the unconditional client.send() calls this replaces.
                 const accountIdForCampaign = Number(client.accountIndex_ || client.accountId_ || 1);
-                const battleEndBroadcastEnabled = rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled();
-                const roomForCampaign = battleEndBroadcastEnabled
+                const roomForCampaign = rooms.isRoomJoinEnabled()
                     ? rooms.getRoomByAccount(accountIdForCampaign)
                     : undefined;
 
@@ -520,9 +516,10 @@ class ZLobbyDispatch
                 // 🟡 待審): EndGame_SN just went out above (win or lose --
                 // either way the client leaves the battle for the result
                 // scene), so the room is back in the lobby screen. Look the
-                // room up independently of roomForCampaign above -- that one
-                // is only set when battleEndBroadcastMode is ALSO on, but
-                // this switch only requires roomJoinMode.
+                // room up independently of roomForCampaign above (they
+                // resolve to the same room whenever one is tracked, but this
+                // switch only requires roomJoinMode, so re-derive it on its
+                // own rather than assume roomForCampaign is set).
                 if (rooms.isRoomPlayingStateEnabled() && rooms.isRoomJoinEnabled()) {
                     const roomForPlayingState = roomForCampaign || rooms.getRoomByAccount(accountIdForCampaign);
                     if (roomForPlayingState && roomForPlayingState.state === 'playing') {
@@ -557,20 +554,18 @@ class ZLobbyDispatch
                 // client. Exp/point per kill are placeholders, not known values.
                 //
                 // D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4):
-                // with rooms.isBattleEndBroadcastEnabled() +
-                // rooms.isRoomJoinEnabled(), the totals live on
-                // room.battleStats (Map<accountId, {kills, deaths}>) instead
-                // of client.battleStats_ -- only the P2P host ever sends
-                // Death_CN (design doc §4, [LOG] confirmed for the recorded
-                // 2-player match), so the old per-connection storage meant
-                // the scoreboard was tied to the host connection alone.
-                // Falls back to client.battleStats_, unchanged, when the
-                // switch is off.
+                // with rooms.isRoomJoinEnabled() finding a tracked room, the
+                // totals live on room.battleStats (Map<accountId, {kills,
+                // deaths}>) instead of client.battleStats_ -- only the P2P
+                // host ever sends Death_CN (design doc §4, [LOG] confirmed
+                // for the recorded 2-player match), so the old per-connection
+                // storage meant the scoreboard was tied to the host
+                // connection alone. Falls back to client.battleStats_,
+                // unchanged, when no room is tracked at all.
                 const EXP_PER_KILL = 10;
                 const POINT_PER_KILL = 10;
                 const accountIdForDeath = Number(client.accountIndex_ || client.accountId_ || 1);
-                const battleEndBroadcastEnabledForDeath = rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled();
-                const roomForDeath = battleEndBroadcastEnabledForDeath
+                const roomForDeath = rooms.isRoomJoinEnabled()
                     ? rooms.getRoomByAccount(accountIdForDeath)
                     : undefined;
 

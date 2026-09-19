@@ -78,14 +78,13 @@
  *   CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID is keyed on, needed for
  *   Room_Default_SN's mech-slot entry table (offset 0x20).
  * @property {Map<number, {kills: number, deaths: number}>} [battleStats] -
- *   D1-6-STEP3 (design doc §4, gated by isBattleEndBroadcastEnabled()):
- *   room-shared Death_SN kill/death totals, keyed by accountId. Absent
- *   until the first BeginRound_CN this switch handles resets it; only
- *   written/read by lobby.dispatch.js's case 0x00230151/0x00230123.
+ *   D1-6-STEP3 (design doc §4): room-shared Death_SN kill/death totals,
+ *   keyed by accountId. Absent until the first BeginRound_CN resets it;
+ *   only written/read by lobby.dispatch.js's case 0x00230151/0x00230123.
  * @property {number} [pveRoundsCleared_] - D1-6-STEP3: room-level twin of
  *   the old client.pveRoundsCleared_ (lobby.dispatch.js case 0x00230139),
- *   used only when isBattleEndBroadcastEnabled() finds a tracked room --
- *   otherwise round counting stays on the trigger client, unchanged.
+ *   used whenever isRoomJoinEnabled() finds a tracked room -- otherwise
+ *   round counting stays on the trigger client, unchanged.
  */
 
 /** @type {Map<number, Room>} */
@@ -150,28 +149,6 @@ function isLobbyRoomListEnabled() {
 
 function _setLobbyRoomListModeForTests(mode) {
     lobbyRoomListMode = mode;
-}
-
-// D1-6-STEP3 (docs/design/d1-step6-battle-broadcast.md §4, backlog D1-6):
-// whether EndRound_SN 0x00222211, User_Score_SN 0x00222221, EndGame_SN
-// 0x00222213 (lobby.dispatch.js's case 0x00230139, Campaign_CN) and
-// Death_SN 0x00230124 (case 0x00230123) go to every room member instead of
-// only the connection that sent the triggering CN, and whether the
-// per-player kill/death totals those packets carry live on the Room
-// (room.battleStats, a Map<accountId, {kills, deaths}>) instead of
-// client.battleStats_. Its own switch, for the same reason every other
-// D1-6-IMPL step has its own switch (design §5): each broadcast surface
-// needs independent regression coverage. SWITCH-CONVERGE: verified live
-// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
-// 'enabled'.
-let battleEndBroadcastMode = 'enabled'; // 'disabled' | 'enabled'
-
-function isBattleEndBroadcastEnabled() {
-    return battleEndBroadcastMode === 'enabled';
-}
-
-function _setBattleEndBroadcastModeForTests(mode) {
-    battleEndBroadcastMode = mode;
 }
 
 // ROOM-PLAYING-STATE (docs/backlog.md INTRUDE, docs/research/
@@ -488,7 +465,6 @@ function _resetForTests() {
     roomJoinMode = 'disabled';
     lobbyRoomListMode = 'disabled';
     roomReadyStateMode = 'disabled';
-    battleEndBroadcastMode = 'disabled';
     roomPlayingStateMode = 'disabled';
     roomOptionSourceMode = 'disabled';
     battleLeaveMode = 'disabled';
@@ -514,8 +490,6 @@ module.exports = {
     _setLobbyRoomListModeForTests,
     isRoomReadyStateEnabled,
     _setRoomReadyStateModeForTests,
-    isBattleEndBroadcastEnabled,
-    _setBattleEndBroadcastModeForTests,
     isRoomPlayingStateEnabled,
     _setRoomPlayingStateModeForTests,
     isRoomOptionSourceEnabled,
