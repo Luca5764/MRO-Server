@@ -1265,7 +1265,10 @@ class ZGateGameDispatch
                 // server.js's socket close hook now uses for any disconnect
                 // (Leave_CQ used to duplicate this logic inline; the two
                 // paths need to stay in sync, so they now share one
-                // function). No-op when ROOM_JOIN_MODE is disabled.
+                // function). No-op only when the account is not tracked as
+                // a member of any room (D1-4b, docs/backlog.md: this used
+                // to also no-op whenever ROOM_JOIN_MODE was disabled --
+                // see room-leave.js's doc comment).
                 leaveRoomAndNotify(Number(client.accountIndex_ || client.accountId_ || 1));
 
                 return true;

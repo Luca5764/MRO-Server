@@ -159,21 +159,23 @@ class DispatchServer
 
             // D1-4 correction [design §4 "斷線即離開"]: this socket is gone,
             // and per the PM's 2026-09-19 decision that always means the
-            // player left the room -- no grace period, no reconnect. When
-            // ROOM_JOIN_MODE is enabled, remove the member outright and
-            // notify the room/lobby via the same helper Leave_CQ uses. When
-            // disabled, fall back to the old record-only behaviour
-            // (leaveRoomAndNotify() is itself a no-op while the switch is
-            // off, via rooms.isRoomJoinEnabled() — the setMemberClient(null)
-            // branch below is kept only so this stays a literal no-op-diff
-            // when disabled, since setMemberClient is not itself gated by
-            // the switch and some other reader might still expect it).
+            // player left the room -- no grace period, no reconnect. Always
+            // go through the same shared helper Leave_CQ uses.
+            //
+            // D1-4b (docs/backlog.md, PM 2026-09-19): this used to only call
+            // leaveRoomAndNotify() while ROOM_JOIN_MODE was enabled, falling
+            // back to setMemberClient(null) (the old grace-period bookkeeping)
+            // otherwise. That was stale even before this fix -- the comment
+            // it was copying from (room-leave.js's header) already noted the
+            // grace-period design was superseded -- and after room-leave.js's
+            // fix it would have left the lobby room list out of sync with
+            // LOBBY_ROOM_LIST_MODE-only rooms (member count / room deletion
+            // never broadcast on disconnect if ROOM_JOIN_MODE happened to be
+            // off). leaveRoomAndNotify() is safe to call unconditionally --
+            // it is itself a no-op if the account is not tracked as a member
+            // of any room.
             if (client.accountId_) {
-                if (rooms.isRoomJoinEnabled()) {
-                    leaveRoomAndNotify(Number(client.accountId_));
-                } else {
-                    rooms.setMemberClient(Number(client.accountId_), null);
-                }
+                leaveRoomAndNotify(Number(client.accountId_));
             }
         });
     }
