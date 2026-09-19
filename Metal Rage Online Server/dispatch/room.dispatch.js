@@ -1179,7 +1179,14 @@ class ZRoomDispatch
             }
 
             const items = await db.getItems(client.accountId_);
-            const count = Math.min(items.length, 63);
+            // Was capped at 63 (no DLL basis). [LOG] session-20260919-184235.jsonl
+            // ms 3347413: Lucas owns 65 items, Packege_Item_SN carried 63, and
+            // [OBS] the two last-inserted legend bodies (FENRIS 17200101, SPECTOR
+            // 18200101) were missing in the hangar. Cap only by the 0x400 frame
+            // limit instead: 0x10 header + 1 count byte + 8 per row -> 125 rows.
+            const PACKAGE_ITEM_MAX = Math.floor((0x400 - 0x10 - 1) / 8);
+            const count = Math.min(items.length, PACKAGE_ITEM_MAX);
+            if (items.length > count) console.warn(`[ZRoomDispatch] !! Packege_Item_SN truncated: ${items.length} items, sent ${count}`);
             const [msg, body] = getExactMessageBuffer(SN_PACKAGE_ITEM, 1 + (count * 8));
             body.writeUint8(count, 0);
 
