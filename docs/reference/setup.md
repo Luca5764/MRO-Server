@@ -191,3 +191,62 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 - Windows 原本只有 Public 設定檔的 MetalRage 規則，家用網路是 Private，所以 UDP 被擋。每台可能當房主的機器（主機、筆電）都要用系統管理員身分執行 `tools/win/p2p-open.ps1`：加 Inbound UDP 30907、只限 Private、只限 `192.168.1.0/24`。要還原就執行 `p2p-close.ps1`。
 - 這和主機上 `lan-open.ps1` 的 **TCP** 30907 portproxy 協定不同，不會衝突。
 - 房主的區網 IP 寫在 `config/allowed-users.json` 該帳號的 `hostAddress`（D1-6）。
+
+## 跨網路連線（VPN）
+
+給不在同一個家用網路的朋友用（M3，`docs/roadmap.md`）。跟區網那套（上面「讓第二台連進遊戲伺服器」「戰鬥
+P2P（N2）」）差別只在於：大家先加入同一個 VPN 虛擬網路，把區網 IP 換成 VPN 配到的虛擬 IP，其他機制不變。
+
+VPN 工具怎麼選（ZeroTier／Radmin VPN／Tailscale／Hamachi 的免費額度、成員加入方式、直連/中繼行為的事實
+比較）見 `docs/research/2026-09-20-vpn-choice/notes.md`；本節只寫跟本專案設定相關的部分，不重複那份調查。
+
+### 前提
+
+- **所有可能連進來的機器**（伺服器主機、操作者自己的其他家用電腦、每個朋友的電腦）都要加入**同一個**
+  VPN 虛擬網路，而且要先完成該工具的成員核准流程（依所選工具而定；ZeroTier 是 network 擁有者手動
+  Authorize，Radmin VPN 是共用 network 密碼——見上述調查筆記的「成員加入方式」欄）。這是
+  `AGENTS.md` 硬性約束 #2（不把伺服器暴露到不信任的網路）在 VPN 情境下的邊界：私人的 VPN 虛擬網路
+  ＋擁有者對成員的核准，兩者都要成立，缺一不可。
+- 🟡 VPN 在 Windows 加的虛擬網卡，**網路設定檔類型（NetworkCategory）要是 Private**，跟區網那條規則一
+  樣（`tools/win/lan-open.ps1` 預設只套用在 Private/Domain，`tools/win/p2p-open.ps1` 只套用在 Private）；
+  沒有查到任何一家 VPN 官方文件講清楚虛擬網卡預設會被 Windows 分到哪一類（見上述調查筆記），每台機器
+  第一次連上都要用 `Get-NetConnectionProfile` 自己確認，需要的話手動 `Set-NetConnectionProfile ...
+  -NetworkCategory Private`。
+- 白名單（`config/allowed-users.json`）一定要先設定——這點跟區網一樣，不因為換成 VPN 就放寬
+  （`docs/reference/lan-join-guide.md`「開放區網之前一定要設定」同樣適用）。
+
+### 伺服器端要改的值
+
+1. `config/server.json` 的 `publicHost` 從區網 IP 換成**伺服器主機的 VPN 虛擬 IP**（不是 WSL 的 IP，
+   跟區網那節「讓第二台連進遊戲伺服器」的規則一樣，只是把 IP 來源換成 VPN 工具配的那個）。改完要完整
+   重啟伺服器。
+2. `config/allowed-users.json` 裡要當房主的朋友帳號，`hostAddress` 從區網 IP 換成**那台朋友電腦的 VPN
+   虛擬 IP**。`config/whitelist.js` 的檢查（`HOST_ADDRESS_MAX_CHARS = 15`、四段式 dotted IPv4 正則）
+   沒有針對哪個 VPN 工具的白名單或黑名單，任何符合這個格式的虛擬 IP 都能填——已核對 ZeroTier／
+   Radmin VPN／Tailscale 常見的虛擬 IP 格式都符合（`docs/research/2026-09-20-vpn-choice/notes.md`
+   「跟本專案的相容性」），但**沒有拿真的 VPN IP 實際填過跑一次**，只是靜態核對格式規則。改完要重啟
+   伺服器。
+3. 防火牆／portproxy：`tools/win/lan-open.ps1` 和 `tools/win/p2p-open.ps1` 都有 `-VirtualSubnet` 參數
+   （`p2p-open.ps1` 沿用既有的 `-RemoteSubnet` 覆寫機制不變，`-VirtualSubnet` 是另外**新增、獨立**的一
+   組規則，不會動到原本區網 `192.168.1.0/24` 那組）：
+   ```powershell
+   .\lan-open.ps1 -VirtualSubnet <VPN網段，例如 10.147.0.0/16>
+   .\p2p-open.ps1 -VirtualSubnet <VPN網段>
+   ```
+   不帶這個參數時，兩支腳本行為跟改動前完全一樣。要收回 VPN 那組規則，`lan-close.ps1` 要加
+   `-Virtual`；`p2p-close.ps1` 不用額外參數，它本來就會把兩組規則一次收掉（腳本內的註解有寫原因）。
+   規則只套用在 Private 設定檔（不是 Domain），理由同上面「前提」那條。
+
+### 🟡 待驗證：主機連自己的虛擬 IP
+
+區網情境下已經驗證過「主機自己也會經過 portproxy 連進來」（本文件「讓第二台連進遊戲伺服器」那節）。
+VPN 情境下同一件事**還沒有驗證過**：伺服器主機用自己的 VPN 虛擬 IP（而不是 `127.0.0.1` 或區網 IP）
+連自己的 `MetalRage.exe`，能不能通過 portproxy 進到 WSL2。第一次排練時操作者可以這樣測：
+
+1. 把 `Play Metal Rage Online.bat` 或 `MetalRage.ini`/`Default.ini` 的伺服器位址暫時改成主機自己的
+   VPN 虛擬 IP（跟遠端朋友將要用的那個位址一樣）。
+2. 開遊戲、登入，確認能不能連上、能不能進大廳。
+3. 記錄結果（連得到/連不到、log 裡的錯誤訊息）到新的 journal 條目，不要只在這裡口頭記。
+
+如果連不到，先檢查 `lan-open.ps1` 的 `-VirtualSubnet` 有沒有真的涵蓋主機自己的 VPN IP（防火牆規則的
+`RemoteAddress` 網段要包含主機自己），portproxy 本身監聽 `0.0.0.0` 理論上不分來源，但沒有實測驗證。

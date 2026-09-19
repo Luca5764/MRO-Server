@@ -4,7 +4,20 @@
 
 ## 開始之前
 
-1. 已經連上跟主機同一個 VPN（或同一個區網）。
+1. 已經連上跟主機同一個 VPN（或同一個區網）。如果是 VPN，步驟大致是：
+   1. 裝 Lucas 指定的那套 VPN 軟體（ZeroTier／Radmin VPN／Tailscale 之類，實際用哪個問 Lucas，見
+      `docs/research/2026-09-20-vpn-choice/notes.md` 的比較——這份 README 沒有寫死是哪一套）。
+   2. 跟 Lucas 要「network ID」（或 network 名稱＋密碼，依工具而定）並加入。
+   3. **等 Lucas 核准你的裝置**（多數 VPN 工具要 network 擁有者手動核准新加入的裝置，才會真的通；
+      Radmin VPN 這種用共用密碼的則不用等）——沒核准之前這台機器連不到伺服器，屬於正常現象，不是你
+      設定錯了。
+   4. 核准後查一下自己拿到的**虛擬 IP**（各家工具查法不同，例如 ZeroTier 是 `zerotier-cli listpeers`
+      或看 Central 網頁；Radmin VPN、Tailscale 各自的主視窗都會顯示）；下面的 `-ServerIp` 要填的是
+      Lucas 那台的虛擬 IP，不是他的區網 IP。
+   5. 🟡 Windows 可能把這套 VPN 新加的虛擬網卡歸類成「公用網路」，這樣防火牆規則不會生效。用系統管理
+      員 PowerShell 跑 `Get-NetConnectionProfile` 檢查，虛擬網卡那一列如果不是 `Private`，改成
+      `Private`（例：`Set-NetConnectionProfile -InterfaceAlias "<虛擬網卡名稱>" -NetworkCategory
+      Private`）——這一步沒有實機驗證過每一套 VPN 工具的預設值，只是先提醒。
 2. 已經把你的遊戲名稱告訴 Lucas，讓他加進伺服器的白名單（沒有密碼，只認名稱）。
 3. 已經把整個客戶端資料夾解壓縮好，例如 `C:\Games\MetalRage Online`。
 
@@ -19,12 +32,15 @@
    cd 'C:\Games\MetalRage Online'
    .\client-kit\setup-client.ps1 -ServerIp <Lucas 給的 IP>
    ```
-   - 如果你們是用 VPN 而不是同一個家用網路，可能要多加 `-HostSubnet`，例如：
+   - 如果你們是用 VPN 而不是同一個家用網路，一定要多加 `-HostSubnet`（不加的話，你如果之後要當房主，
+     P2P 對戰的防火牆規則只會放行區網那段，VPN 那邊的隊友連不進來），例如：
      ```powershell
-     .\client-kit\setup-client.ps1 -ServerIp <IP> -HostSubnet 10.8.0.0/24
+     .\client-kit\setup-client.ps1 -ServerIp <IP> -HostSubnet 10.147.0.0/16
      ```
-     （VPN 的網段是多少，問 Lucas；沒填的話預設是 `192.168.1.0/24`，同一個家用網路不用管這個參數。）
-   - 用 Tailscale 當 VPN 的完整設定步驟（桌機端要開哪些防火牆規則、伺服器設定要改什麼）見 `docs/reference/vpn-guide.md`（🟡 尚未實測，Lucas 那邊在弄）。
+     （VPN 的網段是多少，問 Lucas——他會照 `docs/reference/setup.md`「跨網路連線（VPN）」那節的設定告
+     訴你；沒填的話預設是 `192.168.1.0/24`，同一個家用網路不用管這個參數。）
+   - 伺服器端（Lucas 那邊）完整的 VPN 設定步驟見 `docs/reference/setup.md`「跨網路連線（VPN）」一節；
+     另外 Tailscale 專用的操作流程見 `docs/reference/vpn-guide.md`（🟡 尚未實機驗證過完整流程）。
 4. 腳本跑完會印一段摘要，確認沒有紅字的錯誤訊息。
 5. 如果它問你要不要把網路設成「私人」，選 `y`（P2P 對戰的連線只有在私人網路才會放行）。
 6. 第一次玩，對 `Play Metal Rage Online.bat` 按右鍵、選「以系統管理員身分執行」（要寫一個登錄檔設定，只有第一次需要）。之後直接點兩下就好。

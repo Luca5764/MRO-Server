@@ -2,9 +2,16 @@
 # added for the MRO server ports. Safe to run even if lan-open.ps1 was never
 # run (everything is best-effort / idempotent).
 #
+# By default this only removes the plain LAN rule set (same as before
+# -VirtualSubnet existed on lan-open.ps1). Pass -Virtual to also remove the
+# separate VPN/virtual-subnet rule set lan-open.ps1 -VirtualSubnet added
+# (docs/reference/setup.md "跨網路連線（VPN）") -- the two are independent
+# so closing the LAN rules does not require also closing the VPN ones.
+#
 # Requires: elevated PowerShell (Run as Administrator).
 param(
-    [int[]]$Ports = @(9211, 30907)
+    [int[]]$Ports = @(9211, 30907),
+    [switch]$Virtual
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,12 +32,18 @@ foreach ($port in $Ports) {
     & netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$port | Out-Null
 }
 
-$rules = Get-NetFirewallRule -DisplayName "$RulePrefix-*" -ErrorAction SilentlyContinue
+$patterns = @("$RulePrefix-TCP-*")
+if ($Virtual) { $patterns += "$RulePrefix-VPN-TCP-*" }
+
+$rules = $patterns | ForEach-Object { Get-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue }
 if ($rules) {
     $rules | ForEach-Object { Write-Output "removing firewall rule: $($_.DisplayName)" }
     $rules | Remove-NetFirewallRule
 } else {
-    Write-Output "no $RulePrefix-* firewall rules found."
+    Write-Output "no matching firewall rules found ($($patterns -join ', '))."
+}
+if (-not $Virtual) {
+    Write-Output "(not touching any $RulePrefix-VPN-TCP-* rules -- pass -Virtual to also remove those)"
 }
 
 Write-Output ""
