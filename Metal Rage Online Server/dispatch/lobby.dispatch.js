@@ -187,12 +187,42 @@ class ZLobbyDispatch
             {
                 // BeginRound_CN starts a battle: reset the per-player battle
                 // totals that Death_SN carries (see case 0x00230123).
+                // battleStats_ itself stays per-connection here -- moving it
+                // to the Room (design §4) is D1-6-IMPL's step 3, out of this
+                // step's scope.
                 client.battleStats_ = {};
-                const [beginMsg, beginBody] = client.getMessageBuffer(0x00230152, 0x06);
-                beginBody.writeUint16LE(0, 0);
-                beginBody.writeUint32LE(0, 2);
-                client.send(beginMsg);
-                console.log(`[ZLobbyDispatch] >> Sent BeginRound_SN 0x00230152`);
+
+                // D1-6-IMPL (design doc §5 step 2, §1 row 10): with
+                // rooms.isRoomBattleStartBroadcastEnabled() +
+                // rooms.isRoomJoinEnabled(), broadcast BeginRound_SN to every
+                // room member instead of only the connection that sent this
+                // BeginRound_CN -- a 1-person room's rooms.sendAll iterates
+                // one member (this same connection), byte-identical to the
+                // unconditional client.send() below. ⬜ untested against a
+                // real second client whether every room member's own
+                // connection independently sends its own BeginRound_CN (this
+                // handler's own comment above only ever confirmed it for a
+                // "listen host"), which would make this broadcast fire once
+                // per member instead of once per room -- flagged in the
+                // journal, not resolved here.
+                const roomForBeginRound = (rooms.isRoomBattleStartBroadcastEnabled() && rooms.isRoomJoinEnabled())
+                    ? rooms.getRoomByAccount(Number(client.accountIndex_ || client.accountId_ || 1))
+                    : undefined;
+                if (roomForBeginRound) {
+                    rooms.sendAll(roomForBeginRound.id, (target) => {
+                        const [msg, body] = target.getMessageBuffer(0x00230152, 0x06);
+                        body.writeUint16LE(0, 0);
+                        body.writeUint32LE(0, 2);
+                        return msg;
+                    });
+                    console.log(`[ZLobbyDispatch] >> Broadcast BeginRound_SN 0x00230152 to room #${roomForBeginRound.id} (${roomForBeginRound.members.size} member(s))`);
+                } else {
+                    const [beginMsg, beginBody] = client.getMessageBuffer(0x00230152, 0x06);
+                    beginBody.writeUint16LE(0, 0);
+                    beginBody.writeUint32LE(0, 2);
+                    client.send(beginMsg);
+                    console.log(`[ZLobbyDispatch] >> Sent BeginRound_SN 0x00230152`);
+                }
 
                 if (PVE_SLOT_SELECT_FLOW === 'client')
                     return true;   // wait for ZSlotSelectPage -> ChangeSlot_CN -> Respawn_CN

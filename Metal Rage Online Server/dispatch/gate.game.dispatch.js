@@ -172,15 +172,16 @@ let GAME_USER_SN_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
 // D1-6-IMPL (design doc §5 step 2): same F5 sequence's Game_Wait_SN
 // 0x00420111, both Game_Info_SN 0x00222111 sends (150ms initial + 600ms
 // resend), Game_Ready_SN 0x00222102 and Game_Start_SN 0x00222104 -- all four
-// currently reach only the triggering (host) connection. 'enabled'
-// (additionally requires rooms.isRoomJoinEnabled()) broadcasts all of them
-// to every room member via rooms.sendAll, with Game_Info_SN's body sourced
-// from the Room object (design §1 "狀態從 client 搬到 Room") instead of the
-// triggering client -- see sendGameInfoSnRoomBroadcast() below. A 1-person
-// room's rooms.sendAll iterates one member, byte-identical to the old
-// single-send path (same design doc §5 step 2 regression method). Default
-// 'disabled'.
-let ROOM_BATTLE_START_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
+// currently reach only the triggering (host) connection. rooms.js's
+// isRoomBattleStartBroadcastEnabled() (additionally requires
+// rooms.isRoomJoinEnabled()) broadcasts all of them to every room member via
+// rooms.sendAll, with Game_Info_SN's body sourced from the Room object
+// (design §1 "狀態從 client 搬到 Room") instead of the triggering client --
+// see sendGameInfoSnRoomBroadcast() below. Lives on rooms.js, not a local
+// `let` here, because lobby.dispatch.js's BeginRound_SN 0x00230152 (case
+// 0x00230151, design §1 row 10) shares the same switch. A 1-person room's
+// rooms.sendAll iterates one member, byte-identical to the old single-send
+// path (same design doc §5 step 2 regression method). Default 'disabled'.
 
 // D1-6-IMPL (design doc §5 step 4, §1 rows 6-9): Ready_Host_SQ 0x00420113
 // only ever goes to whichever connection triggered 0x00222103 -- correct
@@ -522,6 +523,92 @@ function sendGameInfoSn(client, tag)
         `(battle=${battleIndex}, red=${redTeamIndex}, blue=${blueTeamIndex}, map=${mapId}, ` +
         `clan=${clanFlag}, user=${userIndex}, timeLimit=${timeLimitMinutes} (${timeLimitSource}), round=${playRound}, goal=${goalScore}, ` +
         `body=${body.toString('hex')})`
+    );
+}
+
+// D1-6-IMPL (design doc §5 step 2): ROOM_BATTLE_START_BROADCAST_MODE's
+// enabled path for Game_Wait_SN 0x00420111 -- a fresh 0-byte-body buffer per
+// call (rooms.sendAll's build() contract), sent to every room member.
+function sendRoomGameWaitSnBroadcast(room, tag)
+{
+    rooms.sendAll(room.id, () => {
+        const [msg] = getExactMessageBuffer(0x00420111, 0x00);
+        return msg;
+    });
+    console.log(`[ZGateGameDispatch] >> Broadcast Game_Wait_SN 0x00420111 to room #${room.id} (${room.members.size} member(s)) [${tag}]`);
+}
+
+// D1-6-IMPL (design doc §5 step 2): ROOM_BATTLE_START_BROADCAST_MODE's
+// enabled path for Game_Ready_SN 0x00222102 / Game_Start_SN 0x00222104 --
+// both consume the same trivial "status=0,result=0" ACK body as sendOkSa()
+// above; kept as a separate small builder (not a refactor of sendOkSa, which
+// is still used unicast elsewhere) so rooms.sendAll's build() contract (a
+// fresh Buffer per member) is satisfied.
+function sendAckBroadcast(room, type, tag)
+{
+    rooms.sendAll(room.id, () => {
+        const [msg, respBody] = getExactMessageBuffer(type, 0x06);
+        respBody.writeUint16LE(0, 0x00);
+        respBody.writeUint32LE(0, 0x02);
+        return msg;
+    });
+    console.log(`[ZGateGameDispatch] >> Broadcast 0x${type.toString(16).padStart(8, '0')} to room #${room.id} (${room.members.size} member(s), status=0, result=0) [${tag}]`);
+}
+
+// D1-6-IMPL (design doc §5 step 2, §1 row 4): ROOM_BATTLE_START_BROADCAST_MODE's
+// enabled path for Game_Info_SN 0x00222111. Unlike Game_User_SN (per-member
+// data), Game_Info_SN's body carries no per-user field at all (see the field
+// table in sendGameInfoSn() above) -- it is room-level state (map/time
+// limit/round), so the identical body goes to every member. Sourced from the
+// Room object (room.mapId/room.playTime/room.playRound), which
+// CQ_CREATE/Map_Change_One_CQ (case 0x00220221 below) already dual-write
+// alongside the equivalent client.xxx_ fields sendGameInfoSn() reads, so for
+// a 1-person room this produces the identical bytes sendGameInfoSn(client,
+// tag) would (see that dual-write's own comments for why they always agree
+// for a room's own host).
+function sendGameInfoSnRoomBroadcast(room, tag)
+{
+    const BODY_SIZE = 0x1A;
+    const mapId = Number(room.mapId || MAP_ID_DEFAULT_CAMPAIGN) & 0xFFFF;
+    const battleIndex = 1;
+    const redTeamIndex = 0;
+    const blueTeamIndex = 1;
+    const clanFlag = 0;
+    // GAME_INFO_TIME_LIMIT_MODE is 'disabled' by default (out of D1-6-IMPL's
+    // scope) -- when it stays 'disabled' this is hardcoded 10, exactly like
+    // sendGameInfoSn() above. 'room' mirrors that function's
+    // client.mapChangeOneTime_ fallback with room.playTime, the room-level
+    // field Map_Change_One_CQ dual-writes it from (see rooms.js's Room
+    // typedef and the case 0x00220221 handler below).
+    let timeLimitMinutes = 10;
+    let timeLimitSource = 'hardcoded';
+    if (GAME_INFO_TIME_LIMIT_MODE === 'room' && room.playTime) {
+        timeLimitMinutes = room.playTime;
+        timeLimitSource = 'room';
+    }
+    const playRound = Number(room.playRound) || 0;
+    const goalScore = 0;
+
+    rooms.sendAll(room.id, () => {
+        const [msg, body] = getExactMessageBuffer(0x00222111, BODY_SIZE);
+        body.writeUInt32LE(battleIndex, 0x00);
+        body.writeUInt16LE(redTeamIndex, 0x04);
+        body.writeUInt16LE(blueTeamIndex, 0x06);
+        body.writeUInt16LE(0, 0x0A);
+        body.writeUInt16LE(0, 0x0C);
+        body.writeUInt8(clanFlag, 0x0E);
+        body.writeUInt16LE(2, 0x0F);
+        body.writeUInt16LE(mapId, 0x11);
+        body.writeUInt16LE(timeLimitMinutes, 0x13);
+        body.writeUInt8(playRound & 0xFF, 0x15);
+        body.writeUInt16LE(goalScore, 0x16);
+        body.writeUInt16LE(goalScore, 0x18);
+        return msg;
+    });
+    console.log(
+        `[ZGateGameDispatch] >> Broadcast Game_Info_SN 0x00222111 to room #${room.id} (${room.members.size} member(s)) [${tag}] ` +
+        `(battle=${battleIndex}, red=${redTeamIndex}, blue=${blueTeamIndex}, map=${mapId}, ` +
+        `clan=${clanFlag}, timeLimit=${timeLimitMinutes} (${timeLimitSource}), round=${playRound}, goal=${goalScore})`
     );
 }
 
@@ -1289,7 +1376,19 @@ class ZGateGameDispatch
                     client.gameStarted_ = true;
                     client.campaignStarted_ = (Number(client.rawRoomType_) === 1) ||
                         (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5);
-                    sendRoomGameWaitSn(client, 'server-driven: to scene 6');
+                    // D1-6-IMPL (design doc §5 step 2): broadcast Game_Wait_SN
+                    // to every room member instead of just the trigger
+                    // connection -- pushing the trigger into scene 6 is not
+                    // the only thing this packet does; every member's own
+                    // ZDispatchGame handlers (Game_User_SN etc.) only run in
+                    // scene 6 too, so a non-host that never receives this
+                    // never leaves the room scene at all.
+                    const useRoomBattleBroadcast = rooms.isRoomBattleStartBroadcastEnabled() && !!roomForBattleBroadcast;
+                    if (useRoomBattleBroadcast) {
+                        sendRoomGameWaitSnBroadcast(roomForBattleBroadcast, 'server-driven: to scene 6');
+                    } else {
+                        sendRoomGameWaitSn(client, 'server-driven: to scene 6');
+                    }
                     // The in-game player table, which has to exist before the
                     // client builds its travel URL: Game_Info_URL_Get asks
                     // Game_User_Team_Get for team=%d, that searches the array
@@ -1308,15 +1407,26 @@ class ZGateGameDispatch
                     }, 60);
                     // Give the client a beat to enter scene 6 before the map,
                     // so the scene-6 Game_Info_SN handler is the one that runs.
-                    setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map'), 150);
+                    setTimeout(() => {
+                        if (useRoomBattleBroadcast) {
+                            sendGameInfoSnRoomBroadcast(roomForBattleBroadcast, 'server-driven: scene-6 map');
+                        } else {
+                            sendGameInfoSn(client, 'server-driven: scene-6 map');
+                        }
+                    }, 150);
                     // Then complete the ready/start handshake to release the
                     // client's "Loading" wait. Game_Info_SN sets the map and
                     // preps state (Game_Play_Start) but does not itself travel;
                     // observed the client sitting at a Loading popup with no
                     // crash, waiting for this sequence we previously skipped.
                     setTimeout(() => {
-                        sendOkSa(client, 0x00222102, 'server-driven: Game_Ready_SN');
-                        sendOkSa(client, 0x00222104, 'server-driven: Game_Start_SN');
+                        if (useRoomBattleBroadcast) {
+                            sendAckBroadcast(roomForBattleBroadcast, 0x00222102, 'server-driven: Game_Ready_SN');
+                            sendAckBroadcast(roomForBattleBroadcast, 0x00222104, 'server-driven: Game_Start_SN');
+                        } else {
+                            sendOkSa(client, 0x00222102, 'server-driven: Game_Ready_SN');
+                            sendOkSa(client, 0x00222104, 'server-driven: Game_Start_SN');
+                        }
                     }, 300);
                     // The client sits at Loading, silent, after the above — the
                     // one thing the old (crashing) flow sent that this lacked is
@@ -1325,7 +1435,13 @@ class ZGateGameDispatch
                     // handshake. Send it; if the client answers 0x420114, the
                     // 0x420114 handler (below) carries it forward.
                     setTimeout(() => sendReadyHostSq(client), 450);
-                    setTimeout(() => sendGameInfoSn(client, 'server-driven: scene-6 map retry'), 600);
+                    setTimeout(() => {
+                        if (useRoomBattleBroadcast) {
+                            sendGameInfoSnRoomBroadcast(roomForBattleBroadcast, 'server-driven: scene-6 map retry');
+                        } else {
+                            sendGameInfoSn(client, 'server-driven: scene-6 map retry');
+                        }
+                    }, 600);
                     console.log(`[ZGateGameDispatch] >> SERVER_DRIVEN_START: Wait -> Info -> Ready/Start`);
                     return true;
                 }
@@ -1937,10 +2053,10 @@ module.exports._setGameUserSnBroadcastModeForTest = function setGameUserSnBroadc
     GAME_USER_SN_BROADCAST_MODE = mode;
 };
 
-module.exports._setRoomBattleStartBroadcastModeForTest = function setRoomBattleStartBroadcastModeForTest(mode)
-{
-    ROOM_BATTLE_START_BROADCAST_MODE = mode;
-};
+// ROOM_BATTLE_START_BROADCAST_MODE's own test-only setter lives on rooms.js
+// (rooms._setRoomBattleStartBroadcastModeForTests) -- the switch itself
+// lives there too (see rooms.js's isRoomBattleStartBroadcastEnabled()
+// comment for why: lobby.dispatch.js needs to read it too).
 
 module.exports._setHostAddressRequireModeForTest = function setHostAddressRequireModeForTest(mode)
 {

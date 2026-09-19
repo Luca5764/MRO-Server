@@ -153,6 +153,23 @@ function _setReadyHostSplitModeForTests(mode) {
     readyHostSplitMode = mode;
 }
 
+// D1-6-IMPL (docs/design/d1-step6-battle-broadcast.md §5 step 2): whether
+// Game_Wait_SN 0x00420111, both Game_Info_SN 0x00222111 sends, Game_Ready_SN
+// 0x00222102, Game_Start_SN 0x00222104 (gate.game.dispatch.js's case
+// 0x00222103) and BeginRound_SN 0x00230152 (lobby.dispatch.js's case
+// 0x00230151, a *different* file -- the reason this lives here instead of a
+// local `let` in either) go to every room member instead of just whichever
+// connection triggered the opcode. Default 'disabled'.
+let roomBattleStartBroadcastMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isRoomBattleStartBroadcastEnabled() {
+    return roomBattleStartBroadcastMode === 'enabled';
+}
+
+function _setRoomBattleStartBroadcastModeForTests(mode) {
+    roomBattleStartBroadcastMode = mode;
+}
+
 // D1-4: which live client objects count as "in the lobby" for the
 // Room_List_SN broadcast. There is no separate "entered lobby" flag on
 // NetworkClient (login goes straight from channel-enter to the client
@@ -390,6 +407,7 @@ function _resetForTests() {
     lobbyRoomListMode = 'disabled';
     roomReadyStateMode = 'disabled';
     readyHostSplitMode = 'disabled';
+    roomBattleStartBroadcastMode = 'disabled';
     clientSource = [];
 }
 
@@ -414,6 +432,8 @@ module.exports = {
     _setRoomReadyStateModeForTests,
     isReadyHostSplitEnabled,
     _setReadyHostSplitModeForTests,
+    isRoomBattleStartBroadcastEnabled,
+    _setRoomBattleStartBroadcastModeForTests,
     registerLobbyClientSource,
     getLobbyClients,
     _resetForTests,
