@@ -138,6 +138,29 @@ function main()
         assert.strictEqual(clientA._sent.some((s) => s.op === ROOM_LIST_SN), false, 'A (now a room member) must not receive the lobby broadcast of her own room');
         console.log('[room-join test] PASS: CQ_CREATE broadcasts Room_List_SN to the lobby, not the creator');
 
+        // D1-4b (docs/backlog.md, PM follow-up 2026-09-19): decode the
+        // UpdateType=1 entry's field bytes against the DLL-confirmed
+        // offsets in dispatch/room/room-list.sender.js (RoomType jump
+        // table at 0x107e48d6/0x107e4e40; CurrentUser/MaxUser order at
+        // 0x107e4a73/0x107e4a76; MapIndex at bit5 buffer offset 4, per
+        // 0x107e4b94). Makes a regression that swaps a byte back visible
+        // here instead of only in a live client's HUD.
+        {
+            const entry = Buffer.from(bRoomListPackets[0].hex, 'hex');
+            // body layout: [0]=continuation flag [1]=count, entry starts at [2]
+            assert.strictEqual(entry.readUInt16LE(2), roomId, 'entry RoomIndex must be the created room');
+            assert.strictEqual(entry.readUInt8(4), 1, 'entry UpdateType must be 1 (new room)');
+            // UpdateType==1 -> +2 bytes RoomNumber before FieldMask
+            const fieldMask = entry.readUInt16LE(7);
+            assert.strictEqual(fieldMask, 0x032F, 'FieldMask must be the full field set (ROOM_TYPE|MATCH|USER_COUNT|ROOM_FLAGS|MAP|NAME_INDEX|NAME)');
+            assert.strictEqual(entry.readUInt8(9), 1, 'wire RoomType for a campaign room (normalized 2) must be raw 1, per the jump table');
+            assert.strictEqual(entry.readUInt8(12), 1, 'USER_COUNT wire byte 0 must be CurrentUser (1 member: the host)');
+            assert.strictEqual(entry.readUInt8(13), 8, 'USER_COUNT wire byte 1 must be MaxUser (8 for a campaign room)');
+            assert.strictEqual(entry.readUInt16LE(19), 9001, 'MAP field bytes 4-5 (wire offset 19-20) must carry MapIndex');
+            assert.strictEqual(entry.readUInt32LE(15), 0, 'MAP field bytes 0-3 (wire offset 15-18, rotate-flag source + unread) must stay zero');
+        }
+        console.log('[room-join test] PASS: Room_List_SN entry bytes match the DLL-confirmed RoomType/UserCount/MapIndex layout');
+
         // Also sanity-check the lobby-open path independently: B "opening
         // the lobby" (0x00230111) gets the same room in a full-list send.
         const freshB = makeFakeClient(3, 30907);
