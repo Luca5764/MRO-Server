@@ -1,0 +1,11 @@
+{
+  "id": "U-console-open-close",
+  "purpose": "Reproduce the F24-opens-console / ESC-closes-console observation from docs/journal/2026-09-19-2230-unattended-trial-01.md under the deterministic runner. No exec command is sent -- open and close only.",
+  "preconditions": {"screen": "lobby"},
+  "steps": [
+    {"action": "open_console"},
+    {"action": "close_console"}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_image_reviews": 0
+}

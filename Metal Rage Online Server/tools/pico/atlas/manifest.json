@@ -1,0 +1,105 @@
+{
+  "shot_size": [
+    1616,
+    1239
+  ],
+  "client_offset": [
+    8,
+    31
+  ],
+  "thresholds": {
+    "screen_accept": 12.0,
+    "console_accept": 5.0,
+    "gray_margin_ratio": 0.5,
+    "tab_active_accept": 15.0
+  },
+  "built_at": "2026-09-19T22:44:22",
+  "built_from": {
+    "screen_lobby": "u-20260919-01-00-start.png",
+    "screen_shop": "u-20260919-01-01-shop.png",
+    "console_open": "f24-after.png",
+    "console_closed": "f24-closed.png",
+    "tab_shop_main": "u-20260919-01-01-shop.png",
+    "tab_shop_aux": "u-20260919-01-02-aux.png",
+    "tab_shop_equip": "u-20260919-01-02-equip.png",
+    "tab_shop_item": "u-20260919-01-02-item.png",
+    "tab_shop_mshop": "u-20260919-01-02-mshop.png"
+  },
+  "screens": {
+    "lobby": {
+      "box": [
+        460,
+        245,
+        1560,
+        270
+      ],
+      "crop": "screen_lobby.png"
+    },
+    "shop": {
+      "box": [
+        18,
+        330,
+        335,
+        410
+      ],
+      "crop": "screen_shop.png"
+    }
+  },
+  "console": {
+    "box": [
+      0,
+      600,
+      40,
+      632
+    ],
+    "open_crop": "console_open.png",
+    "closed_crop": "console_closed.png"
+  },
+  "tabs": {
+    "shop_main": {
+      "box": [
+        1165,
+        255,
+        1360,
+        290
+      ],
+      "crop": "tab_shop_main.png"
+    },
+    "shop_aux": {
+      "box": [
+        1360,
+        255,
+        1610,
+        290
+      ],
+      "crop": "tab_shop_aux.png"
+    },
+    "shop_equip": {
+      "box": [
+        1165,
+        300,
+        1360,
+        335
+      ],
+      "crop": "tab_shop_equip.png"
+    },
+    "shop_item": {
+      "box": [
+        1360,
+        300,
+        1610,
+        335
+      ],
+      "crop": "tab_shop_item.png"
+    },
+    "shop_mshop": {
+      "box": [
+        1373,
+        185,
+        1610,
+        235
+      ],
+      "crop": "tab_shop_mshop.png"
+    }
+  }
+}
