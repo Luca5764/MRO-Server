@@ -445,7 +445,19 @@ function sendGameUserSn(client, tag)
 // membership is re-read from the live registry immediately before each
 // send, so a member who leaves mid-loop (their own multi-await DB lookup
 // included) cannot still receive a packet or be sent as a stale record.
-async function sendGameUserSnRoomBroadcast(room, tag)
+//
+// SOL-REVIEW-2 point 7: `expectedGen`, when passed, is the room's
+// battleStartGen captured by the case 0x00222103 handler at accept time
+// (see battleStartStillValid() there) -- checked fresh alongside the room
+// lookup on every packet, so a newer Game_Start_CN superseding this one
+// mid-loop stops this batch too, not just the setTimeout callback that
+// kicked it off. Optional (undefined skips the check) so the existing
+// test/extra-lives.js-style direct callers of the underlying
+// sendGameUserBootstrap() are unaffected -- this function has no other
+// caller today besides the one guarded setTimeout callback, but the
+// parameter is optional on principle (no implicit dependency on the caller
+// always having a generation to pass).
+async function sendGameUserSnRoomBroadcast(room, tag, expectedGen)
 {
     const targetAccountIds = Array.from(room.members.keys());
     const sourceAccountIdsSnapshot = Array.from(room.members.keys());
@@ -458,6 +470,10 @@ async function sendGameUserSnRoomBroadcast(room, tag)
             const currentRoom = rooms.getRoom(room.id);
             if (!currentRoom) {
                 console.log(`[ZGateGameDispatch] >> Game_User_SN room broadcast aborted: room #${room.id} no longer tracked [${tag}]`);
+                return;
+            }
+            if (expectedGen !== undefined && currentRoom.battleStartGen !== expectedGen) {
+                console.log(`[ZGateGameDispatch] >> Game_User_SN room broadcast aborted: room #${room.id}'s battleStartGen changed (${expectedGen} -> ${currentRoom.battleStartGen}) mid-batch [${tag}]`);
                 return;
             }
             const currentTarget = currentRoom.members.get(targetAccountId);
@@ -1478,6 +1494,55 @@ class ZGateGameDispatch
                     ? rooms.getRoomByAccount(accountIdForBattleBroadcast)
                     : undefined;
 
+                // SOL-REVIEW-2 point 7 (docs/research/2026-09-19-sol-review/
+                // batch2.md): the 60/150/300/450/600ms callbacks below (and
+                // Game_User_SN's per-packet DB completions inside them)
+                // capture `room`/`client` by closure with no way to notice a
+                // member leaving, the room disappearing, or the host
+                // changing partway through -- so a stale send could still go
+                // out, or Ready_Host_SQ could go to a host that is no longer
+                // the room's host by the time 450ms elapses. `battleStartGen`
+                // is an ad-hoc counter on the Room object (no new typed
+                // field, same pattern as case 0x00230151's beginRoundGen)
+                // bumped once here, per *accepted* 0x00222103 (this line only
+                // runs once the HOST_ADDRESS_REQUIRE_MODE gate above already
+                // let this request through). Every callback below re-reads
+                // the room from the live registry and calls
+                // battleStartStillValid() before doing anything; a mismatch
+                // (room gone / a newer 0x00222103 bumped the generation
+                // further / the host account changed) aborts that whole step,
+                // logged, no packets sent. No-op (`battleStartStillValid`
+                // always true) when there is no tracked room at all --
+                // rooms.isRoomJoinEnabled() off, or this connection not
+                // tracked as a room member -- so the legacy single-connection
+                // path is completely unaffected by any of this.
+                let startedBattleGen;
+                let startedHostAccountId;
+                if (roomForBattleBroadcast) {
+                    roomForBattleBroadcast.battleStartGen = (roomForBattleBroadcast.battleStartGen || 0) + 1;
+                    startedBattleGen = roomForBattleBroadcast.battleStartGen;
+                    startedHostAccountId = roomForBattleBroadcast.hostAccountId;
+                }
+
+                function battleStartStillValid(tag)
+                {
+                    if (!roomForBattleBroadcast) return true;
+                    const currentRoom = rooms.getRoom(roomForBattleBroadcast.id);
+                    if (!currentRoom) {
+                        console.log(`[ZGateGameDispatch] >> Battle-start aborted: room #${roomForBattleBroadcast.id} no longer tracked [${tag}]`);
+                        return false;
+                    }
+                    if (currentRoom.battleStartGen !== startedBattleGen) {
+                        console.log(`[ZGateGameDispatch] >> Battle-start aborted: room #${roomForBattleBroadcast.id}'s battleStartGen changed (${startedBattleGen} -> ${currentRoom.battleStartGen}, a newer Game_Start_CN superseded this one) [${tag}]`);
+                        return false;
+                    }
+                    if (currentRoom.hostAccountId !== startedHostAccountId) {
+                        console.log(`[ZGateGameDispatch] >> Battle-start aborted: room #${roomForBattleBroadcast.id}'s host changed (${startedHostAccountId} -> ${currentRoom.hostAccountId}) mid-sequence [${tag}]`);
+                        return false;
+                    }
+                    return true;
+                }
+
                 if (SERVER_DRIVEN_START_MODE === 'enabled') {
                     // Push to scene 6 first, then set the map there.
                     if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
@@ -1505,11 +1570,12 @@ class ZGateGameDispatch
                     // which is how the map came up with a free camera and no
                     // mech. Scene 6 first, or ZDispatchGame drops it.
                     setTimeout(() => {
+                        if (!battleStartStillValid('game-user-sn @60ms')) return;
                         // D1-6-IMPL (design doc §5 step 1): broadcast one
                         // Game_User_SN per room member to every room member's
                         // connection instead of just this trigger connection.
                         if (GAME_USER_SN_BROADCAST_MODE === 'enabled' && roomForBattleBroadcast) {
-                            sendGameUserSnRoomBroadcast(roomForBattleBroadcast, 'server-driven: in-game user table');
+                            sendGameUserSnRoomBroadcast(roomForBattleBroadcast, 'server-driven: in-game user table', startedBattleGen);
                         } else {
                             sendGameUserSn(client, 'server-driven: in-game user table');
                         }
@@ -1517,6 +1583,7 @@ class ZGateGameDispatch
                     // Give the client a beat to enter scene 6 before the map,
                     // so the scene-6 Game_Info_SN handler is the one that runs.
                     setTimeout(() => {
+                        if (!battleStartStillValid('game-info-sn @150ms')) return;
                         if (useRoomBattleBroadcast) {
                             sendGameInfoSnRoomBroadcast(roomForBattleBroadcast, 'server-driven: scene-6 map');
                         } else {
@@ -1529,6 +1596,7 @@ class ZGateGameDispatch
                     // observed the client sitting at a Loading popup with no
                     // crash, waiting for this sequence we previously skipped.
                     setTimeout(() => {
+                        if (!battleStartStillValid('ready-start-sn @300ms')) return;
                         if (useRoomBattleBroadcast) {
                             sendAckBroadcast(roomForBattleBroadcast, 0x00222102, 'server-driven: Game_Ready_SN');
                             sendAckBroadcast(roomForBattleBroadcast, 0x00222104, 'server-driven: Game_Start_SN');
@@ -1554,7 +1622,14 @@ class ZGateGameDispatch
                     // reaching this far; this switch is independent of that
                     // one per the task contract, so it defends on its own).
                     setTimeout(() => {
+                        if (!battleStartStillValid('ready-host-sq @450ms')) return;
                         if (rooms.isReadyHostSplitEnabled() && roomForBattleBroadcast) {
+                            // battleStartStillValid() above already confirmed
+                            // roomForBattleBroadcast.hostAccountId (read live,
+                            // this line) still equals startedHostAccountId --
+                            // SOL-REVIEW-2 point 7's "host identity for SQ
+                            // ... must equal the host captured at start" is
+                            // enforced there, not re-derived here.
                             const hostMember = roomForBattleBroadcast.members.get(roomForBattleBroadcast.hostAccountId);
                             if (hostMember && hostMember.client) {
                                 sendReadyHostSq(hostMember.client);
@@ -1566,6 +1641,7 @@ class ZGateGameDispatch
                         }
                     }, 450);
                     setTimeout(() => {
+                        if (!battleStartStillValid('game-info-sn retry @600ms')) return;
                         if (useRoomBattleBroadcast) {
                             sendGameInfoSnRoomBroadcast(roomForBattleBroadcast, 'server-driven: scene-6 map retry');
                         } else {
