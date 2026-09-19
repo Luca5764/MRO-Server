@@ -15,19 +15,20 @@
     "console_battle_accept": 8.0,
     "marker_accept": 12.0
   },
-  "built_at": "2026-09-19T22:44:22",
+  "built_at": "2026-09-20T00:26:56",
   "built_from": {
     "screen_lobby": "u-20260919-01-00-start.png",
     "screen_shop": "u-20260919-01-01-shop.png",
+    "screen_login": "login-screen.png",
     "console_open": "f24-after.png",
     "console_closed": "f24-closed.png",
+    "console_battle_open": "gc-console.png",
+    "console_battle_closed": "ref-05-battle.png",
     "tab_shop_main": "u-20260919-01-01-shop.png",
     "tab_shop_aux": "u-20260919-01-02-aux.png",
     "tab_shop_equip": "u-20260919-01-02-equip.png",
     "tab_shop_item": "u-20260919-01-02-item.png",
     "tab_shop_mshop": "u-20260919-01-02-mshop.png",
-    "console_battle_open": "gc-console.png",
-    "console_battle_closed": "ref-05-battle.png",
     "tab_dialog_pvp": "ref-01-create.png",
     "tab_dialog_pve": "ref-02-create-pve.png",
     "marker_room": "ref-04-room-clean.png",
@@ -54,6 +55,15 @@
         410
       ],
       "crop": "screen_shop.png"
+    },
+    "login": {
+      "box": [
+        605,
+        845,
+        680,
+        935
+      ],
+      "crop": "screen_login.png"
     }
   },
   "console": {
@@ -65,6 +75,16 @@
     ],
     "open_crop": "console_open.png",
     "closed_crop": "console_closed.png"
+  },
+  "console_battle": {
+    "box": [
+      0,
+      588,
+      340,
+      632
+    ],
+    "open_crop": "console_battle_open.png",
+    "closed_crop": "console_battle_closed.png"
   },
   "tabs": {
     "shop_main": {
@@ -130,16 +150,6 @@
       ],
       "crop": "tab_dialog_pve.png"
     }
-  },
-  "console_battle": {
-    "box": [
-      0,
-      588,
-      340,
-      632
-    ],
-    "open_crop": "console_battle_open.png",
-    "closed_crop": "console_battle_closed.png"
   },
   "markers": {
     "room": {

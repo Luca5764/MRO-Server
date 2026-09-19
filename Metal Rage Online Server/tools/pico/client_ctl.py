@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 """
-client_ctl.py - Detect a dead/hung MetalRage client, save evidence, kill it, and
-relaunch it, for unattended Pico runs (see docs/reference/unattended.md).
+client_ctl.py - Detect a dead/hung MetalRage client, save evidence, close/kill it,
+and relaunch it, for unattended Pico runs (see docs/reference/unattended.md).
 
-This is process-level bookkeeping only -- it never sends keyboard/mouse input, so
-none of pico_serial.ps1's foreground/click gates apply here. It shares the open
-Pico session file (.pico_session, see pico_ctl.py) and its log_action()/halt
-machinery so a client restart shows up in the same actions.log + server tmux
-marker trail as everything else an unattended run does.
+Almost everything here is process-level bookkeeping (status/evidence/launch/wait),
+sending no keyboard/mouse input, so none of pico_serial.ps1's foreground/click gates
+apply to it. The ONE exception is close_window()/close_client(): taskkill and
+Stop-Process are both denied on this client (it runs elevated via manifest
+requireAdministrator; a WSL/unelevated caller cannot signal it -- 2026-09-19 [TEST],
+see docs/journal/2026-09-19-2230-unattended-trial-01.md's 「當掉重開的實測」), so the
+only way left to close a still-responding window is a real Pico click on its
+title-bar close (X) glyph. That click is sent via `pico_ctl.py raw CLOSE_WINDOW`
+(pico_serial.ps1's CLOSE_WINDOW pseudo-command) and IS gated exactly like any other
+input command (foreground must be the real game window, STOP file, session must be
+open) -- see close_window()'s docstring. It shares the open Pico session file
+(.pico_session, see pico_ctl.py) and its log_action()/halt machinery so a client
+close/restart/relaunch shows up in the same actions.log + server tmux marker trail
+as everything else an unattended run does.
 
 Usage:
   ./client_ctl.py status
@@ -28,24 +37,40 @@ Usage:
       step -- likely a loop, not worth retrying automatically).
       Otherwise: evidence(step) -> check whether the MetalRage process is still
       present.
-        - Present (running, whether responding or not): does NOT attempt to
-          terminate it -- 2026-09-19 [TEST] `taskkill /IM MetalRage.exe /F`
-          could not kill it while it was hung (likely XIGNCODE's anti-cheat
-          driver protecting the process, see docs/journal/2026-09-19-2230-
-          unattended-trial-01.md's 「當掉重開的實測」 section and AGENTS.md's
-          硬性約束 1 -- no other termination technique is used either). Instead:
-          halt the session with reason "client present but unresponsive/needs
-          restart; cannot terminate (protected) — operator needed", exit
-          nonzero. An operator has to close/restart it by hand.
+        - Present AND responding: close_client(step) -- CLOSE_WINDOW (a real Pico
+          click on the close X, see module docstring) -> wait up to 20s for the
+          process to exit. If a confirm dialog or a "not responding" ghost window
+          shows up instead, or the process is still there after 20s, this does
+          NOT click anything else -- it tries a taskkill fallback purely to log
+          that it was denied (AGENTS.md 硬性約束 1 -- no other termination
+          technique is attempted), then halts the session, operator needed.
+        - Present but NOT responding (already hung): does not attempt
+          CLOSE_WINDOW on a window that likely will not process the click either
+          -- halts immediately, operator needed (unchanged from the 2026-09-19
+          behavior for this specific case).
         - Absent (process not found): launch via the .bat -> wait (<=90s) for
           a window. Does NOT log in; that is done later by Pico steps.
       Any failure along the way halts the session (fail closed).
       --dry-run runs every gate check and prints what it would do, without
       touching the real client or the session file.
 
-Exit codes for restart: 0 = done (or dry-run says it would proceed), 3 = refused
-by a gate (session/STOP/limit/same-step), 1 = a step failed during execution, or
-the client was present and could not be restarted (operator needed).
+  ./client_ctl.py relaunch --reason <text> [--dry-run]
+      A PLANNED relaunch (not a crash), e.g. before a long unattended run, kept
+      separate from restart's crash-recovery budget (RESTART_LIMIT / same-step
+      dedup do not apply here; tracked in its own session field
+      client_relaunch_count, not client_restart_count). Same present/responding
+      gating and CLOSE_WINDOW-based close as restart above, then: launch -> wait
+      for the real window -> login (see actions.py's login() action / relaunch_client()).
+      This subcommand itself still does NOT log in -- same process-only boundary
+      as restart -- the composed relaunch_client() action in actions.py calls this,
+      then calls login() as a separate step.
+      --dry-run runs every gate check and prints what it would do, without
+      touching the real client or the session file.
+
+Exit codes for restart/relaunch: 0 = done (or dry-run says it would proceed), 3 =
+refused by a gate (session/STOP/limit/same-step for restart only), 1 = a step
+failed during execution, or the client was present and could not be closed
+(operator needed).
 """
 
 import os
@@ -73,6 +98,8 @@ STOP_FILE_WSL = "/mnt/c/Users/su200/mro-pico/STOP"  # same kill switch as pico_s
 
 RESTART_LIMIT = 3
 WAIT_READY_MS = 90000
+CLOSE_WAIT_EXIT_MS = 20000  # how long close_client() waits for CLOSE_WINDOW to take effect
+PICO_CTL_PY = os.path.join(SCRIPT_DIR, "pico_ctl.py")
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +162,54 @@ def cmd_status():
     else:
         print(f"[ERR] {st.get('detail')}")
         sys.exit(3)
+
+
+# ---------------------------------------------------------------------------
+# close_window()/close_client(): the ONE keyboard/mouse input this module sends
+# (see module docstring for why: taskkill/Stop-Process are denied on this
+# elevated client). Requires the same open, non-halted Pico session as every
+# other pico_ctl.py input command -- callers here (cmd_restart/cmd_relaunch)
+# already check that before reaching this point, but close_window() itself adds
+# no session bookkeeping of its own; it is a thin subprocess call to
+# `pico_ctl.py raw CLOSE_WINDOW`, which does its own require_session()/gating/
+# halting exactly like any other pico_ctl.py input command (see pico_ctl.py's
+# `raw` action and pico_serial.ps1's Invoke-CloseWindow).
+# ---------------------------------------------------------------------------
+def close_window():
+    proc = subprocess.run([sys.executable, PICO_CTL_PY, "raw", "CLOSE_WINDOW"],
+                           capture_output=True, text=True, timeout=30)
+    out = (proc.stdout or proc.stderr or "").strip()
+    return out, proc.returncode
+
+
+def close_client(step):
+    """CLOSE_WINDOW (a real Pico click on the game window's title-bar close X,
+    see close_window() above) -> wait up to CLOSE_WAIT_EXIT_MS for the process to
+    exit. Returns (ok: bool, detail: str). Does NOT click anything else if the
+    process is still present afterwards (e.g. a confirm dialog or a "not
+    responding" ghost window appeared instead of closing) -- only tries a
+    taskkill fallback purely to log that it is denied (AGENTS.md 硬性約束 1: no
+    other termination technique is attempted), then reports failure so the
+    caller halts the session for an operator."""
+    out, rc = close_window()
+    if "[BLOCKED]" in out or rc == 3:
+        return False, f"CLOSE_WINDOW blocked: {out!r}"
+    if "[ERR" in out or rc not in (0, 3):
+        return False, f"CLOSE_WINDOW did not get a clean reply (rc={rc}): {out!r}"
+
+    wout, wrc = run_ps1("wait_exit", CLOSE_WAIT_EXIT_MS, timeout=(CLOSE_WAIT_EXIT_MS / 1000.0) + 10)
+    if wout == "EXITED":
+        return True, f"CLOSE_WINDOW: {out!r}; process exited within {CLOSE_WAIT_EXIT_MS}ms"
+
+    st = get_status()
+    tk_out, tk_rc = run_ps1("kill", timeout=15)
+    detail = (
+        f"CLOSE_WINDOW sent ({out!r}) but process did not exit within {CLOSE_WAIT_EXIT_MS}ms "
+        f"(wait_exit={wout!r}, status={st}); taskkill fallback={tk_out!r} rc={tk_rc} "
+        f"(expected to be denied on this elevated client, per AGENTS.md 硬性約束 1 no other "
+        f"termination technique is attempted)"
+    )
+    return False, detail
 
 
 # ---------------------------------------------------------------------------
@@ -228,9 +303,11 @@ def cmd_restart(step, reason, dry_run):
               f"count_before={count}/{RESTART_LIMIT}")
         print(f"  1. evidence('restart-{step}')")
         print("  2. check whether the MetalRage process is still present (read-only status check)")
-        print("     - present (running or not responding): HALT session, exit 1, reason "
-              "'client present but unresponsive/needs restart; cannot terminate (protected) "
-              "— operator needed' -- no kill attempted, no other termination technique used")
+        print("     - present AND responding: close_client(step) -- CLOSE_WINDOW (real Pico click on "
+              "the close X) -> wait <=20s for exit; if still present, taskkill fallback (expected "
+              "denied, only to log it) -> HALT session, exit 1, operator needed")
+        print("     - present but NOT responding: HALT session, exit 1 immediately (no CLOSE_WINDOW "
+              "attempt on an already-hung window), operator needed")
         print(f"     - absent: 3. launch via the .bat, wait up to {WAIT_READY_MS}ms for a window")
         print(f"  4. on a successful launch only: session state -> client_restart_count={count + 1}, "
               f"client_last_restart_step={step!r}")
@@ -238,17 +315,28 @@ def cmd_restart(step, reason, dry_run):
 
     ev_dir = evidence(f"restart-{step}")
 
-    # 2026-09-19 [TEST]: taskkill could not terminate a hung MetalRage process
-    # (likely XIGNCODE's anti-cheat driver protecting it -- see the journal
-    # entry referenced in this command's --help text). Per AGENTS.md 硬性
-    # 約束 1, no other termination technique is attempted either. If the
-    # process is still present at all -- responding or not -- this halts and
-    # waits for an operator instead of trying to kill it.
     st = get_status()
-    if st["state"] != "not_running":
+    if st["state"] == "ok":
+        # Present and responding: try CLOSE_WINDOW (real Pico click on the close X) --
+        # taskkill/Stop-Process are denied on this elevated client, see module
+        # docstring. close_client() does not click anything else if that doesn't
+        # result in the process exiting.
+        ok, detail = close_client(f"restart-{step}")
+        if not ok:
+            halt_reason = f"could not close client for restart: {detail} — operator needed"
+            pico.log_action(f"restart {step}", f"BLOCKED: {halt_reason} evidence={ev_dir}")
+            pico.halt_session(halt_reason)
+            print(f"[BLOCKED] {halt_reason}")
+            sys.exit(1)
+        pico.log_action(f"restart {step}", f"close_client ok: {detail}")
+    elif st["state"] != "not_running":
+        # Not responding (already hung) -- do not attempt CLOSE_WINDOW on a window
+        # that likely will not process the click either (AGENTS.md 硬性約束 1: no
+        # other termination technique is attempted). Same halt behavior as before
+        # this task for this specific case.
         halt_reason = (
-            "client present but unresponsive/needs restart; cannot terminate "
-            f"(protected) — operator needed (status={st['state']} pid={st.get('pid')})"
+            "client present but NOT responding; not attempting CLOSE_WINDOW on a hung "
+            f"window; cannot terminate (protected) — operator needed (status={st['state']} pid={st.get('pid')})"
         )
         pico.log_action(f"restart {step}", f"BLOCKED: {halt_reason} evidence={ev_dir}")
         pico.halt_session(halt_reason)
@@ -269,6 +357,79 @@ def cmd_restart(step, reason, dry_run):
 
     result = f"OK step={step} reason={reason!r} count={count + 1}/{RESTART_LIMIT} evidence={ev_dir} {out}"
     pico.log_action(f"restart {step}", result)
+    print(f"[OK] {result}")
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
+# relaunch: a PLANNED relaunch (not a crash) -- same session/STOP gates as
+# restart, but deliberately WITHOUT restart's crash-recovery budget
+# (RESTART_LIMIT / same-step dedup): those exist to stop an automatic crash
+# loop, and a planned relaunch is neither automatic nor a crash. Tracked in
+# its own session field (client_relaunch_count) so it never counts against or
+# is blocked by client_restart_count/client_last_restart_step. Present/
+# responding handling (CLOSE_WINDOW via close_client(), or halt if not
+# responding) is identical to restart above.
+# ---------------------------------------------------------------------------
+def cmd_relaunch(reason, dry_run):
+    state = pico._load_session()
+    if state is None:
+        _refuse("no session open (run: pico_ctl.py session start \"<purpose>\")", "relaunch", halt=False)
+    if state.get("halted"):
+        _refuse(f"session halted: {state.get('halt_reason')}", "relaunch", halt=False)
+    if os.path.exists(STOP_FILE_WSL):
+        _refuse(f"STOP file present ({STOP_FILE_WSL})", "relaunch", halt=True)
+
+    count = state.get("client_relaunch_count", 0)
+
+    if dry_run:
+        print(f"[DRY-RUN] relaunch would proceed: reason={reason!r} count_before={count} "
+              "(planned action -- no restart-limit/same-step gate, separate from crash recovery budget)")
+        print("  1. evidence('relaunch')")
+        print("  2. check whether the MetalRage process is still present (read-only status check)")
+        print("     - present AND responding: close_client('relaunch') -- CLOSE_WINDOW -> wait <=20s "
+              "for exit; if still present, taskkill fallback (expected denied) -> HALT, exit 1")
+        print("     - present but NOT responding: HALT immediately, operator needed")
+        print(f"     - absent: 3. launch via the .bat, wait up to {WAIT_READY_MS}ms for the real window")
+        print(f"  4. on a successful launch only: session state -> client_relaunch_count={count + 1}")
+        print("  5. NOT done by this subcommand: login -- see actions.py's login()/relaunch_client()")
+        sys.exit(0)
+
+    ev_dir = evidence("relaunch")
+
+    st = get_status()
+    if st["state"] == "ok":
+        ok, detail = close_client("relaunch")
+        if not ok:
+            halt_reason = f"could not close client for planned relaunch: {detail} — operator needed"
+            pico.log_action("relaunch", f"BLOCKED: {halt_reason} evidence={ev_dir}")
+            pico.halt_session(halt_reason)
+            print(f"[BLOCKED] {halt_reason}")
+            sys.exit(1)
+        pico.log_action("relaunch", f"close_client ok: {detail}")
+    elif st["state"] != "not_running":
+        halt_reason = (
+            "client present but NOT responding; not attempting CLOSE_WINDOW on a hung "
+            f"window; cannot terminate (protected) — operator needed (status={st['state']} pid={st.get('pid')})"
+        )
+        pico.log_action("relaunch", f"BLOCKED: {halt_reason} evidence={ev_dir}")
+        pico.halt_session(halt_reason)
+        print(f"[BLOCKED] {halt_reason}")
+        sys.exit(1)
+
+    out, rc = run_ps1("launch", timeout=15)
+    if out != "LAUNCH_SENT":
+        _fail(f"launch: unexpected reply {out!r}", "relaunch")
+
+    out, rc = run_ps1("wait_ready", WAIT_READY_MS, timeout=(WAIT_READY_MS / 1000.0) + 10)
+    if not (out or "").startswith("READY"):
+        _fail(f"wait_ready: {out!r}", "relaunch")
+
+    state["client_relaunch_count"] = count + 1
+    pico._save_session(state)
+
+    result = f"OK reason={reason!r} count={count + 1} evidence={ev_dir} {out}"
+    pico.log_action("relaunch", result)
     print(f"[OK] {result}")
     sys.exit(0)
 
@@ -314,6 +475,27 @@ def main():
             print("Usage: ./client_ctl.py restart --step <step-label> --reason <text> [--dry-run]")
             sys.exit(1)
         cmd_restart(step, reason, dry_run)
+        return
+
+    if action == "relaunch":
+        reason = None
+        dry_run = False
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            if args[i] == "--reason" and i + 1 < len(args):
+                reason = args[i + 1]
+                i += 2
+            elif args[i] == "--dry-run":
+                dry_run = True
+                i += 1
+            else:
+                print(f"[ERR] unknown arg: {args[i]}")
+                sys.exit(1)
+        if not reason:
+            print("Usage: ./client_ctl.py relaunch --reason <text> [--dry-run]")
+            sys.exit(1)
+        cmd_relaunch(reason, dry_run)
         return
 
     print(f"[ERR] Unknown action '{action}'. See --help.")

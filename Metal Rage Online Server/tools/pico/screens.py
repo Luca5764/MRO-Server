@@ -66,6 +66,17 @@ BUILD_SPEC = {
         # icon row), present identically in every shop sub-screen (G/M coin
         # shop, any of the 4 item-type tabs) and absent from the lobby.
         "shop": {"source": "u-20260919-01-01-shop.png", "box": [18, 330, 335, 410]},
+        # Static "帳號"/"密碼" field-label glyphs on the login panel (this
+        # task's contract: relaunch trial found a fresh client shows the
+        # login screen, not the lobby, right after the real game window
+        # appears). Box deliberately stops short of the 帳號 input box itself
+        # (x<685) so the blinking text-cursor there never enters this region.
+        # MAD against a real post-login lobby capture (shots/after-login2.png,
+        # this task): 86.25 for this box, 32.10/43.29 for the lobby/shop boxes
+        # read off the login screenshot -- all far past screen_accept(12.0),
+        # so login/lobby/shop do not get confused for each other (checked for
+        # this task, not assumed).
+        "login": {"source": "login-screen.png", "box": [605, 845, 680, 935]},
     },
     "console": {
         # Just the "(>" prompt glyph, deliberately not extending to the

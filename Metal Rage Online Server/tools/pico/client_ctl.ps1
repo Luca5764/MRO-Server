@@ -8,8 +8,11 @@
 #   kill                   taskkill /IM MetalRage.exe /F if the process is present
 #   wait_exit <timeoutMs>  poll until the process is gone or timeoutMs elapses
 #   launch                 start "Play Metal Rage Online.bat" (does not log in)
-#   wait_ready <timeoutMs> poll until a MetalRage window with a nonzero
-#                          MainWindowHandle appears, or timeoutMs elapses
+#   wait_ready <timeoutMs> poll until the REAL game window (largest visible
+#                          MetalRage window, client area >= 1600x1200 -- not
+#                          just any window with a MainWindowHandle, see
+#                          Get-MetalRageWindow below) appears, or timeoutMs
+#                          elapses
 #
 # 2026-09-19 [TEST]: taskkill could not terminate a hung MetalRage process
 # (likely XIGNCODE's anti-cheat driver protecting it -- see docs/journal/
@@ -42,25 +45,82 @@ using System;
 using System.Runtime.InteropServices;
 public class ClientCtlWin32 {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     public struct RECT { public int Left, Top, Right, Bottom; }
 }
 "@
 
+# Get-MetalRageWindow -- see pico_serial.ps1's copy of this function for the full
+# rationale (duplicated here verbatim for the same reason: this script is also
+# copied to Windows and run standalone via `-File`, so a shared library is not an
+# option). Resolves the REAL game window as the largest visible top-level window
+# belonging to any MetalRage process -- NOT Process.MainWindowHandle, which was
+# observed to return a freshly launched client's small splash window instead of the
+# real one (2026-09-19 relaunch trial, docs/journal/2026-09-19-2230-unattended-
+# trial-01.md). Returns $null if MetalRage isn't running or has no visible window.
+function Get-MetalRageWindow {
+    $procs = @(Get-Process $ProcName -ErrorAction SilentlyContinue)
+    if ($procs.Count -eq 0) { return $null }
+    $script:MrwPids = @($procs | ForEach-Object { $_.Id })
+    $script:MrwBest = [IntPtr]::Zero
+    $script:MrwBestArea = 0
+    $script:MrwBestRect = $null
+    [void][ClientCtlWin32]::EnumWindows({
+        param($h, $l)
+        [uint32]$wpid = 0
+        [void][ClientCtlWin32]::GetWindowThreadProcessId($h, [ref]$wpid)
+        if ($script:MrwPids -contains [int]$wpid -and [ClientCtlWin32]::IsWindowVisible($h)) {
+            $r = New-Object ClientCtlWin32+RECT
+            [void][ClientCtlWin32]::GetWindowRect($h, [ref]$r)
+            $area = ($r.Right - $r.Left) * ($r.Bottom - $r.Top)
+            if ($area -gt $script:MrwBestArea) {
+                $script:MrwBestArea = $area
+                $script:MrwBest = $h
+                $script:MrwBestRect = $r
+            }
+        }
+        return $true
+    }, [IntPtr]::Zero) | Out-Null
+    if ($script:MrwBest -eq [IntPtr]::Zero) { return $null }
+    return @{
+        Handle = $script:MrwBest
+        Rect   = $script:MrwBestRect
+        Width  = $script:MrwBestRect.Right - $script:MrwBestRect.Left
+        Height = $script:MrwBestRect.Bottom - $script:MrwBestRect.Top
+    }
+}
+
+# Same client-area threshold as pico_serial.ps1's $ReadyClientWidth/Height (see its
+# comment): 1600x1200, from tools/pico/atlas/manifest.json's shot_size minus
+# client_offset.
+$ReadyClientWidth = 1600
+$ReadyClientHeight = 1200
+
 function Write-ClientStatus {
-    $p = Get-Process -Name $ProcName -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $p) {
+    $procs = @(Get-Process -Name $ProcName -ErrorAction SilentlyContinue)
+    if ($procs.Count -eq 0) {
         Write-Output "NOT_RUNNING"
         return
     }
-    $hwnd = $p.MainWindowHandle
-    $responding = $p.Responding
-    $rectStr = "0,0,0,0"
-    if ($hwnd -ne [IntPtr]::Zero) {
-        $r = New-Object ClientCtlWin32+RECT
-        $ok = [ClientCtlWin32]::GetWindowRect($hwnd, [ref]$r)
-        if ($ok) { $rectStr = "$($r.Left),$($r.Top),$($r.Right),$($r.Bottom)" }
+    $win = Get-MetalRageWindow
+    if ($win) {
+        [uint32]$wpid = 0
+        [void][ClientCtlWin32]::GetWindowThreadProcessId($win.Handle, [ref]$wpid)
+        $p = Get-Process -Id ([int]$wpid) -ErrorAction SilentlyContinue
+        if (-not $p) { $p = $procs[0] }
+        $hwnd = $win.Handle
+        $r = $win.Rect
+        $rectStr = "$($r.Left),$($r.Top),$($r.Right),$($r.Bottom)"
+    } else {
+        $p = $procs[0]
+        $hwnd = [IntPtr]::Zero
+        $rectStr = "0,0,0,0"
     }
-    Write-Output "RUNNING pid=$($p.Id) hwnd=$hwnd responding=$responding rect=$rectStr"
+    Write-Output "RUNNING pid=$($p.Id) hwnd=$hwnd responding=$($p.Responding) rect=$rectStr"
 }
 
 switch ($Action.ToLower()) {
@@ -95,13 +155,29 @@ switch ($Action.ToLower()) {
     }
 
     "wait_ready" {
+        # Waits for the REAL game window, not just any MetalRage window -- a freshly
+        # launched client shows a small splash (~420x260) well before the real
+        # window (client area 1600x1200) appears, and the old MainWindowHandle-based
+        # check here returned the splash (2026-09-19 relaunch trial, docs/journal/
+        # 2026-09-19-2230-unattended-trial-01.md). Only the largest visible
+        # MetalRage window, once its CLIENT area is >= 1600x1200, counts as READY.
         if ($Rest.Count -lt 1) { [Console]::Error.WriteLine("wait_ready needs a timeoutMs arg"); exit 2 }
         $timeoutMs = [int]$Rest[0]
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         while ($sw.ElapsedMilliseconds -lt $timeoutMs) {
-            $p = Get-Process -Name $ProcName -ErrorAction SilentlyContinue |
-                 Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
-            if ($p) { Write-Output "READY pid=$($p.Id) hwnd=$($p.MainWindowHandle)"; exit 0 }
+            $win = Get-MetalRageWindow
+            if ($win) {
+                $cr = New-Object ClientCtlWin32+RECT
+                $okc = [ClientCtlWin32]::GetClientRect($win.Handle, [ref]$cr)
+                $cw = $cr.Right - $cr.Left
+                $ch = $cr.Bottom - $cr.Top
+                if ($okc -and $cw -ge $ReadyClientWidth -and $ch -ge $ReadyClientHeight) {
+                    [uint32]$wpid = 0
+                    [void][ClientCtlWin32]::GetWindowThreadProcessId($win.Handle, [ref]$wpid)
+                    Write-Output "READY pid=$wpid hwnd=$($win.Handle) client=${cw}x${ch}"
+                    exit 0
+                }
+            }
             Start-Sleep -Milliseconds 500
         }
         Write-Output "TIMEOUT"

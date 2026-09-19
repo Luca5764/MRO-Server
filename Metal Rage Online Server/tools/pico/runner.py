@@ -79,7 +79,7 @@ def validate_experiment(exp):
             "(see module docstring); nonzero values are reserved for a future runner"
         )
     pre = exp.get("preconditions", {})
-    known_precondition_screens = ("lobby", "shop", "console_open", "room", "battle")
+    known_precondition_screens = ("lobby", "shop", "console_open", "room", "battle", "login")
     if pre and "screen" in pre and pre["screen"] not in known_precondition_screens:
         raise ExperimentError(f"unknown precondition screen '{pre['screen']}'")
     if not isinstance(exp["steps"], list) or not exp["steps"]:
@@ -116,22 +116,43 @@ def validate_experiment(exp):
                 raise ExperimentError(f"step {i}: keepalive_wait needs params.seconds as a positive number")
             if not isinstance(interval_s, (int, float)) or interval_s <= 0:
                 raise ExperimentError(f"step {i}: keepalive_wait params.interval_s must be a positive number")
+        if name in ("goto_shop", "shop_tab", "back_to_lobby") and "keepalive_interval_s" in params:
+            kis = params["keepalive_interval_s"]
+            if not isinstance(kis, (int, float)) or kis <= 0:
+                raise ExperimentError(f"step {i}: {name} params.keepalive_interval_s must be a positive number")
+        if name == "login":
+            account = params.get("account")
+            if not isinstance(account, str) or not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
+                raise ExperimentError(f"step {i}: login needs params.account as a non-empty printable-ASCII string")
+        if name == "relaunch_client":
+            account = params.get("account")
+            if not isinstance(account, str) or not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
+                raise ExperimentError(f"step {i}: relaunch_client needs params.account as a non-empty printable-ASCII string")
     sc = exp.get("stop_conditions", {})
     if not isinstance(sc, dict):
         raise ExperimentError("'stop_conditions' must be an object")
+
+
+def _keepalive_suffix(params):
+    kis = params.get("keepalive_interval_s")
+    if kis is None:
+        return ""
+    return f", keepalive: KEY {actions.KEEPALIVE_KEY} every {kis}s while waiting (🟡 guess, see actions.py)"
 
 
 def describe_step(step):
     name = step["action"]
     params = step.get("params", {})
     if name == "goto_shop":
-        return f"goto_shop: precondition=lobby, click client{actions.SHOP_BUTTON}, wait<=8s for screen=shop"
+        return (f"goto_shop: precondition=lobby, click client{actions.SHOP_BUTTON}, wait<=8s for "
+                f"screen=shop{_keepalive_suffix(params)}")
     if name == "shop_tab":
         tab = params["name"]
         return (f"shop_tab({tab}): precondition=shop, click client{actions.TAB_COORDS[tab]}, "
-                f"wait<=6s for tab '{actions.TAB_MANIFEST_KEY[tab]}' active")
+                f"wait<=6s for tab '{actions.TAB_MANIFEST_KEY[tab]}' active{_keepalive_suffix(params)}")
     if name == "back_to_lobby":
-        return f"back_to_lobby: precondition=shop, click client{actions.BACK_BUTTON}, wait<=8s for screen=lobby"
+        return (f"back_to_lobby: precondition=shop, click client{actions.BACK_BUTTON}, wait<=8s for "
+                f"screen=lobby{_keepalive_suffix(params)}")
     if name == "open_console":
         return "open_console: key F24, wait<=5s for console_state=open"
     if name == "close_console":
@@ -175,6 +196,19 @@ def describe_step(step):
         return "wait_result_then_room: wait<=15s for result marker (best-effort), then wait<=20s for room or notice_popup marker"
     if name == "leave_room":
         return f"leave_room: precondition=room marker, click client{actions.LEAVE_ROOM_BUTTON} (上一頁), wait<=8s for screen=lobby"
+    if name == "login":
+        account = params.get("account")
+        return (f"login({account!r}): precondition=login screen, IME_EN, click client{actions.LOGIN_ACCOUNT_FIELD} "
+                f"(帳號), TYPE {account!r}, KEY TAB, TYPE {actions.LOGIN_DUMMY_PASSWORD!r} (dummy password), KEY ENTER, "
+                f"wait<={actions.DEFAULT_LOGIN_TIMEOUT_S}s for a {actions.LOGIN_CQ_OPCODE} recv pkt in the session log, "
+                f"then wait<=15s for screen=lobby")
+    if name == "relaunch_client":
+        account = params.get("account")
+        reason = params.get("reason", "planned unattended relaunch")
+        return (f"relaunch_client({account!r}): `client_ctl.py relaunch --reason {reason!r}` (close via a real "
+                f"Pico click on the title-bar close X if present+responding, halt if present+not responding, "
+                f"launch, wait<=90s for the real game window), then login({account!r}) (see above) -- separate "
+                f"from client_ctl.py restart's crash-recovery budget")
     return f"{name}: {params}"
 
 
