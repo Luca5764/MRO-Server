@@ -14,6 +14,62 @@ const rooms = require('../../rooms.js');
 // only displayed the first letter.
 // See docs/journal/2026-09-18-17-user-name-ansi.md.
 
+// SELF-AVATAR-EXP (docs/backlog.md, 中階 experiment, 未經跨公司審查): R14/R15
+// (journal/2026-09-18-2305-room-avatar-experiments.md) tried changing the
+// PilotCode value itself and still never saw a self avatar; neither
+// experiment ever resent the record after the room page was already open,
+// so timing was never excluded as a variable. [LOG]
+// session-20260919-111258.jsonl: host Lucas got her own record in the room-
+// create burst at ms 617230/618080 and never saw her own avatar even after
+// a later member-list redraw (test joining); test only saw her own avatar
+// after becoming host at ms 2291017, when her own record set was resent
+// while the room page was already open (via the pre-existing host-handoff
+// path, not this switch). This experiment tests that timing hypothesis
+// directly: resend the same client's own record set, byte-identical, a
+// fixed delay after it was first sent.
+let ROOM_SELF_RECORD_RESEND_MODE = 'disabled'; // 'disabled' | 'enabled'
+const ROOM_SELF_RECORD_RESEND_DELAY_MS = 1500;
+
+// Triggered by room CREATE (room.dispatch.js sendRoomState(), host path) and
+// room ENTER (gate.game.dispatch.js Enter_CQ's sendFullRoomStateToClient(),
+// joiner path) -- both call this right after they send that client's own
+// User_Default/Name/Pilot/State/Master burst. Debounced per connection:
+// each call clears any still-pending timer for that client first, so the
+// two-step ROOM_STATE_RETRY_SCHEDULE burst (350ms/1200ms) collapses into
+// exactly one resend, timed off the last send in the burst.
+function scheduleSelfRecordResend(client, ctx, getExactMessageBuffer, includeMaster, tag) {
+    if (ROOM_SELF_RECORD_RESEND_MODE !== 'enabled') return;
+    if (client.selfRecordResendTimer_) {
+        clearTimeout(client.selfRecordResendTimer_);
+    }
+    const accountIndex = ctx.accountIndex;
+    client.selfRecordResendTimer_ = setTimeout(() => {
+        client.selfRecordResendTimer_ = null;
+        // Guard: connection closed.
+        if (!client.socket_ || client.socket_.destroyed) {
+            console.log(`[ZRoomDispatch] >> SELF-AVATAR-EXP: skipped self-record resend for account ${accountIndex}, connection closed [${tag}]`);
+            return;
+        }
+        // Guard: client no longer a live member of that room (left, kicked,
+        // or a different connection now holds the membership).
+        const room = rooms.getRoomByAccount(accountIndex);
+        const member = room && room.members.get(accountIndex);
+        if (!room || !member || member.client !== client) {
+            console.log(`[ZRoomDispatch] >> SELF-AVATAR-EXP: skipped self-record resend for account ${accountIndex}, no longer in room [${tag}]`);
+            return;
+        }
+        // READY-IMPL interaction: ctx was captured before the delay, and a
+        // ready press in between (which itself triggers a room-state resend
+        // and so re-arms this timer) would otherwise be overwritten by a
+        // stale raw 1 in User_State_SN 0x00220401. Read the current flag.
+        const resendCtx = rooms.isRoomReadyStateEnabled()
+            ? { ...ctx, readyStateRaw: member.ready ? 2 : 1 }
+            : ctx;
+        sendRoomUserPackets(client, resendCtx, getExactMessageBuffer, { includeMaster });
+        console.log(`[ZRoomDispatch] >> SELF-AVATAR-EXP: resent own record set to account ${accountIndex} [${tag}]`);
+    }, ROOM_SELF_RECORD_RESEND_DELAY_MS);
+}
+
 function sendRoomUserPackets(client, ctx, getExactMessageBuffer, options = {}) {
     // D1-4 (docs/backlog.md): sending one room member's User_Default/Name/
     // Pilot/State to a *different* client (a joiner learning about the
@@ -157,4 +213,13 @@ function buildMemberUserCtx(member) {
 module.exports = {
     sendRoomUserPackets,
     buildMemberUserCtx,
+    scheduleSelfRecordResend,
+};
+
+// SELF-AVATAR-EXP: test-only setter, same pattern as gate.game.dispatch.js's
+// _setRoomMapBroadcastModeForTest -- lets test/self-avatar-resend.js flip
+// the switch on for its own scope without changing the shipped default.
+module.exports._setSelfRecordResendModeForTest = function setSelfRecordResendModeForTest(mode)
+{
+    ROOM_SELF_RECORD_RESEND_MODE = mode;
 };

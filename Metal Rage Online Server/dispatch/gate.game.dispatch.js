@@ -14,7 +14,7 @@ const { sendRoomStatePackets } = require('./room/room-state.sender');
 // has no requires of its own, so no cycle risk, same as sendRoomStatePackets
 // above.
 const { sendRoomMapPackets } = require('./room/room-map.sender');
-const { sendRoomUserPackets, buildMemberUserCtx } = require('./room/room-user.sender');
+const { sendRoomUserPackets, buildMemberUserCtx, scheduleSelfRecordResend } = require('./room/room-user.sender');
 const { broadcastRoomListChange } = require('./room/room-list.sender');
 // D1-4 correction (design §4 "斷線即離開"): Leave_CQ and server.js's socket
 // close hook now share the same remove-member/Leave_SN/host-reassign path.
@@ -674,9 +674,17 @@ function sendFullRoomStateToClient(client, room, accountId, tag) {
     }
     const allMembers = Array.from(room.members.values());
     for (const member of allMembers) {
-        sendRoomUserPackets(client, buildMemberUserCtx(member), getExactMessageBuffer, {
-            includeMaster: member.accountId === room.hostAccountId,
-        });
+        const memberCtx = buildMemberUserCtx(member);
+        const includeMaster = member.accountId === room.hostAccountId;
+        sendRoomUserPackets(client, memberCtx, getExactMessageBuffer, { includeMaster });
+        // SELF-AVATAR-EXP (docs/backlog.md): triggered by this same full
+        // room-state send on room ENTER (joiner path) -- only for the
+        // record that is the receiving client's own (self), not the other
+        // members' records also sent in this loop. Default off; see
+        // room-user.sender.js for the switch and hypothesis.
+        if (member.accountId === accountId) {
+            scheduleSelfRecordResend(client, memberCtx, getExactMessageBuffer, includeMaster, 'room enter (joiner)');
+        }
     }
     console.log(`[ZGateGameDispatch] >> Sent full room state from Room #${room.id} to account ${accountId} (members=${allMembers.length})${tag ? ` [${tag}]` : ''}`);
 }
