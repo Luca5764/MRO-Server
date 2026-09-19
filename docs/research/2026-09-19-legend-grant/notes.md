@@ -127,3 +127,9 @@
     `gamelogin.dispatch.js` 的路徑因為上述已知缺口而不成立；已如實記在
     這裡，開關預設仍是 `disabled` 沒有變更現行行為，等主力裁定是否要開。
 - 其餘不變：帳號 1/3/4 dry-run 結果、grant 工具測試、寫入 gating 均同上一段。
+
+## 實際發放（高階，2026-09-19 19:14）
+- 備份：`~/mro-backups/mro-before-legend-20260919-191426.sql`。帳號 4 當時離線（`/conns` 只有 dusk、Lucas）。
+- `tools/grant-legend-mechs.js --account 4`：插入 8 筆，serial 200118–200125，equipped=0。重跑 dry-run 全部顯示 already-owned，確認冪等。
+- 伺服器維持目前版本；`BODY_INDEX_GIR_MODE` 關閉。30907 登入時的 WearInfo 身體欄位原本就送原始 item_id，8 台原型機一直顯示正常，所以先照原樣看傳說機會不會顯示。如果圖示錯了，再打開開關（公式 GIR 位置 + 84 已經對 16 個 id 驗證過）。
+- 待實測：用 test 登入後，機庫看不看得到傳說機、能不能換上、出場有沒有加成。
