@@ -8,7 +8,7 @@ const rooms = require('../rooms.js');
 // D1-4 (docs/backlog.md): joining an existing room reuses the same
 // room-state/room-user sender chain the room creator already gets below,
 // plus the lobby room list broadcast that makes a room visible to join.
-const { sendRoomStatePackets, sendRoomNameOnly } = require('./room/room-state.sender');
+const { sendRoomStatePackets, sendRoomNameOnly, sendRoomOptionOnly } = require('./room/room-state.sender');
 // D1-4c: sendRoomMapPackets top-level import (unlike sendCampaignBootstrap
 // below, still lazily required at its one call site) -- room-map.sender.js
 // has no requires of its own, so no cycle risk, same as sendRoomStatePackets
@@ -987,6 +987,10 @@ function buildRoomCtxFromRoom(room, accountId) {
         selectedMech: 1,
         isCampaignRoom: room.campaign,
         optionMask: room.optionMask || 0,
+        // OPTIONMASK-FIX (docs/backlog.md, docs/research/2026-09-19-intrude/
+        // notes.md, 🟡 待審): only consulted by room-state.sender.js when
+        // rooms.isRoomOptionSourceEnabled() is true.
+        roomOptions: room.options,
         isTrueCampaign: room.isTrueCampaign,
         campaignMapCacheKey: room.mapId,
         campaignMapHints: computeCampaignMapAllHints(),
@@ -2378,12 +2382,54 @@ class ZGateGameDispatch
             case 0x00220215:
             {
                 console.log(`[ZGateGameDispatch] >> Room Option_Change_CQ`);
-                const [msg, respBody] = getExactMessageBuffer(0x00220216, 0x06);
-                respBody.writeUint16LE(0, 0x00);
-                respBody.writeUint32LE(0, 0x02);
-                client.send(msg);
-                console.log(`[ZGateGameDispatch] >> Sent Option_Change_SA 0x220216 (status=0, result=0)`);
-                resendRoomState(client, 'after option-change cq');
+
+                // OPTIONMASK-FIX (docs/backlog.md, docs/research/
+                // 2026-09-19-intrude/notes.md, 🟡 待審): switch off keeps the
+                // pre-existing behaviour byte-for-byte (unconditional ack,
+                // resend to the sender only, no host check, no broadcast).
+                if (!rooms.isRoomOptionSourceEnabled()) {
+                    const [msg, respBody] = getExactMessageBuffer(0x00220216, 0x06);
+                    respBody.writeUint16LE(0, 0x00);
+                    respBody.writeUint32LE(0, 0x02);
+                    client.send(msg);
+                    console.log(`[ZGateGameDispatch] >> Sent Option_Change_SA 0x220216 (status=0, result=0)`);
+                    resendRoomState(client, 'after option-change cq');
+                    return true;
+                }
+
+                // Client action: host confirmed team-balance/battle-intrude
+                // in the "房間設定變更" dialog (ZPopup_RoomSet.uc:1367/1373,
+                // Room_Option_Change(IsBalance, IsIntrude)). DLL sender
+                // 0x107eeb80: body+1=IsBalance, body+2=IsIntrude
+                // (docs/research/2026-09-18-room-setting/notes.md Q3).
+                const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
+                const isBalance = body.length > 1 ? body[1] : 0;
+                const isIntrude = body.length > 2 ? body[2] : 0;
+
+                const sendOptionChangeSa = (ok) => {
+                    const [msg, respBody] = getExactMessageBuffer(0x00220216, 0x06);
+                    respBody.writeUint16LE(ok ? 0 : 1, 0x00);
+                    respBody.writeUint32LE(ok ? 0 : 1, 0x02);
+                    client.send(msg);
+                    console.log(`[ZGateGameDispatch] >> Sent Option_Change_SA 0x220216 (${ok ? 'success' : 'failure'}, account=${accountId})`);
+                };
+
+                const room = rooms.getRoomByAccount(accountId);
+                if (!room || room.hostAccountId !== accountId) {
+                    console.log(`[ZGateGameDispatch] >> Option_Change_CQ: account ${accountId} is not the host of any room, refusing`);
+                    sendOptionChangeSa(false);
+                    return true;
+                }
+
+                room.options.balance = !!isBalance;
+                room.options.intrude = !!isIntrude;
+                sendOptionChangeSa(true);
+
+                for (const member of room.members.values()) {
+                    if (!member.client) continue;
+                    sendRoomOptionOnly(member.client, room.options, getExactMessageBuffer);
+                }
+                console.log(`[ZGateGameDispatch] >> Broadcast Room_Option_SN 0x220217 to room #${room.id} (${room.members.size} member(s)) [option-change, balance=${room.options.balance}, intrude=${room.options.intrude}]`);
                 return true;
             }
 

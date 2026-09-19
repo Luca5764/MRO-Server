@@ -1588,6 +1588,15 @@ class ZRoomDispatch
             // this creator/re-send path stays byte-for-byte identical.
             isCampaignRoom: client.campaignRoom_,
             optionMask: (client.createWord2_ || 0) >>> 0,
+            // OPTIONMASK-FIX (docs/backlog.md, docs/research/
+            // 2026-09-19-intrude/notes.md, 🟡 待審): the host's own resend
+            // path, unlike a joiner's buildRoomCtxFromRoom() (gate.game.
+            // dispatch.js), does not already have the tracked Room object in
+            // scope -- look it up only when the switch is on, so this stays
+            // a no-op call while it is off.
+            roomOptions: rooms.isRoomOptionSourceEnabled()
+                ? (rooms.getRoomByAccount(Number(accountIndex)) || {}).options
+                : undefined,
             isTrueCampaign: client.isTrueCampaign_,
             mapChangeOneTime: client.mapChangeOneTime_,
             mapChangeOneRound: client.mapChangeOneRound_,
