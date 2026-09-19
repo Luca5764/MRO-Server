@@ -61,7 +61,16 @@
  * @property {number} gameMode - mirrors client.gameMode_ at creation
  *   (Room_Default_SN body+0x08).
  * @property {number} optionMask - mirrors client.createWord2_ at creation
- *   (Room_Option_SN's 4 bits).
+ *   (Room_Option_SN's 4 bits). Kept for byte-identical behaviour while
+ *   ROOM_OPTION_SOURCE_MODE is off -- see the `options` property below for
+ *   the field this bug was meant to represent.
+ * @property {{password: boolean, balance: boolean, intrude: boolean, training: boolean}} options -
+ *   OPTIONMASK-FIX (docs/research/2026-09-19-intrude/notes.md, 🟡): the real
+ *   room option state. `password` mirrors `hasPassword` above; `balance`/
+ *   `intrude`/`training` default false at creation (no create-dialog
+ *   control for them) and only change via Room_Option_Change_CQ
+ *   (0x00220215, host-only). Only consulted by senders/handlers when
+ *   isRoomOptionSourceEnabled() is true.
  * @property {number} createMapId - mirrors client.mapId_/client.createdMapId_
  *   at creation (the raw CQ_CREATE body[6] byte). NOT the same thing as
  *   `mapId` above -- that one prioritizes campaignMapCacheKey_ (the real
@@ -225,6 +234,31 @@ function _setRoomPlayingStateModeForTests(mode) {
     roomPlayingStateMode = mode;
 }
 
+// ROOM-OPTION-SOURCE (docs/backlog.md OPTIONMASK-FIX, docs/research/
+// 2026-09-19-intrude/notes.md, 🟡 待審): Create_CQ's body carries no
+// balance/intrude flags at all -- ZNetwork_DJ.uc:1435
+// `Lobby_Room_Create(RoomType, RoomName, Password, MaxUser, MapIndex,
+// PlayRound, PlayTime, PlayKill, PlayGoal)` has no such params, and
+// ZPopup_CreateRoom.uc only has a password checkbox (b_Password). The old
+// `optionMask: createWord2` field (still populated above, untouched) is
+// body[4..5] of CQ_CREATE, which is the chosen PlayTime in minutes (see
+// gate.game.dispatch.js's "PM-F1 fix 2" comment on client.createPlayTime_),
+// not option bits -- so the option bits it decoded into were garbage. When
+// enabled, senders read `room.options` instead (see createRoom below).
+// IsBalance/IsIntrude only ever get set post-creation, host-only, via
+// Room_Option_Change (CQ 0x00220215) -- ZPopup_RoomSet.uc:1367/1373 -- so
+// they default to false at creation; IsTraining has no known client control
+// at all yet, also defaults false.
+let roomOptionSourceMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isRoomOptionSourceEnabled() {
+    return roomOptionSourceMode === 'enabled';
+}
+
+function _setRoomOptionSourceModeForTests(mode) {
+    roomOptionSourceMode = mode;
+}
+
 // D1-4: which live client objects count as "in the lobby" for the
 // Room_List_SN broadcast. There is no separate "entered lobby" flag on
 // NetworkClient (login goes straight from channel-enter to the client
@@ -293,6 +327,16 @@ function createRoom({
         // CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID lookups a joiner's ctx has to
         // redo the same way the creator's own sendRoomState() does.
         createMapId: createMapId || 0,
+        // OPTIONMASK-FIX: see Room typedef comment above. Always stored
+        // (inert data -- nothing reads it unless isRoomOptionSourceEnabled()
+        // is true), so this cannot change any byte sent while the switch is
+        // off.
+        options: {
+            password: !!hasPassword,
+            balance: false,
+            intrude: false,
+            training: false,
+        },
         members: new Map(),
         state: 'lobby',
     };
@@ -465,6 +509,7 @@ function _resetForTests() {
     roomBattleStartBroadcastMode = 'disabled';
     battleEndBroadcastMode = 'disabled';
     roomPlayingStateMode = 'disabled';
+    roomOptionSourceMode = 'disabled';
     clientSource = [];
 }
 
@@ -495,6 +540,8 @@ module.exports = {
     _setBattleEndBroadcastModeForTests,
     isRoomPlayingStateEnabled,
     _setRoomPlayingStateModeForTests,
+    isRoomOptionSourceEnabled,
+    _setRoomOptionSourceModeForTests,
     registerLobbyClientSource,
     getLobbyClients,
     _resetForTests,

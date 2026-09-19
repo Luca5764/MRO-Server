@@ -4,6 +4,7 @@ const SN_ROOM_STATE = 0x00220214;
 const SN_ROOM_OPTION = 0x00220217;
 const SN_ROOM_NAME = 0x0022021A;
 const { ROOM_STRING_ANSI_MODE, writeAnsiStringField, decodeBig5ForLog } = require('./room-string');
+const rooms = require('../../rooms.js');
 
 // R11 verified [LOG][OBS]: body+0x10/+0x12 are Red/Blue TeamIndex, not the
 // CQ_CREATE opt1/opt2 echo. See docs/journal/2026-09-18-15-room-team-index.md.
@@ -52,6 +53,43 @@ const PVE_MAXUSER_WIRE_VALUE = 16;
 
 function isPveMaxUserWireEnabled() {
     return PVE_MAXUSER_WIRE_MODE === 'enabled';
+}
+
+// OPTIONMASK-FIX (docs/backlog.md, docs/research/2026-09-19-intrude/notes.md,
+// 🟡 待審): returns the real per-flag bits from `room.options` when
+// isRoomOptionSourceEnabled() is true and a roomOptions object was passed,
+// else null so each call site falls back to its own pre-existing (legacy)
+// behaviour byte-for-byte.
+function resolveRoomOptionBitsFromRoomSource(roomOptions) {
+    if (!rooms.isRoomOptionSourceEnabled() || !roomOptions) return null;
+    return {
+        password: roomOptions.password ? 1 : 0,
+        balance: roomOptions.balance ? 1 : 0,
+        intrude: roomOptions.intrude ? 1 : 0,
+        training: roomOptions.training ? 1 : 0,
+    };
+}
+
+// OPTIONMASK-FIX: standalone Room_Option_SN send, for Room_Option_Change_CQ
+// (client action: host confirms team-balance/battle-intrude in the "房間設定
+// 變更" dialog, gate.game.dispatch.js case 0x00220215) to broadcast to every
+// room member without re-sending the whole room-state burst. Only used when
+// isRoomOptionSourceEnabled() is true (see that handler) -- roomOptions is
+// always defined by that caller, so the legacy fallback path never runs
+// here.
+function sendRoomOptionOnly(client, roomOptions, getExactMessageBuffer) {
+    const [msg, respBody] = getExactMessageBuffer(SN_ROOM_OPTION, 0x04);
+    const bits = resolveRoomOptionBitsFromRoomSource(roomOptions) ||
+        { password: 0, balance: 0, intrude: 0, training: 0 };
+    respBody.writeUint8(bits.password, 0x00);
+    respBody.writeUint8(bits.balance, 0x01);
+    respBody.writeUint8(bits.intrude, 0x02);
+    respBody.writeUint8(bits.training, 0x03);
+    client.send(msg);
+    console.log(
+        `[ZRoomDispatch] >> Sent SN_ROOM_OPTION 0x220217 [option-change broadcast] ` +
+        `(flags=${bits.password},${bits.balance},${bits.intrude},${bits.training})`
+    );
 }
 
 function _setPveMaxUserWireModeForTests(mode) {
@@ -113,8 +151,18 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         // identical to before), Enter_CQ's joiner ctx from the Room.
         isCampaignRoom,
         optionMask: ctxOptionMask,
+        // OPTIONMASK-FIX: room.options (rooms.js), when
+        // isRoomOptionSourceEnabled() -- undefined/ignored otherwise, so
+        // callers that never set it (test/rooms.js, test/room-chat.js) keep
+        // the legacy ctxOptionMask decoding untouched.
+        roomOptions,
         isTrueCampaign,
     } = ctx;
+
+    // OPTIONMASK-FIX: null while the switch is off (or the caller passed no
+    // roomOptions), so each write site below falls back to its own
+    // pre-existing legacy behaviour, byte-for-byte.
+    const roomSourceOptionBits = resolveRoomOptionBitsFromRoomSource(roomOptions);
 
     {
         const bodySize = 0x021A;
@@ -128,10 +176,19 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         respBody.writeUint8(gameMode, 0x08);
         respBody.writeUint8(3, 0x09);
         respBody.writeUint8(0, 0x0A);
-        respBody.writeUint8(0, 0x0B);
-        respBody.writeUint8(0, 0x0C);
-        respBody.writeUint8(0, 0x0D);
-        respBody.writeUint8(0, 0x0E);
+        // OPTIONMASK-FIX (docs/research/2026-09-19-intrude/notes.md, 🟡
+        // 待審): body+0x0B..0x0E mirror the same 4 option bits as
+        // Room_Option_SN (RoomInfo+0xcc client-side), in the same order.
+        // Legacy behaviour (ROOM_OPTION_SOURCE_MODE off) always wrote 0
+        // here -- unlike Room_Option_SN below, this block never decoded the
+        // buggy optionMask, so the byte-identical fallback is 0, not a mask
+        // decode.
+        const defaultEntryOptionBits = roomSourceOptionBits ||
+            { password: 0, balance: 0, intrude: 0, training: 0 };
+        respBody.writeUint8(defaultEntryOptionBits.password, 0x0B);
+        respBody.writeUint8(defaultEntryOptionBits.balance, 0x0C);
+        respBody.writeUint8(defaultEntryOptionBits.intrude, 0x0D);
+        respBody.writeUint8(defaultEntryOptionBits.training, 0x0E);
         const redTeamIndex = ROOM_RED_TEAM_INDEX;
         const blueTeamIndex = ROOM_BLUE_TEAM_INDEX;
         respBody.writeUint16LE(redTeamIndex, 0x10);
@@ -192,10 +249,19 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         // body+0x11 -> bit 0x02
         // body+0x12 -> bit 0x04
         // body+0x13 -> bit 0x20
-        respBody.writeUint8(optionMask & 0x01 ? 1 : 0, 0x00);
-        respBody.writeUint8(optionMask & 0x02 ? 1 : 0, 0x01);
-        respBody.writeUint8(optionMask & 0x04 ? 1 : 0, 0x02);
-        respBody.writeUint8(optionMask & 0x20 ? 1 : 0, 0x03);
+        // OPTIONMASK-FIX: legacy behaviour (switch off) decodes the buggy
+        // optionMask bitmask, byte-identical to before. Enabled, uses the
+        // real room.options bits instead.
+        const optionSnBits = roomSourceOptionBits || {
+            password: optionMask & 0x01 ? 1 : 0,
+            balance: optionMask & 0x02 ? 1 : 0,
+            intrude: optionMask & 0x04 ? 1 : 0,
+            training: optionMask & 0x20 ? 1 : 0,
+        };
+        respBody.writeUint8(optionSnBits.password, 0x00);
+        respBody.writeUint8(optionSnBits.balance, 0x01);
+        respBody.writeUint8(optionSnBits.intrude, 0x02);
+        respBody.writeUint8(optionSnBits.training, 0x03);
         client.send(msg);
         console.log(
             `[ZRoomDispatch] >> Sent SN_ROOM_OPTION 0x220217 ` +
@@ -216,4 +282,5 @@ module.exports = {
     sendRoomStatePackets,
     _setPveMaxUserWireModeForTests,
     sendRoomNameOnly,
+    sendRoomOptionOnly,
 };
