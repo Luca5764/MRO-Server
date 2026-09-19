@@ -76,12 +76,75 @@ BUILD_SPEC = {
         "open": {"source": "f24-after.png"},
         "closed": {"source": "f24-closed.png"},
     },
+    # Same idea as "console" above, but built from battle-background
+    # screenshots. Reusing the lobby crops fails over a battle background
+    # (2026-09-19 fullmatch task report: MAD ~43-53 for a battle screenshot
+    # against the lobby "open" crop, well past THRESHOLDS["console_accept"])
+    # because the console text overlays whatever is behind it -- there is no
+    # opaque panel -- and a battle background differs wildly (terrain, not a
+    # flat dark lobby backdrop) from the lobby one used to build the "console"
+    # crops above. Box is wider than "console" (extends to x=340) to also
+    # catch the extra "<name>玩家已進入遊戲。" game-log line that appears one
+    # row above the prompt while in battle and is not present in the lobby.
+    # Built from two screenshots taken back-to-back in the same spot/round
+    # (gc-console.png / ref-05-battle.png), so this has NOT been validated
+    # against a moving battle background (character walking, muzzle flashes,
+    # weather) -- see this task's report, flagged as an open question.
+    "console_battle": {
+        "box": [0, 588, 340, 632],
+        "open": {"source": "gc-console.png"},
+        "closed": {"source": "ref-05-battle.png"},
+    },
     "tabs": {
         "shop_main": {"source": "u-20260919-01-01-shop.png", "box": [1165, 255, 1360, 290]},
         "shop_aux": {"source": "u-20260919-01-02-aux.png", "box": [1360, 255, 1610, 290]},
         "shop_equip": {"source": "u-20260919-01-02-equip.png", "box": [1165, 300, 1360, 335]},
         "shop_item": {"source": "u-20260919-01-02-item.png", "box": [1360, 300, 1610, 335]},
         "shop_mshop": {"source": "u-20260919-01-02-mshop.png", "box": [1373, 185, 1610, 235]},
+        # Create-room dialog's mode tabs (對戰模式/協力模式/閃電戰 row). Only
+        # the two used by create_pve_room are built: pvp is 對戰模式 (the
+        # dialog's default-active tab), pve is 協力模式.
+        "dialog_pvp": {"source": "ref-01-create.png", "box": [478, 508, 640, 548]},
+        "dialog_pve": {"source": "ref-02-create-pve.png", "box": [641, 508, 805, 548]},
+    },
+    # Single-region "is this thing on screen" markers -- same comparison
+    # style as "tabs" (one crop, one box, present/absent), not part of
+    # classify_screen's mutually-exclusive screen competition. See
+    # detect_marker(). Each entry may set its own "accept" MAD threshold,
+    # overriding THRESHOLDS["marker_accept"] -- "battle" does, to stay
+    # readable when the console is open on top of the battle HUD (2026-09-19
+    # fullmatch task report: battle-with-console-open scores 18.0 against the
+    # clean-battle reference at this box, vs >=35 for every non-battle
+    # reference shot in the atlas).
+    "markers": {
+        # "遊戲開始(F5)" banner, top-center of the room screen. Confirmed
+        # pixel-identical (MAD 0.00) across three room screenshots taken
+        # minutes apart (ref-04-room-clean.png, ref-06-end-6/7/8.png) -- no
+        # independent animation in this box. It DOES read as a big diff
+        # (MAD ~42) when a NOTICE popup dims the whole room behind it
+        # (ref-03-room.png), same dimming mechanic as the lobby's AFK-kick
+        # popup -- that is expected, not a flaw: see notice_popup below and
+        # dismiss_notice()/actions.py, which exists precisely to clear that
+        # popup before this marker is checked.
+        "room": {"source": "ref-04-room-clean.png", "box": [630, 190, 980, 255]},
+        # F1-F4 skill-point cost panel, top-right of the battle HUD. Static
+        # labels/costs, not the live SP/kill counters next to it. accept=22
+        # (vs default 12) so it still reads "battle" with the console open on
+        # top (see BUILD_SPEC["console_battle"] comment above) and during the
+        # transient "YOU WIN" overlay (MAD 2.88-3.85, still mid-battle-frame).
+        "battle": {"source": "ref-05-battle.png", "box": [1275, 395, 1610, 548], "accept": 22.0},
+        # "CAMPAIGN MODE" header of the post-match result/scoreboard screen.
+        "result": {"source": "ref-06-end-3.png", "box": [478, 53, 1140, 158]},
+        # "創立房間" title bar of the create-room dialog (present regardless
+        # of which mode tab is active).
+        "create_dialog": {"source": "ref-01-create.png", "box": [478, 453, 1152, 492]},
+        # "提 示" (NOTICE) popup title. Built from the lobby's AFK-kick popup
+        # (lobby-now.png) but confirmed (this task's report) to also match
+        # the room's host-transfer popup (ref-03-room.png, MAD 2.28) -- both
+        # popups share the same title bar graphic/position, only the body
+        # text differs, so one marker covers both. Confirm button is at the
+        # same client coords (798,675) in both observed cases.
+        "notice_popup": {"source": "lobby-now.png", "box": [700, 535, 870, 570]},
     },
 }
 
@@ -98,6 +161,15 @@ THRESHOLDS = {
     "console_accept": 5.0,
     "gray_margin_ratio": 0.5,
     "tab_active_accept": 15.0,
+    # Wider box than "console" (see BUILD_SPEC["console_battle"]), so this is
+    # not directly comparable to console_accept -- separate constant on
+    # purpose. Reference set: correct match 0.00/0.79, nearest wrong 22.23
+    # (2026-09-19 fullmatch task report) -- generous headroom either side.
+    "console_battle_accept": 8.0,
+    # Default for markers.py-style single-region checks (BUILD_SPEC
+    # "markers"); individual entries may override via their own "accept" key
+    # (see "battle").
+    "marker_accept": 12.0,
 }
 
 
@@ -160,7 +232,13 @@ def load_manifest():
     manifest["console"]["_closed_array"] = np.asarray(
         Image.open(os.path.join(ATLAS_DIR, manifest["console"]["closed_crop"])).convert("RGB"), dtype=np.int16
     )
+    if "console_battle" in manifest:
+        cb = manifest["console_battle"]
+        cb["_open_array"] = np.asarray(Image.open(os.path.join(ATLAS_DIR, cb["open_crop"])).convert("RGB"), dtype=np.int16)
+        cb["_closed_array"] = np.asarray(Image.open(os.path.join(ATLAS_DIR, cb["closed_crop"])).convert("RGB"), dtype=np.int16)
     for name, d in manifest["tabs"].items():
+        d["_array"] = np.asarray(Image.open(os.path.join(ATLAS_DIR, d["crop"])).convert("RGB"), dtype=np.int16)
+    for name, d in manifest.get("markers", {}).items():
         d["_array"] = np.asarray(Image.open(os.path.join(ATLAS_DIR, d["crop"])).convert("RGB"), dtype=np.int16)
     _manifest_cache = manifest
     return manifest
@@ -169,16 +247,29 @@ def load_manifest():
 # ---------------------------------------------------------------------------
 # Classification
 # ---------------------------------------------------------------------------
-def console_state(img):
+def console_state(img, variant="lobby"):
     """Returns (state, score_open, score_closed, margin) where state is
-    "open" / "closed" / "unknown". margin = |score_open - score_closed|."""
+    "open" / "closed" / "unknown". margin = |score_open - score_closed|.
+
+    variant selects which reference crops/box to use: "lobby" (default,
+    unchanged from before this task -- f24-after.png/f24-closed.png) or
+    "battle" (BUILD_SPEC["console_battle"], see its comment for why a
+    separate reference set is needed over a battle background)."""
     manifest = load_manifest()
-    c = manifest["console"]
+    if variant == "lobby":
+        c = manifest["console"]
+        accept = THRESHOLDS["console_accept"]
+    elif variant == "battle":
+        if "console_battle" not in manifest:
+            raise KeyError("manifest has no 'console_battle' section -- rebuild the atlas (build-atlas)")
+        c = manifest["console_battle"]
+        accept = THRESHOLDS["console_battle_accept"]
+    else:
+        raise ValueError(f"unknown console_state variant '{variant}', expected 'lobby' or 'battle'")
     region = _region_array(img, c["box"])
     score_open = _mad(region, c["_open_array"])
     score_closed = _mad(region, c["_closed_array"])
     margin = abs(score_open - score_closed)
-    accept = THRESHOLDS["console_accept"]
     if score_open <= accept and score_open < score_closed:
         state = "open"
     elif score_closed <= accept and score_closed <= score_open:
@@ -247,6 +338,24 @@ def is_tab_active(img, tab_name):
     return score <= THRESHOLDS["tab_active_accept"], score
 
 
+def detect_marker(img, name):
+    """Returns (present: bool, score: float) for a named single-region marker
+    (see BUILD_SPEC["markers"] for the list: room/battle/result/create_dialog/
+    notice_popup). Same one-crop-one-box comparison style as is_tab_active --
+    not part of classify_screen's mutually-exclusive screen competition, so
+    two markers can both read "present" at once (e.g. "room" and
+    "notice_popup" right after creating a room, see actions.py)."""
+    manifest = load_manifest()
+    markers = manifest.get("markers", {})
+    if name not in markers:
+        raise KeyError(f"unknown marker '{name}', known: {sorted(markers)}")
+    d = markers[name]
+    region = _region_array(img, d["box"])
+    score = _mad(region, d["_array"])
+    accept = d.get("accept", THRESHOLDS["marker_accept"])
+    return score <= accept, score
+
+
 # ---------------------------------------------------------------------------
 # build-atlas
 # ---------------------------------------------------------------------------
@@ -260,7 +369,9 @@ def build_atlas(shots_dir, out_dir=ATLAS_DIR):
         "built_from": {},
         "screens": {},
         "console": {"box": BUILD_SPEC["console"]["box"]},
+        "console_battle": {"box": BUILD_SPEC["console_battle"]["box"]},
         "tabs": {},
+        "markers": {},
     }
 
     def crop_and_save(source, box, out_name):
@@ -289,11 +400,27 @@ def build_atlas(shots_dir, out_dir=ATLAS_DIR):
     manifest["built_from"]["console_open"] = c["open"]["source"]
     manifest["built_from"]["console_closed"] = c["closed"]["source"]
 
+    cb = BUILD_SPEC["console_battle"]
+    cb_open_name = crop_and_save(cb["open"]["source"], cb["box"], "console_battle_open.png")
+    cb_closed_name = crop_and_save(cb["closed"]["source"], cb["box"], "console_battle_closed.png")
+    manifest["console_battle"]["open_crop"] = cb_open_name
+    manifest["console_battle"]["closed_crop"] = cb_closed_name
+    manifest["built_from"]["console_battle_open"] = cb["open"]["source"]
+    manifest["built_from"]["console_battle_closed"] = cb["closed"]["source"]
+
     for name, d in BUILD_SPEC["tabs"].items():
         out_name = f"tab_{name}.png"
         crop_and_save(d["source"], d["box"], out_name)
         manifest["tabs"][name] = {"box": d["box"], "crop": out_name}
         manifest["built_from"][f"tab_{name}"] = d["source"]
+
+    for name, d in BUILD_SPEC["markers"].items():
+        out_name = f"marker_{name}.png"
+        crop_and_save(d["source"], d["box"], out_name)
+        manifest["markers"][name] = {"box": d["box"], "crop": out_name}
+        if "accept" in d:
+            manifest["markers"][name]["accept"] = d["accept"]
+        manifest["built_from"][f"marker_{name}"] = d["source"]
 
     with open(os.path.join(out_dir, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
@@ -302,7 +429,8 @@ def build_atlas(shots_dir, out_dir=ATLAS_DIR):
     global _manifest_cache
     _manifest_cache = None  # force reload next classify() call
     print(f"[OK] atlas written to {out_dir} ({len(manifest['screens'])} screens, "
-          f"{len(manifest['tabs'])} tabs, 2 console crops)")
+          f"{len(manifest['tabs'])} tabs, {len(manifest['markers'])} markers, "
+          f"2 console crops, 2 console_battle crops)")
 
 
 # ---------------------------------------------------------------------------
@@ -321,10 +449,15 @@ def main():
 
     p_console = sub.add_parser("console", help="console_state() on one image, print the result")
     p_console.add_argument("image")
+    p_console.add_argument("--variant", default="lobby", choices=["lobby", "battle"])
 
     p_tab = sub.add_parser("tab", help="is_tab_active() on one image, print the result")
     p_tab.add_argument("image")
     p_tab.add_argument("tab_name")
+
+    p_marker = sub.add_parser("marker", help="detect_marker() on one image, print the result")
+    p_marker.add_argument("image")
+    p_marker.add_argument("marker_name")
 
     args = ap.parse_args()
 
@@ -339,13 +472,18 @@ def main():
         return
 
     if args.cmd == "console":
-        state, so, sc, margin = console_state(args.image)
-        print(f"state={state} score_open={so:.2f} score_closed={sc:.2f} margin={margin:.2f}")
+        state, so, sc, margin = console_state(args.image, variant=args.variant)
+        print(f"variant={args.variant} state={state} score_open={so:.2f} score_closed={sc:.2f} margin={margin:.2f}")
         return
 
     if args.cmd == "tab":
         active, score = is_tab_active(args.image, args.tab_name)
         print(f"active={active} score={score:.2f}")
+        return
+
+    if args.cmd == "marker":
+        present, score = detect_marker(args.image, args.marker_name)
+        print(f"present={present} score={score:.2f}")
         return
 
 

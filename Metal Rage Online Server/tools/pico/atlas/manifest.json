@@ -11,7 +11,9 @@
     "screen_accept": 12.0,
     "console_accept": 5.0,
     "gray_margin_ratio": 0.5,
-    "tab_active_accept": 15.0
+    "tab_active_accept": 15.0,
+    "console_battle_accept": 8.0,
+    "marker_accept": 12.0
   },
   "built_at": "2026-09-19T22:44:22",
   "built_from": {
@@ -23,7 +25,16 @@
     "tab_shop_aux": "u-20260919-01-02-aux.png",
     "tab_shop_equip": "u-20260919-01-02-equip.png",
     "tab_shop_item": "u-20260919-01-02-item.png",
-    "tab_shop_mshop": "u-20260919-01-02-mshop.png"
+    "tab_shop_mshop": "u-20260919-01-02-mshop.png",
+    "console_battle_open": "gc-console.png",
+    "console_battle_closed": "ref-05-battle.png",
+    "tab_dialog_pvp": "ref-01-create.png",
+    "tab_dialog_pve": "ref-02-create-pve.png",
+    "marker_room": "ref-04-room-clean.png",
+    "marker_battle": "ref-05-battle.png",
+    "marker_result": "ref-06-end-3.png",
+    "marker_create_dialog": "ref-01-create.png",
+    "marker_notice_popup": "lobby-now.png"
   },
   "screens": {
     "lobby": {
@@ -100,6 +111,82 @@
         235
       ],
       "crop": "tab_shop_mshop.png"
+    },
+    "dialog_pvp": {
+      "box": [
+        478,
+        508,
+        640,
+        548
+      ],
+      "crop": "tab_dialog_pvp.png"
+    },
+    "dialog_pve": {
+      "box": [
+        641,
+        508,
+        805,
+        548
+      ],
+      "crop": "tab_dialog_pve.png"
+    }
+  },
+  "console_battle": {
+    "box": [
+      0,
+      588,
+      340,
+      632
+    ],
+    "open_crop": "console_battle_open.png",
+    "closed_crop": "console_battle_closed.png"
+  },
+  "markers": {
+    "room": {
+      "box": [
+        630,
+        190,
+        980,
+        255
+      ],
+      "crop": "marker_room.png"
+    },
+    "battle": {
+      "box": [
+        1275,
+        395,
+        1610,
+        548
+      ],
+      "crop": "marker_battle.png",
+      "accept": 22.0
+    },
+    "result": {
+      "box": [
+        478,
+        53,
+        1140,
+        158
+      ],
+      "crop": "marker_result.png"
+    },
+    "create_dialog": {
+      "box": [
+        478,
+        453,
+        1152,
+        492
+      ],
+      "crop": "marker_create_dialog.png"
+    },
+    "notice_popup": {
+      "box": [
+        700,
+        535,
+        870,
+        570
+      ],
+      "crop": "marker_notice_popup.png"
     }
   }
 }

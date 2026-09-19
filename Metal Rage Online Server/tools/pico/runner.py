@@ -79,7 +79,8 @@ def validate_experiment(exp):
             "(see module docstring); nonzero values are reserved for a future runner"
         )
     pre = exp.get("preconditions", {})
-    if pre and "screen" in pre and pre["screen"] not in ("lobby", "shop", "console_open"):
+    known_precondition_screens = ("lobby", "shop", "console_open", "room", "battle")
+    if pre and "screen" in pre and pre["screen"] not in known_precondition_screens:
         raise ExperimentError(f"unknown precondition screen '{pre['screen']}'")
     if not isinstance(exp["steps"], list) or not exp["steps"]:
         raise ExperimentError("'steps' must be a non-empty list")
@@ -95,10 +96,15 @@ def validate_experiment(exp):
                 raise ExperimentError(f"step {i}: shop_tab needs params.name in {sorted(actions.TAB_COORDS)}")
         if name == "console_cmd":
             text = params.get("text")
-            if not isinstance(text, str) or not text:
-                raise ExperimentError(f"step {i}: console_cmd needs a non-empty params.text")
-            if not all(0x20 <= ord(c) <= 0x7E for c in text):
-                raise ExperimentError(f"step {i}: console_cmd text must be printable ASCII")
+            if text not in actions.CONSOLE_CMD_WHITELIST:
+                raise ExperimentError(f"step {i}: console_cmd needs params.text in {sorted(actions.CONSOLE_CMD_WHITELIST)}")
+        if name == "campaign_win_all":
+            settle_s = params.get("settle_s", actions.DEFAULT_ROUND_SETTLE_S)
+            max_rounds = params.get("max_rounds", actions.MAX_CAMPAIGN_ROUNDS)
+            if not isinstance(settle_s, (int, float)) or settle_s <= 0:
+                raise ExperimentError(f"step {i}: campaign_win_all params.settle_s must be a positive number")
+            if not isinstance(max_rounds, int) or max_rounds <= 0:
+                raise ExperimentError(f"step {i}: campaign_win_all params.max_rounds must be a positive int")
     sc = exp.get("stop_conditions", {})
     if not isinstance(sc, dict):
         raise ExperimentError("'stop_conditions' must be an object")
@@ -121,6 +127,27 @@ def describe_step(step):
         return "close_console: precondition=console open, key ESC, wait<=5s for console_state=closed"
     if name == "console_cmd":
         return f"console_cmd({params.get('text')!r}): precondition=console open, TYPE+ENTER, best-effort completion"
+    if name == "dismiss_notice":
+        return (f"dismiss_notice: check notice_popup marker; if present click client{actions.NOTICE_CONFIRM_BUTTON}, "
+                f"wait<=6s for it to clear; no-op (ok=True) if absent")
+    if name == "create_pve_room":
+        return (f"create_pve_room: precondition=lobby, click client{actions.CREATE_ROOM_BUTTON} (建立房間), "
+                f"wait<=6s for create_dialog marker, click client{actions.CREATE_PVE_TAB} (協力模式), "
+                f"wait<=4s for dialog_pve tab active, click client{actions.CREATE_CONFIRM_BUTTON} (確認), "
+                f"wait<=10s for room or notice_popup marker")
+    if name == "start_battle":
+        return ("start_battle: precondition=room marker, key F5, wait<=25s for session-log markers "
+                "'gameStarted_ false -> true' + 'Game_Start_SN sent'")
+    if name == "campaign_win_all":
+        settle_s = params.get("settle_s", actions.DEFAULT_ROUND_SETTLE_S)
+        max_rounds = params.get("max_rounds", actions.MAX_CAMPAIGN_ROUNDS)
+        return (f"campaign_win_all: precondition=battle marker, key F24, wait<=5s for console_state(battle)=open, "
+                f"then up to {max_rounds}x: TYPE 'GameCampaign 1'+ENTER, wait<=30s for an R-ROUND session-log marker, "
+                f"sleep {settle_s}s before the next send, stop at the EndGame_SN R-ROUND marker")
+    if name == "wait_result_then_room":
+        return "wait_result_then_room: wait<=15s for result marker (best-effort), then wait<=20s for room or notice_popup marker"
+    if name == "leave_room":
+        return f"leave_room: precondition=room marker, click client{actions.LEAVE_ROOM_BUTTON} (上一頁), wait<=8s for screen=lobby"
     return f"{name}: {params}"
 
 
@@ -222,6 +249,7 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
                 "index": i, "action": name, "params": params, "ok": result.ok,
                 "gray": result.gray, "duration_s": round(result.duration_s, 2),
                 "detail": result.detail, "screenshot": result.screenshot, "score": result.score,
+                "rounds": result.rounds,  # per-round R-ROUND timings, only non-empty for campaign_win_all
             }
             report["steps"].append(entry)
             print(f"  [{i}] {name}({params}) -> ok={result.ok} gray={result.gray} {result.detail}")
@@ -246,7 +274,7 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
                             "params": exp["steps"][j].get("params", {}),
                             "ok": None, "gray": None, "duration_s": 0.0,
                             "detail": "skipped (runner stopped fail-closed)",
-                            "screenshot": None, "score": None,
+                            "screenshot": None, "score": None, "rounds": [],
                         })
                     write_report(report)
                     return report, 1
@@ -299,6 +327,9 @@ def write_report(report):
         for s in report["steps"]:
             f.write(f"  [{s['index']}] {s['action']}({s['params']}) ok={s['ok']} gray={s['gray']} "
                     f"{s['duration_s']}s :: {s['detail']}\n")
+            for r in s.get("rounds") or []:
+                f.write(f"        round {r['iteration']}: cleared={r['cleared']} playRound={r['playRound']} "
+                        f"wait_s={r['wait_s']} ms={r['ms']} :: {r['tail']}\n")
         if report["anomalies"]:
             f.write("anomalies:\n")
             for a in report["anomalies"]:
