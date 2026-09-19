@@ -152,28 +152,6 @@ function _setLobbyRoomListModeForTests(mode) {
     lobbyRoomListMode = mode;
 }
 
-// D1-6-IMPL (docs/backlog.md, docs/design/d1-step6-battle-broadcast.md §5
-// step 4): whether Ready_Host_SQ 0x00420113/Ready_Host_SN 0x00420115/
-// Ready_Success_SN 0x00420116 get split by host-vs-non-host membership
-// instead of all going to whichever connection triggered 0x00222103. Lives
-// here (not gate.game.dispatch.js or community.dispatch.js alone) because
-// both files need to read it: gate.game.dispatch.js's case 0x00222103
-// targets Ready_Host_SQ at the room's host connection, and
-// community.dispatch.js's 0x00420114 (Ready_Host_CA) handler uses it to
-// decide whether to also message the room's non-host members. Same `let` +
-// accessor + test-only setter pattern as roomJoinMode above. SWITCH-
-// CONVERGE: verified live (docs/journal/2026-09-19-0330-d1-step4-room-join.md),
-// default flipped to 'enabled'.
-let readyHostSplitMode = 'enabled'; // 'disabled' | 'enabled'
-
-function isReadyHostSplitEnabled() {
-    return readyHostSplitMode === 'enabled';
-}
-
-function _setReadyHostSplitModeForTests(mode) {
-    readyHostSplitMode = mode;
-}
-
 // D1-6-IMPL (docs/design/d1-step6-battle-broadcast.md §5 step 2): whether
 // Game_Wait_SN 0x00420111, both Game_Info_SN 0x00222111 sends, Game_Ready_SN
 // 0x00222102, Game_Start_SN 0x00222104 (gate.game.dispatch.js's case
@@ -530,7 +508,6 @@ function _resetForTests() {
     roomJoinMode = 'disabled';
     lobbyRoomListMode = 'disabled';
     roomReadyStateMode = 'disabled';
-    readyHostSplitMode = 'disabled';
     roomBattleStartBroadcastMode = 'disabled';
     battleEndBroadcastMode = 'disabled';
     roomPlayingStateMode = 'disabled';
@@ -558,8 +535,6 @@ module.exports = {
     _setLobbyRoomListModeForTests,
     isRoomReadyStateEnabled,
     _setRoomReadyStateModeForTests,
-    isReadyHostSplitEnabled,
-    _setReadyHostSplitModeForTests,
     isRoomBattleStartBroadcastEnabled,
     _setRoomBattleStartBroadcastModeForTests,
     isBattleEndBroadcastEnabled,

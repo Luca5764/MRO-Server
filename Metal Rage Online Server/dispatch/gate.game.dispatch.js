@@ -455,8 +455,8 @@ function sendReadyHostSn(client)
 
 // D1-6-IMPL (design doc §5 step 4, §1 row 8): community.dispatch.js's
 // 0x00420114 (Ready_Host_CA) handler calls this for each non-host room
-// member once READY_HOST_SPLIT_MODE is on -- `ip` is the host's configured
-// hostAddress (config/whitelist.js getHostAddress(), design §3.1), `port` is
+// member -- `ip` is the host's configured hostAddress
+// (config/whitelist.js getHostAddress(), design §3.1), `port` is
 // the u16 LE the host's own Ready_Host_CA body+0x06 reported (its real
 // listen port -- see battle-host.md's DLL note, not hardcoded 30907 the way
 // sendReadyHostSn() above still is for the single-connection path).
@@ -1784,19 +1784,19 @@ class ZGateGameDispatch
                     // The Game_Wait state is likely waiting on that host-ready
                     // handshake. Send it; if the client answers 0x420114, the
                     // 0x420114 handler (below) carries it forward.
-                    // D1-6-IMPL (design doc §5 step 4, §1 row 6): with
-                    // rooms.isReadyHostSplitEnabled(), send Ready_Host_SQ to
-                    // the room's tracked host connection specifically
-                    // (room.hostAccountId), not whichever connection
-                    // triggered 0x00222103 -- today those are always the same
-                    // connection, but this stops being guaranteed once a
-                    // non-host member exists (HOST_ADDRESS_REQUIRE_MODE,
-                    // step 5, is what actually blocks a non-host from
-                    // reaching this far; this switch is independent of that
-                    // one per the task contract, so it defends on its own).
+                    // D1-6-IMPL (design doc §5 step 4, §1 row 6): send
+                    // Ready_Host_SQ to the room's tracked host connection
+                    // specifically (room.hostAccountId), not whichever
+                    // connection triggered 0x00222103 -- today those are
+                    // always the same connection, but this stops being
+                    // guaranteed once a non-host member exists
+                    // (HOST_ADDRESS_REQUIRE_MODE, step 5, is what actually
+                    // blocks a non-host from reaching this far; this check
+                    // is independent of that one per the task contract, so
+                    // it defends on its own).
                     setTimeout(() => {
                         if (!battleStartStillValid('ready-host-sq @450ms')) return;
-                        if (rooms.isReadyHostSplitEnabled() && roomForBattleBroadcast) {
+                        if (roomForBattleBroadcast) {
                             // battleStartStillValid() above already confirmed
                             // roomForBattleBroadcast.hostAccountId (read live,
                             // this line) still equals startedHostAccountId --
@@ -1807,7 +1807,7 @@ class ZGateGameDispatch
                             if (hostMember && hostMember.client) {
                                 sendReadyHostSq(hostMember.client);
                             } else {
-                                console.error(`[ZGateGameDispatch] !! READY_HOST_SPLIT_MODE: room #${roomForBattleBroadcast.id}'s host (account=${roomForBattleBroadcast.hostAccountId}) has no live connection -- not sending Ready_Host_SQ`);
+                                console.error(`[ZGateGameDispatch] !! room #${roomForBattleBroadcast.id}'s host (account=${roomForBattleBroadcast.hostAccountId}) has no live connection -- not sending Ready_Host_SQ`);
                             }
                         } else {
                             sendReadyHostSq(client);
