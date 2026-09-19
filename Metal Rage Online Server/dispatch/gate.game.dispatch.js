@@ -191,8 +191,10 @@ const SERVER_DRIVEN_START_MODE = 'enabled'; // 'disabled' | 'enabled'
 // still loops exactly once with target===source===the host's own
 // connection, so this is byte-identical to the old single-send path in that
 // case (docs/design/d1-step6-battle-broadcast.md §5 step 1's regression
-// method). Default 'disabled' per docs/backlog.md's mid-tier rule.
-let GAME_USER_SN_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
+// method). SWITCH-CONVERGE: verified live
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'.
+let GAME_USER_SN_BROADCAST_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 // D1-6-IMPL (design doc §5 step 2): same F5 sequence's Game_Wait_SN
 // 0x00420111, both Game_Info_SN 0x00222111 sends (150ms initial + 600ms
