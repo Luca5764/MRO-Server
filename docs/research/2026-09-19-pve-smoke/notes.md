@@ -15,3 +15,5 @@
   - [DLL] `Tutorial_Start_CN` `0x1070534e`→`0x107e9b70` 寫 `0x00260121`；`Tutorial_End_CN` `0x10702d4c`→`0x107e9c30` 寫 `0x00260122`；`Mech_License_CQ` `0x107058c6`→`0x107e9cf0` 寫 `0x00260111`。
   - **跟伺服器標籤矛盾（待審）**：`community.dispatch.js:55-61` 把 `0x00260121` 當成 `CQ_LICENSE_QUERY`，把 `0x00260111/0x00260112` 當成 quest complete。要用 xref 核對之後才能改（backlog TUT-LABEL）。
 - 冒煙測試建議：每組地圖用 MapSelect 選一張 → F5 → 看 `Game_Info_SN` 的 mapCacheKey 和 `BeginRound_SN`，以及客戶端 log 的 `start ... Map_PCxx` → 開場 60 秒 → GameCampaign 打完。
+
+> 更正（2026-09-20，高階）：9004–9006 不是護送；護送是 9007–9009（`journal/2026-09-20-0110-escort-smoke.md`）。
