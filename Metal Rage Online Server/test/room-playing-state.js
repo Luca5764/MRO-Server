@@ -92,6 +92,9 @@ function main()
     rooms._resetForTests();
     rooms._setRoomJoinModeForTests('enabled');
     rooms._setRoomPlayingStateModeForTests('enabled');
+    // HOST_ADDRESS_REQUIRE_MODE now defaults on (switch convergence); this test
+    // has no fixture hostAddress and is not testing that switch.
+    GateGameDispatch._setHostAddressRequireModeForTest('disabled');
     rooms._setLobbyRoomListModeForTests('enabled');
 
     const gate = new GateGameDispatch();
