@@ -151,3 +151,8 @@ ledger 裡有一條方法學紀錄,是因為曾經一輪改兩處,症狀變了�
 ## 客戶端連不上伺服器時
 
 客戶端的 `MetalRage.log` 在連線失敗時**不會留下任何網路紀錄**（[LOG] `research/2026-09-19-second-client-win10/MetalRage.log`）。排查連線問題，要看伺服器 session log 有沒有那個來源 IP 的 `connect` 事件；沒有的話，問題在網路（IP、portproxy、防火牆），不在協定。
+
+### PowerShell 腳本的編碼陷阱（2026-09-20）
+- Windows PowerShell 5.1（不是 pwsh）讀**沒有 BOM 的 UTF-8** `.ps1` 時，會用系統字碼頁（cp950）解碼。中文註解被解錯後，可能冒出假的引號或大括號，造成語法錯誤，甚至改變邏輯。**含中文的 `.ps1` 一律存成 UTF-8 with BOM**（例如 `printf '\xEF\xBB\xBF'` 加在檔頭）。
+- `[void]... | Out-Null` 不能連用：`[void]` 之後接管線，PS 5.1 會報「引數類型不能是 System.Void」（2026-09-20 pico 視窗挑選的 bug）。
+- 靜態語法檢查：把檔案複製到 `C:\Users\su200\...`，再用 `[System.Management.Automation.Language.Parser]::ParseFile` 檢查。
