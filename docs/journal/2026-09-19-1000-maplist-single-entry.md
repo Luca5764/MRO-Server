@@ -81,3 +81,16 @@ node test/console-commands.js / exception-guard.js / extra-lives.js / login-toke
 - [DLL] `Room_Default_SN` body+4 經跳表（`0x107ea4b5` → `0x107ea6d8`）把 raw 1 轉成 RoomType 2，所以 RoomType 沒問題（高階抽驗）。
 - **矛盾未解：** REAL_ID 實驗（`session-20260919-100817.jsonl:645`，12 筆 9001–9012、格式正確）照理已經通過所有篩選，實測卻還是空的。下一步重測時要截圖，並確認視窗是在 REAL_ID 登入之後才第一次建立。
 - `ZPopup_RoomSet.Update_MapList()`（:571）另外要求 `UserMin ≤ nUserMax ≤ UserMax`，也就是 nUserMax 必須剛好是 16。伺服器的 PvE `maxPlayers` 寫死 8（`gate.game.dispatch.js` 約 1163-1165）。16/2＝8 格，跟原版截圖開 8 格一致。→ 另一個單變數實驗：PvE MaxUser 送 16。
+
+## H7-MAPINFO-30907 實作（中階，🟡，未經跨公司審查）
+
+狀態：🟡 待審。新開關 `mapInfoOnGameLoginMode`（`gamelogin.dispatch.js`）預設 `disabled`，行為完全不變；未實機測試。
+
+- 依據 `[LOG]` `session-20260919-170919.jsonl` ms 457523：MapInfo_SN 只在 9211 連線送過一次；`[LOG]` 客戶端 `MetalRage.log`（17:16:19 這場）：每次開房間地圖選擇器，`ZPopup_MapSelect` 都記 `Accessed array 'm_MapInfoList' out of bounds (0/0)`，`ZPanel_RoomInfo` 的 `co_Map` 篩選鏈也是空的，兩條篩選鏈唯一共用的是 `Account_MapList_Check`（`ZNetwork_DJ.uc:1093`，比對 `default.m_MapList`）。🟡 假設：9211 登入後的關卡移動（Browse Index.tzp / Store_01）把 `ZNetwork_DJ` 的 default-object 資料重置，`m_MapList` 因此遺失；同一個 30907 登入送的 ItemInfo/WearInfo 卻能存活，所以嘗試在 30907 登入也重送一次 MapInfo_SN。
+- 改動：
+  - 新增 `dispatch/map-info.sender.js`：把原本在 `account.dispatch.js` 重複三次的 MapInfo_SN 位元組寫法（含 `MAP_INFO_REAL_ID_MODE`／`MAP_INFO_REAL_IDS`）抽成共用的 `sendMapInfoSN()` / `resolveRealMapIds()`，行為完全不變（三個呼叫點改寫後的輸出跟原本逐位元組相同，見下方驗證）。
+  - `account.dispatch.js`：三個 SN_MAP_INFO 區塊改呼叫共用函式，不改任何邏輯。
+  - `gamelogin.dispatch.js`：新開關 `mapInfoOnGameLoginMode`（`let` + `_setMapInfoOnGameLoginModeForTests()`，同 `room-map.sender.js` 的寫法），預設 `disabled`。開啟時，在 `Login_Again_CQ 0x00110124`（30907 登入）的帳號存在分支裡，SN_LICENSE_INFO 之後補送一次 MapInfo_SN，跟 9211 用同一個 `resolveRealMapIds()` 判斷。
+- 驗證：`node test/replay-golden.js`（4 個 golden 全過，含 `pve-full-match` 8383 packets）；`node test/map-info-game-login.js`（新測試，兩案例：disabled 預設不送；enabled + REAL_ID enabled 送 1 筆、count=12、ids=9001..9012）；`test/*.js` 全部跑過，`extract-golden.js` 是 CLI 工具不是測試（無參數本來就 exit 1，未改動樹上也一樣）。
+- 未做：未實機測試；不知道這個假設是否真能修好 H7（`co_Map`／`ZPopup_MapSelect` 空清單），只證明位元組正確。開關 disabled 是預設，不影響任何既有行為。
+- worktree：`~/mro-wt/mapinfo`，分支 `flash-wip-mapinfo`，未合併、未重啟伺服器。

@@ -34,8 +34,10 @@ const SN_COMPLETE = 0x210121;
 // R9 implemented but failed: real PvE ids did not fill the room-settings list;
 // another filter, including the PvE user-count range, remains unresolved.
 // See docs/journal/2026-09-18-14-map-info-sn-real-ids.md.
-const MAP_INFO_REAL_ID_MODE = 'disabled'; // 'disabled' | 'enabled'
-const MAP_INFO_REAL_IDS = [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012];
+// H7-MAPINFO-30907: the mode flag and byte builder now live in
+// map-info.sender.js so gamelogin.dispatch.js's 30907 resend can share the
+// exact same bytes.
+const { resolveRealMapIds, sendMapInfoSN } = require('./map-info.sender');
 
 
 // ZDispatchGate
@@ -306,22 +308,8 @@ class ZAccountDispatch
 
                 // SN_MAP_INFO
                 {
-                    const realMapIds = MAP_INFO_REAL_ID_MODE === 'enabled' ? MAP_INFO_REAL_IDS : null;
-                    const mapCount = realMapIds ? realMapIds.length : MAX_MAP_COUNT;
-                    const [msg, respBody] = client.getMessageBuffer(SN_MAP_INFO, 0x2 + (4 * mapCount));
-                    let offset = 0;
-                    respBody[offset++] = 0x00;
-                    respBody[offset++] = mapCount;
-                    if (realMapIds) {
-                        for (const mapId of realMapIds) {
-                            respBody.writeUint32LE(mapId, offset);
-                            offset += 4;
-                        }
-                    } else {
-                        for (let i = 0; i < MAX_MAP_COUNT; ++i, offset += 4)
-                            respBody.writeUint32LE(i, offset);
-                    }
-                    client.send(msg);
+                    const fallbackIds = Array.from({length: MAX_MAP_COUNT}, (_, i) => i);
+                    sendMapInfoSN(client, resolveRealMapIds() || fallbackIds);
                 }
 
                 // SN_LICENSE_INFO
@@ -436,22 +424,8 @@ class ZAccountDispatch
 
                 // SN_MAP_INFO
                 {
-                    const realMapIds = MAP_INFO_REAL_ID_MODE === 'enabled' ? MAP_INFO_REAL_IDS : null;
-                    const mapCount = realMapIds ? realMapIds.length : MAX_MAP_COUNT;
-                    const [msg, respBody] = client.getMessageBuffer(SN_MAP_INFO, 0x2 + (4 * mapCount));
-                    let offset = 0;
-                    respBody[offset++] = 0x00;
-                    respBody[offset++] = mapCount;
-                    if (realMapIds) {
-                        for (const mapId of realMapIds) {
-                            respBody.writeUint32LE(mapId, offset);
-                            offset += 4;
-                        }
-                    } else {
-                        for (let i = 0; i < MAX_MAP_COUNT; ++i, offset += 4)
-                            respBody.writeUint32LE(i, offset);
-                    }
-                    client.send(msg);
+                    const fallbackIds = Array.from({length: MAX_MAP_COUNT}, (_, i) => i);
+                    sendMapInfoSN(client, resolveRealMapIds() || fallbackIds);
                 }
 
                 // SN_LICENSE_INFO
@@ -600,24 +574,8 @@ class ZAccountDispatch
 
         // SN_MAP_INFO
         {
-            const realMapIds = MAP_INFO_REAL_ID_MODE === 'enabled' ? MAP_INFO_REAL_IDS : null;
-            const mapCount = realMapIds ? realMapIds.length : maps.length;  // || MAX_MAP_COUNT 제거 (removed)
-            const [msg, body] = client.getMessageBuffer(SN_MAP_INFO, 0x2 + (4 * mapCount));
-            let offset = 0;
-            body[offset++] = 0x00;
-            body[offset++] = mapCount;
-            if (realMapIds) {
-                for (const mapId of realMapIds) {
-                    body.writeUint32LE(mapId, offset);
-                    offset += 4;
-                }
-            } else {
-                for (const map of maps) {
-                    body.writeUint32LE(map.map_id, offset);
-                    offset += 4;
-                }
-            }
-            client.send(msg);
+            const fallbackIds = maps.map((map) => map.map_id);
+            sendMapInfoSN(client, resolveRealMapIds() || fallbackIds);
         }
 
         // SN_LICENSE_INFO — DLL reads 9-byte entries as [u32 mechType][u8 pad][u32 type]
