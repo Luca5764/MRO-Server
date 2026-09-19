@@ -143,6 +143,7 @@
 | 房間聊天：客戶端送 `0x00220505`（258 bytes，與 SN 同 opcode），伺服器目前只回 ACK、不廣播 | ✅ [LOG] | `logs/session-20260918-225741.jsonl` |
 | 單人假設清單（M1 15 列、M2 8 列） | 🟡 [CODE] | `docs/reference/multiplayer-audit.md` |
 | 區網第二台可以登入並進大廳、商城：需要 portproxy（N0）＋ `publicHost`（N1，`Server_Add_SN 0x00220101` 原本寫死 127.0.0.1）＋白名單。經過 portproxy 後來源 IP 全是 `192.168.208.1`，不能用 IP 認人 | ✅ [LOG][OBS]（未經跨公司審查） | `journal/2026-09-19-0030-second-host-first-login.md` |
+| 房主踢人：`Kickout_CQ 0x00220337` body u16 UserIndex；回房主 `Kickout_SA 0x00220338` 0/0，對被踢者送 `Leave_SN 0x00220236`（UserIndex＝自己、Kickout=1）→ 客戶端跳「被強制離開房間」並回大廳；其他人收 `Leave_SN`（Kickout 位元組不讀）。被踢者可重新加入 | ✅ [DLL] `0x107eeed0`、`0x107ebe30`、`0x107edc40`（PM 機械核對）；[LOG][OBS] `session-20260919-111258.jsonl` ms 2829050、2876878（未經跨公司審查） | `journal/2026-09-19-0330-d1-step4-room-join.md` |
 
 ## 5. 程式碼裡已知錯誤的名稱與無效封包（尚未修正）
 
