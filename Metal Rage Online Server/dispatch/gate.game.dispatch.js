@@ -229,8 +229,10 @@ let GAME_USER_SN_BROADCAST_MODE = 'enabled'; // 'disabled' | 'enabled'
 // non-host connection must never be able to trigger the start sequence in
 // the first place. 'enabled' (additionally requires rooms.isRoomJoinEnabled())
 // adds both checks to the very top of the case 0x00222103 handler below,
-// before anything is sent. Default 'disabled'.
-let HOST_ADDRESS_REQUIRE_MODE = 'disabled'; // 'disabled' | 'enabled'
+// before anything is sent. SWITCH-CONVERGE: verified live
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'.
+let HOST_ADDRESS_REQUIRE_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 // Map_PC01 easy — the campaign room's default until the client picks another.
 const MAP_ID_DEFAULT_CAMPAIGN = 9001;
