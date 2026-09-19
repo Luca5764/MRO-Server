@@ -4,6 +4,12 @@ const session = require('../session.js');
 const { clampMoney, moneyBigInt } = require('./money');
 const authTokens = require('../auth-tokens');
 const packetlog = require('../packetlog');
+// LOBBY-LIST-LOGIN (docs/backlog.md D1-4 follow-up): a client that logs in
+// after a room already exists never got Room_List_SN on channel enter --
+// only the Leave-back-to-lobby path (room.dispatch.js) sent it. Reuse the
+// same helper and buffer style as that path.
+const rooms = require('../rooms.js');
+const { sendFullRoomList } = require('./room/room-list.sender');
 
 // Game server login handler
 // After connecting to the game server (port 30907), the client sends
@@ -22,6 +28,17 @@ const SN_COMPLETE      = 0x00210121;
 const SA_LOBBY_ENTER   = 0x00230112;
 const SN_LICENSE_INFO  = 0x00260101;   // must be sent before SN_COMPLETE / lobby enter
 const { MAX_MECH_COUNT, MAX_SLOT_COUNT } = require('../datatypes/enums');
+
+// Same helper as room.dispatch.js's sendLobbyBootstrapAfterRoomLeave --
+// Room_List_SN's own sender (room-list.sender.js) takes a
+// getExactMessageBuffer-shaped callback, and the Leave path uses the exact
+// (non-16-byte-padded) buffer, not client.getMessageBuffer.
+function getExactMessageBuffer(type, bodySize) {
+    const msg = Buffer.alloc(0x10 + bodySize);
+    msg.writeUint16BE(msg.length, 0x6);
+    msg.writeUint32BE(type, 0xC);
+    return [msg, msg.subarray(0x10)];
+}
 
 const ACCOUNT_LEVEL_STR = { 0: '0\0', 1: '1\0', 2: '2\0', 3: '3\0', 4: '4\0' };
 const BODY_CACHE_INDEX_BY_ITEM_ID = {
@@ -462,5 +479,20 @@ class ZGameLoginDispatch
             console.log(`[ZGameLoginDispatch] >> Sent SN_GRADE_INFO: value=11 (grade=1)`);
         }
 
+        // LOBBY-LIST-LOGIN: 0x00220111 (Channel enter CQ) is the client's
+        // first message on entering the lobby from channel select -- a room
+        // created before this client logged in never reached it otherwise,
+        // because the only other Room_List_SN send site is the
+        // Leave_CQ-back-to-lobby path (room.dispatch.js
+        // sendLobbyBootstrapAfterRoomLeave), which this client never hits
+        // if it never joined a room. [LOG] session-20260919-122616.jsonl
+        // conn4: 0x00220111 recv/0x00220112+0x00230112 send at ms 492276,
+        // no 0x00220204 follows until another connection's room-list
+        // broadcast at ms 537346/539206. Gated by the same switch as the
+        // Leave path and lobby.dispatch.js's sendEmptyRoomList, so this is
+        // a no-op while lobbyRoomListMode stays 'disabled'.
+        if (rooms.isLobbyRoomListEnabled()) {
+            sendFullRoomList(client, rooms.listRooms(), getExactMessageBuffer);
+        }
     }
 };
