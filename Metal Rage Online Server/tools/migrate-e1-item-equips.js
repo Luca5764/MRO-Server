@@ -27,21 +27,26 @@
 // collision rolls all of that back.
 //
 // Usage (once a high-tier has reviewed this and taken a backup):
-//   node tools/migrate-e1-item-equips.js
+//   node tools/migrate-e1-item-equips.js [--force]
 // The script itself refuses to run without ALLOW_REAL_DB_WRITE=1 in the
 // environment, on top of the operator's own backup step, so it can't be
 // triggered by an accidental `node tools/migrate-e1-item-equips.js` either.
+// --force is required for a rerun once item_equips already has rows (see
+// the rerun-safety comment inside runMigration() below).
 
 /**
  * @param {object} pool a mysql2/promise-shaped pool: pool.getConnection()
  *   returns {beginTransaction, commit, rollback, release, execute}.
  * @param {object} [opts]
  * @param {(msg: string) => void} [opts.log]
+ * @param {boolean} [opts.force] proceed even if item_equips already has rows
+ *   (see the rerun-safety note below). Default false.
  * @returns {Promise<{before: number, after: number, itemsTotal: number, inserted: number, skipped: number}>}
  */
 async function runMigration(pool, opts = {})
 {
     const log = opts.log || console.log;
+    const force = !!opts.force;
 
     log('[E1 migration] Before running against the real DB, back it up first, e.g.:');
     log('  mysqldump -u root -p mro items item_equips > backup-pre-e1-$(date +%Y%m%d-%H%M%S).sql');
@@ -64,6 +69,23 @@ async function runMigration(pool, opts = {})
               UNIQUE KEY uniq_mech_part (account_id, mech_slot, part_slot)
             )
         `);
+
+        // E1 fix round (Sol batch4, coordinator decision 2026-09-19):
+        // refuse if item_equips already has rows, unless --force. Once
+        // ITEM_EQUIPS_MODE has been 'enabled', saveEquippedLoadout() stops
+        // updating items.equipped/items.mech_type entirely (see
+        // database/db.js), so on a rerun those legacy columns can no longer
+        // be trusted to reflect current reality -- re-deriving item_equips
+        // from them would silently write stale data.
+        const [[{ existingCount }]] = await conn.execute('SELECT COUNT(*) AS existingCount FROM item_equips');
+        if (Number(existingCount) > 0 && !force) {
+            throw new Error(
+                `E1 migration: item_equips already has ${existingCount} row(s). Refusing to rerun without `
+                + `--force, because once ITEM_EQUIPS_MODE has been 'enabled' items.equipped/items.mech_type `
+                + `are no longer kept up to date and re-deriving item_equips from them would write stale `
+                + `data. Pass --force only if you have verified this run should proceed anyway.`
+            );
+        }
 
         await conn.beginTransaction();
 
@@ -110,7 +132,7 @@ async function runMigration(pool, opts = {})
             );
             if (existing.length > 0) {
                 if (Number(existing[0].item_id) === itemId) {
-                    skipped++; // already migrated -- idempotent re-run
+                    skipped++; // already migrated -- idempotent re-run (only reached with --force)
                     continue;
                 }
                 throw new Error(
@@ -151,9 +173,10 @@ async function main()
         process.exitCode = 1;
         return;
     }
+    const force = process.argv.includes('--force');
     const db = require('../database/db');
     try {
-        await runMigration(db.pool);
+        await runMigration(db.pool, { force });
     } finally {
         await db.pool.end();
     }
