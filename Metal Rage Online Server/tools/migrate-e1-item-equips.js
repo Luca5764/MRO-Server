@@ -76,6 +76,26 @@ async function runMigration(pool, opts = {})
             'FROM items WHERE equipped = 1 AND part_slot BETWEEN 0 AND 5'
         );
 
+        // E1 fix round (Sol batch4 "Must fix before migration", item):
+        // refuse the whole migration (listing every offender) instead of
+        // silently writing an out-of-range mech_slot. part_slot is already
+        // constrained by the SELECT's WHERE clause above; checked again
+        // here too, defence in depth, in case that clause is ever loosened.
+        const invalidRows = equippedRows.filter(row => {
+            const mechSlot = Number(row.mech_slot);
+            const partSlot = Number(row.part_slot);
+            return !(mechSlot >= 1 && mechSlot <= 8) || !(partSlot >= 0 && partSlot <= 5);
+        });
+        if (invalidRows.length > 0) {
+            const list = invalidRows.map(row =>
+                `account_id=${row.account_id} item_id(serial)=${row.item_id} mech_slot=${row.mech_slot} part_slot=${row.part_slot}`
+            ).join('; ');
+            throw new Error(
+                `E1 migration: refusing to migrate ${invalidRows.length} equipped=1 row(s) with an `
+                + `out-of-range mech_slot/part_slot: ${list}`
+            );
+        }
+
         let inserted = 0;
         let skipped = 0;
         for (const row of equippedRows) {
