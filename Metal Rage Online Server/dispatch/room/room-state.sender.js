@@ -43,9 +43,11 @@ function resolveRoomDefaultMapEntry(client, fallback) {
 // screenshot, so this does not change the open-slot count. Only this one
 // byte changes -- Room_Default_SN body+7 (join-capacity maxPlayers),
 // Room_List_SN, rooms.js's room.maxPlayers, and Game_Info_SN are untouched,
-// so join capacity stays 8. Default disabled: no observed effect confirmed
-// yet, see docs/journal/2026-09-19-1000-maplist-single-entry.md.
-let PVE_MAXUSER_WIRE_MODE = 'disabled'; // 'disabled' | 'enabled'
+// so join capacity stays 8. Verified ✅: the "房間設定變更" (room settings)
+// dialog only lists maps with this on (docs/state.md H7 row,
+// docs/journal/2026-09-19-1000-maplist-single-entry.md, 未經跨公司審查).
+// SWITCH-CONVERGE: default flipped to 'enabled'.
+let PVE_MAXUSER_WIRE_MODE = 'enabled'; // 'disabled' | 'enabled'
 const PVE_MAXUSER_WIRE_VALUE = 16;
 
 function isPveMaxUserWireEnabled() {
