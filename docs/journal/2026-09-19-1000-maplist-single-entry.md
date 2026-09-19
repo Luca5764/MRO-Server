@@ -51,3 +51,13 @@ node test/console-commands.js / exception-guard.js / extra-lives.js / login-toke
 - [OBS] ❌ **回歸：房內「選擇地圖」下拉選單只剩「潛入作戰」**，換不到別張地圖。state.md 4b「下拉選單全由客戶端從 Cache 算」看來不完全成立：下拉選項似乎也取自 MapInfo 清單。已派 MAPLIST-2 分析下拉資料來源與「每張地圖一筆」的送法。**在找到能同時滿足下拉與燈號的送法之前，這個開關不能設為預設。**
 - [OBS] H7（設定對話框地圖清單空）沒有變化。
 - 未經跨公司審查。
+
+## 更正（2026-09-19，MAPLIST-2 分析＋高階核對）
+
+- **「下拉選單變空是這次的回歸」是錯的。** 房間裡有兩個獨立的地圖元件：
+  - `lb_MapList`（中間清單，`ZPanel_RoomInfo.uc:647-678`）：由 `RoomInfo.MapInfo[0..5]` 填入，也就是 Map_Change_All_SN 的內容；點擊只會切換本地顯示，不送封包。單筆模式讓它剩 1 筆，這是預期結果。
+  - `co_Map`（「選擇地圖」下拉與 ◀▶ 箭頭）：只在 `InitRoomInfo()`（`:307-348`）從 Cache 填一次，條件是 MapIndex ≥ 1000 且 **`Account_MapList_Check`** 通過（高階核對 `:320-345`）；箭頭在 `co_Map.List.ItemCount <= 1` 時直接 return（`:1072`）。
+- `Account_MapList_Check` 比對的是 `m_MapList`，這份清單只由登入時的 `MapInfo_SN 0x00210115` 填入；`account.dispatch.js:37` `MAP_INFO_REAL_ID_MODE='disabled'` 送的是 0–5 → 每張 PvE 地圖都被擋掉 → **下拉清單在改動之前就一直是空的**（與 H7 同一條鏈）。
+- R9 當時開過這個開關，但觀察的是另一個對話框（ZPopup_RoomSet，多了人數篩選），`co_Map` 從沒單獨測過。
+- [CACHE] 9001–9012 每 3 筆是同一張地圖的初／中／高：9001-3 Map_PC01、9004-6 Map_PC03、9007-9 Map_PC02、9010-12 Map_PC04（`ZPanel_PVE.uc:328-329` 的 `(MapIndex-9001)/3` 相符）。`room.dispatch.js:180` 的註解「9001 = 動力奪取戰」跟截圖（9001 群組顯示「潛入作戰」）不一致，待核對。
+- 下一個單變數實驗：只把 `MAP_INFO_REAL_ID_MODE` 改成 enabled（需要重新登入，因為 MapInfo_SN 是登入時送的），看 `co_Map` 能不能列出 4 張地圖、箭頭能不能換圖。
