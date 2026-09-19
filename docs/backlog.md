@@ -132,6 +132,8 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 
 ## R-ROUND：PvE 回合推進（PM 開立 2026-09-19）
 
+> **還沒驗的（PM 2026-09-19）：** (1) 最後一回合 → EndGame_SN 的時機：用初級（5 回合）＋ pveExtraLives 個位數（例如 7）測，這時再開多命就是單變數；(2) BeginRound_SN 回的內容是否該帶回合資訊（現在全 0，客戶端有進入第二回合，所以不擋）；(3) EndRound_SN 分數欄位全 0 對 HUD 的影響（如果回合之間分數歸零，就是這個原因）。全部通過後，7 天內收斂 `PVE_ROUND_ADVANCE_MODE`，並附理由重錄 pve-full-match。
+
 > **2026-09-19 實測 ✅（未經跨公司審查）：** EndRound_SN 讓 PvE 進入第 2 回合（`session-20260919-083650.jsonl:1450-1453`，`journal/2026-09-19-0900-r-round-impl.md`）。剩下：打到最後一回合，確認結算（EndGame_SN）；多命 pveExtraLives=7 另外單獨驗證。
 
 > **2026-09-19 分析完成**（`docs/research/2026-09-19-r-round/notes.md`，🟡）：✅ [DLL] Campaign_CN body 固定是 `01 00 01／02`，**沒有回合數**（高階抽驗 `0x107dac1e`–`0x107dac43`）→ 伺服器要自己記錄回合。候選回應是 `EndRound_SN 0x00222211`（`0x107d7a50`）；⬜ 還沒證明它會觸發 EndRound_BD，body 格式 🟡。實驗設計寫在 notes 最後。
@@ -424,6 +426,8 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 能逐一證明 body/main/left/right/equipment 從 CQ 到 PvE pawn 的值，定位第一個錯誤轉換；無法定位則列出必須再錄的單一機體／單一 part 測試。
 
 ## P3：困難潛入作戰實際仍走簡單流程
+
+> **2026-09-19 結案：** 根因是每一場都只打一回合，已由 R-ROUND 修正並實測（`journal/2026-09-19-0900-r-round-impl.md`）。
 
 > **2026-09-19 改指向 R-ROUND：** 「困難模式只打到簡單段落」的真正原因很可能是**每一場都只打一回合**（見下方 R-ROUND）；「547 秒停住」由 T1（時間上限寫死 10 分鐘）解釋。本節保留作歷史紀錄。
 

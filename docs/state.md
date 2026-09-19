@@ -74,11 +74,12 @@
 ### 任務結束（2026-09-19 補記）
 
 - 收到 `Campaign_CN 0x00230139` 回 `EndGame_SN 0x00222213` → 會進結算頁、回到房間：✅ [LOG][OBS]（`journal/2026-09-17-14-campaign-result.md`）。**只驗證過「會進結算頁」，沒有驗證過「時機正確」**：每一場都在第一回合就結算，見 backlog R-ROUND 🟡（未經跨公司審查）。
+- 回合推進：Campaign_CN 達標但還沒到 MapInfo.Round 時，回 `EndRound_SN 0x00222211`（30 bytes：WinTeam 0、Team A/B TeamIndex 0/1、分數全 0）→ 客戶端進入下一回合：✅ [LOG][OBS]（`session-20260919-083650.jsonl:1450-1453`，`journal/2026-09-19-0900-r-round-impl.md`，未經跨公司審查；開關 `PVE_ROUND_ADVANCE_MODE`）。最後一回合改回 EndGame_SN 的時機還沒實測。
 - 時間上限跟隨房間設定（`GAME_INFO_TIME_LIMIT_MODE='room'`，body+0x13 分鐘）：✅ [LOG] 實測 640 秒沒有停住（`journal/*-t1-time-limit.md`，未經跨公司審查）。
 
 ### 尚未實作（S→C 名稱已由 DLL 確認）
 
-`Game_Score_SN 0x00222114`、`EndRound_SN 0x00222211`、`EndQuater_SN 0x00222212`、`EndGame_SN 0x00222213`、`InstantRespawn_SN 0x00230106`、`Special_SN 0x00230126`、`Capture_SN 0x00230132`、`Conquest_SN 0x00230134`、`Bomb_SN 0x00230136`、`Boss_SN 0x00230138`、`Campaign_SN 0x0023013a`、`TwoBoss_SN 0x0023013c`、`TriggerTouch_SN 0x0023013e`、`HostChange_SN 0x00420121`、`Leave_SN 0x00420133`、`Ready_Failed_SN 0x00420112`。✅ [DLL] 名稱，body 結構大多未查。
+`Game_Score_SN 0x00222114`、`EndQuater_SN 0x00222212`、`EndGame_SN 0x00222213`、`InstantRespawn_SN 0x00230106`、`Special_SN 0x00230126`、`Capture_SN 0x00230132`、`Conquest_SN 0x00230134`、`Bomb_SN 0x00230136`、`Boss_SN 0x00230138`、`Campaign_SN 0x0023013a`、`TwoBoss_SN 0x0023013c`、`TriggerTouch_SN 0x0023013e`、`HostChange_SN 0x00420121`、`Leave_SN 0x00420133`、`Ready_Failed_SN 0x00420112`。✅ [DLL] 名稱，body 結構大多未查。
 
 ## 4. 登入、機庫與裝備
 
