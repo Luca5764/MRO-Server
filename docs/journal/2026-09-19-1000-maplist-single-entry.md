@@ -94,3 +94,12 @@ node test/console-commands.js / exception-guard.js / extra-lives.js / login-toke
 - 驗證：`node test/replay-golden.js`（4 個 golden 全過，含 `pve-full-match` 8383 packets）；`node test/map-info-game-login.js`（新測試，兩案例：disabled 預設不送；enabled + REAL_ID enabled 送 1 筆、count=12、ids=9001..9012）；`test/*.js` 全部跑過，`extract-golden.js` 是 CLI 工具不是測試（無參數本來就 exit 1，未改動樹上也一樣）。
 - 未做：未實機測試；不知道這個假設是否真能修好 H7（`co_Map`／`ZPopup_MapSelect` 空清單），只證明位元組正確。開關 disabled 是預設，不影響任何既有行為。
 - worktree：`~/mro-wt/mapinfo`，分支 `flash-wip-mapinfo`，未合併、未重啟伺服器。
+
+## H7 實測：選地圖視窗出現地圖了（2026-09-19 晚）
+
+- ✅ [SHOT] `shots/mapselect-after-30907.png`（test-server@11300d4，`MAP_INFO_REAL_ID_MODE` 和 `MAP_INFO_ON_GAME_LOGIN_MODE` 都開、重新登入後）：
+  - `ZPopup_MapSelect` 列出「協力」類的 4 張圖：動力奪取戰、援救基地戰、防衛作戰、潛入作戰（已勾）；
+  - 房間的「選擇地圖」欄也顯示「潛入作戰」。
+  （未經跨公司審查）
+- 結論：9211 登入時收到的 `MapInfo_SN` 在之後的場景切換中遺失。30907 登入時再送一次，`m_MapList` 就能保留。🟡 遺失的機制（哪個動作清掉了 CDO 資料）沒有查到，DLL 裡也掃不到直接清空的地方。只在 9211 送的其他帳號資料也可能有同樣問題，要列清單檢查。
+- 下一步：在視窗裡換一張圖，確認房主和加入者都會切換。
