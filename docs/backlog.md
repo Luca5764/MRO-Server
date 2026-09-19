@@ -603,3 +603,8 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 > - `Leave_CQ 0x00220114` 的回應是 **`Leave_SA 0x00220115`**（`0x107e4250`，6 bytes 全 0 表示成功）。成功後客戶端 Event_Call NETWORK_GOTO_GATE → 回到頻道選擇（scene 3）。**伺服器目前沒有 0x00220114 的 handler。**
 > - LOBBY-BACK 的謎：ZDispatchLobby 的旗標只有在 Scene_Change(4) 那一刻它已經註冊時才會成立。如果 ZPage_Lobby／ZDispatchLobby 是在 Scene_Change(4) **之後**才建立，旗標就是假的，這是客戶端的時序問題，伺服器可能修不了。
 > - 最小修法：(a) 補上 0x00220114 → 0x00220115 的 handler（便宜、獨立）；(b) 用客戶端 log 或反組譯確認註冊時序。每次登入都會走這條路，所以 0x00220112 維持不動。
+
+## 小項（M2 驗收場記錄，2026-09-19）
+- 戰鬥內隊伍聊天 0x00220507：改成對同隊廣播（目前只回送給自己）；房內隊伍頻道要先拿到一筆 [LOG]，才開 ROOM_TEAM_CHAT_MODE。
+- 能量柱沒有 HP 條（高級第 9 回合）：歸在 P4，可能跟 Assist_SN／Campaign_Damage 系列有關，現在不追。
+- NET 實驗表加一欄「房主是誰」。
