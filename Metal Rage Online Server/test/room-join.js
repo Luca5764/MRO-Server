@@ -663,16 +663,20 @@ function main()
         // unchanged here).
         const expectedSnHex = makeMapChangeOneBody({ b0: 0, w1: 9007, w2: 45, b5: 3, w6: 0, w8: 0 }).toString('hex');
 
-        // --- 10a: switch off (default) -- joiner must get nothing. ---
+        // --- 10a: switch forced 'disabled' (SWITCH-CONVERGE flipped the
+        // production default to 'enabled'; force it off here so the off
+        // path stays covered) -- joiner must get nothing. ---
+        GateGameDispatch._setRoomMapBroadcastModeForTest('disabled');
         hostI._sent.length = 0;
         joinerJ._sent.length = 0;
         const mapChangeHandledOff = gate.dispatch(hostI, MAP_CHANGE_ONE_CQ, mapChangeBody);
         assert.strictEqual(mapChangeHandledOff, true, 'Map_Change_One_CQ must be handled');
         const joinerHitsOff = joinerJ._sent.filter((s) => s.op === MAP_CHANGE_ONE_SN);
-        assert.strictEqual(joinerHitsOff.length, 0, 'ROOM_MAP_BROADCAST_MODE off (default): joiner must receive no Map_Change_One_SN');
-        console.log('[room-join test] PASS: ROOM_MAP_BROADCAST_MODE off (default) -- host map change is unicast only, joiner gets nothing');
+        assert.strictEqual(joinerHitsOff.length, 0, 'ROOM_MAP_BROADCAST_MODE disabled: joiner must receive no Map_Change_One_SN');
+        console.log('[room-join test] PASS: ROOM_MAP_BROADCAST_MODE disabled -- host map change is unicast only, joiner gets nothing');
 
-        // --- 10b: switch on -- joiner must get exactly one, identical body. ---
+        // --- 10b: switch on (the production default since SWITCH-CONVERGE)
+        // -- joiner must get exactly one, identical body. ---
         GateGameDispatch._setRoomMapBroadcastModeForTest('enabled');
         hostI._sent.length = 0;
         joinerJ._sent.length = 0;

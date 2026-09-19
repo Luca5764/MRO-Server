@@ -67,10 +67,11 @@ const MAP_CHANGE_ONE_RESEND_MODE = 'map_only'; // 'full_room' | 'map_only' | 'no
 // display never follows the host's pick. 'enabled' additionally relays the
 // same Map_Change_One_SN 0x00220223 payload (unchanged bytes, see the case
 // 0x00220221 handler) to the room's other members via rooms.sendOthers.
-// Defaults off per docs/backlog.md's mid-tier rule (new behaviour behind a
-// switch); untested against a real second client yet. `let` + test-only
-// setter below, same pattern as ROOM_TEAM_CHAT_MODE further down.
-let ROOM_MAP_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
+// SWITCH-CONVERGE: verified live against a real second client
+// (docs/journal/2026-09-19-0330-d1-step4-room-join.md), default flipped to
+// 'enabled'. `let` + test-only setter below, same pattern as
+// ROOM_TEAM_CHAT_MODE further down.
+let ROOM_MAP_BROADCAST_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_START_HANDSHAKE_MODE = 'ready_then_start'; // 'start_only' | 'ready_then_start'
 const READY_HOST_GATE_PRIME_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_WAIT_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
