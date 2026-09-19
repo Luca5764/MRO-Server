@@ -26,15 +26,26 @@ Usage:
       session already used its 3-restart budget, or if the previous restart in
       this session had the SAME step label (two consecutive crashes at the same
       step -- likely a loop, not worth retrying automatically).
-      Otherwise: evidence(step) -> taskkill MetalRage.exe if present -> wait for
-      exit -> launch via the .bat -> wait (<=90s) for a window. Does NOT log in;
-      that is done later by Pico steps. Any failure along the way halts the
-      session (fail closed).
+      Otherwise: evidence(step) -> check whether the MetalRage process is still
+      present.
+        - Present (running, whether responding or not): does NOT attempt to
+          terminate it -- 2026-09-19 [TEST] `taskkill /IM MetalRage.exe /F`
+          could not kill it while it was hung (likely XIGNCODE's anti-cheat
+          driver protecting the process, see docs/journal/2026-09-19-2230-
+          unattended-trial-01.md's 「當掉重開的實測」 section and AGENTS.md's
+          硬性約束 1 -- no other termination technique is used either). Instead:
+          halt the session with reason "client present but unresponsive/needs
+          restart; cannot terminate (protected) — operator needed", exit
+          nonzero. An operator has to close/restart it by hand.
+        - Absent (process not found): launch via the .bat -> wait (<=90s) for
+          a window. Does NOT log in; that is done later by Pico steps.
+      Any failure along the way halts the session (fail closed).
       --dry-run runs every gate check and prints what it would do, without
       touching the real client or the session file.
 
 Exit codes for restart: 0 = done (or dry-run says it would proceed), 3 = refused
-by a gate (session/STOP/limit/same-step), 1 = a step failed during execution.
+by a gate (session/STOP/limit/same-step), 1 = a step failed during execution, or
+the client was present and could not be restarted (operator needed).
 """
 
 import os
@@ -61,7 +72,6 @@ CLIENT_LOG_WSL = "/mnt/c/Games/MetalRage Online/data/Log/MetalRage.log"
 STOP_FILE_WSL = "/mnt/c/Users/su200/mro-pico/STOP"  # same kill switch as pico_serial.ps1
 
 RESTART_LIMIT = 3
-WAIT_EXIT_MS = 15000
 WAIT_READY_MS = 90000
 
 
@@ -217,22 +227,33 @@ def cmd_restart(step, reason, dry_run):
         print(f"[DRY-RUN] restart would proceed: step={step!r} reason={reason!r} "
               f"count_before={count}/{RESTART_LIMIT}")
         print(f"  1. evidence('restart-{step}')")
-        print(f"  2. taskkill /IM MetalRage.exe /F if present, wait up to {WAIT_EXIT_MS}ms for exit")
-        print(f"  3. launch via the .bat, wait up to {WAIT_READY_MS}ms for a window")
-        print(f"  4. session state -> client_restart_count={count + 1}, client_last_restart_step={step!r}")
+        print("  2. check whether the MetalRage process is still present (read-only status check)")
+        print("     - present (running or not responding): HALT session, exit 1, reason "
+              "'client present but unresponsive/needs restart; cannot terminate (protected) "
+              "— operator needed' -- no kill attempted, no other termination technique used")
+        print(f"     - absent: 3. launch via the .bat, wait up to {WAIT_READY_MS}ms for a window")
+        print(f"  4. on a successful launch only: session state -> client_restart_count={count + 1}, "
+              f"client_last_restart_step={step!r}")
         sys.exit(0)
 
     ev_dir = evidence(f"restart-{step}")
 
-    out, rc = run_ps1("kill", timeout=15)
-    if out is None:
-        _fail("kill: powershell.exe timed out or gave no output", step)
-    if out not in ("KILL_SENT", "NOT_RUNNING"):
-        _fail(f"kill: unexpected reply {out!r}", step)
-
-    out, rc = run_ps1("wait_exit", WAIT_EXIT_MS, timeout=(WAIT_EXIT_MS / 1000.0) + 10)
-    if out != "EXITED":
-        _fail(f"wait_exit: {out!r}", step)
+    # 2026-09-19 [TEST]: taskkill could not terminate a hung MetalRage process
+    # (likely XIGNCODE's anti-cheat driver protecting it -- see the journal
+    # entry referenced in this command's --help text). Per AGENTS.md 硬性
+    # 約束 1, no other termination technique is attempted either. If the
+    # process is still present at all -- responding or not -- this halts and
+    # waits for an operator instead of trying to kill it.
+    st = get_status()
+    if st["state"] != "not_running":
+        halt_reason = (
+            "client present but unresponsive/needs restart; cannot terminate "
+            f"(protected) — operator needed (status={st['state']} pid={st.get('pid')})"
+        )
+        pico.log_action(f"restart {step}", f"BLOCKED: {halt_reason} evidence={ev_dir}")
+        pico.halt_session(halt_reason)
+        print(f"[BLOCKED] {halt_reason}")
+        sys.exit(1)
 
     out, rc = run_ps1("launch", timeout=15)
     if out != "LAUNCH_SENT":

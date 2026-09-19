@@ -169,7 +169,13 @@ python3 tools/pico/client_ctl.py restart --step login --reason "卡在登入畫�
 python3 tools/pico/client_ctl.py restart --step login --reason "卡在登入畫面"
 ```
 
-`restart` 一定要先有一個**開著、沒被 halt** 的 pico session（跟 `pico_ctl.py` 共用同一個 `.pico_session`）。依序擋下：STOP 檔案存在、這個 session 已經重啟滿 3 次、或**跟上一次重啟是同一個 step 標籤**（代表同一個點連續崩兩次，八成是迴圈，不值得再自動試）——任何一種都會直接把 session 標成 halted，結束碼非 0，不重試。通過閘門後才會真的動手：先留證據（重啟前的畫面/log），再 `taskkill /IM MetalRage.exe /F`（行程還在才殺）、等它真的退出、用 `Play Metal Rage Online.bat` 重開、等視窗出現（最多 90 秒）。過程中任何一步失敗一樣直接 halt session。**不會自動登入**，登入是後面的 Pico 步驟做的事。
+`restart` 一定要先有一個**開著、沒被 halt** 的 pico session（跟 `pico_ctl.py` 共用同一個 `.pico_session`）。依序擋下：STOP 檔案存在、這個 session 已經重啟滿 3 次、或**跟上一次重啟是同一個 step 標籤**（代表同一個點連續崩兩次，八成是迴圈，不值得再自動試）——任何一種都會直接把 session 標成 halted，結束碼非 0，不重試。通過閘門後：先留證據（重啟前的畫面/log），再檢查客戶端行程還在不在。
+
+**2026-09-19 實測：行程還在但卡死時，`taskkill /IM MetalRage.exe /F` 殺不掉**（很可能是 XIGNCODE 的反作弊驅動保護，見 `docs/journal/2026-09-19-2230-unattended-trial-01.md`「當掉重開的實測」）。依 `AGENTS.md` 硬性約束 1，**不嘗試其他終止手段**。所以現在的規則是：
+- 行程還在（不管有沒有回應）→ **不嘗試終止**，直接把 session 標成 halted，理由是 `client present but unresponsive/needs restart; cannot terminate (protected) — operator needed`，結束碼非 0，等操作者手動處理。
+- 行程真的不在了（`status` 回 `NOT_RUNNING`）→ 才走 `Play Metal Rage Online.bat` 重開、等視窗出現（最多 90 秒）。
+
+過程中任何一步失敗一樣直接 halt session。**不會自動登入**，登入是後面的 Pico 步驟做的事。`client_ctl.ps1` 的 `kill`／`wait_exit` 動作還在（保留當手動/底層工具用），但 `restart` 已經不會呼叫它們。
 
 `--dry-run` 會照樣跑完所有閘門檢查、印出「接下來會做什麼」，但完全不碰真正的客戶端、也不改 session 檔案，測試改動時用這個，不要對正在用的客戶端跑真的 `restart`。
 
@@ -208,7 +214,10 @@ PICO_TRANSPORT=http python3 tools/pico/pico_ctl.py ping
   - `console_state(img)` → 獨立判斷主控台開／關（`open`/`closed`/`unknown`）。
   - `is_tab_active(img, tab_name)` → 商店分頁（`shop_main`/`shop_aux`/`shop_equip`/`shop_item`/`shop_mshop`）目前是否被選取。
   - `python3 screens.py build-atlas --shots-dir <參考截圖目錄>` 重建 atlas；`classify` / `console` / `tab` 三個子指令可以單獨對一張圖片跑分類，方便除錯。
-- `actions.py` — 參數化動作：`goto_shop`、`shop_tab(name)`、`back_to_lobby`、`open_console`、`close_console`、`console_cmd(text)`。每個動作＝送指令前先單張截圖檢查前置畫面（不符合就不送任何輸入）→ 呼叫 `pico_ctl.py`（沒改它的行為，直接照 README 的 CLI 呼叫）→ 用 `screens.py` 輪詢確認完成條件，逾時就回報失敗。`購買`／`送禮`等按鈕座標寫死擋掉（`FORBIDDEN_CLICKS`），就算實驗檔手滑寫錯座標也點不到。
+- `actions.py` — 參數化動作：`goto_shop`、`shop_tab(name)`、`back_to_lobby`、`open_console`、`close_console`、`console_cmd(text)`、`create_pve_room`、`start_battle`、`campaign_win_all`、`campaign_fail`、`deltest`、`keepalive_wait(seconds, interval_s)`、`wait_result_then_room`、`leave_room`。每個動作＝送指令前先單張截圖檢查前置畫面（不符合就不送任何輸入）→ 呼叫 `pico_ctl.py`（沒改它的行為，直接照 README 的 CLI 呼叫）→ 用 `screens.py` 輪詢或 session log 文字/封包訊號確認完成條件，逾時就回報失敗。`購買`／`送禮`等按鈕座標寫死擋掉（`FORBIDDEN_CLICKS`），就算實驗檔手滑寫錯座標也點不到。
+  - `campaign_fail`：`GameCampaign 2`（任務失敗）送一次。`dispatch/lobby.dispatch.js` 的 Campaign_CN handler 只有 action=1 才會走 R-ROUND 的文字 marker，action=2 直接送 `EndGame_SN` 又沒有 marker，所以完成訊號改讀 session log 裡原始的 `{ev:'pkt', dir:'send', op:'0x00222213'}` 封包紀錄（`wait_for_log_pkts`），不是猜的。🟡 還沒真的跑過。
+  - `deltest`：送 `delTest`（原始碼：場上所有機體含自己 `KilledBy(none)`）。**這個指令刻意沒有放進 `console_cmd(text)` 的 `CONSOLE_CMD_WHITELIST`**，只有 `deltest()` 這個動作本身會送，其他實驗檔／`console_cmd` 都送不到。送出後等 `wait_s`（預設 20 秒），回報這段期間 `Death_CN`（recv `0x00230123`）／`Death_SN`（send `0x00230124`）各幾筆。🟡 永遠不要在沒有操作者明確核准的情況下真的跑 `U-pve-deltest.json`。
+  - `keepalive_wait(seconds, interval_s=30)`：純等待，每隔 `interval_s` 秒送一次「淨位移為 0」的滑鼠微動（`MOVE 1 0` 再 `MOVE -1 0`），避免大廳的「因長時間未動作，所以被強制退場」把畫面壓暗。🟡 [GUESS]：沒讀過客戶端閒置計時器的原始碼，選滑鼠移動只是因為目前已知的按鍵在大廳/房間/商店都各自有作用，不是驗證過的無害鍵；契約本身允許這個 fallback。
 - `runner.py run <experiment.json>` — 開 pico session → 檢查起始畫面 → 依序執行每一步 → **任何一步失敗或灰色地帶分類就整個停下**（送 `RESET`、結束 session，不重試、不繼續）→ 寫報告。`--dry-run` 只驗證檔案格式、印出每一步會做什麼，完全不送任何輸入、不開 session。
 
 實驗檔格式（`experiments/*.json`）：`id`／`purpose`／`preconditions.screen`／`steps`（每步 `action` + `params`）／`stop_conditions.max_consecutive_failures`／`max_image_reviews`（**必須是 0**——這版 runner 沒有接模型，非 0 會直接判定檔案無效；欄位保留給以後真的要接模型審查的版本用）。
@@ -220,6 +229,17 @@ python3 tools/pico/runner.py validate tools/pico/experiments/U-shop-tabs.json
 python3 tools/pico/runner.py run tools/pico/experiments/U-shop-tabs.json --dry-run
 python3 tools/pico/runner.py run tools/pico/experiments/U-shop-tabs.json   # 真的跑：會開 pico session、送輸入
 ```
+
+### 夜間整批：`runner.py suite`
+
+`suite` 檔（例：`experiments/suite-nightly.json`）只是一份 `experiments` 清單（檔名相對於 suite 檔自己的目錄），`runner.py suite` 依序呼叫 `run_experiment`，**第一個沒有 PASS 的實驗就整批停下**（fail-closed），不會跳過繼續跑後面的。每個實驗照樣各自寫自己的報告，另外多寫一份 `<suite id>-<時間戳>.json/.txt` 摘要（列每個實驗的結果、在哪一個停下）。
+
+```bash
+python3 tools/pico/runner.py suite tools/pico/experiments/suite-nightly.json --dry-run
+python3 tools/pico/runner.py suite tools/pico/experiments/suite-nightly.json   # 真的跑
+```
+
+`experiments/suite-nightly.json` 目前是 `U-pve-fullmatch` → `U-pve-fail` → `U-shop-tabs-idle`。`U-pve-deltest` 故意不放進去，等它真的被人核准跑過一次現場之後才加。
 
 已知限制／待審查（見這次任務的報告，交給主力）：
 - `classify_screen` 目前只認得 `lobby`／`shop`／`console_open` 三種畫面，別的畫面一律回 `unknown`（等同灰色地帶，runner 會停）。

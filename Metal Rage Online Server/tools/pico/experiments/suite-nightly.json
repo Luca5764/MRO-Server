@@ -1,0 +1,9 @@
+{
+  "id": "suite-nightly",
+  "purpose": "Nightly unattended batch: full PvE win regression, PvE failure-path regression, then an idle-survival shop-tabs pass. Stops (fail-closed) on the first experiment that is not PASS -- see runner.py's run_suite(). U-pve-deltest.json is deliberately excluded until it has been run live once (see its own 🟡 note); add it here only after that.",
+  "experiments": [
+    "U-pve-fullmatch.json",
+    "U-pve-fail.json",
+    "U-shop-tabs-idle.json"
+  ]
+}
