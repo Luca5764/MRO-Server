@@ -147,3 +147,9 @@ for target of room.members:
 **五個新開關的收斂節奏**：第 5 節列的 5 個開關（`GAME_USER_SN_BROADCAST_MODE`、`ROOM_BATTLE_START_BROADCAST_MODE`、`BATTLE_STATS_ROOM_MODE`、`READY_HOST_SPLIT_MODE`、`HOST_ADDRESS_REQUIRE_MODE`）都可以先各自預設關閉上線；每個開關**驗證通過後 7 天**，另開一個收斂任務把 disabled 分支砍掉（跟 `docs/backlog.md` C1／C2 現有的收斂任務是同一種模式），本文件不逐一預先排定日期。
 
 > **PM 核對通過（2026-09-19）。實作提醒：** 房主的 `Ready_Host_CA 0x00420114` 若 result＝0xFFFFFFFF（開 Listen 失敗，`0x107d918b` 寫到 +0x12），不要對其他人送 `Ready_Host_SN`，走「不開戰＋log」。實作排在 M1 主測和 R-ROUND 之後。
+
+## 補充：戰鬥中離開（2026-09-19，explorer 🟡）
+
+- `Leave_CQ 0x00222131`（`0x107db1f0`）沒有 body。伺服器回 `Leave_SA 0x00222132` 0/0，客戶端就切回 SCENE_ROOM（`0x107d8250`）；我們現在是靠 fallback 回這個封包。
+- `Leave_SN 0x00420133`（`0x107d8390`）：body+0 是 u16 slot id。如果是自己的 id，就回到房間；不是自己的話，只把那個人從本地名單移除，**不會切換場景**。→ 非房主中途離開時，回 0x00222132 給他本人，再對其他人廣播 `0x00420133`（離開者的 id），room.state 維持 playing。
+- 房主中途離開（§6 已定案：該場直接結束，其他人回房間）：候選做法是對其他人送 EndGame_SN 0x00222213，或各自送自己 id 的 `Leave_SN`。⬜ 待決定，要實測確認。

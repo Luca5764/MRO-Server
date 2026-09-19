@@ -579,3 +579,8 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - [LOG] 最新 session：按下後伺服器**一個封包都沒收到**。30907 沒有新的 recv，也沒有斷線；9211 也沒有新連線。Lucas（conn12）最後一個請求是 ms 3268245 的 Leave_CQ。
 - 🟡 推測：客戶端要回到頻道選擇時，會重新連 Gate 取頻道或伺服器清單，用的是某個封包給它的位址（`m_GateInfo`／SERVER_INFO）。如果那個位址或埠不對，就會連不上而一直卡著。
 - 要查的東西：UC 裡大廳「上一頁」的處理（ZPage_Lobby 的返回按鈕 → ZNetwork_DJ 的 Gate／Channel 函式）、需要哪個位址、我們有沒有送；另外在筆電開 netstat，看按下後客戶端有沒有嘗試連線。
+
+> **LOBBY-BACK 分析（2026-09-19，explorer 🟡）：**
+> - 大廳上一頁 → `ZPage_Lobby.uc:1954` SendBack() → `Scene_Back`（`0x10716800`）→ scene 4 時走 `0x107e6020`。這個函式只在 ZDispatchLobby 的 `[this+4]` 旗標為真時，才在**現有連線**送 `Leave_CQ 0x00220114`，不會開新連線。旗標是假的時候只寫 log、什麼都不送。
+> - 旗標由 `ZDispatchLobby::Check`（`0x107e38d0`）設定：`sceneParam == 4（LOBBY）&& *[0x1091b884] != 0`。`0x1091b884` 是 Core.dll 的 **GIsClient**（`research/2026-09-19-ready/notes.md` 第一輪已識別），一般客戶端恆為真。
+> - 高階判讀：所以旗標是假的，代表**客戶端的 ZDispatchLobby 沒有收到 scene 4 的 Check**，也就是我們進大廳的流程沒讓客戶端正式進入 Lobby 場景（參考 state.md 第 5 節：`0x00230112` 不是 Lobby Enter SA）。下一步：查 ZDispatchLobby::Check 是由哪個場景切換呼叫、進大廳時客戶端的 scene 是多少、原版的 Lobby Enter 流程是什麼。另外 `Leave_CQ 0x00220114` 送出後，伺服器要回什麼也還沒查。
