@@ -262,21 +262,30 @@ function Invoke-ClickAt {
         $targetX = $origin.X + $relX
         $targetY = $origin.Y + $relY
 
+        # Windows pointer acceleration is on (measured 2026-09-19: a 100-count MOVE lands
+        # ~246 px, 5-count moves ~3 px), so sending the raw pixel error overshoots and the
+        # loop diverges. Divide by a per-axis gain estimated from the previous step.
+        $gx = 2.46; $gy = 2.46
         $converged = $false
-        for ($iter = 0; $iter -lt 6; $iter++) {
+        for ($iter = 0; $iter -lt 12; $iter++) {
             $cur = [System.Windows.Forms.Cursor]::Position
             $dx = $targetX - $cur.X
             $dy = $targetY - $cur.Y
             if ([Math]::Abs($dx) -le 4 -and [Math]::Abs($dy) -le 4) { $converged = $true; break }
-            $moveReply = Send-PicoCommand -SerialPort $SerialPort -Cmd "MOVE $dx $dy" -BudgetMs 3500
+            $mx = [int][Math]::Round($dx / $gx); if ($mx -eq 0 -and [Math]::Abs($dx) -gt 4) { $mx = [Math]::Sign($dx) }
+            $my = [int][Math]::Round($dy / $gy); if ($my -eq 0 -and [Math]::Abs($dy) -gt 4) { $my = [Math]::Sign($dy) }
+            $moveReply = Send-PicoCommand -SerialPort $SerialPort -Cmd "MOVE $mx $my" -BudgetMs 3500
             if ($moveReply -eq $null) {
                 return @{ Line = "[BLOCKED] CLICK_AT move timed out en route to ($targetX,$targetY)"; Blocked = $true }
             }
             Start-Sleep -Milliseconds 40
+            $after = [System.Windows.Forms.Cursor]::Position
+            if ([Math]::Abs($mx) -ge 3) { $gx = [Math]::Min(3.0, [Math]::Max(0.3, ($after.X - $cur.X) / $mx)) }
+            if ([Math]::Abs($my) -ge 3) { $gy = [Math]::Min(3.0, [Math]::Max(0.3, ($after.Y - $cur.Y) / $my)) }
         }
         if (-not $converged) {
             $cur = [System.Windows.Forms.Cursor]::Position
-            return @{ Line = "[BLOCKED] CLICK_AT did not converge after 6 tries, target ($targetX,$targetY) got ($($cur.X),$($cur.Y))"; Blocked = $true }
+            return @{ Line = "[BLOCKED] CLICK_AT did not converge after 12 tries, target ($targetX,$targetY) got ($($cur.X),$($cur.Y))"; Blocked = $true }
         }
 
         # Re-check the foreground gate right before clicking: the moves above took
