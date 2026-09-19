@@ -164,6 +164,26 @@ function makeFixtureDb(overrides = {})
     // deterministic, non-colliding serial every run.
     let nextItemId = items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 100000) + 1;
 
+    // E1 (docs/design/e1-item-ownership.md, docs/backlog.md): mirrors
+    // database/db.js's ITEM_EQUIPS_MODE / item_equips / item-share-type.js.
+    // Default 'disabled' matches db.js's own default, so every existing
+    // golden sample (recorded before E1) keeps exercising the pre-E1 code
+    // path unless a test explicitly overrides it.
+    const ITEM_EQUIPS_MODE = overrides.itemEquipsMode || 'disabled';
+    const itemEquips = overrides.itemEquips || [];
+    let nextItemEquipId = itemEquips.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0) + 1;
+    // itemId (catalog id) -> 0/1, and -> UseTime seconds (0 = permanent).
+    // Only the ids a test actually cares about need entries; unknown ids
+    // default to 0 in both tables, same as database/item-share-type.js's
+    // own Cache.Bin-miss fallback.
+    const shareTypeByItemId = overrides.shareTypeByItemId || {};
+    const useTimeByItemId = overrides.useTimeByItemId || {};
+    function getShareType(itemId) { return shareTypeByItemId[Number(itemId)] === 1 ? 1 : 0; }
+    function getUseTimeSeconds(itemId) {
+        const value = Number(useTimeByItemId[Number(itemId)]);
+        return Number.isFinite(value) && value > 0 ? value : 0;
+    }
+
     // Diagnostic call log, surfaced in the harness report so a "not mocked"
     // failure can say exactly what was asked for and in what order.
     const calls = [];
@@ -190,8 +210,9 @@ function makeFixtureDb(overrides = {})
     }
 
     return {
-        _fixture: { account, record, mechLevels, licenses, maps, tutorials, items },
+        _fixture: { account, record, mechLevels, licenses, maps, tutorials, items, itemEquips },
         _calls: calls,
+        ITEM_EQUIPS_MODE,
 
         pool: {
             execute: poolExecute,
@@ -241,6 +262,16 @@ function makeFixtureDb(overrides = {})
                                 quantity: 1, equipped: 0,
                             });
                             return [{ insertId: id, affectedRows: 1 }];
+                        }
+                        // E1: room.dispatch.js handleShopPurchase()'s
+                        // already-owned check for ShareType=1 permanent items.
+                        if (norm.startsWith('SELECT id FROM items WHERE account_id = ? AND item_id = ? LIMIT 1'))
+                        {
+                            const [accountId, itemId] = params;
+                            const owned = items.filter(item =>
+                                Number(item.account_id) === Number(accountId) && Number(item.item_id) === Number(itemId)
+                            );
+                            return [owned.length > 0 ? [{ id: owned[0].id }] : []];
                         }
 
                         throw new Error(`fake-db: unmocked conn.execute query: ${norm}`);
@@ -305,6 +336,34 @@ function makeFixtureDb(overrides = {})
         {
             logCall('getItems', { accountId });
             return Number(accountId) === account.id ? items : [];
+        },
+        // E1: mirrors database/db.js's getItemEquips/getItemsWithEquipViews.
+        async getItemEquips(accountId)
+        {
+            logCall('getItemEquips', { accountId });
+            return Number(accountId) === account.id ? itemEquips : [];
+        },
+        async getItemsWithEquipViews(accountId)
+        {
+            logCall('getItemsWithEquipViews', { accountId });
+            const accountItems = Number(accountId) === account.id ? items : [];
+            if (ITEM_EQUIPS_MODE !== 'enabled') {
+                return accountItems;
+            }
+            const accountEquips = Number(accountId) === account.id ? itemEquips : [];
+            const byId = new Map(accountItems.map(item => [Number(item.id), item]));
+            const views = accountItems.map(item => ({ ...item, equipped: 0 }));
+            for (const equip of accountEquips) {
+                const base = byId.get(Number(equip.item_id));
+                if (!base) continue;
+                views.push({
+                    ...base,
+                    mech_type: Number(equip.mech_slot),
+                    part_slot: Number(equip.part_slot),
+                    equipped: 1,
+                });
+            }
+            return views;
         },
         async getItemCatalog()
         {
