@@ -22,6 +22,28 @@ const MAP_CHANGE_ONE_SETTINGS_MODE = 'enabled'; // 'disabled' | 'enabled'
 // R7/R7b implemented but failed: ONE-after-ALL supplemental ordering still
 // overwrote the selection. See docs/journal/2026-09-18-13-map-change-order.md.
 const MAP_CHANGE_ORDER_MODE = 'disabled'; // 'disabled' | 'enabled'
+// H6/MAPLIST (backlog.md, 2026-09-19): [SRC] ZPage_Room.uc:654-686
+// UpdateRoomInfo() loops every non-zero MapInfo[] entry with no break, so the
+// LAST non-zero entry in the list overwrites p_PVE.m_Difficulty — the
+// difficulty light follows whichever map is last in the SN_MAP_CHANGE_ALL
+// list, not necessarily the one the player actually picked. Client also only
+// keeps the first MAX_MAP_COUNT=6 records ([DLL] 0x107ebc1d). Sending only
+// the single map the player currently has selected removes the ambiguity.
+// Only affects how many records SN_MAP_CHANGE_ALL carries when the room is
+// PvE (this sender already returns early for non-campaign rooms below); PvP
+// rooms and the disabled path are byte-identical to before.
+// `let` + accessor (same pattern as rooms.js's roomJoinMode) so
+// test/map-list-single.js can flip it on for its own run without touching
+// the shipped default.
+let mapAllSingleEntryMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isMapAllSingleEntryEnabled() {
+    return mapAllSingleEntryMode === 'enabled';
+}
+
+function _setMapAllSingleEntryModeForTests(mode) {
+    mapAllSingleEntryMode = mode;
+}
 
 const SN_MAP_CHANGE_ALL = 0x00220226;
 const SN_MAP_CHANGE_ONE = 0x00220223;
@@ -121,16 +143,28 @@ function sendRoomMapPackets(client, ctx, getExactMessageBuffer, options = {}) {
     const sendSupplementalAll = MAP_CHANGE_ORDER_MODE === 'enabled' &&
         options.mapChangeOneResponse === true;
 
+    // mapAllSingleEntryMode (H6/MAPLIST): this sender already bailed out
+    // above for non-campaign rooms, so this only ever narrows the PvE ALL
+    // list. Only the record count/content for SN_MAP_CHANGE_ALL changes —
+    // SN_MAP_CHANGE_ONE below keeps using the full mapList/effectiveSelectedIdx
+    // untouched.
+    const allMapList = isMapAllSingleEntryEnabled()
+        ? [mapList[effectiveSelectedIdx]]
+        : mapList;
+    const allEffectiveSelectedIdx = isMapAllSingleEntryEnabled()
+        ? 0
+        : effectiveSelectedIdx;
+
     // Keep the established ALL×2 -> ONE order for both initial room state and
     // map-change responses. R7b only adds one supplemental ALL after ONE.
     sendMapChangeAllPacket(
-        client, mapList, effectiveSelectedIdx, campaignMapCacheKey,
+        client, allMapList, allEffectiveSelectedIdx, campaignMapCacheKey,
         getExactMessageBuffer, true
     );
     sendMapChangeOnePacket(client, mapList, effectiveSelectedIdx, ctx, getExactMessageBuffer);
     if (sendSupplementalAll) {
         sendMapChangeAllPacket(
-            client, mapList, effectiveSelectedIdx, campaignMapCacheKey,
+            client, allMapList, allEffectiveSelectedIdx, campaignMapCacheKey,
             getExactMessageBuffer, false
         );
     }
@@ -165,4 +199,5 @@ module.exports = {
     sendRoomMapPackets,
     sendCampaignBootstrap,
     ROOM_MAP_SYNC_MODE,
+    _setMapAllSingleEntryModeForTests,
 };
