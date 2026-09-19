@@ -127,7 +127,10 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer, opts) {
     let items = [];
     if (itemsAccountId) {
         try {
-            items = await db.getItems(itemsAccountId);
+            // E1 (docs/design/e1-item-ownership.md): item_equips per-mech
+            // view -- byte-identical to db.getItems() when db.ITEM_EQUIPS_MODE
+            // is 'disabled', so equippedBySlot() below is unchanged.
+            items = await db.getItemsWithEquipViews(itemsAccountId);
         } catch (err) {
             console.error(`[ZRoomDispatch] >> Game_User_SN item lookup failed: ${err.message}`);
         }

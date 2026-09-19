@@ -638,7 +638,7 @@ class ZAccountDispatch
         }
 
         // SN_ITEM_INFO — see dispatch/item-info.sender.js (chunked, ≤0x400 per frame).
-        require('./item-info.sender').sendItemInfo(client, items, accountId, 'account');
+        await require('./item-info.sender').sendItemInfo(client, items, accountId, 'account');
 
         // SN_WEAR_INFO (0x210113) — DLL: WearInfo_SN
         // Header: [u8 success][u8 count][u32 pilotSerialIndex][u32 pilotItemIndex][u32 selectedMechType]
@@ -654,8 +654,16 @@ class ZAccountDispatch
                 mechSlots[m] = Array.from({length: 6}, () => ({uniqueKey: 0, itemIndex: 0}));
             }
 
+            // E1 (docs/design/e1-item-ownership.md): item_equips per-mech
+            // view. When db.ITEM_EQUIPS_MODE is 'disabled' this is `items`
+            // unchanged, so the loop below is byte-identical to before. A
+            // ShareType=1 serial equipped on two mechs appears twice here
+            // (same uniqueKey, two different mech_type entries), which is
+            // what lets it show up equipped in both mechs' WearInfo output.
+            const wearItems = await db.getItemsWithEquipViews(accountId);
+
             // All items: part_slot 0 = body/chassis → slot 0; 1-5 → slots 1-5
-            for (const item of items) {
+            for (const item of wearItems) {
                 if (item.equipped && item.mech_type >= 1 && item.mech_type <= MAX_MECH_COUNT) {
                     const slot = Number(item.part_slot);
                     if (slot >= 0 && slot < 6 && mechSlots[item.mech_type]) {
