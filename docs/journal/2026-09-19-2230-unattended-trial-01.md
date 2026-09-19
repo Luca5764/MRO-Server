@@ -57,3 +57,6 @@
 - 第二次（2026-09-20 00:12）：操作者手動關掉客戶端，再跑 `restart --step manual-test`。✅ [TEST] 證據存下 → 沒有行程所以不 kill → 用 bat 啟動 → READY pid 38048，count 1/3。接著用同一個 step 再跑一次 → ✅ `[BLOCKED] two consecutive crashes at the same step`，沒有動到客戶端。
 - 發現：新客戶端的 `MainWindowHandle` 是**啟動畫面**（420×260，rect 1070,590–1490,850），真正的遊戲視窗在它後面，已經到登入畫面，而啟動畫面一直疊在上面（[SHOT] `shots/relaunch-full2.png`）。`wait_ready` 把啟動畫面當成遊戲就緒；pico_serial.ps1 的前景／視窗檢查也用 MainWindowHandle，要改成挑最大的那個頂層視窗。
 - 還沒驗：對已修補（沒有 XIGNCODE）的客戶端真的 kill 一次。
+- ❌ [TEST] 2026-09-20 00:35：對**已修補**的客戶端（pid 38048）執行 `taskkill /IM MetalRage.exe /F` → 「存取被拒」；`Stop-Process -Force` 也一樣。`client_ctl restart` 正確回 BLOCKED（cannot terminate），沒有接著啟動第二個客戶端。
+  - [SRC] MetalRage.exe manifest 寫 `requireAdministrator`，所以客戶端是提權執行，而 WSL 叫出的 powershell 沒有提權。奇怪的是 `OpenProcess(PROCESS_TERMINATE)` 有拿到 handle（2792），終止時卻被拒；可能還有別的保護（例如 kernel callback 把權限剝掉）🟡。
+  - → XIGNCODE 修補**沒有**讓 kill 變可行。無人重開需要提權的管道（操作者預先建立的最高權限排程工作），或者由操作者手動處理。
