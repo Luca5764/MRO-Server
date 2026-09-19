@@ -312,11 +312,14 @@ const CACHE_INDEX_TO_MAP_NAME_GG = {
     1: 'Map_Ptuto',
 };
 
-function sendReadyHostSn(client)
+// D1-6-IMPL (design doc §5 step 4): body-building shared by sendReadyHostSn()
+// (below, unchanged single-target behaviour) and
+// sendReadyHostSnToRoomMember() (community.dispatch.js's non-host send).
+// Pulled out verbatim from the old sendReadyHostSn() body -- same
+// truncation-warning comment/logic, just parameterized instead of reading
+// straight off a `client`.
+function buildReadyHostSnMsg(ip, port, mapCacheKey)
 {
-    const ip = normalizeIpv4(client.socket_ && client.socket_.localAddress);
-    const port = 30907;
-    const mapCacheKey = Number(client.campaignMapCacheKey_) || 58;
     const mapName = CACHE_INDEX_TO_MAP_NAME_GG[mapCacheKey] || 'Map_PC01';
     // 실제 서버: IP:Port/MapName?team=0 형식으로 ClientTravel (real server: ClientTravel in IP:Port/MapName?team=0 format)
     // ip 필드에 "IP/MapName" 형식으로 전달 시도 (attempt to pass in "IP/MapName" format in the ip field)
@@ -346,14 +349,42 @@ function sendReadyHostSn(client)
     respBody.writeUInt16LE(port, 0x00);
     respBody.writeUInt8(0, 0x02);
 
-    const room = respBody.length - 0x03;
-    const written = respBody.write(ipWithMap + '\0', 0x03, Math.min(urlBytes + 1, room), 'ascii');
+    const roomForBytes = respBody.length - 0x03;
+    const written = respBody.write(ipWithMap + '\0', 0x03, Math.min(urlBytes + 1, roomForBytes), 'ascii');
+
+    return { msg, ipWithMap, bodySize, written, urlBytes };
+}
+
+function sendReadyHostSn(client)
+{
+    const ip = normalizeIpv4(client.socket_ && client.socket_.localAddress);
+    const port = 30907;
+    const mapCacheKey = Number(client.campaignMapCacheKey_) || 58;
+    const { msg, ipWithMap, bodySize, written, urlBytes } = buildReadyHostSnMsg(ip, port, mapCacheKey);
 
     if (written < urlBytes + 1)
         console.log(`[ZGateGameDispatch] !! Ready_Host_SN URL TRUNCATED: wrote ${written} of ${urlBytes + 1} bytes — client will travel to a map that does not exist`);
 
     client.send(msg);
     console.log(`[ZGateGameDispatch] >> Sent Ready_Host_SN 0x00420115 ip=${ipWithMap} port=${port} (mode=${READY_HOST_SN_URL_MODE}, body=0x${bodySize.toString(16)})`);
+}
+
+// D1-6-IMPL (design doc §5 step 4, §1 row 8): community.dispatch.js's
+// 0x00420114 (Ready_Host_CA) handler calls this for each non-host room
+// member once READY_HOST_SPLIT_MODE is on -- `ip` is the host's configured
+// hostAddress (config/whitelist.js getHostAddress(), design §3.1), `port` is
+// the u16 LE the host's own Ready_Host_CA body+0x06 reported (its real
+// listen port -- see battle-host.md's DLL note, not hardcoded 30907 the way
+// sendReadyHostSn() above still is for the single-connection path).
+function sendReadyHostSnToRoomMember(targetClient, ip, port, mapCacheKey)
+{
+    const { msg, ipWithMap, bodySize, written, urlBytes } = buildReadyHostSnMsg(ip, port, mapCacheKey);
+
+    if (written < urlBytes + 1)
+        console.log(`[ZGateGameDispatch] !! Ready_Host_SN URL TRUNCATED (room member): wrote ${written} of ${urlBytes + 1} bytes — client will travel to a map that does not exist`);
+
+    targetClient.send(msg);
+    console.log(`[ZGateGameDispatch] >> Sent Ready_Host_SN 0x00420115 (room member) ip=${ipWithMap} port=${port} (mode=${READY_HOST_SN_URL_MODE}, body=0x${bodySize.toString(16)})`);
 }
 
 function sendRoomGameWaitSn(client, tag)
@@ -1434,7 +1465,28 @@ class ZGateGameDispatch
                     // The Game_Wait state is likely waiting on that host-ready
                     // handshake. Send it; if the client answers 0x420114, the
                     // 0x420114 handler (below) carries it forward.
-                    setTimeout(() => sendReadyHostSq(client), 450);
+                    // D1-6-IMPL (design doc §5 step 4, §1 row 6): with
+                    // rooms.isReadyHostSplitEnabled(), send Ready_Host_SQ to
+                    // the room's tracked host connection specifically
+                    // (room.hostAccountId), not whichever connection
+                    // triggered 0x00222103 -- today those are always the same
+                    // connection, but this stops being guaranteed once a
+                    // non-host member exists (HOST_ADDRESS_REQUIRE_MODE,
+                    // step 5, is what actually blocks a non-host from
+                    // reaching this far; this switch is independent of that
+                    // one per the task contract, so it defends on its own).
+                    setTimeout(() => {
+                        if (rooms.isReadyHostSplitEnabled() && roomForBattleBroadcast) {
+                            const hostMember = roomForBattleBroadcast.members.get(roomForBattleBroadcast.hostAccountId);
+                            if (hostMember && hostMember.client) {
+                                sendReadyHostSq(hostMember.client);
+                            } else {
+                                console.error(`[ZGateGameDispatch] !! READY_HOST_SPLIT_MODE: room #${roomForBattleBroadcast.id}'s host (account=${roomForBattleBroadcast.hostAccountId}) has no live connection -- not sending Ready_Host_SQ`);
+                            }
+                        } else {
+                            sendReadyHostSq(client);
+                        }
+                    }, 450);
                     setTimeout(() => {
                         if (useRoomBattleBroadcast) {
                             sendGameInfoSnRoomBroadcast(roomForBattleBroadcast, 'server-driven: scene-6 map retry');
@@ -2066,3 +2118,9 @@ module.exports._setHostAddressRequireModeForTest = function setHostAddressRequir
 // R-ROUND (docs/backlog.md): shared with lobby.dispatch.js's Campaign_CN
 // handler -- see the comment on the function itself.
 module.exports.getGameInfoRound = getGameInfoRound;
+
+// D1-6-IMPL (design doc §5 step 4): community.dispatch.js's 0x00420114
+// handler needs this to message non-host room members once the host's
+// Ready_Host_CA reports its port -- see sendReadyHostSnToRoomMember()'s own
+// comment above for why it takes ip/port/mapCacheKey instead of a `client`.
+module.exports.sendReadyHostSnToRoomMember = sendReadyHostSnToRoomMember;
