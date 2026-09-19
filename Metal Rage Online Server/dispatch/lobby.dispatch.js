@@ -13,6 +13,9 @@ const { getGameInfoRound } = require('./gate.game.dispatch.js');
 // update path gate.game.dispatch.js's CQ_CREATE/Enter_CQ broadcasts use for
 // a member-count change, to tell the lobby a room just finished a battle.
 const { broadcastRoomListChange } = require('./room/room-list.sender');
+// P3 step 2 (docs/design/p3-step1-writeback.md §2.2): room-level match/
+// round stats, memory + log only, default-disabled (MATCH_STATS_MODE).
+const matchStats = require('./room/match-stats');
 // RANK (docs/backlog.md, config/server.json's pveFixedRank): test-mode
 // WinTeamRank sent via User_Score_SN 0x00222221 -- see the Campaign_CN
 // handler below.
@@ -270,6 +273,15 @@ class ZLobbyDispatch
                     // happened above, gated on host + the dedup check.
                     client.battleStats_ = {};
 
+                    // P3 step 2 (docs/design/p3-step1-writeback.md §2.2,
+                    // MATCH_STATS_MODE): starts timing this round for
+                    // room.matchStats -- separate structure/lifetime from
+                    // room.battleStats above (single-variable principle, no
+                    // change to battleStats' existing meaning). No-op
+                    // unless MATCH_STATS_MODE is enabled AND matchStats.
+                    // startMatch already ran for this room (0x00222103).
+                    matchStats.beginRound(roomForBeginRound);
+
                     rooms.sendAll(roomForBeginRound.id, (target) => {
                         const [msg, body] = target.getMessageBuffer(0x00230152, 0x06);
                         body.writeUint16LE(0, 0);
@@ -425,6 +437,12 @@ class ZLobbyDispatch
                             );
                         }
                         packetlog.marker(`R-ROUND: cleared=${roundsCounter.pveRoundsCleared_} playRound=${playRound} -> EndRound_SN 0x00222211`, 'auto');
+                        // P3 step 2 (docs/design/p3-step1-writeback.md §2.2,
+                        // MATCH_STATS_MODE): this is the R-ROUND round-end
+                        // point -- finalize the round matchStats.beginRound
+                        // (BeginRound_CN case above) started timing. No-op
+                        // unless MATCH_STATS_MODE is enabled.
+                        matchStats.closeRound(roomForCampaign);
                         return true;
                     }
                     console.log(
@@ -511,6 +529,14 @@ class ZLobbyDispatch
                     client.send(msg);
                     console.log(`[ZLobbyDispatch] >> Campaign_CN action=${action} -> Sent EndGame_SN 0x00222213 (winTeam=${winTeam})`);
                 }
+
+                // P3 step 2 (docs/design/p3-step1-writeback.md §2.2,
+                // MATCH_STATS_MODE): EndGame_SN just went out above (win or
+                // fail -- Campaign_CN's `action` byte is exactly the
+                // MATCH-SUMMARY `result` field's 1/2 encoding already).
+                // No-op unless MATCH_STATS_MODE is enabled and
+                // matchStats.startMatch ran for this room (0x00222103).
+                matchStats.emitMatchSummary(roomForCampaign, { result: action });
 
                 // ROOM-PLAYING-STATE (docs/backlog.md INTRUDE 過渡規則,
                 // 🟡 待審): EndGame_SN just went out above (win or lose --
@@ -603,6 +629,14 @@ class ZLobbyDispatch
                 if (attackerIndex !== victimIndex)
                     killerStats.kills++;
                 victimStats.deaths++;
+
+                // P3 step 2 (docs/design/p3-step1-writeback.md §2.2,
+                // MATCH_STATS_MODE): same accepted (host-gated, see the
+                // non-host early return above) Death_CN this room.battleStats
+                // update already uses -- separate structure/lifetime, does
+                // not change battleStats' meaning. No-op unless
+                // MATCH_STATS_MODE is enabled.
+                matchStats.recordDeathCn(roomForDeath, attackerIndex, victimIndex);
 
                 // Builds a fresh Death_SN buffer every call (rooms.js's
                 // sendAll() requires this) via the target connection's own

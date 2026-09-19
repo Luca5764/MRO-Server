@@ -18,6 +18,11 @@
 const rooms = require('../../rooms.js');
 const { sendRoomUserPackets, buildMemberUserCtx } = require('./room-user.sender');
 const { broadcastRoomListChange } = require('./room-list.sender');
+// P3 step 2 (docs/design/p3-step1-writeback.md §2.2/§6, MATCH_STATS_MODE):
+// a match that never reached EndGame_SN (host leaves / room empties) gets
+// one MATCH-ABORTED log line instead of a summary -- see leaveRoomAndNotify
+// below.
+const matchStats = require('./match-stats');
 
 // Same pure header-builder duplicated in gate.game.dispatch.js/room.dispatch.js/
 // community.dispatch.js (existing precedent in this codebase, not centralized).
@@ -88,6 +93,18 @@ function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
     handleBattleLeave(accountId, room);
     const wasHost = room.hostAccountId === accountId;
     const remainingMembers = Array.from(room.members.values()).filter((m) => m.accountId !== accountId);
+
+    // P3 step 2 (docs/design/p3-step1-writeback.md §6 review point 2,
+    // MATCH_STATS_MODE): a match still in progress (room.matchStats set,
+    // not yet finalized by Campaign_CN's EndGame branch) counts as aborted
+    // the moment its host leaves or the room empties -- checked here, the
+    // one place both trigger paths (Leave_CQ, Kickout_CQ, socket close)
+    // funnel through, instead of duplicating the check at each call site.
+    // No-op (matchStats.emitMatchAborted) unless MATCH_STATS_MODE is
+    // enabled and a matchStats is actually in progress.
+    if (wasHost || remainingMembers.length === 0) {
+        matchStats.emitMatchAborted(room, wasHost ? 'host-left' : 'room-emptied');
+    }
 
     rooms.removeMember(accountId);
 
