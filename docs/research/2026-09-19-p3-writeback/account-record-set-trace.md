@@ -96,3 +96,9 @@
 - 「矛盾」不存在。反過來說，這是 Win/Draw/Lose/Kill/Death 偏移的第二個獨立佐證。
 - `esi+0x51c` 不是固定清零：預設 0（`0x107172da`），但在 `0x10717388` 會用 body+0x04/0x08/0x0c/0x10/0x40/0x44 做 64-bit 相減，結果為正時覆寫。
 - Reward_Record_User_SN 的呼叫點（`0x107ed598`）所有欄位整體往前移 8 bytes，跟 progression notes 一致。
+
+> **機械核對更正（verifier，2026-09-20，`verify-2026-09-20.md`）：**
+> - 「`0x107c1082–0x107c1106` 有 14 個 push 直接餵給 `Account_Record_Set`」**不成立**：那段的 16 個 push 餵的是 debug log（`call 0x10709156`，之後 `add esp,0x40`）。真正接在 `call 0x107056aa` 前的 14 個 push 在 `0x107c10dd–0x107c1106`。
+> - 更正段落引的讀取位址不精確：`0x107c1170/74`、`0x107c1154/58` 是 setter 前讀局部變數的 push；真正讀 raw `[eax+0x24/0x28]` 的是 `0x107c103b/0x107c1042`，讀 `[eax+0x58/0x5c]` 的是 `0x107c1027/0x107c102e`。
+> - **最終結論不變**：body+0x1c/0x20/0x24/0x28/0x2c＝Win/Draw/Lose/Kill/Death。verifier 另外從 callee `0x10717260` 的 `esi+0x53c..0x54c` 寫入重新確認過。
+> - `esi+0x51c` 64-bit 相減引用的六個 body 偏移**無法確認**，沒有回推來源暫存器 ⬜。
