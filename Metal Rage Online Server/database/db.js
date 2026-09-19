@@ -263,36 +263,34 @@ async function saveEquippedLoadout(accountId, mechType, serials)
             for (const row of rows) itemIdBySerial.set(Number(row.id), Number(row.item_id));
         }
 
-        // Clear the complete target slot first; zero serials intentionally
-        // leave the corresponding part empty.
-        await conn.execute(
-            'UPDATE items SET equipped = 0 WHERE account_id = ? AND mech_type = ? AND part_slot BETWEEN 0 AND 5',
-            [accountId, mechType]
-        );
-
-        // An item serial can only be equipped in one place at a time.
-        if (uniqueSerials.length > 0) {
-            const placeholders = uniqueSerials.map(() => '?').join(', ');
+        // E1 fix round (Sol batch4 (5), coordinator decision 2026-09-19):
+        // with ITEM_EQUIPS_MODE 'enabled', item_equips is the *only* source
+        // of truth for what's equipped where -- items.equipped/items.mech_type
+        // are legacy columns that stop being touched entirely (no clear, no
+        // set) so they can never look authoritative-but-stale to a reader or
+        // a migration rerun. items.part_slot is part of that same "where is
+        // this equipped" concept, so it is left alone here too. Disabled
+        // (default) mode is completely unchanged below.
+        if (ITEM_EQUIPS_MODE !== 'enabled') {
+            // Clear the complete target slot first; zero serials intentionally
+            // leave the corresponding part empty.
             await conn.execute(
-                `UPDATE items SET equipped = 0 WHERE account_id = ? AND id IN (${placeholders})`,
-                [accountId, ...uniqueSerials]
+                'UPDATE items SET equipped = 0 WHERE account_id = ? AND mech_type = ? AND part_slot BETWEEN 0 AND 5',
+                [accountId, mechType]
             );
-        }
 
-        for (let partSlot = 0; partSlot < serials.length; partSlot++) {
-            const serial = Number(serials[partSlot]);
-            if (serial === 0) continue;
-            // E1: items.mech_type stops meaning "equipped on this mech" once
-            // item_equips is the source of truth (a ShareType=1 serial can be
-            // equipped on more than one mech at once, which a single column
-            // cannot represent) -- see docs/design/e1-item-ownership.md
-            // section 3. Left untouched when the mode is off.
-            if (ITEM_EQUIPS_MODE === 'enabled') {
+            // An item serial can only be equipped in one place at a time.
+            if (uniqueSerials.length > 0) {
+                const placeholders = uniqueSerials.map(() => '?').join(', ');
                 await conn.execute(
-                    'UPDATE items SET equipped = 1, part_slot = ? WHERE account_id = ? AND id = ?',
-                    [partSlot, accountId, serial]
+                    `UPDATE items SET equipped = 0 WHERE account_id = ? AND id IN (${placeholders})`,
+                    [accountId, ...uniqueSerials]
                 );
-            } else {
+            }
+
+            for (let partSlot = 0; partSlot < serials.length; partSlot++) {
+                const serial = Number(serials[partSlot]);
+                if (serial === 0) continue;
                 await conn.execute(
                     'UPDATE items SET equipped = 1, mech_type = ?, part_slot = ? WHERE account_id = ? AND id = ?',
                     [mechType, partSlot, accountId, serial]
