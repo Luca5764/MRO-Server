@@ -322,6 +322,26 @@ async function testReadyHostSnUsesRealMapId(pickedMapId, expectedMapName)
     }
 }
 
+// Sol batch3 review (docs/research/2026-09-19-sol-review/batch3.md, 新疑點):
+// testReadyHostSnUsesRealMapId() above can no longer assert on the map name
+// (RHSN-IP made the non-host body bare-IP-only, see its own comment), so
+// MAP_ID_TO_MAP_NAME_GG has no test coverage left. Calls the exported
+// buildReadyHostSnMsg() directly for the single-connection path (ipOnly
+// left at its default false), which still embeds "IP/MapName" per its own
+// comment ("RHSN-IP: ... The legacy single-connection path keeps the old
+// 'IP/Map' string unchanged").
+function testReadyHostSnMapTableSingleConnectionPath()
+{
+    const GateGameDispatch = require('../dispatch/gate.game.dispatch.js');
+    const cases = [[9010, 'Map_PC04'], [9004, 'Map_PC03']];
+    for (const [mapId, expectedMapName] of cases) {
+        const { ipWithMap } = GateGameDispatch.buildReadyHostSnMsg('203.0.113.5', 30907, mapId);
+        assert.strictEqual(ipWithMap, `203.0.113.5/${expectedMapName}`,
+            `buildReadyHostSnMsg's single-connection path for real Cache.Bin map id ${mapId} must resolve to "${expectedMapName}" via MAP_ID_TO_MAP_NAME_GG, got "${ipWithMap}"`);
+    }
+    console.log('[room-ready-host-split test] PASS: buildReadyHostSnMsg single-connection path still resolves MAP_ID_TO_MAP_NAME_GG (9010->Map_PC04, 9004->Map_PC03)');
+}
+
 async function main()
 {
     await testSqOnlyToHostAndSnToNonHost();
@@ -330,6 +350,7 @@ async function main()
     await testListenFailureResultSendsNothingToAnyone();
     await testReadyHostSnUsesRealMapId(9010, 'Map_PC04');
     await testReadyHostSnUsesRealMapId(9001, 'Map_PC01');
+    testReadyHostSnMapTableSingleConnectionPath();
     console.log('[room-ready-host-split test] ALL CHECKS PASS');
     process.exit(0);
 }

@@ -1513,6 +1513,24 @@ class ZGateGameDispatch
                 // below (SERVER_DRIVEN_START_MODE or not) actually sends
                 // Game_Start_SN.
                 client.pveRoundsCleared_ = 0;
+                // D1-6-STEP3: with BATTLE_END_BROADCAST_MODE the round counter lives
+                // on the Room; reset it here too, or a rematch in the same room
+                // would start from the previous match's cleared count.
+                //
+                // Sol batch3 review (docs/research/2026-09-19-sol-review/
+                // batch3.md Part B "需修改 -- round/reset ownership"): this
+                // reset originally ran for ANY tracked room member pressing
+                // F5, not just the host -- guard it the same way
+                // lobby.dispatch.js's Campaign_CN/Death_CN/BeginRound_CN
+                // handlers gate their own room-state writes, so a non-host
+                // client cannot clear the shared round counter.
+                if (rooms.isBattleEndBroadcastEnabled() && rooms.isRoomJoinEnabled()) {
+                    const accountIdForRoundReset = Number(client.accountIndex_ || client.accountId_ || 1);
+                    const roomForRoundReset = rooms.getRoomByAccount(accountIdForRoundReset);
+                    if (roomForRoundReset && accountIdForRoundReset === roomForRoundReset.hostAccountId) {
+                        roomForRoundReset.pveRoundsCleared_ = 0;
+                    }
+                }
 
                 // READY-IMPL (docs/backlog.md): the host pressing F5 (this
                 // opcode, see the case 0x00222101 comment above for why the
@@ -2366,3 +2384,12 @@ module.exports.getGameInfoRound = getGameInfoRound;
 // Ready_Host_CA reports its port -- see sendReadyHostSnToRoomMember()'s own
 // comment above for why it takes ip/port/mapCacheKey instead of a `client`.
 module.exports.sendReadyHostSnToRoomMember = sendReadyHostSnToRoomMember;
+
+// Sol batch3 review (docs/research/2026-09-19-sol-review/batch3.md, 新疑點):
+// after RHSN-IP, the non-host Ready_Host_SN path no longer carries the map
+// name (bare IP only, community.dispatch.js's ipOnly=true call), so
+// test/room-ready-host-split.js's testReadyHostSnUsesRealMapId() cases lost
+// their only assertion on MAP_ID_TO_MAP_NAME_GG. Exported so a unit test can
+// call the single-connection path (ipOnly=false, still embeds "IP/MapName")
+// directly and keep the table covered without going through a live socket.
+module.exports.buildReadyHostSnMsg = buildReadyHostSnMsg;
