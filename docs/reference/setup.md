@@ -183,3 +183,10 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 ### PvE 多命測試（pveExtraLives）
 
 同一個 `config/server.json` 可以加 `"pveExtraLives": 97`，讓 PvE 開戰的 `Game_User_SN 0x00222112` 多送一個 `GAME_ITEM_INFO.PveRespawnAddCount`，客戶端命數＝地圖 `DefNumLive`（初級通常 3）＋這個值（`ZModePve.uc:473-474`）。設成 97 大約等於 100 條命，方便測試不用一直重開房。不填或填 0＝行為不變。改完要完整重啟伺服器（不是 `/reload`，這個值只在啟動時讀一次）。依據見 `dispatch/room/room-game-user.sender.js` 的 LIVES 註解。
+
+## 戰鬥 P2P（N2）
+
+- 房主進戰場時，`MetalRage.exe` 會監聽 **UDP 30907**（2026-09-19 單人戰實測：`Get-NetUDPEndpoint` 顯示 `0.0.0.0:30907`）；在大廳時沒有任何監聽。其他玩家直接連房主這台。
+- Windows 原本只有 Public 設定檔的 MetalRage 規則，家用網路是 Private，所以 UDP 被擋。每台可能當房主的機器（主機、筆電）都要用系統管理員身分執行 `tools/win/p2p-open.ps1`：加 Inbound UDP 30907、只限 Private、只限 `192.168.1.0/24`。要還原就執行 `p2p-close.ps1`。
+- 這和主機上 `lan-open.ps1` 的 **TCP** 30907 portproxy 協定不同，不會衝突。
+- 房主的區網 IP 寫在 `config/allowed-users.json` 該帳號的 `hostAddress`（D1-6）。
