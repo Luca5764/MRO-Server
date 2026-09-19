@@ -38,7 +38,7 @@
 | 登入帳號 | 17%（0/12 ✅，4 🟡） | S | 無（最先做，已可用） |
 | 大廳頻道 | 16%（1/16 ✅，3 🟡） | S | 登入帳號 |
 | 房間 | 42%（14/50 ✅，14 🟡） | L | 大廳頻道；多人廣播需 D1 房間模型（見 `multiplayer-audit.md`） |
-| PvE 模式 | 59%（8/16 ✅，3 🟡）；戰役可玩，Boss／TwoBoss／Tutorial／Escort 完全未觸碰 | L | 房間、機庫與裝備（出場配裝）、結算與成長 |
+| PvE 模式 | 53%（8/15 ✅，3 🟡；TwoBoss 台版無此模式，不計分母）；戰役可玩；護送（9007）無人冒煙開得起來 🟡（journal 2026-09-20-0110）；Boss／Tutorial 未觸碰 | L | 房間、機庫與裝備（出場配裝）、結算與成長 |
 | PvP 模式 | 0%（0/3 ✅，Capture/Conquest/Bomb SN 全未送；TDM／Sudden Death／Rage／Occupation 連對應的 dispatch opcode 都沒確認） | L | 房間、結算與成長；目前**完全沒有 PvP 開戰路徑**（`journal/2026-09-15-03-campaign-only-start-flow-pvp-blocked.md`） |
 | 結算與成長 | 21%（1/17 ✅，5 🟡） | M | PvE/PvP 模式（觸發結算）；評等公式未定（backlog RANK） |
 | 機庫與裝備 | 30%（4/22 ✅，5 🟡）＋ ItemInfo/WearInfo 另計 2 ✅ | M | 登入帳號；E1 IsShare 已實作未實機驗證 |
@@ -220,7 +220,7 @@
 | `0x00230126` | `Special_SN` | ⬜(fallback-only) | 3 | — |
 | `0x00230138` | `Boss_SN` | ❌ | 0 | — |
 | `0x0023013a` | `Campaign_SN` | 🟡 | 522 | room.dispatch.js,gate.game.dispatch.js,room-map.sender.js |
-| `0x0023013c` | `TwoBoss_SN` | ❌ | 0 | — |
+| `0x0023013c` | `TwoBoss_SN` | 台版無此模式（不計分母） | 0 | — |
 | `0x0023013e` | `TriggerTouch_SN` | ❌ | 0 | — |
 | `0x00230152` | `BeginRound_SN` | ✅ | 117 | lobby.dispatch.js,room.dispatch.js,gate.game.dispatch.js |
 
@@ -231,6 +231,8 @@
 `0x00250102`（"게임 씬 진입 알림"／遊戲場景進入通知，`game.dispatch.js` 註解）觸發 `Ready_Host_SQ`；這個 opcode 落在 `0x0025xxxx`（Card 範圍）但語意其實是開戰交握的一部分，是 `docs/state.md` 第 5 節記錄過的檔名/opcode 對不上的案例之一，這裡歸入 PvE 模式（房間→戰鬥交握）而不是卡片。
 
 **UI 入口：** `ZPanel_PVE.uc`、`ZPage_TutorialTGS.uc`、`ZPopup_TutorMission.uc`（教學任務彈窗，未接觸）、`ZPage_PveResult.uc`、`ZPage_TutorialResult.uc`（結算頁，見下節）。
+
+> 2026-09-20：TwoBoss 在台版客戶端沒有地圖／GameInfo／模式套件（`research/2026-09-20-pve-modes-ui/notes.md`），只剩 `ZNetwork_DJ.uc` 裡的原生呼叫殘留，所以不計入。護送走 9007–9009，已經開得起來 🟡。
 
 **缺口：** Boss／TwoBoss／教學／護送四種模式，客戶端都有專屬腳本和 opcode，伺服器一個都沒碰過；規模估計 L（每種都要重播對應的 `Game_*` 動作 opcode，且不確定地圖資源是否已支援離線測試）。
 
