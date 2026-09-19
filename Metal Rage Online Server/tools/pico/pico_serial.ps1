@@ -25,10 +25,15 @@
 #      minimized, and its window rect must lie fully within the PRIMARY monitor
 #      (the game lives there; the second monitor has terminals/editors). The lock
 #      screen / secure desktop (LockApp, LogonUI, consent.exe as foreground process)
-#      is explicitly treated as blocked, not as "no game running".
+#      is explicitly treated as blocked, not as "no game running". It must also be
+#      the REAL game window, not the splash a freshly launched client briefly shows
+#      alongside it (Get-MetalRageWindow: the largest visible top-level window of
+#      any MetalRage process, required to have a >=1600x1200 client area) -- see
+#      that function's comment below.
 #   2. Click target gate (CLICK_AT, see below): the target must resolve inside the
 #      MetalRage window's client area, and the cursor must actually converge to
 #      within +/-4px of it (read back, corrected, re-checked) before CLICK fires.
+#      CLOSE_WINDOW (see below) has its own, window-frame-relative version of this.
 #   3. Kill switch: if C:\Users\su200\mro-pico\STOP exists, every gated command is
 #      blocked (create the file, or just unplug the Pico's USB cable).
 #   4. Text gate: TYPE only accepts printable ASCII (0x20-0x7E).
@@ -50,6 +55,17 @@
 # iterations, before sending CLICK. This replaces pico_ctl.py's old win_click, which
 # used to fire MOVE_TO + CLICK blind (no target verification) from two separate
 # powershell.exe processes.
+#
+# IME_EN is another such pseudo-command: switches the gated window's keyboard layout
+# to en-US (WM_INPUTLANGCHANGEREQUEST) so TYPE isn't swallowed by a Chinese IME. See
+# Invoke-ImeEnglish below.
+#
+# CLOSE_WINDOW is a third: clicks the real game window's title-bar close (X) glyph,
+# since taskkill/Stop-Process are denied on this client (it runs elevated via manifest
+# requireAdministrator -- see docs/journal/2026-09-19-2230-unattended-trial-01.md).
+# Window-frame-relative (not client-area-relative), and additionally requires
+# WindowFromPoint's root ancestor at the target to be the gated window before it
+# clicks. See Invoke-CloseWindow below.
 
 # Parse $args by hand instead of a param() block: PowerShell's positional binder
 # always fills ordinary positional parameters (like -Port) before handing anything
@@ -135,10 +151,69 @@ public class PicoGuardWin32 {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern IntPtr LoadKeyboardLayout(string pwszKLID, uint Flags);
+    [DllImport("user32.dll")] public static extern IntPtr PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT Point);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     public struct RECT { public int Left, Top, Right, Bottom; }
     public struct POINT { public int X, Y; }
 }
 "@
+
+# Get-MetalRageWindow -- resolves the REAL game window as the largest visible
+# top-level window belonging to any process named MetalRage (EnumWindows, not
+# Process.MainWindowHandle). A freshly launched client shows TWO visible
+# top-level windows at once: a small splash (~420x260) and the real game
+# window; MainWindowHandle returns whichever Windows picked as "main", which
+# was observed to be the splash, not the game window (2026-09-19 relaunch
+# trial, docs/journal/2026-09-19-2230-unattended-trial-01.md). Returns $null
+# if MetalRage isn't running or has no visible window yet. Duplicated
+# verbatim in client_ctl.ps1 and tools/win/screen.ps1 -- each of those is
+# also a standalone script copied to Windows and run on its own via `-File`
+# (see WIN_PICO_SERIAL_PS1_* in pico_ctl.py), so a dot-sourced shared library
+# is not an option here; this is the same reason the RECT struct above is
+# already duplicated per-file rather than shared.
+function Get-MetalRageWindow {
+    $procs = @(Get-Process MetalRage -ErrorAction SilentlyContinue)
+    if ($procs.Count -eq 0) { return $null }
+    $script:MrwPids = @($procs | ForEach-Object { $_.Id })
+    $script:MrwBest = [IntPtr]::Zero
+    $script:MrwBestArea = 0
+    $script:MrwBestRect = $null
+    [void][PicoGuardWin32]::EnumWindows({
+        param($h, $l)
+        [uint32]$wpid = 0
+        [void][PicoGuardWin32]::GetWindowThreadProcessId($h, [ref]$wpid)
+        if ($script:MrwPids -contains [int]$wpid -and [PicoGuardWin32]::IsWindowVisible($h)) {
+            $r = New-Object PicoGuardWin32+RECT
+            [void][PicoGuardWin32]::GetWindowRect($h, [ref]$r)
+            $area = ($r.Right - $r.Left) * ($r.Bottom - $r.Top)
+            if ($area -gt $script:MrwBestArea) {
+                $script:MrwBestArea = $area
+                $script:MrwBest = $h
+                $script:MrwBestRect = $r
+            }
+        }
+        return $true
+    }, [IntPtr]::Zero) | Out-Null
+    if ($script:MrwBest -eq [IntPtr]::Zero) { return $null }
+    return @{
+        Handle = $script:MrwBest
+        Rect   = $script:MrwBestRect
+        Width  = $script:MrwBestRect.Right - $script:MrwBestRect.Left
+        Height = $script:MrwBestRect.Bottom - $script:MrwBestRect.Top
+    }
+}
+
+# The real game window's client area is 1600x1200 (tools/pico/atlas/manifest.json's
+# shot_size 1616x1239 minus client_offset (8,31), see screens.py) -- reused here
+# as the "is this actually the game, not the splash" threshold. Same constants
+# in client_ctl.ps1's wait_ready.
+$ReadyClientWidth = 1600
+$ReadyClientHeight = 1200
 
 $StopFile = "C:\Users\su200\mro-pico\STOP"
 $PrimaryBounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -179,11 +254,30 @@ function Test-ForegroundGate {
         if ([PicoGuardWin32]::IsIconic($fg)) {
             return @{ Blocked = $true; Reason = "foreground MetalRage window is minimized"; Handle = $fg }
         }
-        $r = New-Object PicoGuardWin32+RECT
-        $okRect = [PicoGuardWin32]::GetWindowRect($fg, [ref]$r)
-        if (-not $okRect) {
-            return @{ Blocked = $true; Reason = "GetWindowRect failed for foreground window"; Handle = $fg }
+        # A freshly launched client has TWO visible MetalRage windows at once (the
+        # splash, ~420x260, and the real game window) -- see Get-MetalRageWindow's
+        # comment above. Require BOTH that a real-sized MetalRage window exists AND
+        # that it is the one actually in the foreground (this only VERIFIES current
+        # focus, it never calls SetForegroundWindow -- see README's 「不用 Pico 點擊
+        # 來搶前景」; tools/win/screen.ps1 is the sanctioned way to bring the game
+        # forward). If the splash is the only MetalRage window, its client area is
+        # too small and this blocks; if the real window exists but the splash still
+        # has focus, the handle-equality check below blocks instead.
+        $mainWin = Get-MetalRageWindow
+        if ($null -eq $mainWin) {
+            return @{ Blocked = $true; Reason = "no visible MetalRage window found"; Handle = $fg }
         }
+        $mainClientRect = New-Object PicoGuardWin32+RECT
+        $okMainClient = [PicoGuardWin32]::GetClientRect($mainWin.Handle, [ref]$mainClientRect)
+        $mainClientW = if ($okMainClient) { $mainClientRect.Right - $mainClientRect.Left } else { 0 }
+        $mainClientH = if ($okMainClient) { $mainClientRect.Bottom - $mainClientRect.Top } else { 0 }
+        if (-not $okMainClient -or $mainClientW -lt $ReadyClientWidth -or $mainClientH -lt $ReadyClientHeight) {
+            return @{ Blocked = $true; Reason = "largest visible MetalRage window is too small (client ${mainClientW}x${mainClientH}, need >=${ReadyClientWidth}x${ReadyClientHeight} -- likely the splash, or the game window is not ready yet)"; Handle = $fg }
+        }
+        if ($fg -ne $mainWin.Handle) {
+            return @{ Blocked = $true; Reason = "foreground MetalRage window is not the main game window (foreground handle $fg differs from the largest visible MetalRage window $($mainWin.Handle), $($mainWin.Width)x$($mainWin.Height) -- likely the splash is focused)"; Handle = $fg }
+        }
+        $r = $mainWin.Rect
         $onPrimary = ($r.Left -ge $PrimaryBounds.Left) -and ($r.Right -le $PrimaryBounds.Right) -and
                      ($r.Top -ge $PrimaryBounds.Top) -and ($r.Bottom -le $PrimaryBounds.Bottom)
         if (-not $onPrimary) {
@@ -305,6 +399,120 @@ function Invoke-ClickAt {
     }
 }
 
+# IME_EN -- pseudo-command handled entirely in this script (never forwarded to the
+# firmware), same as CLICK_AT: switches the gated foreground MetalRage window's IME
+# to en-US (WM_INPUTLANGCHANGEREQUEST) before login types the account/password, so a
+# fresh client's default Chinese/Bopomofo IME does not swallow the keystrokes into
+# composition (tools/win/input.ps1's ToEnglish() does the exact same PostMessage +
+# LoadKeyboardLayout technique -- duplicated here rather than calling that script,
+# since pico_serial.ps1 is copied to Windows and run standalone via `-File`, and
+# because this needs to run through pico_serial.ps1's own gates, not input.ps1's).
+# Sends no keyboard/mouse input to the firmware at all -- takes the already-gated
+# window handle and posts one message to it.
+function Invoke-ImeEnglish {
+    param($WindowHandle)
+    try {
+        $WM_INPUTLANGCHANGEREQUEST = 0x0050
+        $en = [PicoGuardWin32]::LoadKeyboardLayout("00000409", 1)
+        if ($en -eq [IntPtr]::Zero) {
+            return @{ Line = "[BLOCKED] IME_EN LoadKeyboardLayout(en-US) failed"; Blocked = $true }
+        }
+        [void][PicoGuardWin32]::PostMessage($WindowHandle, $WM_INPUTLANGCHANGEREQUEST, [IntPtr]::Zero, $en)
+        Start-Sleep -Milliseconds 250
+        return @{ Line = "[200] IME_EN -> en-US requested"; Blocked = $false }
+    } catch {
+        return @{ Line = "[BLOCKED] IME_EN threw: $($_.Exception.Message)"; Blocked = $true }
+    }
+}
+
+$GA_ROOT = 2
+
+# CLOSE_WINDOW -- pseudo-command handled entirely in this script (never forwarded to
+# the firmware), added because taskkill/Stop-Process are denied on the client (it runs
+# elevated via manifest requireAdministrator, see docs/journal/2026-09-19-2230-
+# unattended-trial-01.md's 「當掉重開的實測」 -- WM_CLOSE-by-handle would hit the same
+# elevation wall as taskkill, so this clicks the real close-button glyph instead,
+# same as a human would). Target is WINDOW-frame-relative (from GetWindowRect's
+# top-left), not client-area-relative like CLICK_AT's ClientToScreen -- the X glyph
+# sits in the title bar, outside the client area. (1585,15) is measured in shot.sh's
+# whole-window frame space (1616x1239, see atlas/manifest.json shot_size). Before
+# every click attempt (pre-check and again right before the actual CLICK, mirroring
+# CLICK_AT's re-gate-before-click pattern), requires WindowFromPoint(target)'s root
+# ancestor (GetAncestor(..., GA_ROOT)) to BE the gated game window -- if some other
+# window is actually on top at that screen point, this blocks instead of clicking
+# whatever that is.
+function Invoke-CloseWindow {
+    param($SerialPort, $WindowHandle)
+    try {
+        $wr = New-Object PicoGuardWin32+RECT
+        $okWr = [PicoGuardWin32]::GetWindowRect($WindowHandle, [ref]$wr)
+        if (-not $okWr) {
+            return @{ Line = "[BLOCKED] CLOSE_WINDOW GetWindowRect failed"; Blocked = $true }
+        }
+        $targetX = $wr.Left + 1585
+        $targetY = $wr.Top + 15
+
+        $checkRoot = {
+            param($x, $y)
+            $pt = New-Object PicoGuardWin32+POINT
+            $pt.X = $x; $pt.Y = $y
+            $hit = [PicoGuardWin32]::WindowFromPoint($pt)
+            if ($hit -eq [IntPtr]::Zero) { return [IntPtr]::Zero }
+            return [PicoGuardWin32]::GetAncestor($hit, $GA_ROOT)
+        }
+
+        $root = & $checkRoot $targetX $targetY
+        if ($root -ne $WindowHandle) {
+            return @{ Line = "[BLOCKED] CLOSE_WINDOW target ($targetX,$targetY) root ancestor $root is not the game window $WindowHandle (something else is on top of the close button)"; Blocked = $true }
+        }
+
+        # Same closed-loop MOVE + cursor read-back as CLICK_AT (see its comment),
+        # tightened to +/-3px since the close-button glyph is small.
+        $gx = 2.46; $gy = 2.46
+        $converged = $false
+        for ($iter = 0; $iter -lt 12; $iter++) {
+            $cur = [System.Windows.Forms.Cursor]::Position
+            $dx = $targetX - $cur.X
+            $dy = $targetY - $cur.Y
+            if ([Math]::Abs($dx) -le 3 -and [Math]::Abs($dy) -le 3) { $converged = $true; break }
+            $mx = [int][Math]::Round($dx / $gx); if ($mx -eq 0 -and [Math]::Abs($dx) -gt 3) { $mx = [Math]::Sign($dx) }
+            $my = [int][Math]::Round($dy / $gy); if ($my -eq 0 -and [Math]::Abs($dy) -gt 3) { $my = [Math]::Sign($dy) }
+            $moveReply = Send-PicoCommand -SerialPort $SerialPort -Cmd "MOVE $mx $my" -BudgetMs 3500
+            if ($moveReply -eq $null) {
+                return @{ Line = "[BLOCKED] CLOSE_WINDOW move timed out en route to ($targetX,$targetY)"; Blocked = $true }
+            }
+            Start-Sleep -Milliseconds 40
+            $after = [System.Windows.Forms.Cursor]::Position
+            if ([Math]::Abs($mx) -ge 3) { $gx = [Math]::Min(3.0, [Math]::Max(0.3, ($after.X - $cur.X) / $mx)) }
+            if ([Math]::Abs($my) -ge 3) { $gy = [Math]::Min(3.0, [Math]::Max(0.3, ($after.Y - $cur.Y) / $my)) }
+        }
+        if (-not $converged) {
+            $cur = [System.Windows.Forms.Cursor]::Position
+            return @{ Line = "[BLOCKED] CLOSE_WINDOW did not converge after 12 tries, target ($targetX,$targetY) got ($($cur.X),$($cur.Y))"; Blocked = $true }
+        }
+
+        # Re-check the foreground gate AND the root-ancestor-at-point check right
+        # before clicking -- the moves above took tens of ms and focus/monitor/
+        # window-order could have changed underneath us.
+        $regate = Test-ForegroundGate
+        if ($regate.Blocked) {
+            return @{ Line = "[BLOCKED] $($regate.Reason) CLOSE_WINDOW"; Blocked = $true }
+        }
+        $root2 = & $checkRoot $targetX $targetY
+        if ($root2 -ne $WindowHandle) {
+            return @{ Line = "[BLOCKED] CLOSE_WINDOW re-check: target ($targetX,$targetY) root ancestor $root2 is not the game window $WindowHandle"; Blocked = $true }
+        }
+
+        $clickReply = Send-PicoCommand -SerialPort $SerialPort -Cmd "CLICK left" -BudgetMs 3000
+        if ($clickReply -eq $null) {
+            return @{ Line = "[ERR-TIMEOUT] CLOSE_WINDOW click phase"; Blocked = $false }
+        }
+        return @{ Line = "[200] CLOSE_WINDOW -> screen($targetX,$targetY) $clickReply"; Blocked = $false }
+    } catch {
+        return @{ Line = "[BLOCKED] CLOSE_WINDOW threw: $($_.Exception.Message)"; Blocked = $true }
+    }
+}
+
 $port = New-Object System.IO.Ports.SerialPort $Port, 115200
 $port.DtrEnable = $true
 $port.NewLine = "`n"
@@ -347,6 +555,28 @@ try {
 
             if ($verb -eq "CLICK_AT") {
                 $result = Invoke-ClickAt -SerialPort $port -Tokens $tokens -WindowHandle $gate.Handle
+                Write-Output $result.Line
+                if ($result.Blocked) {
+                    Send-SafetyReset -SerialPort $port
+                    $exitCode = 3
+                    break
+                }
+                continue
+            }
+
+            if ($verb -eq "IME_EN") {
+                $result = Invoke-ImeEnglish -WindowHandle $gate.Handle
+                Write-Output $result.Line
+                if ($result.Blocked) {
+                    Send-SafetyReset -SerialPort $port
+                    $exitCode = 3
+                    break
+                }
+                continue
+            }
+
+            if ($verb -eq "CLOSE_WINDOW") {
+                $result = Invoke-CloseWindow -SerialPort $port -WindowHandle $gate.Handle
                 Write-Output $result.Line
                 if ($result.Blocked) {
                     Send-SafetyReset -SerialPort $port

@@ -1,0 +1,10 @@
+{
+  "id": "U-relaunch-login",
+  "purpose": "Planned (not crash-recovery) relaunch + login: close the client if present (real Pico click on the title-bar close X via client_ctl.py's `relaunch` subcommand -- taskkill/Stop-Process are denied on this elevated client, see client_ctl.py's module docstring), launch, wait for the REAL game window (largest visible MetalRage window, client area >=1600x1200 -- not the splash a fresh launch briefly shows, see pico_serial.ps1/client_ctl.ps1's Get-MetalRageWindow), then login(account) -- IME_EN, click 帳號, TYPE account, TAB, TYPE dummy password, ENTER -- confirmed by both the server receiving CQ_LOGIN_WASABII 0x00110151 and the client showing the lobby screen. One step (relaunch_client composes client_ctl.py relaunch + login() internally, see actions.py's docstring) so the whole sequence fails closed as a unit. Account name is this task's own test account, ASCII only.",
+  "preconditions": {},
+  "steps": [
+    {"action": "relaunch_client", "params": {"account": "Lucas", "reason": "U-relaunch-login planned relaunch"}}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_image_reviews": 0
+}

@@ -1,14 +1,14 @@
 {
   "id": "U-shop-tabs",
-  "purpose": "Reproduce U-20260919-01 (docs/journal/2026-09-19-2230-unattended-trial-01.md) under the deterministic runner: lobby -> shop -> each item-type sub-tab -> back to lobby. No purchases, no gifting.",
+  "purpose": "Reproduce U-20260919-01 (docs/journal/2026-09-19-2230-unattended-trial-01.md) under the deterministic runner: lobby -> shop -> each item-type sub-tab -> back to lobby. No purchases, no gifting. Every step's wait_for() poll uses keepalive_interval_s (KEY SHIFT tap, see actions.py's keepalive_key_tap() -- 🟡 guess, not DLL-backed) to demonstrate the option end to end; this experiment's own waits are well under the ~80s AFK-kick timing observed 2026-09-19, so it is not expected to change the PASS/FAIL result, only exercise the plumbing.",
   "preconditions": {"screen": "lobby"},
   "steps": [
-    {"action": "goto_shop"},
-    {"action": "shop_tab", "params": {"name": "aux"}},
-    {"action": "shop_tab", "params": {"name": "equip"}},
-    {"action": "shop_tab", "params": {"name": "item"}},
-    {"action": "shop_tab", "params": {"name": "mshop"}},
-    {"action": "back_to_lobby"}
+    {"action": "goto_shop", "params": {"keepalive_interval_s": 30}},
+    {"action": "shop_tab", "params": {"name": "aux", "keepalive_interval_s": 30}},
+    {"action": "shop_tab", "params": {"name": "equip", "keepalive_interval_s": 30}},
+    {"action": "shop_tab", "params": {"name": "item", "keepalive_interval_s": 30}},
+    {"action": "shop_tab", "params": {"name": "mshop", "keepalive_interval_s": 30}},
+    {"action": "back_to_lobby", "params": {"keepalive_interval_s": 30}}
   ],
   "stop_conditions": {"max_consecutive_failures": 1},
   "max_image_reviews": 0

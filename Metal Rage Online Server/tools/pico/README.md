@@ -94,6 +94,18 @@ python3 tools/pico/pico_ctl.py win_click 512,300         # win_click 是 click_a
 ```
 座標解析、相對移動、游標讀回校正（最多 6 次迭代收斂到 ±4px 內）都在 `pico_serial.ps1` 同一個 PowerShell 進程內完成，點擊目標超出遊戲視窗客戶區、或收斂失敗，一律 `[BLOCKED]`、不送出 CLICK。舊版 `win_click`（用 `screen.ps1` 抓視窗座標、`MOVE_TO` 盲送、沒有目標驗證）已經移除。
 
+### 輸入法切換：`raw IME_EN`
+```bash
+python3 tools/pico/pico_ctl.py raw "IME_EN"
+```
+把目前通過閘門的遊戲視窗（一定是真正的遊戲視窗，不是啟動畫面，見下方「真正的遊戲視窗」）鍵盤配置切成 en-US（`WM_INPUTLANGCHANGEREQUEST` + `LoadKeyboardLayout`），跟 `tools/win/input.ps1` 的 `ToEnglish()` 是同一招，在 `pico_serial.ps1` 裡另外做一份是因為它是獨立複製到 Windows 單獨執行的腳本，且要吃同一套閘門。新客戶端預設是中文輸入法，`TYPE` 之前先送這個，否則按鍵會被輸入法吃掉。跟 `CLICK_AT` 一樣是偽指令，不會轉送給韌體。
+
+### 關閉視窗：`raw CLOSE_WINDOW`
+```bash
+python3 tools/pico/pico_ctl.py raw "CLOSE_WINDOW"
+```
+這台客戶端是用 manifest `requireAdministrator` 拉高權限啟動的，WSL／不是系統管理員身分送出的 `taskkill`／`Stop-Process` 一律被拒（2026-09-19 實測，見 `docs/journal/2026-09-19-2230-unattended-trial-01.md`），目前沒有其他終止手段（`AGENTS.md` 硬性約束 1）。`CLOSE_WINDOW` 改成像人一樣，真的用滑鼠點視窗右上角的關閉鍵（X）：目標座標從**真正的遊戲視窗**的 `GetWindowRect` 換算（不是客戶區相對座標，X 在標題列上，`click_at` 那套客戶區換算用不上），閉環收斂到 ±3px；點擊前（含收斂後、真正送出 CLICK 前的最後一次）都會用 `WindowFromPoint` + `GetAncestor(GA_ROOT)` 確認那個螢幕座標上真正的頂層視窗就是被閘門認證過的遊戲視窗，不是別的東西蓋在上面（例如確認關閉的對話框、或別的視窗）——條件不成立就 `[BLOCKED]`，不會亂點。`client_ctl.py restart`／`relaunch` 用這個當關閉步驟，taskkill 只留做事後記錄「確實被拒」的備援，不指望它真的有用。
+
 ---
 
 ## 無人值守護欄（Unattended Safety Guards）
@@ -117,13 +129,14 @@ Session 狀態存在 `tools/pico/.pico_session`（已加進 `.gitignore`，不�
 - 視窗沒有被縮到最小
 - 視窗完整落在**主螢幕**（副螢幕放 VS Code / 終端機，不該收到任何按鍵）
 - 不是鎖定畫面／安全桌面（前景行程是 `LockApp`／`LogonUI`／`consent` 等）
+- **是真正的遊戲視窗，不是啟動畫面**：剛啟動的客戶端會同時有兩個可見的頂層視窗——一個約 420×260 的啟動畫面（logo/copyright，登入前會疊在遊戲視窗上面）跟真正的遊戲視窗（客戶區 1600×1200）。`Process.MainWindowHandle`（舊版 `client_ctl.ps1`／`screen.ps1` 用的）2026-09-19 重開機實測會抓到啟動畫面，不是遊戲視窗（見 `docs/journal/2026-09-19-2230-unattended-trial-01.md`）。`Get-MetalRageWindow`（`pico_serial.ps1`／`client_ctl.ps1`／`tools/win/screen.ps1` 各自複製一份，因為每支都是獨立複製到 Windows、用 `-File` 單獨執行的腳本，做不到共用函式庫）改用 `EnumWindows` 找出**同一份 MetalRage 行程底下所有可見頂層視窗裡最大的那個**；閘門另外要求它的客戶區 ≥1600×1200（`GetClientRect`），太小（啟動畫面）就 `[BLOCKED]`；就算夠大，如果目前的前景視窗**不是**那個最大視窗（例如啟動畫面還疊在上面、搶走了焦點），一樣 `[BLOCKED]`——這一步**只驗證**，從不呼叫 `SetForegroundWindow`（`docs/reference/unattended.md`「不用 Pico 點擊來搶前景」），把遊戲切到前景是操作者或 `tools/win/shot.sh`（`screen.ps1`，這次任務也改用 `Get-MetalRageWindow`，見上方「點擊」小節）的工作。
 
 任一項不成立就印出 `[BLOCKED] <原因> <指令>`，送一個 `RESET`（釋放所有按鍵，盡力而為，失敗也不影響回報的原因）給 Pico，結束碼 3，**整批指令當場停止、不繼續處理**。
 
 **所有檢查都是 fail-closed**：Win32 查詢丟例外、抓不到前景視窗、抓不到 MetalRage 行程……任何查不出「確定沒問題」的情況都當作 `BLOCKED`，不會重試、不會放行。
 
-### 3. 點擊目標閘門（`click_at` / `win_click`）
-見上方「點擊」小節：目標必須落在遊戲視窗客戶區內，游標必須真的移動、讀回確認在 ±4px 內才送出 `CLICK`，否則 `[BLOCKED]`。
+### 3. 點擊目標閘門（`click_at` / `win_click` / `CLOSE_WINDOW`）
+見上方「點擊」小節：目標必須落在遊戲視窗客戶區內，游標必須真的移動、讀回確認在 ±4px 內才送出 `CLICK`，否則 `[BLOCKED]`。`CLOSE_WINDOW`（見上方「關閉視窗」）是視窗外框相對座標，收斂門檻 ±3px，另外要求點擊當下那個螢幕座標的頂層視窗確實是被閘門認證過的遊戲視窗（`WindowFromPoint` + `GetAncestor`）。
 
 ### 4. 文字閘門（TYPE）
 `TYPE` 只接受可列印 ASCII（0x20–0x7E）；有中文或其他非 ASCII 字元會在送到 Pico 之前就被 `[BLOCKED]`（PowerShell 端也會再檢查一次）——中文輸入法會把鍵盤巨集打亂，乾脆不接受。
@@ -148,6 +161,7 @@ STOP 檔案的檢查跟前景視窗閘門一樣是 fail-closed、每個指令送
 ### 已知限制 / 待決
 - 這些護欄都掛在**序列埠傳輸**（`pico_serial.ps1`）上。如果切成 `PICO_TRANSPORT=http`（WiFi 模式），指令直接打去 Pico 的 HTTP handler，**不會經過前景視窗／點擊目標／ASCII 閘門**，只剩 session 這一層（在 `pico_ctl.py`）。無人值守時不要切到 HTTP 模式。
 - 前景視窗閘門檢查的是「視窗完整落在主螢幕」，用的是 `GetWindowRect` 的視窗外框（含邊框），不是客戶區；一般情況下夠用，但如果視窗有透明邊框或跨螢幕邊界一兩個像素，行為未驗證過。
+- `CLOSE_WINDOW` 的關閉鍵座標 `(1585,15)`（視窗外框相對）是從一張 2026-09-19 重開機截圖量出來的，還沒有對真正的客戶端送過真的 `CLOSE_WINDOW`（這次任務的契約明確禁止——鏈頭要親自在旁邊測）；`WindowFromPoint`／`GetAncestor` 的根視窗檢查、±3px 收斂閾值也都只做過靜態語法檢查，沒有跑過。
 
 ---
 
@@ -167,17 +181,21 @@ python3 tools/pico/client_ctl.py evidence "some-label"
 
 python3 tools/pico/client_ctl.py restart --step login --reason "卡在登入畫面" --dry-run
 python3 tools/pico/client_ctl.py restart --step login --reason "卡在登入畫面"
+
+python3 tools/pico/client_ctl.py relaunch --reason "夜間長跑前重開一次" --dry-run
+python3 tools/pico/client_ctl.py relaunch --reason "夜間長跑前重開一次"
 ```
 
-`restart` 一定要先有一個**開著、沒被 halt** 的 pico session（跟 `pico_ctl.py` 共用同一個 `.pico_session`）。依序擋下：STOP 檔案存在、這個 session 已經重啟滿 3 次、或**跟上一次重啟是同一個 step 標籤**（代表同一個點連續崩兩次，八成是迴圈，不值得再自動試）——任何一種都會直接把 session 標成 halted，結束碼非 0，不重試。通過閘門後：先留證據（重啟前的畫面/log），再檢查客戶端行程還在不在。
+`restart`／`relaunch` 都要先有一個**開著、沒被 halt** 的 pico session（跟 `pico_ctl.py` 共用同一個 `.pico_session`）。`restart` 是崩潰復原用的，依序擋下：STOP 檔案存在、這個 session 已經重啟滿 3 次、或**跟上一次重啟是同一個 step 標籤**（代表同一個點連續崩兩次，八成是迴圈，不值得再自動試）——任何一種都會直接把 session 標成 halted，結束碼非 0，不重試。`relaunch` 是**計畫性**重開（不是崩潰），故意不套用這兩個崩潰預算限制，記在 session 自己另一個欄位（`client_relaunch_count`），完全不會碰到／被 `client_restart_count`／`client_last_restart_step` 卡住。兩者通過各自的閘門後都一樣：先留證據，再檢查客戶端行程還在不在。
 
-**2026-09-19 實測：行程還在但卡死時，`taskkill /IM MetalRage.exe /F` 殺不掉**（很可能是 XIGNCODE 的反作弊驅動保護，見 `docs/journal/2026-09-19-2230-unattended-trial-01.md`「當掉重開的實測」）。依 `AGENTS.md` 硬性約束 1，**不嘗試其他終止手段**。所以現在的規則是：
-- 行程還在（不管有沒有回應）→ **不嘗試終止**，直接把 session 標成 halted，理由是 `client present but unresponsive/needs restart; cannot terminate (protected) — operator needed`，結束碼非 0，等操作者手動處理。
-- 行程真的不在了（`status` 回 `NOT_RUNNING`）→ 才走 `Play Metal Rage Online.bat` 重開、等視窗出現（最多 90 秒）。
+**2026-09-19 實測：taskkill／`Stop-Process` 殺不掉這個客戶端**（它是用 manifest `requireAdministrator` 拉高權限啟動的，WSL 這邊不是系統管理員身分，見 `docs/journal/2026-09-19-2230-unattended-trial-01.md`「當掉重開的實測」）。依 `AGENTS.md` 硬性約束 1，不嘗試繞過權限；但既然不能用 taskkill，就用 Pico 真的點一下視窗右上角的關閉鍵（`CLOSE_WINDOW`，見上方「關閉視窗」）——跟人手動關掉是同一個動作，不是繞過保護。規則：
+- 行程還在**而且有回應**→ `close_window()`（送 `CLOSE_WINDOW`）→ 等最多 20 秒行程真的結束；如果這段時間跳出確認對話框或變成「沒有回應」的殘影視窗，**不會再點任何東西**，改送一次 taskkill 純粹為了在 log 留一筆「確實被拒」的紀錄，然後把 session 標成 halted，結束碼非 0，等操作者處理。
+- 行程還在**但沒有回應**（已經真的卡死）→ 不嘗試 `CLOSE_WINDOW`（點一個真的沒回應的視窗大概率也沒用，見 `close_client()` 文件字串），直接把 session 標成 halted，等操作者處理——這個分支跟這次改動之前的行為一樣。
+- 行程真的不在了（`status` 回 `NOT_RUNNING`）→ 才走 `Play Metal Rage Online.bat` 重開、等**真正的遊戲視窗**出現（見上方「真正的遊戲視窗」，最多 90 秒；不是舊版 `MainWindowHandle` 判定，那個抓到的可能是啟動畫面）。
 
-過程中任何一步失敗一樣直接 halt session。**不會自動登入**，登入是後面的 Pico 步驟做的事。`client_ctl.ps1` 的 `kill`／`wait_exit` 動作還在（保留當手動/底層工具用），但 `restart` 已經不會呼叫它們。
+過程中任何一步失敗一樣直接 halt session。**兩個指令都不會自動登入**——這是刻意維持的界線，登入永遠是後面的 Pico 步驟做的事；`actions.py` 的 `relaunch_client()` action 把 `client_ctl.py relaunch`（純行程操作 + `CLOSE_WINDOW`）跟 `login()` action（見下方「無模型的決定性實驗跑者」）串成一個動作，但兩層各自獨立、各自可以單獨呼叫。`client_ctl.ps1` 的 `kill`／`wait_exit` 動作還在（保留當手動/底層工具、以及 `close_client()` 的 taskkill 備援用），但這兩個指令都不再把它們當主要關閉手段。
 
-`--dry-run` 會照樣跑完所有閘門檢查、印出「接下來會做什麼」，但完全不碰真正的客戶端、也不改 session 檔案，測試改動時用這個，不要對正在用的客戶端跑真的 `restart`。
+`--dry-run` 會照樣跑完所有閘門檢查、印出「接下來會做什麼」，但完全不碰真正的客戶端、也不改 session 檔案，測試改動時用這個，不要對正在用的客戶端跑真的 `restart`／`relaunch`。
 
 ---
 
@@ -210,14 +228,17 @@ PICO_TRANSPORT=http python3 tools/pico/pico_ctl.py ping
 
 組成：
 - `screens.py` — 螢幕分類器。拿 `shot.sh` 拍的整個遊戲視窗（1616×1239，client area 1600×1200、偏移 (8,31)）跟 `atlas/` 底下的小張參考裁圖比對「平均絕對誤差」（MAD，numpy 算，沒有裝 OpenCV）。`atlas/manifest.json` 記每個標記的裁切框跟門檻，裁圖檔案很小（幾 KB 到幾十 KB），全部進 repo；完整參考截圖留在 `shots/`（已在 `.gitignore`，不進 repo）。
-  - `classify_screen(img)` → 回傳 `lobby` / `shop` / `console_open` / `unknown`，附分數、次佳分數的差距（margin）、`gray`（灰色地帶）旗標。
+  - `classify_screen(img)` → 回傳 `lobby` / `shop` / `login` / `console_open` / `unknown`，附分數、次佳分數的差距（margin）、`gray`（灰色地帶）旗標。`login` 是這次任務新加的：裁自 `shots/login-screen.png`（2026-09-19 重開機實測的登入畫面，見「客戶端崩潰偵測與復原」一節），框住「帳號」／「密碼」欄位標籤文字（box `[605,845,680,935]`，刻意避開帳號欄位裡會閃爍的輸入游標）。跟 lobby/shop 互相比對過：login 框在真實 lobby 截圖上 MAD 86.25，lobby/shop 框在 login 截圖上 MAD 32.10／43.29，都遠超過 `screen_accept`(12.0) 的門檻，三者不會互相誤判（這次任務量出來的，不是假設）。
   - `console_state(img)` → 獨立判斷主控台開／關（`open`/`closed`/`unknown`）。
   - `is_tab_active(img, tab_name)` → 商店分頁（`shop_main`/`shop_aux`/`shop_equip`/`shop_item`/`shop_mshop`）目前是否被選取。
   - `python3 screens.py build-atlas --shots-dir <參考截圖目錄>` 重建 atlas；`classify` / `console` / `tab` 三個子指令可以單獨對一張圖片跑分類，方便除錯。
-- `actions.py` — 參數化動作：`goto_shop`、`shop_tab(name)`、`back_to_lobby`、`open_console`、`close_console`、`console_cmd(text)`、`create_pve_room`、`start_battle`、`campaign_win_all`、`campaign_fail`、`deltest`、`keepalive_wait(seconds, interval_s)`、`wait_result_then_room`、`leave_room`。每個動作＝送指令前先單張截圖檢查前置畫面（不符合就不送任何輸入）→ 呼叫 `pico_ctl.py`（沒改它的行為，直接照 README 的 CLI 呼叫）→ 用 `screens.py` 輪詢或 session log 文字/封包訊號確認完成條件，逾時就回報失敗。`購買`／`送禮`等按鈕座標寫死擋掉（`FORBIDDEN_CLICKS`），就算實驗檔手滑寫錯座標也點不到。
+- `actions.py` — 參數化動作：`goto_shop`、`shop_tab(name)`、`back_to_lobby`、`open_console`、`close_console`、`console_cmd(text)`、`create_pve_room`、`start_battle`、`campaign_win_all`、`campaign_fail`、`deltest`、`keepalive_wait(seconds, interval_s)`、`wait_result_then_room`、`leave_room`、`login(account)`、`relaunch_client(account, reason)`。每個動作＝送指令前先單張截圖檢查前置畫面（不符合就不送任何輸入）→ 呼叫 `pico_ctl.py`（沒改它的行為，直接照 README 的 CLI 呼叫）→ 用 `screens.py` 輪詢或 session log 文字/封包訊號確認完成條件，逾時就回報失敗。`購買`／`送禮`等按鈕座標寫死擋掉（`FORBIDDEN_CLICKS`），就算實驗檔手滑寫錯座標也點不到。
   - `campaign_fail`：`GameCampaign 2`（任務失敗）送一次。`dispatch/lobby.dispatch.js` 的 Campaign_CN handler 只有 action=1 才會走 R-ROUND 的文字 marker，action=2 直接送 `EndGame_SN` 又沒有 marker，所以完成訊號改讀 session log 裡原始的 `{ev:'pkt', dir:'send', op:'0x00222213'}` 封包紀錄（`wait_for_log_pkts`），不是猜的。🟡 還沒真的跑過。
   - `deltest`：送 `delTest`（原始碼：場上所有機體含自己 `KilledBy(none)`）。**這個指令刻意沒有放進 `console_cmd(text)` 的 `CONSOLE_CMD_WHITELIST`**，只有 `deltest()` 這個動作本身會送，其他實驗檔／`console_cmd` 都送不到。送出後等 `wait_s`（預設 20 秒），回報這段期間 `Death_CN`（recv `0x00230123`）／`Death_SN`（send `0x00230124`）各幾筆。🟡 永遠不要在沒有操作者明確核准的情況下真的跑 `U-pve-deltest.json`。
   - `keepalive_wait(seconds, interval_s=30)`：純等待，每隔 `interval_s` 秒送一次「淨位移為 0」的滑鼠微動（`MOVE 1 0` 再 `MOVE -1 0`），避免大廳的「因長時間未動作，所以被強制退場」把畫面壓暗。🟡 [GUESS]：沒讀過客戶端閒置計時器的原始碼，選滑鼠移動只是因為目前已知的按鍵在大廳/房間/商店都各自有作用，不是驗證過的無害鍵；契約本身允許這個 fallback。
+  - `wait_for(..., keepalive_interval_s=None)`（這次任務新加）：所有動作共用的輪詢底層函式多一個選用參數，跟 `keepalive_wait` 是分開的第二種機制——不是獨立的等待步驟，而是可以掛在**任何**動作自己的 `wait_for` 輪詢上（例如 `goto_shop`／`shop_tab`／`back_to_lobby` 都已經轉發這個參數）。設為某個秒數後，輪詢期間每隔那麼久就送一次 `keepalive_key_tap()`：輕點一下 **SHIFT** 鍵（放開，不是按住）。🟡 [GUESS]、未經操作者實測：這次任務沒有讀客戶端原始碼驗證，選 SHIFT 的理由是——UDK/Unreal Engine 3 類客戶端（`ZPvePlayercontroller.uc` 等）的 Shift 慣例上是衝刺**修飾鍵**，要跟移動鍵一起按住才有效果；單獨點一下、不搭配任何移動鍵、而且是在大廳/房間/商店這種不是機體操作情境的畫面下送出，預期不會有任何可見效果。跟 `keepalive_wait` 的滑鼠微動比，這是**另一種**互相獨立的做法，供 lead 挑一種實測；`U-shop-tabs.json` 的每一步都示範性地打開了這個選項（見下方「夜間整批」前的實驗檔案清單），但那個實驗本身的等待時間遠低於 AFK 踢出的門檻，不代表真的需要它。
+  - `login(account)`：登入畫面 → `IME_EN`（切成 en-US，避免新客戶端預設的中文輸入法把按鍵吃掉）→ 點帳號欄（client `(777,829)`）→ `TYPE <account>` → `KEY TAB` → `TYPE x`（假密碼，伺服器沒有密碼檢查，這個確切值 2026-09-19 已經實測登入成功過）→ `KEY ENTER`。完成條件同時要求：伺服器收到 `CQ_LOGIN_WASABII 0x00110151`（`dispatch/account.dispatch.js:8`，讀原始碼確認，沒有對應的 `packetlog.marker()`，改用 `wait_for_log_pkts` 讀原始封包紀錄）**且**畫面變成 `lobby`。`account` 限制可列印 ASCII（跟 `TYPE` 閘門一致）。
+  - `relaunch_client(account, reason)`：**計畫性**重開（不是崩潰復原，跟 `client_ctl.py restart` 的重啟預算完全分開，見下一節），串接 `client_ctl.py relaunch`（純行程操作：有開著的視窗就用 `CLOSE_WINDOW` 點掉、啟動、等真正的遊戲視窗出現，見下一節）跟 `login(account)`。兩層邊界刻意保留：`client_ctl.py relaunch` 自己不登入，`login` 可以單獨用在別的場景（例如不是靠重開而是別的方式到達登入畫面）。
 - `runner.py run <experiment.json>` — 開 pico session → 檢查起始畫面 → 依序執行每一步 → **任何一步失敗或灰色地帶分類就整個停下**（送 `RESET`、結束 session，不重試、不繼續）→ 寫報告。`--dry-run` 只驗證檔案格式、印出每一步會做什麼，完全不送任何輸入、不開 session。
 
 實驗檔格式（`experiments/*.json`）：`id`／`purpose`／`preconditions.screen`／`steps`（每步 `action` + `params`）／`stop_conditions.max_consecutive_failures`／`max_image_reviews`（**必須是 0**——這版 runner 沒有接模型，非 0 會直接判定檔案無效；欄位保留給以後真的要接模型審查的版本用）。
@@ -239,10 +260,10 @@ python3 tools/pico/runner.py suite tools/pico/experiments/suite-nightly.json --d
 python3 tools/pico/runner.py suite tools/pico/experiments/suite-nightly.json   # 真的跑
 ```
 
-`experiments/suite-nightly.json` 目前是 `U-pve-fullmatch` → `U-pve-fail` → `U-shop-tabs-idle`。`U-pve-deltest` 故意不放進去，等它真的被人核准跑過一次現場之後才加。
+`experiments/suite-nightly.json` 目前是 `U-pve-fullmatch` → `U-pve-fail` → `U-shop-tabs-idle`。`U-pve-deltest` 故意不放進去，等它真的被人核准跑過一次現場之後才加。`U-relaunch-login.json`（這次任務新加，`relaunch_client` 單步）也故意不放進 suite——它會真的關掉／重開客戶端，跟其他夜間項目假設「客戶端已經開著、停在大廳」不一樣，先讓 lead 單獨實測過再考慮要不要放進去。
 
 已知限制／待審查（見這次任務的報告，交給主力）：
-- `classify_screen` 目前只認得 `lobby`／`shop`／`console_open` 三種畫面，別的畫面一律回 `unknown`（等同灰色地帶，runner 會停）。
+- `classify_screen` 目前只認得 `lobby`／`shop`／`login`／`console_open` 四種畫面，別的畫面一律回 `unknown`（等同灰色地帶，runner 會停）。
 - `console_open` 只驗證過「主控台疊在大廳上面」這個組合（`f24-after.png`），疊在商店上面的畫面沒有參考截圖，分類器對那個組合的行為未驗證。
 - `console_cmd(text)` 只實作了結構（前置檢查主控台開著、ASCII 檢查、TYPE+ENTER），完成條件是「主控台看起來還開著」，**不驗證指令是否真的執行**——刻意不去猜測任何 opcode 當文字訊號。目前沒有任何實驗檔用到它。
 - 文字訊號目前只用 `pico:` marker（送出/被擋），沒有用任何協定層 opcode 當完成訊號，避免在不熟的封包上亂猜。

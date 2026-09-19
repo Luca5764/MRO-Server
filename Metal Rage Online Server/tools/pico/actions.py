@@ -33,6 +33,7 @@ import screens  # noqa: E402
 MRO_SERVER_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))  # .../Metal Rage Online Server
 REPO_ROOT = os.path.dirname(MRO_SERVER_DIR)
 PICO_CTL = os.path.join(SCRIPT_DIR, "pico_ctl.py")
+CLIENT_CTL = os.path.join(SCRIPT_DIR, "client_ctl.py")
 SHOT_SH = os.path.join(MRO_SERVER_DIR, "tools", "win", "shot.sh")
 DEFAULT_SHOTS_DIR = os.path.join(REPO_ROOT, "shots")
 DEFAULT_LOGS_DIR = os.path.join(MRO_SERVER_DIR, "logs")
@@ -99,6 +100,22 @@ DEFAULT_KEEPALIVE_INTERVAL_S = 30.0
 # followed by either "...EndRound_SN 0x00222211" (more rounds to go) or
 # "...last round, EndGame_SN" (match over).
 ROUND_MARKER_RE = re.compile(r"^R-ROUND: cleared=(\d+) playRound=(\d+) -> (.*)$")
+
+# login()'s 帳號 field, client coords -- 2026-09-19 operator-click-tested
+# (docs/journal/2026-09-19-2230-unattended-trial-01.md + this task's contract:
+# "clicking the 帳號 field at client (777,829) then TYPE Lucas, KEY TAB, TYPE
+# x, KEY ENTER logged in"). The dummy password is that exact tested value --
+# the server has no password check (any value works), see the same journal
+# entry -- kept as-is rather than substituted, since only that value has
+# actually been click-tested end to end.
+LOGIN_ACCOUNT_FIELD = (777, 829)
+LOGIN_DUMMY_PASSWORD = "x"
+# CQ_LOGIN_WASABII, dispatch/account.dispatch.js:8 -- confirmed by reading
+# that handler for this task (no packetlog.marker() call exists for it, same
+# situation as campaign_fail()'s EndGame_SN, hence wait_for_log_pkts() below
+# rather than wait_for_log_markers()).
+LOGIN_CQ_OPCODE = "0x00110151"
+DEFAULT_LOGIN_TIMEOUT_S = 20.0
 
 
 class ActionError(Exception):
@@ -180,22 +197,62 @@ def mouse_wiggle(ctx, distance=1):
     return [run_pico(ctx, "move", distance, 0), run_pico(ctx, "move", -distance, 0)]
 
 
+def keepalive_key_tap(ctx):
+    """Taps KEEPALIVE_KEY (a press+release, see pico_ctl.py's `key` / code.py's
+    key_press()) as a "still here" input for wait_for()'s keepalive_interval_s
+    option below -- an alternative to keepalive_wait()'s mouse_wiggle for
+    callers that want a keepalive during an ordinary wait_for() poll loop
+    rather than a dedicated standalone wait step.
+
+    KEEPALIVE_KEY = "SHIFT" (this task's design choice, requested by this
+    task's contract: "propose and justify, e.g. a modifier tap like SHIFT; do
+    NOT use keys that open menus"). 🟡 [GUESS], not DLL-backed, same caveat as
+    keepalive_wait()'s mouse_wiggle choice -- no client source was read for
+    this task either. Reasoning: every other key this module knows how to
+    send has an observed or plausible in-game effect in at least one of
+    lobby/room/shop (F1-F12 hotkeys, ESC closes dialogs, ENTER submits chat/
+    buttons/dialogs, arrow keys likely navigate menus, F24 opens the
+    console -- see keepalive_wait()'s docstring). SHIFT is different: on a
+    UDK/Unreal-Engine-3-based client (ZPvePlayercontroller.uc etc., see
+    campaign_win_all()'s docstring) a bare Shift is conventionally a sprint
+    *modifier*, bound together with a movement key (GBA_Sprint-style), not a
+    standalone action -- tapping it alone, with no WASD held at the same
+    time, and while sitting in a menu screen (lobby/room/shop are not the
+    pawn's movement context at all), should not do anything observable. This
+    has NOT been confirmed live -- the lead is expected to verify it
+    (contract: "Mark the choice 🟡 in README; the lead will verify live")."""
+    return run_pico(ctx, "key", "SHIFT")
+
+
+KEEPALIVE_KEY = "SHIFT"
+
+
 def type_text(ctx, text):
     if not all(0x20 <= ord(c) <= 0x7E for c in text):
         raise ActionError("console_cmd text must be printable ASCII (see pico_ctl.py TYPE gate)")
     return run_pico(ctx, "type", text)
 
 
-def wait_for(ctx, label, timeout_s, check_fn):
+def wait_for(ctx, label, timeout_s, check_fn, keepalive_interval_s=None):
     """Polls with fresh screenshots until check_fn(classify_result_or_state)
     is satisfied or timeout_s elapses. check_fn takes the raw screenshot path
     and must return (ok: bool, gray: bool, detail: str, score: float|None).
     Always takes at least one screenshot, even at timeout=0, so a result is
-    reported. Returns (ok, gray, detail, score, screenshot_path, elapsed_s)."""
+    reported. Returns (ok, gray, detail, score, screenshot_path, elapsed_s).
+
+    keepalive_interval_s (optional, default None = off): every time at least
+    this many seconds have passed since the last keepalive tap (or since this
+    call started), sends one keepalive_key_tap() before the next sleep --
+    this task's "runner option to send a harmless key periodically while
+    waiting" (see keepalive_key_tap()'s docstring), usable from ANY wait_for()
+    call rather than only via the dedicated keepalive_wait() action. Off by
+    default everywhere -- existing callers/behavior are unaffected unless a
+    caller explicitly opts in."""
     t0 = time.monotonic()
     attempt = 0
     last = (False, True, "no screenshot taken", None)
     shot_path = None
+    last_keepalive = t0
     while True:
         attempt += 1
         shot_path = take_screenshot(ctx, f"{label}-{attempt}")
@@ -206,6 +263,9 @@ def wait_for(ctx, label, timeout_s, check_fn):
             break
         if time.monotonic() - t0 >= timeout_s:
             break
+        if keepalive_interval_s is not None and (time.monotonic() - last_keepalive) >= keepalive_interval_s:
+            keepalive_key_tap(ctx)
+            last_keepalive = time.monotonic()
         time.sleep(ctx.poll_interval_s)
     elapsed = time.monotonic() - t0
     ok, gray, detail, score = last
@@ -372,8 +432,14 @@ def _precondition(ctx, action_name, expect_name, check_fn):
 # ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
-def goto_shop(ctx):
-    """Triggered by: clicking the 商城/格納庫 button in the lobby top bar."""
+def goto_shop(ctx, keepalive_interval_s=None):
+    """Triggered by: clicking the 商城/格納庫 button in the lobby top bar.
+
+    keepalive_interval_s (optional, default None = off): forwarded to
+    wait_for()'s keepalive option (see its docstring) -- this action's own
+    wait is short (<=8s) and does not need it, but U-shop-tabs.json sets it
+    on every step in this module as this task's requested demonstration of
+    the option end-to-end (see README)."""
     t0 = time.monotonic()
     pre = _precondition(ctx, "goto_shop", "lobby", _screen_check("lobby"))
     if pre:
@@ -381,13 +447,14 @@ def goto_shop(ctx):
     steps = []
     if not ctx.dry_run:
         steps.append(click_at(ctx, SHOP_BUTTON))
-    ok, gray, detail, score, shot, _ = wait_for(ctx, "goto_shop", 8.0, _screen_check("shop"))
+    ok, gray, detail, score, shot, _ = wait_for(ctx, "goto_shop", 8.0, _screen_check("shop"),
+                                                 keepalive_interval_s=keepalive_interval_s)
     return ActionResult("goto_shop", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
-def shop_tab(ctx, name):
+def shop_tab(ctx, name, keepalive_interval_s=None):
     """Triggered by: clicking one of the shop's sub-tab buttons (輔助武器/裝備/
-    道具/M幣商城/主武器)."""
+    道具/M幣商城/主武器). keepalive_interval_s: see goto_shop()'s docstring."""
     if name not in TAB_COORDS:
         raise ActionError(f"unknown shop_tab name '{name}', known: {sorted(TAB_COORDS)}")
     t0 = time.monotonic()
@@ -398,12 +465,14 @@ def shop_tab(ctx, name):
     if not ctx.dry_run:
         steps.append(click_at(ctx, TAB_COORDS[name]))
     manifest_key = TAB_MANIFEST_KEY[name]
-    ok, gray, detail, score, shot, _ = wait_for(ctx, f"shop_tab-{name}", 6.0, _tab_check(manifest_key))
+    ok, gray, detail, score, shot, _ = wait_for(ctx, f"shop_tab-{name}", 6.0, _tab_check(manifest_key),
+                                                 keepalive_interval_s=keepalive_interval_s)
     return ActionResult(f"shop_tab:{name}", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
-def back_to_lobby(ctx):
-    """Triggered by: clicking 上一頁 (top-right) from the shop screen."""
+def back_to_lobby(ctx, keepalive_interval_s=None):
+    """Triggered by: clicking 上一頁 (top-right) from the shop screen.
+    keepalive_interval_s: see goto_shop()'s docstring."""
     t0 = time.monotonic()
     pre = _precondition(ctx, "back_to_lobby", "shop", _screen_check("shop"))
     if pre:
@@ -411,7 +480,8 @@ def back_to_lobby(ctx):
     steps = []
     if not ctx.dry_run:
         steps.append(click_at(ctx, BACK_BUTTON))
-    ok, gray, detail, score, shot, _ = wait_for(ctx, "back_to_lobby", 8.0, _screen_check("lobby"))
+    ok, gray, detail, score, shot, _ = wait_for(ctx, "back_to_lobby", 8.0, _screen_check("lobby"),
+                                                 keepalive_interval_s=keepalive_interval_s)
     return ActionResult("back_to_lobby", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
@@ -836,6 +906,98 @@ def leave_room(ctx):
     return ActionResult("leave_room", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
+def login(ctx, account):
+    """Triggered by: switching the client's IME to English (IME_EN pseudo-
+    command, pico_serial.ps1 -- same PostMessage WM_INPUTLANGCHANGEREQUEST
+    technique as tools/win/input.ps1's ToEnglish(), duplicated there because
+    pico_serial.ps1 is a standalone script copied to Windows and run on its
+    own, see that script's header comment), clicking the 帳號 field, typing
+    the account name, TAB, typing a dummy password (server has no password
+    check -- see LOGIN_DUMMY_PASSWORD above), ENTER. Exact sequence from this
+    task's contract (client (777,829), TYPE <account>, KEY TAB, TYPE x, KEY
+    ENTER), which the 2026-09-19 relaunch trial click-tested live for account
+    "Lucas" (docs/journal/2026-09-19-2230-unattended-trial-01.md).
+
+    Completion requires BOTH: the server actually receiving CQ_LOGIN_WASABII
+    (LOGIN_CQ_OPCODE above, via wait_for_log_pkts -- no packetlog.marker()
+    exists for this opcode, same situation as campaign_fail()'s EndGame_SN)
+    AND the client showing the lobby screen afterwards (classify_screen).
+    Either alone would be weaker: the pkt could arrive but the client UI
+    could still be stuck, or some other screen could misclassify as "lobby"
+    without the login pkt ever having gone through."""
+    if not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
+        raise ActionError("login account must be non-empty printable ASCII")
+    t0 = time.monotonic()
+    pre = _precondition(ctx, "login", "login", _screen_check("login"))
+    if pre:
+        return pre
+    steps = []
+    base = None if ctx.dry_run else _newest_log_ms(ctx.logs_dir)
+    if not ctx.dry_run:
+        steps.append(run_pico(ctx, "raw", "IME_EN"))
+        steps.append(click_at(ctx, LOGIN_ACCOUNT_FIELD))
+        steps.append(type_text(ctx, account))
+        steps.append(key(ctx, "TAB"))
+        steps.append(type_text(ctx, LOGIN_DUMMY_PASSWORD))
+        steps.append(key(ctx, "ENTER"))
+
+    ok_pkt, found, elapsed_pkt = wait_for_log_pkts(
+        ctx, DEFAULT_LOGIN_TIMEOUT_S,
+        {"login_cq": lambda e: e.get("dir") == "recv" and e.get("op") == LOGIN_CQ_OPCODE},
+        baseline_ms=base,
+    )
+    ok_lobby, gray, detail_lobby, score, shot, _ = wait_for(ctx, "login-lobby", 15.0, _screen_check("lobby"))
+    ok = ok_pkt and ok_lobby
+    detail = (f"login_cq({LOGIN_CQ_OPCODE}) recv: {'seen' if ok_pkt else 'MISSING'} "
+              f"(waited {elapsed_pkt:.1f}s); lobby: {detail_lobby}")
+    return ActionResult("login", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
+
+
+def relaunch_client(ctx, account, reason="planned unattended relaunch"):
+    """Triggered by nothing the player does -- a PLANNED relaunch (this task's
+    contract: "separate from crash recovery budget"), composed of two layers:
+    client_ctl.py's `relaunch` subcommand (process bookkeeping -- close the
+    client if present via a real Pico click on the title-bar close X, since
+    taskkill/Stop-Process are denied on this elevated client, see
+    client_ctl.py's module docstring -- then launch, then wait for the REAL
+    game window) followed by login(account) above. client_ctl.py's `relaunch`
+    deliberately does NOT log in itself (same boundary as `restart` already
+    had: "登入是後面的 Pico 步驟做的事") -- login() is called here as a second,
+    independent step so it stays reusable on its own (e.g. a login screen
+    reached some other way) instead of being wired only into a relaunch.
+
+    Tracked in client_ctl.py's own client_relaunch_count session field, never
+    touching client_restart_count / client_last_restart_step -- a planned
+    relaunch must never count against, or be blocked by, the crash-recovery
+    budget (RESTART_LIMIT / same-step dedup) that exists to stop an automatic
+    crash loop."""
+    t0 = time.monotonic()
+    steps = []
+    if ctx.dry_run:
+        login_result = login(ctx, account)
+        detail = (f"dry-run: would run `client_ctl.py relaunch --reason {reason!r}`, "
+                  f"then login({account!r}): {login_result.detail}")
+        return ActionResult("relaunch_client", login_result.ok, login_result.gray,
+                             time.monotonic() - t0, detail, login_result.screenshot,
+                             login_result.score, steps, login_result.rounds)
+
+    proc = subprocess.run(
+        [sys.executable, CLIENT_CTL, "relaunch", "--reason", reason],
+        capture_output=True, text=True,
+    )
+    steps.append((proc.returncode, proc.stdout.strip(), proc.stderr.strip(), 0.0))
+    if proc.returncode != 0:
+        detail = (f"client_ctl.py relaunch failed (rc={proc.returncode}): "
+                  f"{proc.stdout.strip()} {proc.stderr.strip()}")
+        return ActionResult("relaunch_client", False, False, time.monotonic() - t0, detail, None, None, steps)
+
+    login_result = login(ctx, account)
+    detail = f"client_ctl.py relaunch: OK; login: {login_result.detail}"
+    return ActionResult("relaunch_client", login_result.ok, login_result.gray,
+                         time.monotonic() - t0, detail, login_result.screenshot,
+                         login_result.score, steps + login_result.steps, login_result.rounds)
+
+
 ACTIONS = {
     "goto_shop": goto_shop,
     "shop_tab": shop_tab,
@@ -852,6 +1014,8 @@ ACTIONS = {
     "keepalive_wait": keepalive_wait,
     "wait_result_then_room": wait_result_then_room,
     "leave_room": leave_room,
+    "login": login,
+    "relaunch_client": relaunch_client,
 }
 
 
