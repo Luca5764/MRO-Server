@@ -111,7 +111,7 @@
 | G 幣持久化：`accounts` 的 Point／Cash／Coupon 欄位；Buy SA `0x00240202` body+0x06 是新餘額 int64（送 0 客戶端會歸零）；重登後由 `0x00240132`／`0x00210103` 帶回（`MONEY_PERSIST_MODE`） | ✅ [DLL][LOG][DB][OBS] M1 | `journal/2026-09-18-16-money-persistence.md` |
 | 庫存同名武器重複：客戶端會依 DefaultSetList 自己合成 `SerialIndex=0` 的預設項，我們建帳時又發了實體列，所以會重複 | 🟡 [SRC][DB] | `ZPanel_InvenItems.uc:338-383`；backlog P1b |
 | 物品名稱：Cache.Bin 的 `Spec*Record` 表，用 `tools/item-names.py` 查 | ✅ [CACHE] 駕駛員表 25／25 與獨立 dump 相符 | `docs/reference/item-names.md`、`journal/2026-09-18-2240-item-names.md` |
-| `11100101`／`11200101` 這類配對是**塗裝變體**，HighGroup／MiddleGroup 相同、可裝武器相同 | 🟡 [CACHE] 靜態分析 | `research/2026-09-18-premium-mech/notes.md` |
+| `11100101`／`11200101` 這類配對：HighGroup／MiddleGroup 相同、可裝武器相同。**更正（2026-09-19 LEGEND-GRANT-A）：它們不是塗裝變體**，是各自獨立的機體 FGameItemRecord，x2xxxxx 是傳說機體（RAVEN、CRUAL MASSACRE、VALKYRIE、PHANTOM 14300101、ZODIAC、ROXANNE、FENRIS、SPECTOR）；加成由客戶端 class 的 `e_MechSection==MS_Season_01` 決定（`Pawn.uc:350`） | 🟡 [CACHE][SRC] 靜態分析 | `research/2026-09-18-premium-mech/notes.md` |
 | Legend（時限）機體有授權機制 `Mech_License_Check`／`IsLicense`（0 無／1 教學／2 購買），對應 DB `mech_licenses`；**填這個欄位的封包未知** | ⬜ | `ZPage_Hangar.uc:1544-1552`、`ZNetwork_DJ.uc:234,1286` |
 
 ## 4b. 房間（戰役房）
