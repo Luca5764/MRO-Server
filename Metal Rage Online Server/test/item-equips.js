@@ -16,7 +16,21 @@
 //   4. tools/migrate-e1-item-equips.js is idempotent against an in-memory
 //      mock pool.
 //
-// database/db.js's real functions are exercised directly for (2) and (4)
+// E1 fix round (Sol batch4, docs/research/2026-09-19-sol-review/batch4.md)
+// added:
+//   5. a real UNIQUE collision during migration rolls back every row that
+//      transaction had already inserted (mock pool now implements real
+//      beginTransaction/rollback snapshot+restore semantics, not just "stop
+//      inserting");
+//   6. a source row with mech_type outside 1..8 makes the whole migration
+//      refuse (and roll back) instead of writing it;
+//   7. rerunning the migration when item_equips already has rows refuses
+//      unless --force is passed;
+//   8. ITEM_EQUIPS_MODE 'enabled' saveEquippedLoadout() leaves
+//      items.equipped/items.mech_type completely untouched (no clear, no
+//      set) -- item_equips is the only source of truth.
+//
+// database/db.js's real functions are exercised directly for (2), (4)-(8)
 // (its own `pool` object is monkey-patched with an in-memory mock
 // connection -- never database/config.json's real MySQL). (1) and (3) go
 // through dispatch/room.dispatch.js with test/fixtures/fake-db.js, same
@@ -121,6 +135,8 @@ function makeMockPool(state)
             return [[{ before: state.itemEquips.length }]];
         if (norm.startsWith('SELECT COUNT(*) AS after FROM item_equips'))
             return [[{ after: state.itemEquips.length }]];
+        if (norm.startsWith('SELECT COUNT(*) AS existingCount FROM item_equips'))
+            return [[{ existingCount: state.itemEquips.length }]];
 
         if (norm.startsWith('SELECT account_id, id AS item_id, mech_type AS mech_slot, part_slot FROM items WHERE equipped = 1'))
         {
@@ -217,10 +233,31 @@ function makeMockPool(state)
     return {
         async getConnection()
         {
+            // Real snapshot/restore, not a no-op -- E1 fix round (1)/(5):
+            // proves a mid-transaction throw (collision, invalid slot) truly
+            // undoes every row that same transaction had already inserted,
+            // matching what the real InnoDB ROLLBACK the production code
+            // relies on actually does.
+            let snapshot = null;
             return {
-                async beginTransaction() {},
-                async commit() {},
-                async rollback() {},
+                async beginTransaction()
+                {
+                    snapshot = {
+                        items: JSON.parse(JSON.stringify(state.items)),
+                        itemEquips: JSON.parse(JSON.stringify(state.itemEquips)),
+                    };
+                },
+                async commit() { snapshot = null; },
+                async rollback()
+                {
+                    if (snapshot) {
+                        state.items.length = 0;
+                        state.items.push(...snapshot.items);
+                        state.itemEquips.length = 0;
+                        state.itemEquips.push(...snapshot.itemEquips);
+                    }
+                    snapshot = null;
+                },
                 release() {},
                 execute,
             };
@@ -326,7 +363,8 @@ async function testBuyOwnedPermanentSharedNoDuplicate()
 }
 
 // ---------------------------------------------------------------------
-// Test 4: migration is idempotent against an in-memory mock pool.
+// Test 4: migration is idempotent against an in-memory mock pool (with
+// --force, since a bare rerun now refuses -- see testMigrationRerunRefusal).
 // ---------------------------------------------------------------------
 async function testMigrationIdempotent()
 {
@@ -347,12 +385,158 @@ async function testMigrationIdempotent()
     assert.strictEqual(first.inserted, 2, `first run should insert the 2 equipped=1 rows, got ${first.inserted}`);
     assert.strictEqual(state.itemEquips.length, 2, `item_equips should have 2 rows after first run, got ${state.itemEquips.length}`);
 
-    const second = await runMigration(pool, { log: silent });
-    assert.strictEqual(second.inserted, 0, `second run should insert nothing (idempotent), got ${second.inserted}`);
-    assert.strictEqual(second.skipped, 2, `second run should skip the 2 already-migrated rows, got ${second.skipped}`);
+    const second = await runMigration(pool, { log: silent, force: true });
+    assert.strictEqual(second.inserted, 0, `second run (--force) should insert nothing (idempotent), got ${second.inserted}`);
+    assert.strictEqual(second.skipped, 2, `second run (--force) should skip the 2 already-migrated rows, got ${second.skipped}`);
     assert.strictEqual(state.itemEquips.length, 2, `item_equips should still have exactly 2 rows after re-running, got ${state.itemEquips.length}`);
 
-    console.log('[item-equips test] PASS: tools/migrate-e1-item-equips.js is idempotent on a mock pool');
+    console.log('[item-equips test] PASS: tools/migrate-e1-item-equips.js is idempotent on a mock pool (with --force)');
+}
+
+// ---------------------------------------------------------------------
+// Test 5 (Sol batch4 (7)): rerunning without --force refuses outright once
+// item_equips already has rows, instead of silently trusting legacy
+// items.equipped/items.mech_type (which stop being maintained once the mode
+// is on -- see database/db.js's saveEquippedLoadout()).
+// ---------------------------------------------------------------------
+async function testMigrationRerunRefusal()
+{
+    const { runMigration } = require(path.join(ROOT, 'tools', 'migrate-e1-item-equips.js'));
+
+    const state = {
+        items: [
+            { id: 100001, account_id: 1, item_id: 11100101, mech_type: 1, part_slot: 0, equipped: 1 },
+        ],
+        itemEquips: [],
+    };
+    const pool = makeMockPool(state);
+    const silent = () => {};
+
+    await runMigration(pool, { log: silent });
+    assert.strictEqual(state.itemEquips.length, 1, 'first run should have migrated the one equipped row');
+
+    await assert.rejects(
+        () => runMigration(pool, { log: silent }),
+        /item_equips already has 1 row.*--force/s,
+        'a bare rerun (no --force) with existing item_equips rows should refuse'
+    );
+    assert.strictEqual(state.itemEquips.length, 1, 'a refused rerun must not change item_equips at all');
+
+    console.log('[item-equips test] PASS: migration refuses to rerun without --force once item_equips has rows');
+}
+
+// ---------------------------------------------------------------------
+// Test 6 (Sol batch4 (1)/"Must fix"): a UNIQUE collision rolls back every
+// row that same migration run had already inserted -- not just "stops
+// inserting from here".
+// ---------------------------------------------------------------------
+async function testMigrationAtomicOnCollision()
+{
+    const { runMigration } = require(path.join(ROOT, 'tools', 'migrate-e1-item-equips.js'));
+
+    const state = {
+        items: [
+            // Migrates cleanly first (account 1, mech 1, part 0).
+            { id: 100001, account_id: 1, item_id: 11100101, mech_type: 1, part_slot: 0, equipped: 1 },
+            // Two different equipped=1 serials claiming the same
+            // (account_id=1, mech_slot=2, part_slot=1) -- a real collision.
+            { id: 100002, account_id: 1, item_id: 22100101, mech_type: 2, part_slot: 1, equipped: 1 },
+            { id: 100003, account_id: 1, item_id: 22100102, mech_type: 2, part_slot: 1, equipped: 1 },
+        ],
+        itemEquips: [],
+    };
+    const pool = makeMockPool(state);
+    const silent = () => {};
+
+    await assert.rejects(
+        () => runMigration(pool, { log: silent }),
+        /UNIQUE collision/,
+        'a genuine collision should throw'
+    );
+    assert.strictEqual(
+        state.itemEquips.length, 0,
+        `a collision must roll back the whole transaction, including the 100001 row inserted earlier in the ` +
+        `same run -- got ${state.itemEquips.length} row(s) left over`
+    );
+
+    console.log('[item-equips test] PASS: a migration collision rolls back every row from that run, not just itself');
+}
+
+// ---------------------------------------------------------------------
+// Test 7 (Sol batch4 "Must fix"): source rows with an out-of-range
+// mech_type are refused (and rolled back), not silently written.
+// ---------------------------------------------------------------------
+async function testMigrationRefusesInvalidMechSlot()
+{
+    const { runMigration } = require(path.join(ROOT, 'tools', 'migrate-e1-item-equips.js'));
+
+    const state = {
+        items: [
+            { id: 100001, account_id: 1, item_id: 11100101, mech_type: 1, part_slot: 0, equipped: 1 }, // valid
+            { id: 100002, account_id: 1, item_id: 22100101, mech_type: 9, part_slot: 1, equipped: 1 }, // mech_type out of range (1..8)
+            { id: 100003, account_id: 1, item_id: 22100102, mech_type: 0, part_slot: 1, equipped: 1 }, // mech_type out of range (1..8)
+        ],
+        itemEquips: [],
+    };
+    const pool = makeMockPool(state);
+    const silent = () => {};
+
+    await assert.rejects(
+        () => runMigration(pool, { log: silent }),
+        /out-of-range mech_slot.*item_id\(serial\)=100002.*item_id\(serial\)=100003/s,
+        'should refuse and list every offending row'
+    );
+    assert.strictEqual(state.itemEquips.length, 0, 'a refused migration must not write the valid row 100001 either (whole run rolls back)');
+
+    console.log('[item-equips test] PASS: migration refuses (and rolls back) source rows with an out-of-range mech_type');
+}
+
+// ---------------------------------------------------------------------
+// Test 8 (Sol batch4 (5), coordinator decision): with ITEM_EQUIPS_MODE
+// 'enabled', saveEquippedLoadout() must not touch items.equipped or
+// items.mech_type at all -- no clear, no set.
+// ---------------------------------------------------------------------
+async function testSaveEquippedLoadoutLeavesLegacyColumnsUntouched()
+{
+    const DB_PATH = require.resolve(path.join(ROOT, 'database', 'db.js'));
+    delete require.cache[DB_PATH];
+    const db = require(DB_PATH);
+    db._setItemEquipsModeForTests('enabled');
+    const originalGetConnection = db.pool.getConnection;
+
+    try {
+        const serial = 100080;
+        // Deliberately stale/inconsistent legacy columns -- equipped=0 and
+        // mech_type pointing at a mech that has nothing to do with the
+        // saveEquippedLoadout() call below. If the fix is correct, this
+        // must still be exactly this after the call: item_equips is the
+        // only thing that changes.
+        const legacyBefore = { id: serial, account_id: 1, item_id: NONSHARED_ITEM_ID, slot: 1, mech_type: 5, part_slot: 3, quantity: 1, equipped: 0 };
+        const state = {
+            items: [{ ...legacyBefore }],
+            itemEquips: [],
+        };
+        db.pool.getConnection = makeMockPool(state).getConnection;
+
+        const serials = [0, serial, 0, 0, 0, 0]; // body, main, left, right, equipment, skin
+        await db.saveEquippedLoadout(1, 2, serials);
+
+        const afterRow = state.items.find(item => Number(item.id) === serial);
+        assert.deepStrictEqual(
+            { equipped: afterRow.equipped, mech_type: afterRow.mech_type, part_slot: afterRow.part_slot },
+            { equipped: legacyBefore.equipped, mech_type: legacyBefore.mech_type, part_slot: legacyBefore.part_slot },
+            'items.equipped/items.mech_type/items.part_slot must be completely untouched when ITEM_EQUIPS_MODE is enabled'
+        );
+
+        const equipRow = state.itemEquips.find(e => Number(e.item_id) === serial);
+        assert.ok(equipRow, 'item_equips should still get the new row (that part of the write path is unaffected)');
+        assert.strictEqual(Number(equipRow.mech_slot), 2, 'item_equips should reflect the real equip, even though items.mech_type was left alone');
+
+        console.log('[item-equips test] PASS: mode-on saveEquippedLoadout leaves items.equipped/items.mech_type/items.part_slot untouched');
+    } finally {
+        db._setItemEquipsModeForTests('disabled');
+        db.pool.getConnection = originalGetConnection;
+    }
 }
 
 async function main()
@@ -361,6 +545,10 @@ async function main()
     await testNonSharedMoveBetweenMechs();
     await testBuyOwnedPermanentSharedNoDuplicate();
     await testMigrationIdempotent();
+    await testMigrationRerunRefusal();
+    await testMigrationAtomicOnCollision();
+    await testMigrationRefusesInvalidMechSlot();
+    await testSaveEquippedLoadoutLeavesLegacyColumnsUntouched();
     console.log('[item-equips test] ALL CHECKS PASS (or clearly SKIPped -- see above)');
     process.exit(0);
 }
