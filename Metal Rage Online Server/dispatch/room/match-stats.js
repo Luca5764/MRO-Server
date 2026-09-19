@@ -46,8 +46,8 @@ function difficultyFromMapId(mapId)
 // docs/design/p3-step1-writeback.md §6 review point 2 ("缺「沒打完的場」"):
 // single constant for the "aborted matches are not persisted" policy, so
 // the eventual DB-writeback step has exactly one place to read this from.
-// 🟡 the operator has not confirmed this policy yet (design doc explicitly
-// flags it as an open decision, "這要操作者決定"). This module never writes
+// Operator decided 2026-09-20 (relayed by PM): aborted matches are NOT
+// recorded, failed matches (EndGame with result=2) are. This module never writes
 // to a DB itself (memory + log only), so this constant currently has no
 // runtime effect; it exists so that decision is recorded in one place
 // instead of being re-guessed by whichever step adds the DB write.
