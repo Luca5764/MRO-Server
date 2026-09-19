@@ -51,3 +51,21 @@
 - `0x00220503`／`0x00220505`（房間聊天）跟 `0x00220507`／`0x00220509`（遊戲內聊天）在 client 端送出時實際用的 CQ opcode 是否真的等於 `client-dispatch-map.md` 列的 SN 值，本篇沒有核對 DLL，只確認了「伺服器目前完全沒有廣播機制」這件事本身。
 - 隊伍（紅/藍）分配目前是 `Game_Info_SN` 固定 `redTeamIndex=0`／`blueTeamIndex=1`（`gate.game.dispatch.js:253-254`，已由 `docs/reference/placeholder-audit.md` 列為 (a) 有依據），但沒有查兩個玩家要怎麼分別分到不同隊；這屬於 D1 房間模型設計的範圍，本篇不展開。
 - 沒有查 `money.js`／購買流程在雙人房間下是否有跨帳號污染風險（目前看起來是各自用 `accountId_` 查 DB，理論上獨立），時間關係沒有逐行核對，標不確定。
+
+## 房間狀態重送的呼叫點（RS-AUDIT，2026-09-19，J1b 之後）
+
+中階唯讀掃描，高階抽查過；🟡 未經跨公司審查。問的是：哪些路徑會對某一條連線重送房間狀態？非房主觸發時，資料是從 Room 物件讀，還是從觸發者自己的 client 欄位讀？
+
+| 呼叫點 | 觸發 | 非房主可達？ | 資料來源 | 送給誰 |
+|---|---|---|---|---|
+| `gate.game.dispatch.js` `sendRoomStateDelayed`（CQ_CREATE 分支） | `0x00220201` 建房 | 否（建房者就是房主） | client 欄位（單人參照實作） | 觸發者 |
+| `lobby.dispatch.js` 約 477 行 | `0x00230131`（名稱標 guessed） | 否 | client 欄位，**不註冊 Room** | 觸發者 |
+| `gate.game.dispatch.js` Enter_CQ → `sendFullRoomStateToClient` | `0x00220231` 加入房間 | 是 | **Room**（`buildRoomCtxFromRoom`） | 加入者 |
+| Enter_CQ 對既有成員送 `sendRoomUserPackets` | `0x00220231` | —（送給既有成員） | 加入者的成員資料 | 全房其他人 |
+| `resendRoomState`（J1b 分支） | `0x00222101` 準備（或場景載入完成）、`0x00220221`（full_room 模式）、`0x00220215` 選項變更 | 是 | 非房主 → **Room**；房主／開關關 → client 欄位 | 觸發者 |
+| `resendRoomMapOnly`（J1b 分支） | `0x00220221`（預設 map_only） | 是 | 非房主 → **Room** | 觸發者 |
+| `room-leave.js` 房主交接 | `0x00220234` 離開／斷線 | — | Room 成員資料 | 全房剩下的人 |
+
+- **非房主可達、而且還在讀 client 欄位的：沒有。**
+- `0x00230131`：[LOG] 86 份 session log 都沒出現過 → 死碼，列入收斂候選（C3）。
+- **多人時要改成全房廣播的（D1-6 參考）：** `0x00220221` 改地圖／難度（[OBS] J1 重測：房主改難度，加入者沒有同步）、`0x00220215` 選項變更（沒有 OBS）。目前兩者都只回給觸發者，handler 也沒有檢查是不是房主 ⬜（客戶端 UI 是否允許非房主送出，還沒查）。

@@ -162,7 +162,7 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 
 - D1 第 6 步會新增 5 個開關（`docs/design/d1-step6-battle-broadcast.md` 第 5 節）；另外 `ROOM_JOIN_MODE`、`LOBBY_ROOM_LIST_MODE`、`ROOM_CHAT_BROADCAST_MODE`、`ROOM_TEAM_CHAT_MODE` 也在同一批。
 - 規則：每個開關實測 ✅ 後 7 天內收斂，一個開關一個 commit，每個都要跑回歸測試；開關翻掉不會讓回歸測試變紅的，要先補樣本。
-- 同時列入收斂候選：`room.dispatch.js` 的 `0x00240301` 開戰路徑（[LOG] PvE 開戰實際走的是 `0x00222103`，`0x00240301` 在 session-20260919-012749 裡從沒被觸發過）。
+- 同時列入收斂候選：`lobby.dispatch.js` 的 `0x00230131`「Lobby Room Create CQ (guessed)」路徑（[LOG] 86 份 log 都沒出現過，而且它不註冊 Room）；`room.dispatch.js` 的 `0x00240301` 開戰路徑（[LOG] PvE 開戰實際走的是 `0x00222103`，`0x00240301` 在 session-20260919-012749 裡從沒被觸發過）。
 
 ## RANK：結算評等永遠是 F（不擋 M2）
 
