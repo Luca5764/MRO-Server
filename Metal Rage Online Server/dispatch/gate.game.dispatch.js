@@ -34,6 +34,19 @@ const { leaveRoomAndNotify } = require('./room/room-leave');
 const CQ_CREATE = 0x00220201;
 const SA_LOBBY_CREATE = 0x00220202;
 const MAP_CHANGE_ONE_RESEND_MODE = 'map_only'; // 'full_room' | 'map_only' | 'none'
+// ROOM-OPT-BC (docs/backlog.md): the above resend only ever reaches the
+// host's own connection (getExactMessageBuffer/client.send are unicast) --
+// [LOG] session-20260919-111258.jsonl ms 2067166: host conn6 sent
+// Room_Map_Change_One_CQ 0x00220221, server replied Map_Change_One_SA
+// 0x00220222 + Map_Change_One_SN 0x00220223 + Map_Change_All_SN 0x00220226
+// x2, all only to conn6; joiner conn8 got nothing, so its difficulty
+// display never follows the host's pick. 'enabled' additionally relays the
+// same Map_Change_One_SN 0x00220223 payload (unchanged bytes, see the case
+// 0x00220221 handler) to the room's other members via rooms.sendOthers.
+// Defaults off per docs/backlog.md's mid-tier rule (new behaviour behind a
+// switch); untested against a real second client yet. `let` + test-only
+// setter below, same pattern as ROOM_TEAM_CHAT_MODE further down.
+let ROOM_MAP_BROADCAST_MODE = 'disabled'; // 'disabled' | 'enabled'
 const GAME_START_HANDSHAKE_MODE = 'ready_then_start'; // 'start_only' | 'ready_then_start'
 const READY_HOST_GATE_PRIME_MODE = 'enabled'; // 'disabled' | 'enabled'
 const GAME_WAIT_SN_EXPERIMENT_MODE = 'enabled'; // 'disabled' | 'enabled'
@@ -1402,6 +1415,35 @@ class ZGateGameDispatch
                 } else {
                     console.log(`[ZGateGameDispatch] >> Skipped resend after map-change-one cq (mode=${MAP_CHANGE_ONE_RESEND_MODE})`);
                 }
+
+                // ROOM-OPT-BC: relay the difficulty/map pick to the rest of
+                // the room. Triggered by the host clicking a difficulty tile
+                // in ZPanel_PVE inside the room screen, which sends this same
+                // Room_Map_Change_One_CQ 0x00220221 (DLL 0x107eb6f0 is
+                // Map_Change_One_SN's body layout, reused verbatim here --
+                // see the 10-byte outgoingFields above). Only the host's pick
+                // counts, and only when there is someone else to tell.
+                if (ROOM_MAP_BROADCAST_MODE === 'enabled' && rooms.isRoomJoinEnabled()) {
+                    const accountIdForBroadcast = Number(client.accountIndex_ || client.accountId_ || 1);
+                    const roomForBroadcast = rooms.getRoomByAccount(accountIdForBroadcast);
+                    if (roomForBroadcast && roomForBroadcast.hostAccountId === accountIdForBroadcast
+                        && roomForBroadcast.members.size > 1) {
+                        rooms.sendOthers(roomForBroadcast.id, accountIdForBroadcast, () => {
+                            const [snMsg, snBody] = getExactMessageBuffer(0x00220223, 0x0A);
+                            writeMapChangeOneBody(snBody, outgoingFields, 0);
+                            return snMsg;
+                        });
+                        console.log(
+                            `[ZGateGameDispatch] >> Broadcast Map_Change_One_SN 0x220223 to ` +
+                            `${roomForBroadcast.members.size - 1} other room member(s) of Room #${roomForBroadcast.id} ` +
+                            `(host=${accountIdForBroadcast})`
+                        );
+                    } else {
+                        console.log(
+                            `[ZGateGameDispatch] >> Skipped map-change broadcast (not host, no room, or no other members)`
+                        );
+                    }
+                }
                 return true;
             }
 
@@ -1688,6 +1730,14 @@ class ZGateGameDispatch
 module.exports._setRoomTeamChatModeForTest = function setRoomTeamChatModeForTest(mode)
 {
     ROOM_TEAM_CHAT_MODE = mode;
+};
+
+// Test-only hook (ROOM-OPT-BC): lets test/room-join.js exercise the
+// ROOM_MAP_BROADCAST_MODE='enabled' branch without changing the shipped
+// default. Not called anywhere outside test/.
+module.exports._setRoomMapBroadcastModeForTest = function setRoomMapBroadcastModeForTest(mode)
+{
+    ROOM_MAP_BROADCAST_MODE = mode;
 };
 
 // R-ROUND (docs/backlog.md): shared with lobby.dispatch.js's Campaign_CN
