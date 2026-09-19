@@ -1,4 +1,4 @@
-# 房間頭像：R14／R15 實驗都失敗，PilotCode 值不是唯一關卡
+# 房間頭像：R14／R15 實驗都失敗，PilotCode 值不是唯一關卡（已被 2026-09-19-0330-d1-step4-room-join.md 「BOUNDARY-SWAP 實機驗證」更正：頭像不顯示是格子被當成關閉，不是 PilotCode）
 
 ## 實驗
 
