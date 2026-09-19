@@ -33,3 +33,10 @@
 - [SHOT] `shots/gc-console-small.png`（戰場裡主控台 `(>` 打開）、`shots/gc-after-small.png`（ROUND 2）、`shots/gc-end-small.png`（EndGame 後約 6 秒回到房間）。結算畫面這次沒拍到。
 - 結論 ✅：完全不用操作者操作，就能讓一場 PvE 從第 1 回合跑到 EndGame 再回房間；證據是伺服器封包加截圖。未經跨公司審查。這次是房主單人。
 - 這條路徑可以拿來做 EndRound → EndGame → 結算 → 寫回 DB（P3）的回歸測試。
+
+## 執行腳本（runner，模型不在迴圈裡）第一次實跑
+- 第一次跑：FAIL，但這是對的。前置檢查判斷畫面是 unknown（lobby 分數 15.4，門檻 12，灰區），沒有送出任何輸入。原因：[SHOT] `shots/lobby-now-small.png`，客戶端跳出「因長時間未動作，所以被強制退場。」提示框，整個大廳被壓暗。這是 GameCampaign 那場打完回房間後沒人操作，被**客戶端自己**踢回大廳。
+- 用 Pico 點「確認」（client 798,675）關掉提示框之後重跑：**PASS**，6 步每步約 6 秒，全部由本機比對判定（分數 0.00–3.82，沒有落在灰區）。報告在 `tools/pico/logs/reports/U-shop-tabs-20260919-225406.txt`（gitignored），過程中高階沒有看任何截圖。
+- 待辦：
+  - 把「提示框」加進 atlas，附一個 `dismiss_notice` 動作；
+  - 無人清單要考慮房間的閒置踢出（客戶端計時，時長未知 ⬜）。
