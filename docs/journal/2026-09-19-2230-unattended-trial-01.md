@@ -40,3 +40,9 @@
 - 待辦：
   - 把「提示框」加進 atlas，附一個 `dismiss_notice` 動作；
   - 無人清單要考慮房間的閒置踢出（客戶端計時，時長未知 ⬜）。
+
+## U-pve-fullmatch：整場無人自動化（runner 實跑，操作者在旁）
+- 第一次 FAIL（開戰這步）：server 的 `gameStarted_ false -> true` marker 比 pico 的 F5 回報還早約 50 ms 寫進 log，runner 在送出之後才取 log 基準點，所以漏看。R-ROUND 也一樣，比 pico 回報早約 100 ms。修法：送輸入**之前**先取基準點（`wait_for_log_markers(baseline_ms=)`）。
+- 戰場裡主控台的區塊比對落在灰區（open 18.25／closed 25.50），因為主控台沒有底板、背景一直在動。改看提示字元 `(>` 的固定位置（shot 座標 x 6–34、y 612–627），數接近純白的像素：開著 39–43，關著 0（大廳、房間、商店、戰場的參考圖都是 0）。另外 F24 是切換鍵，要先確認提示字元不在畫面上才按。
+- start_battle 看到 server marker 時，客戶端還在載入地圖；campaign_win_all 改成最多等 60 秒等戰場 HUD 出現，不再做一次性的前置檢查。
+- 修完之後：✅ [TEST] `U-pve-fullmatch` **PASS**。8 步全部由 runner 自己判定，約 2.5 分鐘；5 回合的 R-ROUND、EndGame、結算畫面、回房、回大廳都有。高階只讀了文字報告（`tools/pico/logs/reports/U-pve-fullmatch-20260919-233020.txt`，gitignored）。未經跨公司審查。

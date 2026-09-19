@@ -436,6 +436,29 @@ def build_atlas(shots_dir, out_dir=ATLAS_DIR):
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
+# Console prompt "(>" glyph detector (2026-09-19). The console has no backing panel,
+# so region MAD against reference crops fails over a moving battle background. The
+# prompt glyph itself is always drawn at the same place (shot rows 612-626, cols
+# 6-34) in near-white; count near-white pixels there. Measured: open 39-43 px in
+# lobby and battle (f24-after, gc-console, gc-r2..r5, live battle), closed 0 on every
+# closed reference (f24-closed, ref-05-battle, lobby, room, shop). The system message
+# line above (rows ~593-605, e.g. 「玩家已進入遊戲」) is deliberately excluded.
+PROMPT_BOX = (6, 612, 34, 627)   # x0, y0, x1, y1 in shot coords
+PROMPT_OPEN_MIN = 25
+PROMPT_CLOSED_MAX = 5
+
+def console_prompt_state(img):
+    """Returns (state, white_px): state "open" / "closed" / "unknown"."""
+    a = np.asarray(_load_image(img).convert("RGB"), dtype=np.int16)
+    x0, y0, x1, y1 = PROMPT_BOX
+    w = int((a[y0:y1, x0:x1].min(axis=2) > 200).sum())
+    if w >= PROMPT_OPEN_MIN:
+        return "open", w
+    if w <= PROMPT_CLOSED_MAX:
+        return "closed", w
+    return "unknown", w
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)

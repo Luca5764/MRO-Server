@@ -193,7 +193,7 @@ def wait_for(ctx, label, timeout_s, check_fn):
     return ok, gray, detail, score, shot_path, elapsed
 
 
-def wait_for_log_markers(ctx, timeout_s, predicates, poll_interval_s=1.0):
+def wait_for_log_markers(ctx, timeout_s, predicates, poll_interval_s=1.0, baseline_ms=None):
     """Polls the newest session-*.jsonl (not screenshots) for {ev:'marker'}
     lines (any src) written *after this call started*, until every predicate
     in `predicates` (dict name -> fn(text)->bool) has matched at least once
@@ -208,7 +208,11 @@ def wait_for_log_markers(ctx, timeout_s, predicates, poll_interval_s=1.0):
     if ctx.dry_run:
         return True, {}, 0.0
     t0 = time.monotonic()
-    baseline_ms = _newest_log_ms(ctx.logs_dir)
+    # Callers that send input should take the baseline BEFORE sending: the server
+    # writes the resulting marker within ms of the packet, before pico_ctl even
+    # returns (2026-09-19: gameStarted marker landed 50 ms before the F5 ack).
+    if baseline_ms is None:
+        baseline_ms = _newest_log_ms(ctx.logs_dir)
     found = {name: None for name in predicates}
     while True:
         for entry in find_markers_since(ctx.logs_dir, baseline_ms):
@@ -236,6 +240,10 @@ def _screen_check(expect_name):
 
 def _console_check(expect_state, variant="lobby"):
     def check(shot_path):
+        if variant == "battle":
+            state, w = screens.console_prompt_state(shot_path)
+            ok = state == expect_state
+            return ok, state == "unknown", f"console_prompt={state} white_px={w}", float(w)
         state, so, sc, margin = screens.console_state(shot_path, variant=variant)
         ok = state == expect_state
         gray = state == "unknown"
@@ -507,6 +515,7 @@ def start_battle(ctx):
     if pre:
         return pre
     steps = []
+    base = None if ctx.dry_run else _newest_log_ms(ctx.logs_dir)
     if not ctx.dry_run:
         steps.append(key(ctx, "F5"))
     ok, found, elapsed = wait_for_log_markers(
@@ -515,6 +524,7 @@ def start_battle(ctx):
             "game_started": lambda t: t == "gameStarted_ false -> true",
             "game_start_sn": lambda t: t == "Game_Start_SN sent",
         },
+        baseline_ms=base,
     )
     detail = "markers: " + ", ".join(f"{k}={'seen' if v else 'MISSING'}" for k, v in found.items())
     shot = None if ctx.dry_run else take_screenshot(ctx, "start_battle-result")
@@ -535,13 +545,24 @@ def campaign_win_all(ctx, settle_s=DEFAULT_ROUND_SETTLE_S, max_rounds=MAX_CAMPAI
     screens.py -- the lobby-only crops used by open_console() do not
     generalize to a live battle background, see this task's report)."""
     t0 = time.monotonic()
-    pre = _precondition(ctx, "campaign_win_all", "battle", _marker_check("battle"))
-    if pre:
-        return pre
+    # start_battle completes on the server markers, which arrive before the client
+    # has loaded the map (2026-09-19 run: loading screen still up), so wait for the
+    # battle HUD here instead of a one-shot precondition.
     steps = []
-
     if not ctx.dry_run:
-        steps.append(key(ctx, "F24"))
+        ok, gray, detail, score, shot, _ = wait_for(ctx, "campaign_win_all-battle", 60.0, _marker_check("battle"))
+        if not ok:
+            return ActionResult("campaign_win_all", False, gray, time.monotonic() - t0,
+                                 f"battle HUD not seen within 60s: {detail}", shot, score, steps)
+
+    # F24 toggles the console, so only press it when the prompt is not already showing.
+    if not ctx.dry_run:
+        st, _w = screens.console_prompt_state(take_screenshot(ctx, "campaign_win_all-console-pre"))
+        if st == "unknown":
+            return ActionResult("campaign_win_all", False, True, time.monotonic() - t0,
+                                 f"console prompt state unknown before F24 (white_px={_w})", None, float(_w), steps)
+        if st == "closed":
+            steps.append(key(ctx, "F24"))
     ok, gray, detail, score, shot, _ = wait_for(ctx, "campaign_win_all-console", 5.0, _console_check("open", variant="battle"))
     if not ok:
         return ActionResult("campaign_win_all", False, gray, time.monotonic() - t0,
@@ -553,10 +574,12 @@ def campaign_win_all(ctx, settle_s=DEFAULT_ROUND_SETTLE_S, max_rounds=MAX_CAMPAI
                              "dry-run: skipped the GameCampaign loop", None, None, steps, rounds)
 
     for i in range(max_rounds):
+        base = _newest_log_ms(ctx.logs_dir)
         steps.append(type_text(ctx, "GameCampaign 1"))
         steps.append(key(ctx, "ENTER"))
         ok, found, elapsed = wait_for_log_markers(
             ctx, 30.0, {"round": lambda t: ROUND_MARKER_RE.match(t) is not None},
+            baseline_ms=base,
         )
         if not ok:
             return ActionResult("campaign_win_all", False, False, time.monotonic() - t0,
