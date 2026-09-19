@@ -72,6 +72,12 @@ const SELECTED_MAP_ID = 9005;
 
 function makeCtx() {
     return {
+        // D1-4c: sendRoomMapPackets() now gates on ctx.isTrueCampaign, not
+        // client.isTrueCampaign_ (dispatch/room/room-map.sender.js) -- the
+        // fake client below still carries isTrueCampaign_ for documentation/
+        // parity with the real client shape, but the sender no longer reads
+        // it.
+        isTrueCampaign: true,
         campaignMapCacheKey: SELECTED_MAP_ID,
         campaignMapHints: MAP_IDS_PVE,
         roomDefaultEntryHints: [],

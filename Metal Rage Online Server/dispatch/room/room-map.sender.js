@@ -67,20 +67,31 @@ function sendMapChangeOnePacket(client, mapList, effectiveSelectedIdx, ctx, getE
         roomSettingGoal,
         roomSettingTime,
         roomSettingRound,
+        // D1-4c: ctx-sourced, not client.mapChangeOneTime_/mapChangeOneRound_/
+        // playRound_/mapChangeOneKill_/mapChangeOneGoal_ directly -- same
+        // reasoning as room-state.sender.js's isCampaignRoom/optionMask.
+        // room.dispatch.js sendRoomState() still fills these from the
+        // creator's own client.xxx_ fields (byte-identical); the Enter_CQ
+        // joiner ctx fills them from the Room instead.
+        mapChangeOneTime,
+        mapChangeOneRound,
+        playRound,
+        mapChangeOneKill,
+        mapChangeOneGoal,
     } = ctx;
     const effectiveCacheKey = mapList[effectiveSelectedIdx] >>> 0;
     const [msg, respBody] = getExactMessageBuffer(SN_MAP_CHANGE_ONE, 0x0A);
     const mapTime = resolveMapChangeOneSetting(
-        [client.mapChangeOneTime_, roomSettingTime], 0, 0xFFFF
+        [mapChangeOneTime, roomSettingTime], 0, 0xFFFF
     );
     const mapRound = resolveMapChangeOneSetting(
-        [client.mapChangeOneRound_, client.playRound_, roomSettingRound], 1, 0xFF
+        [mapChangeOneRound, playRound, roomSettingRound], 1, 0xFF
     );
     const mapKill = resolveMapChangeOneSetting(
-        [client.mapChangeOneKill_, roomSettingGoal], 0, 0xFFFF
+        [mapChangeOneKill, roomSettingGoal], 0, 0xFFFF
     );
     const mapGoal = resolveMapChangeOneSetting(
-        [client.mapChangeOneGoal_, roomSettingGoal], 0, 0xFFFF
+        [mapChangeOneGoal, roomSettingGoal], 0, 0xFFFF
     );
     respBody.writeUint8(0, 0x00);
     respBody.writeUint16LE(effectiveCacheKey, 0x01);
@@ -122,7 +133,9 @@ function sendMapChangeAllPacket(client, mapList, effectiveSelectedIdx, campaignM
 }
 
 function sendRoomMapPackets(client, ctx, getExactMessageBuffer, options = {}) {
-    if (!client.isTrueCampaign_) {  // isTrueCampaign_ → campaignRoom_
+    // D1-4c: ctx.isTrueCampaign, not client.isTrueCampaign_ -- see the
+    // comment on sendMapChangeOnePacket's ctx destructure above.
+    if (!ctx.isTrueCampaign) {
         return;
     }
 

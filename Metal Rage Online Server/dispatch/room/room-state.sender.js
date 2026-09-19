@@ -45,12 +45,21 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         roomSettingRound,
         roomDefaultEntryCount,
         roomDefaultEntryHints,
+        // D1-4c: read from ctx, not client.campaignRoom_/client.createWord2_
+        // directly -- a joiner's full room-state send (gate.game.dispatch.js
+        // Enter_CQ) builds ctx straight from the shared Room object, and
+        // never has these set on its own connection. Both callers of this
+        // function now populate them the same way: room.dispatch.js
+        // sendRoomState() from the creator's own client.xxx_ fields (byte-
+        // identical to before), Enter_CQ's joiner ctx from the Room.
+        isCampaignRoom,
+        optionMask: ctxOptionMask,
     } = ctx;
 
     {
         const bodySize = 0x021A;
         const [msg, respBody] = getExactMessageBuffer(SN_ROOM_DEFAULT, bodySize);
-        const roomLinkIndex = client.campaignRoom_ ? accountIndex : roomIndex;
+        const roomLinkIndex = isCampaignRoom ? accountIndex : roomIndex;
         respBody.writeUint16LE(accountIndex, 0x00);
         respBody.writeUint16LE(roomLinkIndex, 0x02);
         respBody.writeUint8(roomType, 0x04);
@@ -92,7 +101,7 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         respBody.writeUint8(roomDefaultEntryCount, 0x2F);
 
         client.send(msg);
-        console.log(`[ZRoomDispatch] >> Sent SN_ROOM_DEFAULT (${bodySize} bytes, account=${accountIndex}, room=${roomIndex}, link=${roomLinkIndex}, type=${roomType}, mapIndex=${mapIndex}, map=${mapId}, opt1=0x${(client.createWord1_ || 0).toString(16)}, opt2=0x${(client.createWord2_ || 0).toString(16)}, redTeam=${redTeamIndex}, blueTeam=${blueTeamIndex}, max=${maxPlayers}, mode=${gameMode}, goal=${roomSettingGoal}, time=${roomSettingTime}, round=${roomSettingRound}, entryCount=${roomDefaultEntryCount}, bodyCache=${primaryBodyCacheIndex})`);
+        console.log(`[ZRoomDispatch] >> Sent SN_ROOM_DEFAULT (${bodySize} bytes, account=${accountIndex}, room=${roomIndex}, link=${roomLinkIndex}, type=${roomType}, mapIndex=${mapIndex}, map=${mapId}, opt2=0x${((ctxOptionMask || 0) >>> 0).toString(16)}, redTeam=${redTeamIndex}, blueTeam=${blueTeamIndex}, max=${maxPlayers}, mode=${gameMode}, goal=${roomSettingGoal}, time=${roomSettingTime}, round=${roomSettingRound}, entryCount=${roomDefaultEntryCount}, bodyCache=${primaryBodyCacheIndex})`);
     }
 
     {
@@ -116,7 +125,7 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
 
     {
         const [msg, respBody] = getExactMessageBuffer(SN_ROOM_OPTION, 0x04);
-        const optionMask = (client.createWord2_ || 0) >>> 0;
+        const optionMask = (ctxOptionMask || 0) >>> 0;
         // Static analysis:
         // body+0x10 -> bit 0x01
         // body+0x11 -> bit 0x02

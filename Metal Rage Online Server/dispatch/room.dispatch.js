@@ -1524,6 +1524,19 @@ class ZRoomDispatch
             roomDefaultEntryCount,
             roomDefaultEntryHints: ROOM_DEFAULT_ENTRY_HINTS,
             campaignMapHints: CAMPAIGN_MAP_ALL_HINTS,
+            // D1-4c: room-state.sender.js/room-map.sender.js now read these
+            // off ctx instead of client.xxx_ directly (so the same senders
+            // work for a joiner's Room-sourced ctx in gate.game.dispatch.js's
+            // Enter_CQ handler). Same underlying client fields as before --
+            // this creator/re-send path stays byte-for-byte identical.
+            isCampaignRoom: client.campaignRoom_,
+            optionMask: (client.createWord2_ || 0) >>> 0,
+            isTrueCampaign: client.isTrueCampaign_,
+            mapChangeOneTime: client.mapChangeOneTime_,
+            mapChangeOneRound: client.mapChangeOneRound_,
+            playRound: client.playRound_,
+            mapChangeOneKill: client.mapChangeOneKill_,
+            mapChangeOneGoal: client.mapChangeOneGoal_,
         };
         console.log(`[ZRoomDispatch] >> sendRoomState 호출 (mapId=${mapId}, cacheIndex=${primaryMapCacheIndex})`);
         sendRoomStatePackets(client, ctx, getExactMessageBuffer);

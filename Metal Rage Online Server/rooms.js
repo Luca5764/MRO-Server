@@ -46,6 +46,28 @@
  * @property {string} password
  * @property {Map<number, Member>} members
  * @property {'lobby'|'playing'} state
+ * @property {number} rawRoomType - D1-4c: the CQ_CREATE body[0] value as-is
+ *   (mirrors client.rawRoomType_). NOT the same thing as `roomType` above --
+ *   that one is the Room_List_SN-normalized value. This is what
+ *   Room_Default_SN's own roomType byte needs (room.dispatch.js
+ *   sendRoomState()'s `rawRoomType` local). Sending the normalized value
+ *   there instead flips the client to a PvP room shell -- [LOG]
+ *   session-20260919-104728.jsonl:118 (host, roomType byte=1) vs :164
+ *   (joiner, roomType byte=2, `room.roomType` was read there), matching
+ *   [OBS] line 198 marker "PVP畫面有紅藍隊".
+ * @property {boolean} isTrueCampaign - mirrors client.isTrueCampaign_ at
+ *   creation (true campaign, excludes plain PvP roomType 2). Gates
+ *   Map_Change_ALL/ONE and Campaign_SN for a joiner (room-map.sender.js).
+ * @property {number} gameMode - mirrors client.gameMode_ at creation
+ *   (Room_Default_SN body+0x08).
+ * @property {number} optionMask - mirrors client.createWord2_ at creation
+ *   (Room_Option_SN's 4 bits).
+ * @property {number} createMapId - mirrors client.mapId_/client.createdMapId_
+ *   at creation (the raw CQ_CREATE body[6] byte). NOT the same thing as
+ *   `mapId` above -- that one prioritizes campaignMapCacheKey_ (the real
+ *   Cache.Bin 9001..9012 index). This is the small-number id
+ *   CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID is keyed on, needed for
+ *   Room_Default_SN's mech-slot entry table (offset 0x20).
  */
 
 /** @type {Map<number, Room>} */
@@ -127,7 +149,10 @@ function allocateRoomId() {
  * addMember() separately (the CQ_CREATE handler adds the creator as host
  * right after this).
  */
-function createRoom({ id, name, mapId, playTime, playRound, maxPlayers, campaign, hostAccountId, roomType, hasPassword, password }) {
+function createRoom({
+    id, name, mapId, playTime, playRound, maxPlayers, campaign, hostAccountId, roomType, hasPassword, password,
+    rawRoomType, isTrueCampaign, gameMode, optionMask, createMapId,
+}) {
     const room = {
         id,
         name,
@@ -143,6 +168,18 @@ function createRoom({ id, name, mapId, playTime, playRound, maxPlayers, campaign
         roomType: roomType || 0,
         hasPassword: !!hasPassword,
         password: password || '',
+        // D1-4c: same "optional, default to a harmless value" reasoning as
+        // roomType/hasPassword above -- existing test/rooms.js and
+        // test/room-chat.js callers do not pass these.
+        rawRoomType: rawRoomType || 0,
+        isTrueCampaign: !!isTrueCampaign,
+        gameMode: gameMode || 0,
+        optionMask: (optionMask >>> 0) || 0,
+        // D1-4c: raw CQ_CREATE mapId byte, distinct from `mapId` above (see
+        // rooms.js Room typedef comment) -- needed for
+        // CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID lookups a joiner's ctx has to
+        // redo the same way the creator's own sendRoomState() does.
+        createMapId: createMapId || 0,
         members: new Map(),
         state: 'lobby',
     };
@@ -172,6 +209,26 @@ function setHost(roomId, accountId) {
     const room = rooms.get(roomId);
     if (!room) return false;
     room.hostAccountId = accountId;
+    return true;
+}
+
+/**
+ * D1-4c: keeps a room's map/time/round selection current after Map_Change_One_CQ
+ * (dispatch/gate.game.dispatch.js case 0x00220221) updates the sending
+ * client's own client.campaignMapCacheKey_/mapChangeOneTime_/playRound_ --
+ * otherwise a room created, then re-mapped before anyone else joins, would
+ * still hand a joiner the stale creation-time selection (the same class of
+ * bug as the roomType field above, just for the map picker instead of the
+ * room shell). Only touches the three map-selection fields; does not
+ * validate ranges (caller already validated MapIndex 9001..9012 before
+ * calling). No-op (returns false) if the room is not tracked.
+ */
+function updateRoomMapSelection(roomId, { mapId, playTime, playRound }) {
+    const room = rooms.get(roomId);
+    if (!room) return false;
+    if (mapId !== undefined) room.mapId = mapId;
+    if (playTime !== undefined) room.playTime = playTime;
+    if (playRound !== undefined) room.playRound = playRound;
     return true;
 }
 
@@ -299,6 +356,7 @@ module.exports = {
     getRoomByAccount,
     getRoom,
     setHost,
+    updateRoomMapSelection,
     addMember,
     removeMember,
     setMemberClient,

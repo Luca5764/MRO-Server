@@ -9,6 +9,11 @@ const rooms = require('../rooms.js');
 // room-state/room-user sender chain the room creator already gets below,
 // plus the lobby room list broadcast that makes a room visible to join.
 const { sendRoomStatePackets } = require('./room/room-state.sender');
+// D1-4c: sendRoomMapPackets top-level import (unlike sendCampaignBootstrap
+// below, still lazily required at its one call site) -- room-map.sender.js
+// has no requires of its own, so no cycle risk, same as sendRoomStatePackets
+// above.
+const { sendRoomMapPackets } = require('./room/room-map.sender');
 const { sendRoomUserPackets, buildMemberUserCtx } = require('./room/room-user.sender');
 const { broadcastRoomListChange } = require('./room/room-list.sender');
 // D1-4 correction (design §4 "斷線即離開"): Leave_CQ and server.js's socket
@@ -47,6 +52,20 @@ const GAME_CHAT_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
 // CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID above is duplicated the same way
 // between the two files, with its own comment explaining why.
 const ROOM_DEFAULT_ENTRY_HINTS = [8, 37, 30, 34, 6, 2];
+
+// D1-4c: pulled out of resendRoomMapOnly() so the Enter_CQ joiner send below
+// can build the identical Map_Change_ALL hint list without a third copy of
+// this array (mirrors room.dispatch.js's own CAMPAIGN_MAP_ALL_HINTS, whose
+// selection depends on room-map.sender.js's ROOM_MAP_SYNC_MODE -- lazy
+// require, same reasoning as elsewhere in this file: room-map.sender.js is
+// only ever require()'d lazily here to avoid a require cycle with
+// room.dispatch.js).
+function computeCampaignMapAllHints() {
+    const { ROOM_MAP_SYNC_MODE } = require('./room/room-map.sender');
+    return ROOM_MAP_SYNC_MODE === 'enabled'
+        ? [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012]
+        : [8, 37, 30, 34, 43, 6, 2, 26, 36, 43, 16, 24, 45, 47, 49, 14, 10, 22, 52, 30, 18];
+}
 // D1 step 2 (docs/design/d1-multiplayer-room.md §5/§6 step 2, backlog
 // D1-2): client sends the SAME opcode for room chat CQ and SN (observed
 // [LOG] session-20260918-225741.jsonl, 258-byte 0x00220505 body; mirrors
@@ -596,18 +615,27 @@ function resendRoomMapOnly(client, tag)
             return;
         }
 
-        const { sendRoomMapPackets, sendCampaignBootstrap, ROOM_MAP_SYNC_MODE } = require('./room/room-map.sender');
+        const { sendRoomMapPackets, sendCampaignBootstrap } = require('./room/room-map.sender');
         // sendRoomState와 동일한 맵 목록 사용 — same map list as sendRoomState (CAMPAIGN_MAP_ALL_HINTS)
-        const campaignMapAllHints = ROOM_MAP_SYNC_MODE === 'enabled'
-            ? [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012]
-            : [8, 37, 30, 34, 43, 6, 2, 26, 36, 43, 16, 24, 45, 47, 49, 14, 10, 22, 52, 30, 18];
-        const roomDefaultEntryHints = [8, 37, 30, 34, 6, 2];
+        const campaignMapAllHints = computeCampaignMapAllHints();
+        const roomDefaultEntryHints = ROOM_DEFAULT_ENTRY_HINTS;
         const mapId = client.createdMapId_ || client.mapId_ || 1;
         const campaignMapCacheKey = client.campaignMapCacheKey_ || CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[mapId] || 8;
         const ctx = {
             campaignMapCacheKey,
             roomDefaultEntryHints,
             campaignMapHints: campaignMapAllHints,
+            // D1-4c: sendRoomMapPackets/sendMapChangeOnePacket now read these
+            // off ctx (see room-map.sender.js) -- this caller already checked
+            // client.isTrueCampaign_ above, and the four mapChangeOne*
+            // candidates below are this same client's own fields, so this is
+            // a relay, not a behaviour change.
+            isTrueCampaign: client.isTrueCampaign_,
+            mapChangeOneTime: client.mapChangeOneTime_,
+            mapChangeOneRound: client.mapChangeOneRound_,
+            playRound: client.playRound_,
+            mapChangeOneKill: client.mapChangeOneKill_,
+            mapChangeOneGoal: client.mapChangeOneGoal_,
         };
         sendRoomMapPackets(client, ctx, getExactMessageBuffer, { mapChangeOneResponse: true });
         sendCampaignBootstrap(client, getExactMessageBuffer);
@@ -778,6 +806,27 @@ class ZGateGameDispatch
                         roomType: effectiveRoomType,
                         hasPassword: !!roomPassword,
                         password: roomPassword,
+                        // D1-4c: needed for Room_Default_SN/Room_Option_SN/
+                        // Map_Change_ALL/ONE/Campaign_SN when a *joiner*
+                        // reads room state straight from this Room object
+                        // (see rooms.js Room typedef comment and the Enter_CQ
+                        // handler below) -- distinct from `roomType` above,
+                        // which room-list.sender.js needs normalized.
+                        rawRoomType: roomType,
+                        isTrueCampaign,
+                        gameMode,
+                        optionMask: createWord2,
+                        // D1-4c: the raw CQ_CREATE mapId byte (client.mapId_/
+                        // client.createdMapId_), NOT the same thing as
+                        // `mapId` above (that one prioritizes
+                        // campaignMapCacheKey_, the Cache.Bin 9001..9012
+                        // index). room.dispatch.js sendRoomState()'s own
+                        // primaryMapCacheIndex looks this raw value up in
+                        // CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID for
+                        // Room_Default_SN's mech-slot entry table (offset
+                        // 0x20) -- a joiner's ctx needs the same lookup input
+                        // to land on the same entry-table byte a host would.
+                        createMapId: mapId,
                     });
                     rooms.addMember(room.id, {
                         accountId: hostAccountId,
@@ -1111,7 +1160,7 @@ class ZGateGameDispatch
                 // selection, Game_Info_SN, etc: M2) is out of scope for
                 // D1-4, which only covers seeing and being seen in the room.
                 client.campaignRoom_ = room.campaign;
-                client.isTrueCampaign_ = room.campaign;
+                client.isTrueCampaign_ = room.isTrueCampaign;
                 client.createdRoomIndex_ = room.id;
                 client.roomIndex_ = 0;
                 client.maxPlayers_ = room.maxPlayers;
@@ -1129,14 +1178,36 @@ class ZGateGameDispatch
                 // scene needs a moment to start listening for ZDispatchRoom
                 // SNs. One retry (not the creator's two) -- see journal.
                 setTimeout(() => {
+                    // D1-4c fix (docs/backlog.md, PM contract): every field
+                    // below comes from the shared Room object, not any
+                    // client.xxx_ field -- a joiner's own connection never
+                    // went through CQ_CREATE, so those fields are either
+                    // unset or (worse) stale from whatever this connection
+                    // did before (e.g. Lucas re-entering someone else's room
+                    // after having created her own earlier in the same
+                    // session). [LOG] session-20260919-104728.jsonl:118 (host
+                    // Room_Default_SN, roomType byte=1, PvE) vs :164 (joiner,
+                    // same field=2, PvP room shell) traced to the old
+                    // `roomType: room.roomType` line below -- `room.roomType`
+                    // is the Room_List_SN-*normalized* value
+                    // (room-list.sender.js's ROOM_TYPE_NORM_TO_RAW), not the
+                    // raw CQ_CREATE type Room_Default_SN's own roomType byte
+                    // needs (room.dispatch.js sendRoomState()'s `rawRoomType`
+                    // local) -- room.rawRoomType (new field, dual-written at
+                    // CQ_CREATE) is that raw value. Also [LOG] :158-174 vs
+                    // :115-146: this block never called sendRoomMapPackets()
+                    // or sendCampaignBootstrap() at all, so a joiner never
+                    // got Map_Change_ALL/ONE (0x00220226/0x00220223) or
+                    // Campaign_SN (0x0023013a) -- matching [OBS] marker at
+                    // line 295, "中間地圖設定還有房間設定都為空".
                     const roomStateCtx = {
                         roomIndex: room.id,
                         accountIndex: accountId,
-                        roomType: room.roomType,
+                        roomType: room.rawRoomType,
                         mapId: room.mapId,
                         maxPlayers: room.maxPlayers,
                         currentUsers: room.members.size,
-                        gameMode: 0, // not modeled on Room yet; host's own room-option flags are not replicated to joiners (known gap, see journal)
+                        gameMode: room.gameMode,
                         mapIndex: room.mapId,
                         roomName: room.name,
                         roomSettingGoal: room.campaign ? 0 : room.members.size,
@@ -1146,10 +1217,43 @@ class ZGateGameDispatch
                             ? ROOM_DEFAULT_ENTRY_HINTS.length
                             : Math.min(Math.max(room.maxPlayers, 1), ROOM_DEFAULT_ENTRY_HINTS.length),
                         roomDefaultEntryHints: ROOM_DEFAULT_ENTRY_HINTS,
-                        primaryBodyCacheIndex: ROOM_DEFAULT_ENTRY_HINTS[0] || 8,
+                        // D1-4c fix: was a bare ROOM_DEFAULT_ENTRY_HINTS[0]
+                        // (constant 8, ignoring the room entirely) --
+                        // test/room-join.js caught this as a real byte
+                        // mismatch (first mech-slot entry, Room_Default_SN
+                        // offset 0x20) once the roomType bug above was fixed.
+                        // room.dispatch.js sendRoomState()'s own
+                        // primaryMapCacheIndex does the identical
+                        // CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID lookup off the
+                        // creator's client.mapId_ -- room.createMapId is that
+                        // same raw value, dual-written at CQ_CREATE.
+                        primaryBodyCacheIndex: CAMPAIGN_MAP_CACHE_INDEX_BY_MAP_ID[room.createMapId || 1] || ROOM_DEFAULT_ENTRY_HINTS[0] || 8,
                         selectedMech: 1,
+                        isCampaignRoom: room.campaign,
+                        optionMask: room.optionMask || 0,
+                        isTrueCampaign: room.isTrueCampaign,
+                        campaignMapCacheKey: room.mapId,
+                        campaignMapHints: computeCampaignMapAllHints(),
+                        // No per-room override history yet for these four
+                        // (Room only carries the creation-time
+                        // mapId/playTime/playRound, updated by Map_Change_One_CQ
+                        // below via rooms.updateRoomMapSelection) -- same
+                        // fallback chain sendMapChangeOnePacket already uses
+                        // (falls through to roomSettingTime/Goal above), so a
+                        // freshly created room's joiner lands on the same
+                        // values a freshly created room's own creator would.
+                        mapChangeOneTime: room.playTime,
+                        mapChangeOneRound: room.playRound,
+                        playRound: room.playRound,
+                        mapChangeOneKill: undefined,
+                        mapChangeOneGoal: undefined,
                     };
                     sendRoomStatePackets(client, roomStateCtx, getExactMessageBuffer);
+                    sendRoomMapPackets(client, roomStateCtx, getExactMessageBuffer, { mapChangeOneResponse: true });
+                    if (room.campaign) {
+                        const { sendCampaignBootstrap } = require('./room/room-map.sender');
+                        sendCampaignBootstrap(client, getExactMessageBuffer);
+                    }
 
                     for (const member of allMembers) {
                         sendRoomUserPackets(client, buildMemberUserCtx(member), getExactMessageBuffer, {
@@ -1201,6 +1305,22 @@ class ZGateGameDispatch
                     client.mapChangeOneRound_ = incomingFields.b5;
                     client.mapChangeOneKill_ = incomingFields.w6;
                     client.mapChangeOneGoal_ = incomingFields.w8;
+                    // D1-4c: mirror the same update into the shared Room, so
+                    // a joiner who arrives *after* this map/round change
+                    // sees it too (gate.game.dispatch.js's Enter_CQ handler
+                    // now reads room.mapId/playTime/playRound, not this
+                    // connection's client.xxx_ fields). Unconditional, same
+                    // "always write, read is gated" pattern CQ_CREATE's own
+                    // dual-write already uses -- addMember always registers
+                    // the sender as a room member regardless of ROOM_JOIN_MODE.
+                    const roomForMapUpdate = rooms.getRoomByAccount(Number(client.accountIndex_ || client.accountId_ || 1));
+                    if (roomForMapUpdate) {
+                        rooms.updateRoomMapSelection(roomForMapUpdate.id, {
+                            mapId: incomingFields.w1,
+                            playTime: incomingFields.w2,
+                            playRound: incomingFields.b5,
+                        });
+                    }
                 }
                 const outgoingFields = buildMapChangeOneSaFields(body, client);
                 console.log(

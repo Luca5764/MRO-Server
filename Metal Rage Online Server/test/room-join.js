@@ -343,6 +343,126 @@ function main()
         rooms._resetForTests();
     }
 
+    // --- 7 (D1-4c, docs/backlog.md PM contract): a joiner's full room-state
+    // burst must match the creator's own, byte-for-byte, in every field
+    // that is not identity-dependent. Regression test for the PvP-shell bug
+    // ([LOG] session-20260919-104728.jsonl:118 vs :164, [OBS] marker at line
+    // 198 "PVP畫面有紅藍隊") -- root cause was gate.game.dispatch.js's
+    // Enter_CQ handler reading `room.roomType` (Room_List_SN-normalized)
+    // instead of `room.rawRoomType`, and never calling sendRoomMapPackets()/
+    // sendCampaignBootstrap() at all (matching [OBS] line 295 "中間地圖設定
+    // 還有房間設定都為空"). Separate rooms._resetForTests() scope, same
+    // pattern as scenarios 5/6 above.
+    rooms._resetForTests();
+    rooms._setRoomJoinModeForTests('enabled');
+    rooms._setLobbyRoomListModeForTests('enabled');
+    const fakeTimers2 = installFakeTimers();
+    try {
+        const hostC = makeFakeClient(31, 30907);
+        hostC.accountId_ = 31;
+        hostC.nickname_ = 'Carol';
+        const joinerD = makeFakeClient(32, 30907);
+        joinerD.accountId_ = 32;
+        joinerD.nickname_ = 'Dave';
+        rooms.registerLobbyClientSource([hostC, joinerD]);
+
+        const createHandled3 = gate.dispatch(hostC, CQ_CREATE, makeCreateBody('PvE Room'));
+        assert.strictEqual(createHandled3, true, 'CQ_CREATE must be handled');
+        const pveRoomId = hostC.createdRoomIndex_;
+
+        // Drain both ROOM_STATE_RETRY_SCHEDULE entries (350ms, 1200ms) --
+        // both sends are identical to each other, only the first is needed
+        // for comparison.
+        while (fakeTimers2.fireNext()) { /* run every pending timer */ }
+
+        // Opcodes that make up "the room state a client is told about",
+        // per the task contract's list (Room_Default, Map_Change_All/One,
+        // Room_Option, Room_Boundary, "任務相關" == Campaign_SN bootstrap).
+        // Room_State_SN (0x00220214) and Room_Name_SN (0x0022021a) included
+        // too -- sendRoomStatePackets() always sends both alongside the
+        // others listed in the contract.
+        const ROOM_STATE_OPS = [
+            '0x00220203', // Room_Default_SN
+            '0x0022021a', // Room_Name_SN
+            '0x00220213', // Room_Boundary_SN
+            '0x00220217', // Room_Option_SN
+            '0x00220214', // Room_State_SN
+            '0x00220226', // Map_Change_ALL_SN (sent twice per burst)
+            '0x00220223', // Map_Change_ONE_SN
+            '0x0023013a', // Campaign_SN bootstrap
+        ];
+        function firstStateBurst(sentList) {
+            const out = {};
+            for (const op of ROOM_STATE_OPS) {
+                const hits = sentList.filter((s) => s.op === op);
+                assert.ok(hits.length > 0, `expected at least one ${op} in the room-state burst`);
+                out[op] = hits[0].hex;
+            }
+            return out;
+        }
+        const hostBurst = firstStateBurst(hostC._sent);
+
+        joinerD._sent.length = 0;
+        const enterHandled3 = gate.dispatch(joinerD, ENTER_CQ, makeEnterBody(pveRoomId));
+        assert.strictEqual(enterHandled3, true, 'Enter_CQ must be handled');
+        while (fakeTimers2.fireNext()) { /* run every pending timer */ }
+        const joinerBurst = firstStateBurst(joinerD._sent);
+
+        // Room_Default_SN: identical except the two identity-dependent u16
+        // fields at the front (accountIndex @0x00, roomLinkIndex @0x02 --
+        // for a campaign room roomLinkIndex mirrors accountIndex, per
+        // room-state.sender.js's `isCampaignRoom ? accountIndex : roomIndex`,
+        // so it differs from the host's for the same identity reason).
+        // Bytes from 0x04 onward (roomType, mapIndex, maxPlayers, gameMode,
+        // team indices, room settings, the mech-slot entry table) must match
+        // exactly -- this is where the PvP-shell bug lived (offset 0x04).
+        assert.strictEqual(
+            hostBurst['0x00220203'].slice(8), // skip 4 bytes = 8 hex chars
+            joinerBurst['0x00220203'].slice(8),
+            'Room_Default_SN bytes from offset 0x04 onward must match between host and joiner (roomType/mapIndex/maxPlayers/gameMode/teams/settings/entries)'
+        );
+        assert.notStrictEqual(
+            hostBurst['0x00220203'].slice(0, 8),
+            joinerBurst['0x00220203'].slice(0, 8),
+            'Room_Default_SN offset 0x00-0x03 (accountIndex/roomLinkIndex) is identity-dependent and must differ (host=31, joiner=32)'
+        );
+        // Explicitly pin down the PvP-shell byte (offset 0x04, roomType) to
+        // the PvE value both sides must agree on -- 1 (raw CQ_CREATE type),
+        // not 2 (what `room.roomType`, the Room_List_SN-normalized value,
+        // used to produce).
+        assert.strictEqual(Buffer.from(hostBurst['0x00220203'], 'hex').readUInt8(4), 1, 'host roomType byte must be 1 (PvE)');
+        assert.strictEqual(Buffer.from(joinerBurst['0x00220203'], 'hex').readUInt8(4), 1, 'joiner roomType byte must be 1 (PvE), not 2 (PvP shell)');
+
+        // Room_Boundary_SN (0x00220213) carries `currentUsers` at byte 1 --
+        // legitimately different here because the two bursts were captured
+        // at different points in room membership (host's burst: 1 member,
+        // right after CQ_CREATE; joiner's burst: 2 members, right after her
+        // own Enter_CQ added her). This is not an identity field and not the
+        // bug under test -- room.members.size is genuinely different at the
+        // two send times, same as it would be for two real connections.
+        // maxPlayers (byte 0) is not time-dependent and must still match.
+        assert.strictEqual(
+            hostBurst['0x00220213'].slice(0, 2),
+            joinerBurst['0x00220213'].slice(0, 2),
+            'Room_Boundary_SN maxPlayers byte must match'
+        );
+        assert.strictEqual(Buffer.from(hostBurst['0x00220213'], 'hex').readUInt8(1), 1, 'host burst currentUsers must be 1 (captured solo, right after CQ_CREATE)');
+        assert.strictEqual(Buffer.from(joinerBurst['0x00220213'], 'hex').readUInt8(1), 2, 'joiner burst currentUsers must be 2 (captured after her own Enter_CQ added her)');
+
+        // The remaining opcodes carry no identity- or membership-count-
+        // dependent fields at all -- must be byte-for-byte identical.
+        for (const op of ROOM_STATE_OPS) {
+            if (op === '0x00220203') continue; // checked above with the identity-field exception
+            if (op === '0x00220213') continue; // checked above with the currentUsers exception
+            assert.strictEqual(hostBurst[op], joinerBurst[op], `${op} must be byte-for-byte identical between host and joiner`);
+        }
+
+        console.log('[room-join test] PASS: joiner\'s room-state burst matches the host\'s byte-for-byte (except accountIndex/roomLinkIndex), including Map_Change_ALL/ONE and Campaign_SN which were previously never sent to a joiner at all');
+    } finally {
+        fakeTimers2.restore();
+        rooms._resetForTests();
+    }
+
     console.log('[room-join test] ALL CHECKS PASS');
     process.exit(0);
 }
