@@ -128,7 +128,7 @@
 | **`Map_Change_All_SN 0x00220226` 會寫入選中狀態，不只是重繪**；排在 `Map_Change_One_SN` 之後（取代或補送都一樣）會覆蓋地圖選擇 | ✅ [OBS] R7／R7b 兩次實測 | `journal/2026-09-18-13-map-change-order.md` |
 | `Map_Change_All_SN` 每筆 9 bytes，record+0x04 是 **Round** 不是選中旗標；客戶端只存前 **6** 筆（`MAX_MAP_COUNT=6`，`0x107ebc1d`） | 🟡 [DLL] Gemini 分析，未實測 | `research/2026-09-18-map-list-zero/` |
 | 難度鈕的燈慢一拍（值正確、時機不對）。已排除送出順序 | ⬜ | backlog H6 |
-| 房間設定對話框地圖清單空、人數顯示 4VS4。已知鏈：`Account_MapList_Check`／`m_MapList`（送真 map id 仍不夠）→ 人數範圍篩選 → 要 `g_SelectMapInfo` 命中才切 PvE 人數陣列。缺「誰設定 `g_SelectMapInfo`」 | ⬜ | backlog H7；`research/2026-09-18-room-setting/` |
+| 房內換圖（H7）：選圖視窗 `ZPopup_MapSelect` 和房間 `co_Map` 都要 `Account_MapList_Check` 通過，**需要兩個條件同時成立**：(a) `MapInfo_SN 0x00210115` 送真的 map id 9001–9012（`MAP_INFO_REAL_ID_MODE`）；(b) 30907 登入時再送一次（`MAP_INFO_ON_GAME_LOGIN_MODE`），因為 9211 那次會在切換場景後遺失（機制 ⬜）。兩個都開之後，選圖視窗列出 4 張 PvE 圖，換圖會經 `0x00220221`→`0x00220223` 同步給加入者。「房間設定變更」視窗另外還要 PvE MaxUser=16（`PVE_MAXUSER_WIRE_MODE`）才會列出地圖；按確認會送 `Name_Change_CQ 0x00220218`（handler 實作中） | ✅ [SHOT] `shots/mapselect-after-30907.png`、`shots/roomset-stuck.png` [LOG][OBS]（未經跨公司審查）。R9 當時只開 (a)，所以無效 | `journal/2026-09-19-1000-maplist-single-entry.md` |
 | 紅隊槽顯示玩家：`Room_Default_SN 0x00220203` body+0x10／+0x12 是 Red／Blue TeamIndex，送 0／1（原本誤送建房選項）（`ROOM_TEAM_INDEX_MODE`） | ✅ [LOG][OBS] | `journal/2026-09-18-15-room-team-index.md` |
 | `User_Name_SN 0x00220421` body+0x1B 暱稱送 **ANSI**（上限 25 字） | ✅ [DLL]（`0x107eb0ce` → `winToUNICODE`）[OBS] | `journal/2026-09-18-17-user-name-ansi.md` |
 | 房間槽頭像不顯示。PilotCode 101 是 BeginSet 編號；改送 `51500101`／`51100801` 也都沒有頭像，所以值不是唯一關卡 | ❌ R14／R15（改值）；根因 ⬜ | `journal/2026-09-18-2305-room-avatar-experiments.md` |

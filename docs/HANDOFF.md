@@ -58,4 +58,3 @@
 ### 等操作者的
 
 - push reverse-work。
-- 第二台 `xigncode.log` 的時間戳。

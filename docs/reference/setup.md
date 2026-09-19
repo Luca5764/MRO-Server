@@ -163,6 +163,7 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 | Win10 | `data\System\_original_backup\MetalRage.exe`（原廠） | `419d927517e63fe73172840cf9b2237672b9890a590f16b334bf500d74da14a0` |
 
 - 兩個檔案的差異在 `0x160–0x161`、`0x19213–0x19214`、`0x19237–0x19238`。
+- ✅ [OBS] 2026-09-19：dusk 在第二台（Win10、原廠 exe）連續打完多場，保護層通過；xigncode.log 時間戳那一項結案。
 - Win10 用錯 exe 時的特徵：Windows 事件 ID 1000、錯誤代碼 `0xc0000005`、錯誤模組 unknown、`xigncode.log` 沒有更新。朋友那邊出事時，先拿這幾項比對。
 - Win7／Win8 完全沒有測過。
 - 詳情見 `journal/2026-09-19-0010-win10-exe-and-second-client.md`。

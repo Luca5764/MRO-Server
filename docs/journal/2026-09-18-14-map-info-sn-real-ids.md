@@ -1,4 +1,4 @@
-# R9：MapInfo_SN 改送真實 PvE map id（實測未通過）
+# R9：MapInfo_SN 改送真實 PvE map id（實測未通過）（已被 2026-09-19-1000-maplist-single-entry.md 更正：送真 map id 是必要條件之一，單獨開無效，要搭配 30907 登入時重送才生效）
 
 - 日期：2026-09-18
 - 分析／實作者：Codex（中階）
