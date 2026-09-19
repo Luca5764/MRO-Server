@@ -140,6 +140,9 @@ class ZGameLoginDispatch
                 // Store account info on the client for other dispatchers
                 client.accountId_ = account.id;
                 client.nickname_ = account.nickname;
+                // D1-6: whitelist.getHostAddress() is keyed by username; only the
+                // 9211 connection set this before, so on 30907 it was undefined.
+                client.username_ = account.username;
                 client.pilot_ = Number(account.pilot) || 101;
                 client.point_ = clampMoney(account.point, 100000);
                 client.cash_ = clampMoney(account.cash, 0);

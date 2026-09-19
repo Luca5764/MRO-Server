@@ -2,6 +2,17 @@ const NetworkClient = require("../client");
 const packetlog = require("../packetlog.js");
 const db = require('../database/db');
 const { MAX_SLOT_COUNT } = require('../datatypes/enums');
+// D1-6-IMPL (docs/backlog.md, docs/design/d1-step6-battle-broadcast.md §5
+// step 4): the 0x00420114 handler below needs the shared Room registry (is
+// this connection the tracked host of a 2+ member room?) and the
+// whitelist's per-account hostAddress (design §3.1) to message non-host
+// members. gate.game.dispatch.js's sendReadyHostSnToRoomMember() is
+// required lazily at the one call site below, matching that file's own
+// lazy-require precedent for avoiding require cycles (it has no cycle with
+// this file today, but neither module currently requires the other at the
+// top level, and this keeps it that way).
+const rooms = require('../rooms.js');
+const whitelist = require('../config/whitelist.js');
 
 function catalogCategoryType(row) {
     const category = Number(row.category_type) || 2;
@@ -121,7 +132,73 @@ class ZCommunityDispatch
         // Static analysis shows the client constructs 0x420114 after Ready_Host_SN.
         if (type === 0x00420114) {
             console.log(`[ZDispatchWaiting] >> Ready_Host_CA-like packet 0x00420114 body=${body.toString('hex')}`);
-            sendReadySuccessAndBeginRound(client, '0x00420114');
+
+            // D1-6-IMPL (design doc §5 step 4, §1 rows 7-9; §1's DLL note
+            // 0x107050a6): body+0x02 is a u32 LE result code (0=success,
+            // 0xFFFFFFFF=the host's own Listen failed), body+0x06 is a u16
+            // LE port -- the host's real listen port, per battle-host.md.
+            //
+            // SOL-REVIEW-2 point 3 (docs/research/2026-09-19-sol-review/
+            // batch2.md): this used to default resultCode to 0 (success!)
+            // whenever body was under 6 bytes, so a short/malformed CA was
+            // silently treated as a successful Listen, and it fell back to
+            // the hardcoded 30907 port instead of failing; it also still
+            // sent the host their own Ready_Success_SN even when
+            // resultCode was a genuine Listen failure. Fixed below, but
+            // ONLY inside the split (2+ member, this connection is host)
+            // branch -- the 1-person and READY_HOST_SPLIT_MODE-off paths
+            // still fall straight through to the unconditional
+            // sendReadySuccessAndBeginRound() at the bottom, unchanged.
+            let suppressHostSuccess = false;
+
+            if (rooms.isReadyHostSplitEnabled()) {
+                const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
+                const room = rooms.getRoomByAccount(accountId);
+                if (room && accountId === room.hostAccountId && room.members.size > 1) {
+                    if (body.length < 8) {
+                        // Too short to hold the u32 result at +0x02 and the
+                        // u16 port at +0x06 -- never guess either field.
+                        console.error(`[ZDispatchWaiting] !! Ready_Host_CA malformed (${body.length} bytes, need >= 8) for room #${room.id} -- sending NOTHING to anyone, not even the host's own Ready_Success_SN`);
+                        suppressHostSuccess = true;
+                    } else {
+                        const resultCode = body.readUInt32LE(0x02);
+                        const port = body.readUInt16LE(0x06);
+
+                        if (resultCode !== 0) {
+                            // PM note (design doc, bottom): open-Listen
+                            // failure (result=0xFFFFFFFF, [DLL]
+                            // 0x107d918b) -- do not message the other
+                            // members, and (SOL-REVIEW-2 point 3) do not
+                            // tell the host it succeeded either.
+                            console.error(`[ZDispatchWaiting] !! Ready_Host_CA result=0x${(resultCode >>> 0).toString(16)} (host Listen failed) for room #${room.id} -- sending NOTHING to anyone, not even the host's own Ready_Success_SN`);
+                            suppressHostSuccess = true;
+                        } else {
+                            const hostAddress = client.username_ ? whitelist.getHostAddress(client.username_) : null;
+                            if (!hostAddress) {
+                                console.error(`[ZDispatchWaiting] !! READY_HOST_SPLIT_MODE: no hostAddress configured for host account=${accountId} (username=${client.username_}), room #${room.id} -- not sending Ready_Host_SN to ${room.members.size - 1} non-host member(s)`);
+                            } else {
+                                const { sendReadyHostSnToRoomMember } = require('./gate.game.dispatch.js');
+                                const mapCacheKey = Number(room.mapId) || 58;
+                                for (const member of room.members.values()) {
+                                    if (member.accountId === room.hostAccountId) continue;
+                                    if (!member.client) continue;
+                                    sendReadyHostSnToRoomMember(member.client, hostAddress, port, mapCacheKey);
+                                    // design §1 row 9 (⬜, not yet reconciled with
+                                    // a real client): non-host has no CA of its
+                                    // own to answer, so send Ready_Success_SN
+                                    // right behind Ready_Host_SN rather than wait
+                                    // for one.
+                                    sendReadySuccessAndBeginRound(member.client, '0x00420114 (non-host, after Ready_Host_SN)');
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!suppressHostSuccess) {
+                sendReadySuccessAndBeginRound(client, '0x00420114');
+            }
             return true;
         }
 

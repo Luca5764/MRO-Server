@@ -1,3 +1,6 @@
 {
-    "users": ["Lucas"]
+    "users": [
+        "Lucas",
+        { "name": "dusk", "hostAddress": "192.168.1.42" }
+    ]
 }
