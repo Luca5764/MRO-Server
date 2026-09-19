@@ -597,3 +597,10 @@ C→S 沒有官方 opcode 清單，本文件依 132 份 session log 聚合到的
 2. `0x00250102`：`game.dispatch.js` 註解「게임 씬 진입 알림」（遊戲場景進入通知），opcode 數值屬於 Card（`0x0025xxxx`）範圍，但語意其實是開戰交握的一部分。歸類進第 5 節 PvE 模式而非第 14 節卡片，已在文中註明。
 3. 第 15、16 節（排行榜、活動）沒有找到獨立 opcode，可能附掛在其他系統裡，未深入分析，只列為缺口。
 4. `Send_UserItem_SA`（0x00250402，卡片）／`Card_Combination_Type_SA`（0x00250502）／`Destroy_Socket_SA`（0x00250512）三個 opcode 語意存疑，可能屬於強化石／插槽而非卡片本體。
+
+## 補充：分類疑點調查（OPCODE-CLASS-DOUBTS，2026-09-19，🟡）
+
+- `0x00320104`（DLL 建構子在 `0x107d33f0`，body 為 0）和 `0x00250102`（`0x107c5960`，body 為 0）：[LOG] 在 72 份 log 中，每條連線都**在 Channel_Enter 之後各送一次**，兩者只相差 1–4 ms。這兩個是 C→S，本來就不會出現在 dispatcher 表裡。
+- 我們的回應 `0x00320105`、`0x00250103` **都不在客戶端的 dispatcher 表裡**，會被客戶端直接忽略，所以是無效回應。
+- 高階判讀（🟡，待 P5／P6 開工時確認）：這兩個比較像進大廳時送出的「好友資料載入」和「卡片資料載入」請求（`ZDispatchFriend::Load_CN` 在 `0x10705470` 有匯出；Card 那邊有 `Load_Failed_SN 0x00250101`）。它們期待的回應可能是好友清單和 `CardList_SN 0x00250301` 這類 SN，不是 CQ+1。worker 的看法是「引擎層 ping」，證據一樣不足。
+- `game.dispatch.js:57-76` 的 `0x00250204 → 0x00250201／0x00250301` 分支是死路：[LOG] `0x00250203` 送了 17 次，客戶端從來沒回過 `0x00250204`。而且 `0x00250301` 在 DLL 裡其實是 `ZDispatchCard::CardList_SN`，不是 BeginRound。列為收斂時要刪除的項目。
