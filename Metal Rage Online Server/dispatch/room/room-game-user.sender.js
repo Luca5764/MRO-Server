@@ -1,5 +1,6 @@
 const db = require('../../database/db');
 const serverConfig = require('../../config/server.js');
+const { CANONICAL_LOADOUTS } = require('../../database/default-loadouts');
 
 // 0x00222112, read straight out of ZDispatchGame::Dispatch — the chain does
 // sub edx,0x222111 / dec edx and lands on Game_User_SN. The old 0x00230111 was
@@ -16,18 +17,10 @@ const GAME_USER_HEADER_SIZE = 0x02;
 const GAME_USER_SOCKET_OFFSET = 0x6D;
 const GAME_USER_SOCKET_SIZE = 0x2F;
 
-// Canonical default loadouts from Cache.Bin Table 4 (DefaultSetList)
-// Format: body, main, left, right, booster, skin
-const CANONICAL_LOADOUTS = {
-    1: { body: 11100101, main: 22100101, left: 32100101, right: 31100101, booster: 41100101, skin: 61101001 }, // Vanguard (Small)
-    2: { body: 12100101, main: 26300101, left: 32100101, right: 31100101, booster: 41100101, skin: 61100101 }, // Dual
-    3: { body: 13100101, main: 21200101, left: 32100101, right: 31100101, booster: 41100101, skin: 61101601 }, // HA01m
-    4: { body: 14200101, main: 24100201, left: 32100101, right: 31100101, booster: 0,        skin: 61101201 }, // NB01m
-    5: { body: 15200101, main: 22200201, left: 32100101, right: 31100101, booster: 0,        skin: 61101301 }, // TB01m
-    6: { body: 16200101, main: 25300101, left: 38500101, right: 0,        booster: 43100101, skin: 61101501 }, // BB01m
-    7: { body: 17100101, main: 28100101, left: 31100101, right: 0,        booster: 42100101, skin: 61101401 }, // EA01m
-    8: { body: 18100101, main: 28300101, left: 39100101, right: 31100101, booster: 41100101, skin: 61101101 }, // OA01m
-};
+// Canonical default loadouts from Cache.Bin Table 4 (DefaultSetList).
+// P1B-IMPL: moved to database/default-loadouts.js (require above) so
+// tools/p1b-remove-default-items.js reads the exact same table instead of a
+// second hand-copied one.
 
 // The record layout below is read out of the real handler at 0x107d8ae0, from
 // the assembly rather than the decompiler — Ghidra mislabels two of the stack
