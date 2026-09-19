@@ -217,6 +217,23 @@ async function main()
             assert.strictEqual(killsLE, '0200', `${label}'s Death_SN must carry the shared kill total (2), got ${killsLE}`);
         }
         console.log('[battle-end-broadcast test] PASS: room.battleStats accumulates across Death_CN calls and both members see the same totals');
+
+        clientA._sent.length = 0;
+        clientB._sent.length = 0;
+
+        // --- Sol batch3 review (docs/research/2026-09-19-sol-review/
+        // batch3.md, Part B): B (non-host) sends Death_CN -> ignored, no
+        // stats change, no packet to anyone. ---
+        const nonHostDeathHandled = lobby.dispatch(clientB, DEATH_CN, makeDeathCnBody(2, 1, 1));
+        assert.strictEqual(nonHostDeathHandled, true, 'the opcode is still claimed (handled=true), just ignored internally');
+        assert.strictEqual(clientA._sent.length, 0, 'A must receive nothing from a non-host Death_CN');
+        assert.strictEqual(clientB._sent.length, 0, 'B (the non-host sender) must receive nothing either');
+        assert.strictEqual(room.battleStats.get(1).kills, 2, 'a non-host Death_CN must not touch room.battleStats (killer kills stay 2)');
+        // accountId 2 already has an entry (victim of the two earlier host
+        // Death_CN calls) -- assert its kills stay 0, i.e. the non-host
+        // Death_CN (attacker=2) did not credit it a kill.
+        assert.strictEqual(room.battleStats.get(2).kills, 0, 'a non-host Death_CN must not credit its sender a kill on room.battleStats');
+        console.log('[battle-end-broadcast test] PASS: a non-host Death_CN is ignored, no reply to anyone, no stats change');
     } finally {
         fakeTimers.restore();
         rooms._resetForTests();

@@ -552,6 +552,20 @@ class ZLobbyDispatch
                 const roomForDeath = battleEndBroadcastEnabledForDeath
                     ? rooms.getRoomByAccount(accountIdForDeath)
                     : undefined;
+
+                // Sol batch3 review (docs/research/2026-09-19-sol-review/
+                // batch3.md, Part B "需修改 -- non-host handling"): same
+                // current-room-host gate as Campaign_CN above -- [LOG]
+                // session-20260919-150041.jsonl ms 3101434-4362230 shows all
+                // 605 Death_CN in the recorded match came from the host
+                // connection (conn12), and Death_CN is the P2P host
+                // reporting a kill, so a non-host sender has no supporting
+                // evidence and is ignored: no stats change, no packet sent.
+                if (roomForDeath && accountIdForDeath !== roomForDeath.hostAccountId) {
+                    console.log(`[ZLobbyDispatch] >> Ignored Death_CN 0x00230123 from non-host account=${accountIdForDeath} (host=${roomForDeath.hostAccountId}, room #${roomForDeath.id}) -- no reply`);
+                    return true;
+                }
+
                 let statFor;
                 if (roomForDeath) {
                     if (!roomForDeath.battleStats)
