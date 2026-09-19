@@ -633,3 +633,9 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 ## TUT-LABEL：`0x00260111`／`0x00260121` 標籤疑點（explorer 2026-09-19，待審）
 - 目標：確認 `0x00260121` 是 `Tutorial_Start_CN`（DLL `0x107e9b70`），`0x00260111` 是 `Mech_License_CQ`（`0x107e9cf0`）；而伺服器 `community.dispatch.js:55-61` 目前分別把它們當成 License query、Quest complete。
 - 做法：用 `tools/disasm.py` 查兩個函式的所有呼叫端（xref），並逐一核對 body 欄位。動 handler 之前先交審。依據：`research/2026-09-19-pve-smoke/notes.md`。
+- **核對結果（verifier 2026-09-19，高階採納）：DLL 部分 CONFIRMED。**
+  - `0x00260121`＝Tutorial_Start_CN、`0x00260122`＝Tutorial_End_CN，都是只有 header 的單向 CN（寫入點 `0x107e9bba`／`0x107e9c7a`，size 0x10），呼叫端分別在 `0x10724ad8`／`0x10724c2c`。
+  - `0x00260111`＝Mech_License_CQ，body 是 (mechType u32, 1 u32)，送出前 push 了預期回覆 `0x00260112`（`0x107e9d54`、`0x107e9d59`、`0x107e9d8a`），呼叫端在 `0x10718432`。
+  - [LOG] 192 份 session log 裡這四個 opcode 全部 0 筆，所以現在的錯誤標籤還沒被觸發過。
+  - 風險：一旦 `0x00260111` 真的送來，`community.dispatch.js:94-108` 會把 mechType 當成 tutorialId 寫進教學完成表。
+  - 修正契約：改標籤；`0x00260111` 改成只記 hex、不寫 DB；`0x00260121` 不回 `0x00260122`，因為客戶端不等回覆，而且客戶端的 S→C 表裡有沒有 `0x00260122` 也還沒驗證 ⬜。優先度低，等教學模式（P4）時一起做。
