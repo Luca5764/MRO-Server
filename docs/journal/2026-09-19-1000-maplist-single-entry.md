@@ -61,3 +61,9 @@ node test/console-commands.js / exception-guard.js / extra-lives.js / login-toke
 - R9 當時開過這個開關，但觀察的是另一個對話框（ZPopup_RoomSet，多了人數篩選），`co_Map` 從沒單獨測過。
 - [CACHE] 9001–9012 每 3 筆是同一張地圖的初／中／高：9001-3 Map_PC01、9004-6 Map_PC03、9007-9 Map_PC02、9010-12 Map_PC04（`ZPanel_PVE.uc:328-329` 的 `(MapIndex-9001)/3` 相符）。`room.dispatch.js:180` 的註解「9001 = 動力奪取戰」跟截圖（9001 群組顯示「潛入作戰」）不一致，待核對。
 - 下一個單變數實驗：只把 `MAP_INFO_REAL_ID_MODE` 改成 enabled（需要重新登入，因為 MapInfo_SN 是登入時送的），看 `co_Map` 能不能列出 4 張地圖、箭頭能不能換圖。
+
+## MAP_INFO_REAL_ID_MODE 實驗（2026-09-19）
+
+- [LOG] `session-20260919-100817.jsonl:645`：重新登入後 MapInfo_SN 送了 12 筆 0x2329–0x2334（9001–9012）。
+- [OBS] 下拉選單和 ◀▶ 箭頭仍然無效；客戶端完整重開後（`session-20260919-103330.jsonl` 200 行 marker）也一樣。H7 沒有變化。
+- ❌ 單靠送真實 map id 不夠。🟡 推測：`co_Map` 只在 `InitComponent` 時填一次，可能早在登入前就建立了；或 `Account_MapList_Check` 還比對了其他欄位。擱置，開關關回 disabled。
