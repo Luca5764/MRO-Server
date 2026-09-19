@@ -641,3 +641,8 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
   - [LOG] 192 份 session log 裡這四個 opcode 全部 0 筆，所以現在的錯誤標籤還沒被觸發過。
   - 風險：一旦 `0x00260111` 真的送來，`community.dispatch.js:94-108` 會把 mechType 當成 tutorialId 寫進教學完成表。
   - 修正契約：改標籤；`0x00260111` 改成只記 hex、不寫 DB；`0x00260121` 不回 `0x00260122`，因為客戶端不等回覆，而且客戶端的 S→C 表裡有沒有 `0x00260122` 也還沒驗證 ⬜。優先度低，等教學模式（P4）時一起做。
+- 高階決定（2026-09-20）：4 個開關已合併，合併後主目錄的回歸測試全綠。
+  - `lobbyRoomListMode` 卡在 golden：那幾個樣本是用 `_resetForTests()`（disabled）錄的，而正式預設是 enabled，進頻道時會多送一筆 `Room_List_SN 0x00220204`。這是已經實機驗證過的行為（登入後看得到大廳清單），**不是 regression**。
+  - 處理方式：用 enabled 下的新 session log 重新擷取 golden 樣本（tools/extract-golden.js），再套用 patch `~/mro-wt/conv-c-lobbyRoomList.patch`。
+  - `roomJoinMode` 等上一項做完再收斂。
+  - 部署：這批改到 rooms.js，下次必須**完整重啟**伺服器。
