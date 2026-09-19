@@ -52,7 +52,11 @@ const LIST_HEADER_BYTES = 0x02;
 const SAFETY_MARGIN_BYTES = 0x20;
 const MAX_ENTRIES_BYTES = MAX_FRAME_BYTES - FRAME_HEADER_BYTES - LIST_HEADER_BYTES - SAFETY_MARGIN_BYTES;
 
-const { toSafeAscii } = require('./room-string');
+// ROOMNAME-BIG5 (docs/journal/2026-09-19-*-room-name-big5.md, 🟡):
+// toRoomNameWireBytes() is toSafeAscii() (unchanged) unless
+// ROOM_NAME_RAW_BYTES_MODE is on, in which case it hands back the exact
+// latin1 bytes instead of mangling non-ASCII (e.g. Big5) bytes to '?'.
+const { toRoomNameWireBytes } = require('./room-string');
 
 const FIELD_BIT = {
     ROOM_TYPE: 1 << 0,
@@ -113,7 +117,10 @@ function buildRoomListEntry(room, updateType) {
         return buf;
     }
 
-    const name = toSafeAscii(room.name);
+    // ROOMNAME-BIG5: name.length below is a JS-string char count, but for
+    // both 'ascii' and 'latin1' that equals the byte count too, so the wire
+    // math (fieldsSize, the u8 length prefix) stays correct either way.
+    const { text: name, encoding: nameEncoding } = toRoomNameWireBytes(room.name, 0xFF);
     const headerSize = 0x02 + 0x01 + (updateType === 1 ? 0x02 : 0) + 0x02; // RoomIndex+UpdateType[+RoomNumber]+FieldMask
     const fieldsSize = 0x01 /* ROOM_TYPE */ + 0x02 /* MATCH_FLAGS */ + 0x02 /* USER_COUNT */
         + 0x01 /* ROOM_FLAGS */ + 0x06 /* MAP */ + 0x02 /* NAME_INDEX */ + (0x01 + name.length) /* NAME */;
@@ -176,7 +183,7 @@ function buildRoomListEntry(room, updateType) {
     buf.writeUInt16LE(room.mapId & 0xFFFF, off); off += 2;            // bit5 MapIndex (last 2 bytes)
     buf.writeUInt16LE(room.id & 0xFFFF, off); off += 2;              // bit8 RoomNameIndex, see header comment
     buf.writeUInt8(name.length, off); off += 1;                      // bit9 name length
-    buf.write(name, off, name.length, 'ascii'); off += name.length;  // bit9 name bytes
+    buf.write(name, off, name.length, nameEncoding); off += name.length; // bit9 name bytes
 
     return buf;
 }

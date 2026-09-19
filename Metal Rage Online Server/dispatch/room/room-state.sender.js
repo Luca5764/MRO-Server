@@ -3,7 +3,7 @@ const SN_ROOM_BOUNDARY = 0x00220213;
 const SN_ROOM_STATE = 0x00220214;
 const SN_ROOM_OPTION = 0x00220217;
 const SN_ROOM_NAME = 0x0022021A;
-const { ROOM_STRING_ANSI_MODE, writeAnsiStringField } = require('./room-string');
+const { ROOM_STRING_ANSI_MODE, writeAnsiStringField, decodeBig5ForLog } = require('./room-string');
 
 // R11 verified [LOG][OBS]: body+0x10/+0x12 are Red/Blue TeamIndex, not the
 // CQ_CREATE opt1/opt2 echo. See docs/journal/2026-09-18-15-room-team-index.md.
@@ -61,6 +61,27 @@ function resolveBoundaryMaxUser(maxPlayers, isTrueCampaign) {
         return PVE_MAXUSER_WIRE_VALUE;
     }
     return maxPlayers;
+}
+
+// ROOMNAME-BIG5 (docs/journal/2026-09-19-*-room-name-big5.md): factored out
+// of sendRoomStatePackets() so the NAME-CHANGE handler in
+// gate.game.dispatch.js (client action: pressing OK in the room-settings
+// dialog with a new room name, Name_Change_CQ 0x00220218) can resend just
+// this one SN to every room member after a rename, without re-sending the
+// whole room-state burst. Byte-identical to the inline block this replaced.
+function sendRoomNameOnly(client, roomName, getExactMessageBuffer) {
+    const [msg, respBody] = getExactMessageBuffer(SN_ROOM_NAME, 0x32);
+    if (ROOM_STRING_ANSI_MODE === 'enabled') {
+        writeAnsiStringField(respBody, roomName, 0x00, 0x32);
+    } else {
+        respBody.write(roomName + '\0', 0x00, 'utf16le');
+    }
+    client.send(msg);
+    // ROOMNAME-BIG5: decodeBig5ForLog() returns null (nothing appended)
+    // unless ROOM_NAME_RAW_BYTES_MODE is on, so this stays byte/log
+    // identical while the switch is off.
+    const big5Readable = decodeBig5ForLog(roomName);
+    console.log(`[ZRoomDispatch] >> Sent SN_ROOM_NAME 0x22021A ("${roomName}"${big5Readable ? ` big5="${big5Readable}"` : ''})`);
 }
 
 function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
@@ -141,16 +162,7 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
         console.log(`[ZRoomDispatch] >> Sent SN_ROOM_DEFAULT (${bodySize} bytes, account=${accountIndex}, room=${roomIndex}, link=${roomLinkIndex}, type=${roomType}, mapIndex=${mapIndex}, map=${mapId}, opt2=0x${((ctxOptionMask || 0) >>> 0).toString(16)}, redTeam=${redTeamIndex}, blueTeam=${blueTeamIndex}, max=${maxPlayers}, mode=${gameMode}, goal=${roomSettingGoal}, time=${roomSettingTime}, round=${roomSettingRound}, entryCount=${roomDefaultEntryCount}, bodyCache=${primaryBodyCacheIndex})`);
     }
 
-    {
-        const [msg, respBody] = getExactMessageBuffer(SN_ROOM_NAME, 0x32);
-        if (ROOM_STRING_ANSI_MODE === 'enabled') {
-            writeAnsiStringField(respBody, roomName, 0x00, 0x32);
-        } else {
-            respBody.write(roomName + '\0', 0x00, 'utf16le');
-        }
-        client.send(msg);
-        console.log(`[ZRoomDispatch] >> Sent SN_ROOM_NAME 0x22021A ("${roomName}")`);
-    }
+    sendRoomNameOnly(client, roomName, getExactMessageBuffer);
 
     {
         // BOUNDARY-SWAP [DLL 0x107ea8e0] Room_Boundary_SN real body: 0x107ea95d
@@ -201,4 +213,5 @@ function sendRoomStatePackets(client, ctx, getExactMessageBuffer) {
 module.exports = {
     sendRoomStatePackets,
     _setPveMaxUserWireModeForTests,
+    sendRoomNameOnly,
 };
