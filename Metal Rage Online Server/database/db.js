@@ -426,13 +426,16 @@ async function createAccount(username, nickname, pilot)
             [4, 0, 14200101], // Body: NB01m
             [4, 1, 24100201], // Main: Sniper rifle
             [4, 2, 32100101], // SubLeft: AOM_a
-            [4, 4, 41100101], // Booster: BPE_a
+            // No booster row: Table 4 DefaultSetList has Booster=0 for this
+            // mech (docs/journal/2026-09-16-33-weapon-model-true-root-cause-verified.md),
+            // matching CANONICAL_LOADOUTS[4].booster in room-game-user.sender.js.
 
             // Mech 5 - Firepower / 聖戰士 (TB01m)
             [5, 0, 15200101], // Body: TB01m
             [5, 1, 22200201], // Main: Firepower cannon
             [5, 2, 32100101], // SubLeft: AOM_a
-            [5, 4, 41200101], // Booster: BHE_a
+            // No booster row: Table 4 DefaultSetList has Booster=0 for this
+            // mech too, same source as above.
 
             // Mech 6 - Engineer / 雷霆 (BB01m)
             [6, 0, 16200101], // Body: BB01m
