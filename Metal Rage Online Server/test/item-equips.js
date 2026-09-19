@@ -101,8 +101,12 @@ async function testSharedItemOnTwoMechs()
     function readSlot(mechIndex1Based, partSlot)
     {
         const entryOffset = HEADER_SIZE + (mechIndex1Based - 1) * ENTRY_SIZE;
-        const uniqueKey = body.readUInt32LE(entryOffset + 4 + partSlot * 8);
-        const itemIndex = body.readUInt32LE(entryOffset + 4 + partSlot * 8 + 4);
+        // [itemIndex, uniqueKey] order -- DLL WearInfo_SN 0x107c4877/0x107c4a13
+        // reads the second u32 at rec+0x08 as the ItemInfo key (journal
+        // 2026-09-16-27, Sol batch5 point 4). Matches account.dispatch.js /
+        // gamelogin.dispatch.js.
+        const itemIndex = body.readUInt32LE(entryOffset + 4 + partSlot * 8);
+        const uniqueKey = body.readUInt32LE(entryOffset + 4 + partSlot * 8 + 4);
         return { uniqueKey, itemIndex };
     }
 
