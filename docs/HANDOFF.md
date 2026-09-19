@@ -57,7 +57,7 @@
 
 ### 客戶端狀態變更（2026-09-19）
 
-- **主力客戶端 XIGNCODE3 已由操作者停用**（`ZNetwork.dll` 1-byte patch）。**此後的 session log／截圖／客戶端行為都是已 patch 的客戶端**，不要跟 patch 前的舊資料混著比，尤其斷線、逾時、行程被擋、輸入注入這幾類。詳見 `journal/2026-09-19-2350-disable-xigncode-patch.md`（🟡 待審）與 `reference/client.md`。
+- **主力客戶端的 XIGNCODE 修補已還原（2026-09-20 00:50）**：修補後軟體輸入與 taskkill 仍然無效，為了跟朋友的客戶端一致而還原；修補版留在 `ZNetwork.dll.patched`。修補版只跑過 2026-09-19 23:54–2026-09-20 00:50。見 `journal/2026-09-19-2350-disable-xigncode-patch.md` 末段。
 - y0da 不受影響：`MetalRage.exe` 仍不能 attach debugger、不能改 `.text`。
 - **規則已放寬（操作者 2026-09-20 同意）**：`AGENTS.md:23` 從「不繞過反作弊」改成「XIGNCODE 旁路已放寬」——AI 可協助逆向定位、維護 `tools/patch_disable_xigncode.py`、在已停用 XIGNCODE 的客戶端上做軟體輸入分析；仍不碰 y0da（`.text`／監控執行緒）、anti-attach 不硬繞。之前的「中階越權」疑慮就此解除。那篇 journal 仍 🟡 待審，因為 3 項待驗證還沒回報，不是因為規則問題。
 

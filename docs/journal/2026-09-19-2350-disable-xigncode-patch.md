@@ -88,3 +88,8 @@
   - `tools/win/drive.sh key {ENTER}` → `type 'sw input test'` → `key {ENTER}`：聊天框是空的，伺服器沒收到聊天（[SHOT] `shots/sw-test.png`）。
   - `drive.sh click 615,90`（商城按鈕，SetCursorPos＋mouse_event）：畫面分類器判斷仍是 lobby，沒有換頁（`shots/sw-click.png`）。
 - 同一個畫面、同一個按鈕，用 Pico 的硬體點擊可以換頁（`journal/2026-09-19-2230`）。→ 擋住注入輸入的不是（或不只是）XIGNCODE；可能是 DirectInput 或 y0da 那一層 🟡。**Pico 仍然是主力客戶端唯一可用的輸入方式。**
+
+## 還原（操作者同意，2026-09-20 00:50）
+- 理由：修補後軟體輸入和 taskkill 都還是不行，沒有已驗證的好處；朋友跑的是原版，主力客戶端要跟他們一致，測試才有代表性；也不用把證據拆成修補前後兩套。
+- 做法：客戶端關閉後，`ZNetwork.dll` → 改名 `ZNetwork.dll.patched`（sha256 `5aaad47e87e97853…`，file offset 459522 那個位元組 0xEB→0x74）；`ZNetwork.dll.original` 複製回 `ZNetwork.dll`（sha256 `6b07758edf57adcc…`，`cmp` 與 .original 完全相同）。
+- **從這次重開之後，主力客戶端又是帶 XIGNCODE 的原版。** 修補版只在 2026-09-19 23:54 到 2026-09-20 00:50 之間跑過（pid 38048）。
