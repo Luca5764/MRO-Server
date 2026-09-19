@@ -73,6 +73,26 @@ const USER_DEFAULT_SN = '0x00220233';
 const USER_MASTER_SN = '0x00220319';
 const LEAVE_SN = '0x00220236';
 const LOBBY_ENTER_CQ = 0x00230111;
+const MAP_CHANGE_ONE_CQ = 0x00220221;
+const MAP_CHANGE_ONE_SN = '0x00220223';
+
+/**
+ * Builds a Room_Map_Change_One_CQ body (ZDispatchRoom 0x107eec30 layout,
+ * same 10-byte shape as the SA/SN it echoes -- see the case 0x00220221
+ * comment in gate.game.dispatch.js): b0=slot, w1=MapIndex, w2=MapTime,
+ * b5=MapRound, w6=MapKill, w8=Goal.
+ */
+function makeMapChangeOneBody({ b0 = 0, w1, w2 = 0, b5 = 0, w6 = 0, w8 = 0 })
+{
+    const body = Buffer.alloc(10);
+    body.writeUInt8(b0, 0);
+    body.writeUInt16LE(w1, 1);
+    body.writeUInt16LE(w2, 3);
+    body.writeUInt8(b5, 5);
+    body.writeUInt16LE(w6, 6);
+    body.writeUInt16LE(w8, 8);
+    return body;
+}
 
 /**
  * Builds a CQ_CREATE body (ZDispatchLobby::Create_CQ layout, see the case
@@ -596,6 +616,72 @@ function main()
         console.log('[room-join test] PASS: a host Kickout_CQ against a real member succeeds -- success SA to the host, Leave_SN(kicked, kickout=1) to the kicked member, room membership actually drops');
     } finally {
         fakeTimers4.restore();
+        rooms._resetForTests();
+    }
+
+    // --- 10 (ROOM-OPT-BC, docs/backlog.md): host changes room difficulty
+    // (Room_Map_Change_One_CQ 0x00220221, triggered by clicking a
+    // difficulty tile in ZPanel_PVE) -- [LOG] session-20260919-111258.jsonl
+    // ms 2067166: the SA/SN pair back then only ever reached the host's own
+    // connection; a room member should also see Map_Change_One_SN
+    // 0x00220223 so the display updates. Covers both switch positions:
+    // ROOM_MAP_BROADCAST_MODE='disabled' (default, joiner gets nothing) and
+    // 'enabled' (joiner gets exactly one 0x00220223, identical body to what
+    // the host's own change produced).
+    rooms._resetForTests();
+    rooms._setRoomJoinModeForTests('enabled');
+    rooms._setLobbyRoomListModeForTests('enabled');
+    const fakeTimers5 = installFakeTimers();
+    try {
+        const hostI = makeFakeClient(61, 30907);
+        hostI.accountId_ = 61;
+        hostI.nickname_ = 'Ivy';
+        const joinerJ = makeFakeClient(62, 30907);
+        joinerJ.accountId_ = 62;
+        joinerJ.nickname_ = 'Judy';
+        rooms.registerLobbyClientSource([hostI, joinerJ]);
+
+        const createHandled6 = gate.dispatch(hostI, CQ_CREATE, makeCreateBody('Ivy Room'));
+        assert.strictEqual(createHandled6, true, 'CQ_CREATE must be handled');
+        const roomId6 = hostI.createdRoomIndex_;
+        while (fakeTimers5.fireNext()) { /* drain the CQ_CREATE retry schedule */ }
+
+        const enterHandled6 = gate.dispatch(joinerJ, ENTER_CQ, makeEnterBody(roomId6));
+        assert.strictEqual(enterHandled6, true, 'Enter_CQ must be handled');
+        while (fakeTimers5.fireNext()) { /* drain the 350ms joiner room-state send */ }
+
+        const mapChangeBody = makeMapChangeOneBody({ b0: 0, w1: 9007, w2: 45, b5: 3, w6: 0, w8: 0 });
+        // Expected Map_Change_One_SN payload: same 10-byte fields the CQ
+        // carried (MAP_CHANGE_SA_ECHO_MODE adopts w1/b5 from the client
+        // state the handler just set from this same CQ, so they round-trip
+        // unchanged here).
+        const expectedSnHex = makeMapChangeOneBody({ b0: 0, w1: 9007, w2: 45, b5: 3, w6: 0, w8: 0 }).toString('hex');
+
+        // --- 10a: switch off (default) -- joiner must get nothing. ---
+        hostI._sent.length = 0;
+        joinerJ._sent.length = 0;
+        const mapChangeHandledOff = gate.dispatch(hostI, MAP_CHANGE_ONE_CQ, mapChangeBody);
+        assert.strictEqual(mapChangeHandledOff, true, 'Map_Change_One_CQ must be handled');
+        const joinerHitsOff = joinerJ._sent.filter((s) => s.op === MAP_CHANGE_ONE_SN);
+        assert.strictEqual(joinerHitsOff.length, 0, 'ROOM_MAP_BROADCAST_MODE off (default): joiner must receive no Map_Change_One_SN');
+        console.log('[room-join test] PASS: ROOM_MAP_BROADCAST_MODE off (default) -- host map change is unicast only, joiner gets nothing');
+
+        // --- 10b: switch on -- joiner must get exactly one, identical body. ---
+        GateGameDispatch._setRoomMapBroadcastModeForTest('enabled');
+        hostI._sent.length = 0;
+        joinerJ._sent.length = 0;
+        try {
+            const mapChangeHandledOn = gate.dispatch(hostI, MAP_CHANGE_ONE_CQ, mapChangeBody);
+            assert.strictEqual(mapChangeHandledOn, true, 'Map_Change_One_CQ must be handled');
+            const joinerHitsOn = joinerJ._sent.filter((s) => s.op === MAP_CHANGE_ONE_SN);
+            assert.strictEqual(joinerHitsOn.length, 1, 'ROOM_MAP_BROADCAST_MODE on: joiner must receive exactly one Map_Change_One_SN');
+            assert.strictEqual(joinerHitsOn[0].hex, expectedSnHex, "joiner's Map_Change_One_SN body must be identical to the host's own map-change payload");
+            console.log('[room-join test] PASS: ROOM_MAP_BROADCAST_MODE on -- joiner receives one Map_Change_One_SN with the host-identical body');
+        } finally {
+            GateGameDispatch._setRoomMapBroadcastModeForTest('disabled');
+        }
+    } finally {
+        fakeTimers5.restore();
         rooms._resetForTests();
     }
 
