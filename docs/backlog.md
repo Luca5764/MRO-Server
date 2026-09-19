@@ -152,6 +152,14 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 
 - 刪掉 `GAME_INFO_TIME_LIMIT_MODE`，保留 'room' 路徑。**前提：** 這個開關翻掉要能讓回歸測試變紅；pve-full-match 樣本的 body+0x13 會從 0x0a 變成 0x3c（T1 worker 驗證過），所以收斂時要附理由重錄那個樣本。
 
+## C3：收斂 D1 第 6 步的開關（總任務）
+
+> **狀態：PM 2026-09-19 開立，等 D1 第 6 步的開關逐一驗證。**
+
+- D1 第 6 步會新增 5 個開關（`docs/design/d1-step6-battle-broadcast.md` 第 5 節）；另外 `ROOM_JOIN_MODE`、`LOBBY_ROOM_LIST_MODE`、`ROOM_CHAT_BROADCAST_MODE`、`ROOM_TEAM_CHAT_MODE` 也在同一批。
+- 規則：每個開關實測 ✅ 後 7 天內收斂，一個開關一個 commit，每個都要跑回歸測試；開關翻掉不會讓回歸測試變紅的，要先補樣本。
+- 同時列入收斂候選：`room.dispatch.js` 的 `0x00240301` 開戰路徑（[LOG] PvE 開戰實際走的是 `0x00222103`，`0x00240301` 在 session-20260919-012749 裡從沒被觸發過）。
+
 ## D1：多人房間模型設計稿（C 線，高階自己做）
 
 > **狀態：等 S1 交付。屬於「要重構先問」：PM 審查、操作者同意之後才能實作。**
