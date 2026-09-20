@@ -24,7 +24,10 @@
    （不帶 `-log=` 的 `data\Log\MetalRage.log` 是否同樣鎖住 ⬜ 未測——筆電那邊靠 `MROLog`
    共享在執行中讀得到，兩者可能不同，不要互相類推。）
 
-AI 從 `MetalRage/data/Log/MetalRage.log` 數兩個數字：
+AI 數兩個數字。**檔案位置（2026-09-20 P1 實測更正）**：兩個訊號都只寫進**啟動時 `-log=`
+指定的那個檔**，也就是各自安裝底下的 `data\System\run-<HHMMSS.ss>.log`；
+`data\Log\MetalRage.log` 裡**一筆都沒有**。認檔方式：啟動時刻之後 mtime 最新的
+`run-*.log`，再用檔頭 `Init: Base directory:` 核對是哪一份安裝。
 - `HitLoc=== >` ＝ 扣扳機次數（本機無條件寫，只有主武器有）
 - `Now Animation Name : <武器>   Fire` ＝ 實際生成數
 
