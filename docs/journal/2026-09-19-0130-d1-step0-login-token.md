@@ -58,4 +58,4 @@
 - [LOG] 第 26 行，conn1（9211）送出 Gate `Leave_SA 0x00220132`：`000000000000｜01000000｜dde7ba25`，也就是 body+0x06 accountId=1、+0x0A key=0x25bae7dd。
 - [LOG] 第 32 行，conn2（30907）收到 `Login_Again_CQ 0x00110124`：`01000000dde7ba25`，跟伺服器發出的完全一致。
 - log 裡沒有 `WARNING: Login_Again`／`REFUSING` marker → 走的是 token 路徑。
-- 結論：✅ [DLL][LOG] 客戶端把 Gate Leave_SA body+0x06／+0x0A 原樣帶回 Login_Again_CQ（**未經跨公司審查**）。兩人版（PM 驗收條件：兩個帳號各自帶回伺服器最近一次發給自己的 key）等第二台有空再補。
+- 結論：✅ [DLL][LOG] 客戶端把 Gate Leave_SA body+0x06／+0x0A 原樣帶回 Login_Again_CQ（已由 Sol batch1 審查為「部分成立」，見 `research/2026-09-19-sol-review/batch1.md` 第 11 條——身分鏈本身成立，但 state 舊稱「伺服器送 0、用 last_login」已過期，現行走 token）。兩人版（PM 驗收條件：兩個帳號各自帶回伺服器最近一次發給自己的 key）等第二台有空再補。
