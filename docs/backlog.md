@@ -703,3 +703,14 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - 問題：`/reload` 只重載 `dispatch/`，但合併內容常碰到 `rooms.js`、`config/`、`database/`、`server.js`、`packetlog.js`。2026-09-20 因此出過兩次事故（最近一次登入暱稱變 `Player`）。
 - 目標：`/reload` 比對啟動時記下的檔案 mtime（或 git 狀態），若 `dispatch/` 以外有變更就**拒絕熱重載**並提示完整重啟。靠人記規則遲早再漏。
 - 排空檔做。
+
+## MOON-1：核對上游作者 Moon 回信的更正與新資料（B 線，唯讀先行）
+外部來源一律先標 🟡，核對過才升級。來源：Moon（上游 Win11 修正／PR 作者），經 PM 轉達 2026-09-20。
+
+- **(c) 最優先 — fallback ACK 稽核**：Moon 說目標類模式的封包（Bomb／Capture／Conquest／Boss／TwoBoss／TriggerTouch／Special，`0x0023xxxx`，真實 body 0x1D–0x3B）在他那邊被 6-byte 通用 ACK 回掉，**默默弄壞 Game_Score_Set**，跟 Death_SN 同一類失敗。我們也有「奇數 CQ 自動回 CQ+1」的 fallback。要從 PvE session log 統計：戰鬥中送過哪些 `0x0023xxxx` 的 CN 落到 fallback、我們回了什麼 opcode 與長度、handler 期待多長。長度不符的列清單。可能跟「能量柱沒有 HP 條」、HUD 分數、非房主傷害有關。
+- **(a) 位址標籤更正**：Game_User_Add 的 upsert 是 `0x10734140`（使用者清單 +0x1034、stride 0x80）；我們引用的 `0x107343e0` 其實是 GAME_ITEM_INFO 清單（+0x1040、stride 0xEC）。結論（每人一包）不變，只是標籤錯。核對後在 `game-user-sn-multi.md`、D1／D1-6 設計稿、`state.md` 追加更正。
+- **(b) 14-byte 分數記錄欄位**：+0 u16 team、+2 u16 score、+4 u8 round、+5 u8 alive、+6 u16 try、+8 u16 goal、+0xA u32 exp（EndRound／EndGame／Death／Bomb／Timeout 共用，都餵 Game_Score_Set）。核對後 EndRound_SN／EndGame_SN／Death_SN 就能填真值。
+- **(d)** 核對我們送的 `EndGame_SN 0x00222213` body 是否符合 0x1E 佈局（u16 WinTeamIndex＋兩筆 14-byte），handler `0x107D7ED0`。
+- **(e) Grade 11 完整機制**：`Grade_Info_SN 0x107CF3B0` 的跳表把 11..14 對到 GM → `m_MyAccountLevel`(+0x448) → `IsMeGM_BD()` → `PlayerSelectMech.BeginState` 直接 `GotoState('Spectating')`；PvE 看不出來（面板來自 `PveRoundManager.Timer()`），PvP 會卡住；同根因也讓 F1–F5 技能 HUD 不畫、Tab 計分板沒有玩家列。確認我們沒有任何路徑會送 11..14，並把機制記進 `state.md` 的 Grade 列。
+- **(f) 給 dusk 的測試協定**（下一場兩人局，卡頓修好後第一次）：dusk 當加入者，分別用投射物武器（火箭／砲）與即時命中武器打同一種敵人，各記「有沒有射出、有沒有傷害」。Moon 那邊是「投射物落地但無傷害、hitscan 正常」，想知道我們是不是同樣的分裂。
+- 之後：`docs/PROTOCOL-SUMMARY.en.md`（Moon 這週會讀我們的 docs），排在 (c) 之後。
