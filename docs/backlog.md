@@ -712,7 +712,17 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - **(b) 14-byte 分數記錄欄位**：+0 u16 team、+2 u16 score、+4 u8 round、+5 u8 alive、+6 u16 try、+8 u16 goal、+0xA u32 exp（EndRound／EndGame／Death／Bomb／Timeout 共用，都餵 Game_Score_Set）。核對後 EndRound_SN／EndGame_SN／Death_SN 就能填真值。
 - **(d)** 核對我們送的 `EndGame_SN 0x00222213` body 是否符合 0x1E 佈局（u16 WinTeamIndex＋兩筆 14-byte），handler `0x107D7ED0`。
 - **(e) Grade 11 完整機制**：`Grade_Info_SN 0x107CF3B0` 的跳表把 11..14 對到 GM → `m_MyAccountLevel`(+0x448) → `IsMeGM_BD()` → `PlayerSelectMech.BeginState` 直接 `GotoState('Spectating')`；PvE 看不出來（面板來自 `PveRoundManager.Timer()`），PvP 會卡住；同根因也讓 F1–F5 技能 HUD 不畫、Tab 計分板沒有玩家列。確認我們沒有任何路徑會送 11..14，並把機制記進 `state.md` 的 Grade 列。
-- **(f) 給 dusk 的測試協定**（下一場兩人局，卡頓修好後第一次）：dusk 當加入者，分別用投射物武器（火箭／砲）與即時命中武器打同一種敵人，各記「有沒有射出、有沒有傷害」。Moon 那邊是「投射物落地但無傷害、hitscan 正常」，想知道我們是不是同樣的分裂。
+- **(f) 給 dusk 的測試協定（2026-09-20 更新，症狀已有精確描述）**
+  - [OBS] 操作者與 dusk 看了 Moon 的影片（youtu.be/OHvI8RcJKLQ，同一台電腦開兩個視窗），確認跟 dusk 當加入者時是同一現象：**加入者端彈藥有消耗但看不到投射物；房主端看得到那名加入者的投射物正常飛行**。
+  - 🟡 [GUESS]（PM）：不是大廳伺服器的封包問題，是 UE2 listen server 的複寫飢餓——投射物在房主端生成，但複寫不出去。每 tick 房主對每條連線能送的 actor 更新有限且依優先權排序，短命的投射物輸給玩家與 AI。房主 tick 變慢（Moon：視窗失焦被降速；我們：WER 傾印凍結）或頻寬吃緊（dusk：「怪多就更嚴重」）都會讓投射物先消失；hitscan 不需要複寫 actor，所以不受影響。
+  - 重測（Lucas 房主＋卡頓已修＋dusk 加入），**兩端分別記**：
+    - 加入者端：有沒有看到自己的投射物、彈藥有沒有扣、敵人有沒有掉血；
+    - 房主端：有沒有看到加入者的投射物。
+    - 投射物與 hitscan 各測、同一種敵人；怪少與怪多各一輪。
+  - **量客觀數字**：那一場由 Pico 在房主端主控台輸入 `stat net`（與 `stat fps`）並截圖，看 out bytes/s 有沒有頂到上限、丟包、channel 數。`stat` 是引擎原生指令、不在腳本裡，所以要實測確認這個客戶端還有沒有。這是新 runner 動作，第一次要操作者在場。
+  - NET 實驗表加兩欄：房主 `[IpDrv.TcpNetDriver]` 的 MaxClientRate／NetServerMaxTickRate／LanServerMaxTickRate 實際值、加入者的 ConfiguredInternetSpeed／LanSpeed。**先用預設值測一輪當基準**（之前調到 100000 是在「以為是網路問題」時做的），再一次改一個變數。
+  - K1 說明頁在第 3 點有結果之前，不要寫任何頻寬建議值。
+
 - 之後：`docs/PROTOCOL-SUMMARY.en.md`（Moon 這週會讀我們的 docs），排在 (c) 之後。
 
 > **更正（2026-09-20，來源：上游作者 Moon，我方 verifier 已核對）：** 本文把 `0x107343e0` 標成 Game_User 的 upsert 是**錯的**。`disasm.py exports` 顯示 `0x10703850 Game_User_Add → jmp 0x10734140`（清單在 `[ebp+0x1034]`、count `[ebp+0x1038]`、stride `0x80`），而 `0x107029ff Game_Item_Add → jmp 0x107343e0`（清單 `[esi+0x1040]`、count `[esi+0x1044]`、stride `0xEC`），後者是 GAME_ITEM_INFO，不是使用者清單。**結論（每人一包 Game_User_SN、依 UserIndex upsert）不變**，只是引用的位址標錯。詳見 `research/2026-09-20-moon-verify/notes.md`。
