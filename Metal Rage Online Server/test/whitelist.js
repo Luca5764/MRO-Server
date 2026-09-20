@@ -43,11 +43,19 @@ function installFakeModule(resolvedPath, exportsObj)
 
 // Fake config/whitelist.js -- same shape as the real module, backed by a
 // plain Set instead of reading config/allowed-users.json.
+//
+// ISTEST-WIRE: account.dispatch.js's CQ_LOGIN_WASABII handler now also
+// calls whitelist.isTestAccount() unconditionally (same place username_ is
+// set), so this fake needs the method too -- otherwise handleLogin's
+// try/catch would swallow a TypeError there and this test would silently
+// stop exercising the real success path. Always returns false: this file's
+// two cases (allowed/rejected login) do not care about isTest.
 function makeFakeWhitelist(allowedLower)
 {
     return {
         isAllowed(username) { return allowedLower.has(String(username).toLowerCase()); },
         status() { return `on(${allowedLower.size} users)`; },
+        isTestAccount() { return false; },
     };
 }
 

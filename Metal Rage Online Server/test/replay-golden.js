@@ -102,9 +102,26 @@ function makeFixtureServerConfig()
 // Whitelist always off -- matches pre-W1 behaviour, what every existing
 // golden sample was captured against (no config/allowed-users.json in this
 // repo/CI).
+//
+// ISTEST-WIRE: gamelogin.dispatch.js's handleGameLogin() now also calls
+// whitelist.isTestAccount() (same place it already reads username_). This
+// fixture must stay a complete stand-in for the real module's shape -- a
+// missing method here throws inside handleGameLogin's try/catch, silently
+// falling back to hardcoded defaults instead of the fixture DB's real
+// account data (caught the hard way: this broke the pve-full-match golden
+// sample's SN_DEFAULT_INFO body until isTestAccount() was added here).
+// getHostAddress() is included too even though no path this harness
+// exercises currently calls it (HOST_ADDRESS_REQUIRE_MODE default is
+// 'disabled', gate.game.dispatch.js/community.dispatch.js's own switch),
+// for the same "stay a complete stand-in" reason.
 function makeFixtureWhitelist()
 {
-    return { isAllowed() { return true; }, status() { return 'off'; } };
+    return {
+        isAllowed() { return true; },
+        status() { return 'off'; },
+        getHostAddress() { return null; },
+        isTestAccount() { return false; },
+    };
 }
 
 /**

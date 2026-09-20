@@ -179,6 +179,7 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 - 填 Windows 主機在區網（或 VPN）上的 IP，不是 WSL 的 IP。改完要完整重啟伺服器。
 - 設定之後，這台主機自己也會經過 portproxy 連進來。執行 `lan-close.ps1` 之前，要先刪掉 `server.json` 並重啟，否則連本機都連不上。
 - 白名單：`config/allowed-users.json`（格式見 `allowed-users.example.json`，範例檔本身不會被讀取）。開放區網之前一定要設定。
+- 該帳號的物件可以加 `"isTest": true`（ISTEST-WIRE），登入時寫進 `client.isTestAccount_`，讓該帳號主辦或參加的對戰在 `MATCH-SUMMARY` marker 標 `is_test: true`（`dispatch/room/match-stats.js`）。不填＝`false`，行為不變。
 - 測試 worktree 的這兩個檔案用 symlink 指到主目錄那份。
 
 ### PvE 多命測試（pveExtraLives）
