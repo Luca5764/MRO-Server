@@ -95,7 +95,7 @@
 | Table 4 第二欄只有 1、2 兩種值，語意未知 | ⬜（猜 pilot 101／102，[GUESS]） | 同上 |
 | 輕型機（Small）不能裝 `MOC_a 21100101`；1 號機正確主武器是 `22100101` | ✅ [LOG][SHOT] | `journal/2026-09-16-33-weapon-model-true-root-cause-verified.md`；`shots/current-mission.png` |
 | 「MOC_a 是中、重型機專用」 | 🟡 只證明了 Small 不能裝 | 同上 |
-| 主武器已掛上；開火、跳、推進器 | ✅ [OBS]／[SHOT] 進 PvE 就能用。根因：`Grade_Info_SN 0x00510101` 必須送 0（11＝開發者，會套 GM 按鍵表） | `journal/2026-09-17-11-grade-info-sn-root-cause.md` |
+| 主武器已掛上；開火、跳、推進器 | ✅ [OBS]／[SHOT] 進 PvE 就能用。根因：`Grade_Info_SN 0x00510101` 必須送 0。機制（2026-09-20 核對，來源 Moon）：handler `0x107cf3b0` 的跳表把 11→4、12→3、13→1、14→2（跳表資料在 `0x107cf45c`），經 `0x10729b00` 存進 `m_MyAccountLevel`（+0x448），`IsMeGM_BD()` 因此為真 → `PlayerSelectMech.BeginState` 直接 `GotoState('Spectating')`；同一根因還會讓 F1–F5 技能 HUD 不畫、Tab 計分板沒有玩家列。PvE 因為面板來自 `PveRoundManager.Timer()` 而看不出來，PvP 會整個卡住。我方三處 builder 都寫死送 0（`account.dispatch.js:283,399`、`community.dispatch.js:284`） | `journal/2026-09-17-11-grade-info-sn-root-cause.md`、`research/2026-09-20-moon-verify/notes.md` |
 | PvE 選機體出擊（開局與陣亡後）：ZSlotSelectPage → `ChangeSlot_CN 0x00230101`（user u16、slot u8 1..8）→ `ChangeSlot_SN 0x00230102`（+0x0A user、+0x0C slot）→ `Respawn_CN`；`Game_User_SN` 必須送 8 個槽位 | ✅ [DLL][LOG][OBS] 測試 T2／T3 | `journal/2026-09-17-22-pve-mech-slot-selection.md` |
 | 4、5 號機在 Table 4 沒有推進器，但 DB 有給 | ⚠️ 不一致，影響未測 | `journal/2026-09-17-01-review-iteminfo-stall-root-cause.md` |
 | `User_Default_SN 0x00220233`：2 bytes header ＋ 每筆 0x34；暱稱是 ASCII | 🟡 結構已反組譯，行為未全部驗證 | `journal/2026-09-15-13-user-default-sn-body-structure.md` |

@@ -66,3 +66,5 @@ rooms.js（模組層級，同一個 Node 程序內共用；9211 和 30907 本來
 - 不做跨程序、不做持久化房間（伺服器重啟，房間就沒了）。
 - 不做 PvP 分隊邏輯（M4）。
 - 同一個 NAT 後面兩人的情境不特別處理：有了 token，就不需要靠 IP 認人。
+
+> **更正（2026-09-20，來源：上游作者 Moon，我方 verifier 已核對）：** 本文把 `0x107343e0` 標成 Game_User 的 upsert 是**錯的**。`disasm.py exports` 顯示 `0x10703850 Game_User_Add → jmp 0x10734140`（清單在 `[ebp+0x1034]`、count `[ebp+0x1038]`、stride `0x80`），而 `0x107029ff Game_Item_Add → jmp 0x107343e0`（清單 `[esi+0x1040]`、count `[esi+0x1044]`、stride `0xEC`），後者是 GAME_ITEM_INFO，不是使用者清單。**結論（每人一包 Game_User_SN、依 UserIndex upsert）不變**，只是引用的位址標錯。詳見 `research/2026-09-20-moon-verify/notes.md`。

@@ -14,3 +14,5 @@
 - PM 機械核對了 `0x107343e0` 的 upsert，結果相符。
 - [DLL] `Game_User_SN` handler（`0x107d8ae0`–`0x107d8f6b`）**不會清空表**：`Game_Data_Clear`（thunk `0x10709917`）的呼叫點只有 `0x10730247`、`0x10730620`、`0x107ecde0`（Game_Wait_SN）、`0x107f09ae`（Waiting::Game_Info_SN）四處，全部不在 handler 範圍內（`tools/disasm.py xref 0x10709917`，高階 2026-09-19 重跑）。
 - UserIndex 的寬度：`Game_User_Add` 以 u32 的值比對（`cmp dword [edi], ebx`），不是陣列索引。其他封包裡最窄的是 **u16**：`User_Name_SN` body+0x00（`0x107eb09f movzx ebp, word`）、`Leave_SN` body+0x00（`0x107edb70`）、`User_Delete_SN` body+0x00、`Room_List_SN` 的 RoomIndex。所以 `accounts.id` 必須 < 65536，目前完全沒問題。
+
+> **更正（2026-09-20，來源：上游作者 Moon，我方 verifier 已核對）：** 本文把 `0x107343e0` 標成 Game_User 的 upsert 是**錯的**。`disasm.py exports` 顯示 `0x10703850 Game_User_Add → jmp 0x10734140`（清單在 `[ebp+0x1034]`、count `[ebp+0x1038]`、stride `0x80`），而 `0x107029ff Game_Item_Add → jmp 0x107343e0`（清單 `[esi+0x1040]`、count `[esi+0x1044]`、stride `0xEC`），後者是 GAME_ITEM_INFO，不是使用者清單。**結論（每人一包 Game_User_SN、依 UserIndex upsert）不變**，只是引用的位址標錯。詳見 `research/2026-09-20-moon-verify/notes.md`。

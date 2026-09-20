@@ -714,3 +714,5 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - **(e) Grade 11 完整機制**：`Grade_Info_SN 0x107CF3B0` 的跳表把 11..14 對到 GM → `m_MyAccountLevel`(+0x448) → `IsMeGM_BD()` → `PlayerSelectMech.BeginState` 直接 `GotoState('Spectating')`；PvE 看不出來（面板來自 `PveRoundManager.Timer()`），PvP 會卡住；同根因也讓 F1–F5 技能 HUD 不畫、Tab 計分板沒有玩家列。確認我們沒有任何路徑會送 11..14，並把機制記進 `state.md` 的 Grade 列。
 - **(f) 給 dusk 的測試協定**（下一場兩人局，卡頓修好後第一次）：dusk 當加入者，分別用投射物武器（火箭／砲）與即時命中武器打同一種敵人，各記「有沒有射出、有沒有傷害」。Moon 那邊是「投射物落地但無傷害、hitscan 正常」，想知道我們是不是同樣的分裂。
 - 之後：`docs/PROTOCOL-SUMMARY.en.md`（Moon 這週會讀我們的 docs），排在 (c) 之後。
+
+> **更正（2026-09-20，來源：上游作者 Moon，我方 verifier 已核對）：** 本文把 `0x107343e0` 標成 Game_User 的 upsert 是**錯的**。`disasm.py exports` 顯示 `0x10703850 Game_User_Add → jmp 0x10734140`（清單在 `[ebp+0x1034]`、count `[ebp+0x1038]`、stride `0x80`），而 `0x107029ff Game_Item_Add → jmp 0x107343e0`（清單 `[esi+0x1040]`、count `[esi+0x1044]`、stride `0xEC`），後者是 GAME_ITEM_INFO，不是使用者清單。**結論（每人一包 Game_User_SN、依 UserIndex upsert）不變**，只是引用的位址標錯。詳見 `research/2026-09-20-moon-verify/notes.md`。
