@@ -49,3 +49,7 @@ verifier 這次重新反組譯得到，不是抄舊 journal。匯出 thunk：`0x
 - `[esi+0xfcc]==9` 時 Assist 欄位乘 5（`0x1072d89b` 比較、`0x1072d8a6 lea edx,[ecx+ecx*4]`）。0xfcc 疑似遊戲模式或地圖模式欄位（9＝PvE／戰役？）⬜。做 P3 的 exp 公式時可能用得上。
 - `+0x4c`／`+0x54`／`+0x5c` 三個累加欄位由誰讀（結算頁？Tab 計分板？）⬜。修正前後各跑一場同樣的單人 PvE，比對結算頁與計分板，如果哪個數字從 0 變非 0，就知道它餵到哪裡。
 - 關卡結論：累加成立（`0x1072d8b0`、`0x1072d8ba–c4`、`0x1072d8d4`；`shl edi,7` 即 stride 0x80，與 Game_User_Add 同表），送 0 安全，放行實作。Sol 審查與 P3 第 3 步一起送，兩邊都過才上線。
+
+## 修正前的基準（2026-09-20，runner 自動跑單人 PvE）
+[SHOT] `shots/assist-base-res-2.png`：結算畫面 TOTAL POINT `00000`、ROUND BONUS `0000`、TOTAL SCORE `00000`、RANK S、獲得 0 G 幣，下方戰績列 0戰 0勝 0平 0敗。
+→ 修正後再跑同樣一場，這些數字不該變（PM 訂的可觀察項）。若有任何數字變成非 0，就知道 `+0x4c`／`+0x54`／`+0x5c` 餵到結算頁。
