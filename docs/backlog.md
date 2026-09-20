@@ -693,3 +693,13 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 ## SHARE-UPSTREAM：分享給上游的發現
 - Win11 卡頓的根因與一行檢查法（`%LOCALAPPDATA%\CrashDumps` 是否一直產生 MetalRage 傾印檔），見 `journal/2026-09-20-1240-stutter-root-cause.md`。上游 Win11 修正的作者自己也有這個卡頓。
 - 等操作者跟 moonlight 的對話有進展再送出；一併放進之後要寫的 `docs/PROTOCOL-SUMMARY.en.md`。
+
+## FW-NARROW：防火牆規則收斂到白名單成員（PM 2026-09-20）
+- 現況：`lan-open.ps1 -VirtualSubnet 26.0.0.0/8`、`p2p-open.ps1` 同樣。26.x 是 Radmin 全體使用者共用的位址空間，太寬。
+- 目標：腳本直接讀 `config/allowed-users.json`，把每個帳號的 `hostAddress` 逐一列進 `-RemoteAddress`，新增成員時重跑腳本即可。防火牆、白名單、VPN 成員三層用同一份名單（硬性約束 2）。
+- 另外：確認 Radmin 網路本身是設密碼的私人網路，寫進 `reference/setup.md`。
+
+## RELOAD-GUARD：`/reload` 自我檢查（PM 2026-09-20）
+- 問題：`/reload` 只重載 `dispatch/`，但合併內容常碰到 `rooms.js`、`config/`、`database/`、`server.js`、`packetlog.js`。2026-09-20 因此出過兩次事故（最近一次登入暱稱變 `Player`）。
+- 目標：`/reload` 比對啟動時記下的檔案 mtime（或 git 狀態），若 `dispatch/` 以外有變更就**拒絕熱重載**並提示完整重啟。靠人記規則遲早再漏。
+- 排空檔做。
