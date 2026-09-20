@@ -50,6 +50,7 @@ Setup, database import and client configuration: `docs/reference/setup.md`.
 
 ## Where to start reading
 
+* `docs/PROTOCOL-SUMMARY.en.md` — one-page English summary of the most useful confirmed findings, for other implementers
 * `docs/state.md` — current state of protocol knowledge, with confidence markers
 * `docs/reference/system-coverage.md` — per-system opcode coverage and what is missing
 * `docs/client-dispatch-map.md` — server→client opcode names, extracted from the client's dispatcher
