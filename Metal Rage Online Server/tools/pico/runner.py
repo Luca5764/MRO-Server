@@ -45,6 +45,16 @@ unattended-policy.md 丁類第一條: a read-only measurement task once started 
 client, then could not close it because of exactly this resolution
 mismatch). `preflight <exp>` runs only this check and exits, for manual/
 scripted verification without running the experiment.
+
+Dead-man wall clock (design.md 第 8 節 "整輪 dead-man 總時限"): an experiment
+file may set a top-level "max_wall_clock_s"; DEFAULT_MAX_WALL_CLOCK_S applies
+if it does not. The clock starts once the real pico session is open (not
+during preflight, which runs before anything is touched) and is checked ONLY
+between steps -- at the end of the previous step, a safe point, never mid-
+step -- so it never interrupts an action's own click/type/wait sequence.
+Exceeding it stops the run exactly like any other failed step (fail_closed(),
+remaining steps recorded as skipped, report written) instead of continuing to
+run past the budget.
 """
 
 import argparse
@@ -61,6 +71,10 @@ import client_ctl  # noqa: E402
 import screens  # noqa: E402
 
 REPORTS_DIR = os.path.join(SCRIPT_DIR, "logs", "reports")
+
+# design.md 第 8 節: "整輪 dead-man 總時限 25 分鐘" -- the default for any
+# experiment file that does not declare its own "max_wall_clock_s".
+DEFAULT_MAX_WALL_CLOCK_S = 1500
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +109,10 @@ def validate_experiment(exp):
     known_precondition_screens = ("lobby", "shop", "console_open", "room", "battle", "login")
     if pre and "screen" in pre and pre["screen"] not in known_precondition_screens:
         raise ExperimentError(f"unknown precondition screen '{pre['screen']}'")
+    if "max_wall_clock_s" in exp:
+        mwcs = exp["max_wall_clock_s"]
+        if not isinstance(mwcs, (int, float)) or isinstance(mwcs, bool) or mwcs <= 0:
+            raise ExperimentError("'max_wall_clock_s' must be a positive number")
     if not isinstance(exp["steps"], list) or not exp["steps"]:
         raise ExperimentError("'steps' must be a non-empty list")
     for i, step in enumerate(exp["steps"]):
@@ -447,6 +465,67 @@ def check_resolution(instance):
     return True, f"{instance.id}: {ini_path} ScreenSize={found[0]}x{found[1]} matches atlas"
 
 
+_DESKTOP_RESOLUTION_RE = re.compile(r"^(\d+)x(\d+)$")
+
+
+def _read_desktop_resolution():
+    """docs/reference/unattended-policy.md 「遠端在場」風險 2 / design.md 2b:
+    reads the WINDOWS HOST's actual current desktop resolution -- NOT any one
+    instance's OptionAll.ini (that is check_resolution() above, a saved game
+    setting that does not change if the host's real desktop shrinks). Uses
+    System.Windows.Forms.Screen.PrimaryScreen.Bounds, the same API
+    pico_serial.ps1 already uses for its own $PrimaryBounds -- called here
+    directly via powershell.exe rather than through pico_serial.ps1, since
+    this must work before any pico session exists (preflight runs first).
+    Sends no input, opens no window. Returns ((w, h), None) on success, or
+    (None, reason) on failure. Never raises for an ordinary failure (missing
+    powershell.exe, timeout, unparsable output)."""
+    import subprocess
+    if not os.path.exists(client_ctl.pico.PS_PATH):
+        return None, f"powershell.exe not found at {client_ctl.pico.PS_PATH}"
+    ps_cmd = ("Add-Type -AssemblyName System.Windows.Forms; "
+              "$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; "
+              "Write-Output \"$($b.Width)x$($b.Height)\"")
+    try:
+        res = subprocess.run([client_ctl.pico.PS_PATH, "-NoProfile", "-Command", ps_cmd],
+                              capture_output=True, text=True, timeout=20)
+    except subprocess.TimeoutExpired:
+        return None, "powershell.exe timed out reading the desktop resolution"
+    out = res.stdout.strip()
+    m = _DESKTOP_RESOLUTION_RE.match(out)
+    if res.returncode != 0 or not m:
+        return None, (f"could not read desktop resolution: rc={res.returncode} "
+                       f"stdout={out!r} stderr={res.stderr.strip()!r}")
+    return (int(m.group(1)), int(m.group(2))), None
+
+
+def check_desktop_resolution():
+    """docs/reference/unattended-policy.md 「遠端在場」風險 2 (Chrome 遠端桌面
+    的『調整大小以符合視窗』會改變主機實際解析度，讓 atlas 座標與
+    Get-MetalRageWindow 的尺寸閘門全部對不上) -- the check that section
+    marked "還沒實作". Host-level, not per-instance: run once for the whole
+    preflight, unlike check_resolution() which is per instance. Only checks
+    that the desktop is large enough to contain a window whose CLIENT area
+    is what the atlas needs (a lower bound -- the window's title bar/borders
+    need a little more than that, but there is no verified formula for
+    exactly how much, same reasoning as _atlas_expected_client_size()'s
+    comment above; this is deliberately a coarse, fail-closed-on-too-small
+    check, not an exact one). Returns (ok, detail)."""
+    expected, size_err = _atlas_expected_client_size()
+    if size_err:
+        return False, size_err
+    found, err = _read_desktop_resolution()
+    if err:
+        return False, err
+    ok = found[0] >= expected[0] and found[1] >= expected[1]
+    detail = f"desktop {found[0]}x{found[1]}, atlas needs client >= {expected[0]}x{expected[1]}"
+    if not ok:
+        detail += (" -- desktop is smaller than the game window needs; if the operator is "
+                    "watching via Chrome Remote Desktop, make sure '調整大小以符合視窗/Resize to "
+                    "fit' is OFF (it changes the HOST's actual resolution) and reconnect, then retry")
+    return ok, detail
+
+
 def check_no_residual_process(instance):
     """design.md 2b row 4: this instance must not already have a process
     running before this run starts one. Exact process-name match only
@@ -564,6 +643,10 @@ def run_preflight(exp):
     report["checks"].append({"check": "stop_file", "instance": None, "ok": ok, "detail": detail})
     all_ok = all_ok and ok
 
+    ok, detail = check_desktop_resolution()
+    report["checks"].append({"check": "desktop_resolution", "instance": None, "ok": ok, "detail": detail})
+    all_ok = all_ok and ok
+
     for cid, inst in instances:
         ok, detail = check_resolution(inst)
         report["checks"].append({"check": "resolution", "instance": cid, "ok": ok, "detail": detail})
@@ -646,6 +729,7 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
         "build_event": None,
         "preflight": None,
         "precondition": None,
+        "max_wall_clock_s": exp.get("max_wall_clock_s", DEFAULT_MAX_WALL_CLOCK_S),
         "steps": [],
         "anomalies": [],
         "result": None,
@@ -661,6 +745,8 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
         sc = exp.get("stop_conditions", {})
         if sc:
             print(f"  stop_conditions: {sc}")
+        if "max_wall_clock_s" in exp:
+            print(f"  max_wall_clock_s: {exp['max_wall_clock_s']}")
         print("  max_image_reviews: 0 (no model calls)")
         report["result"] = "DRY_RUN_OK"
         return report, 0
@@ -692,6 +778,11 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
         return report, 1
 
     session_open = True
+    # design.md 第 8 節 "整輪 dead-man 總時限": starts here, once the real
+    # session is open -- NOT during preflight above, which is read-only and
+    # runs before anything is touched. Checked only between steps below
+    # (never mid-step), so it never cuts off an action already in progress.
+    wall_deadline = time.monotonic() + report["max_wall_clock_s"]
     try:
         pre = exp.get("preconditions", {})
         if pre.get("screen"):
@@ -712,6 +803,29 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
 
         consecutive_failures = 0
         for i, step in enumerate(exp["steps"]):
+            # Dead-man check (design.md 第 8 節): done BEFORE starting step i,
+            # i.e. only once step i-1 has fully finished -- a safe point, not
+            # a mid-action cutoff. This is why it is not checked inside the
+            # action call itself.
+            if time.monotonic() >= wall_deadline:
+                report["anomalies"].append(
+                    f"dead-man wall-clock timeout: max_wall_clock_s={report['max_wall_clock_s']} "
+                    f"exceeded before starting step {i} ({step['action']}) -- stopping at this "
+                    f"safe point, not mid-step"
+                )
+                report["result"] = "FAIL"
+                fail_closed(ctx)
+                session_open = False
+                for j in range(i, len(exp["steps"])):
+                    report["steps"].append({
+                        "index": j, "action": exp["steps"][j]["action"],
+                        "params": exp["steps"][j].get("params", {}),
+                        "ok": None, "gray": None, "duration_s": 0.0,
+                        "detail": "skipped (dead-man wall-clock timeout)",
+                        "screenshot": None, "score": None, "rounds": [],
+                    })
+                write_report(report)
+                return report, 1
             name = step["action"]
             params = step.get("params", {})
             fn = actions.ACTIONS[name]
@@ -785,6 +899,7 @@ def write_report(report):
         f.write(f"{report['id']} - {report['result']}\n")
         f.write(f"purpose: {report['purpose']}\n")
         f.write(f"started_at: {report['started_at']}\n")
+        f.write(f"max_wall_clock_s: {report.get('max_wall_clock_s')}\n")
         be = report.get("build_event")
         if be:
             f.write(f"build: {be.get('branch')}@{be.get('commit')} dirty={be.get('dirty')} "
