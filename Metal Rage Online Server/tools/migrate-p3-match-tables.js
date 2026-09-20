@@ -25,14 +25,19 @@
 //   - `started_at`/`ended_at` are DATETIME, not TIMESTAMP (TIMESTAMP's
 //     "first column with no default auto-updates" trap under strict mode).
 //   - `matches.host_account_id` is nullable with ON DELETE SET NULL, so
-//     deleting an account does not delete every match it ever hosted
-//     (match_rounds/match_participants still cascade-delete from
-//     `matches`, and match_participants.account_id still cascades from
-//     `accounts` directly -- it is part of that table's composite PRIMARY
-//     KEY, which MySQL requires to be NOT NULL, so ON DELETE SET NULL is
-//     not an option there; CASCADE there means "this participant's own row
-//     disappears with the account", a narrower blast radius than
-//     `matches.host_account_id`'s CASCADE would have been).
+//     deleting an account does not delete every match it ever hosted.
+//   - `match_participants.account_id` is ALSO nullable with ON DELETE SET
+//     NULL (operator decision, 2026-09-20, relayed by the coordinator,
+//     superseding this table's original ON DELETE CASCADE): a deleted
+//     account must not erase the match history of the OTHER participants
+//     who played alongside them -- this is a small community and other
+//     players' records must stay complete. Because `account_id` can now be
+//     NULL, it can no longer be part of the PRIMARY KEY (MySQL requires PK
+//     columns to be NOT NULL) -- `match_participants` now has a surrogate
+//     `id` PRIMARY KEY, with `(match_id, account_id)` as a plain UNIQUE KEY
+//     instead (MySQL treats NULL as distinct from any other value in a
+//     UNIQUE index, so more than one SET-NULL'd row from the same match is
+//     allowed, same as any other nullable unique column).
 //
 // Usage:
 //   node tools/migrate-p3-match-tables.js --dry-run
@@ -83,20 +88,28 @@ const TABLE_DEFS = [
         `,
     },
     {
+        // Operator decision (2026-09-20, relayed by the coordinator):
+        // account_id is nullable with ON DELETE SET NULL, not CASCADE --
+        // deleting an account must keep every match's history rows,
+        // including the OTHER participants' rows in matches this account
+        // played. Surrogate `id` PRIMARY KEY (see the file header comment
+        // above for why account_id can no longer be part of the PK once it
+        // is nullable).
         name: 'match_participants',
         ddl: `
             CREATE TABLE IF NOT EXISTS \`match_participants\` (
+                \`id\`           BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 \`match_id\`     BIGINT UNSIGNED NOT NULL,
-                \`account_id\`   INT UNSIGNED    NOT NULL,
+                \`account_id\`   INT UNSIGNED    NULL,
                 \`team\`         TINYINT UNSIGNED NOT NULL DEFAULT 0,
                 \`kills\`        INT UNSIGNED    NOT NULL DEFAULT 0,
                 \`deaths\`       INT UNSIGNED    NOT NULL DEFAULT 0,
                 \`exp_gained\`   BIGINT UNSIGNED NOT NULL DEFAULT 0,
                 \`point_gained\` BIGINT UNSIGNED NOT NULL DEFAULT 0,
                 \`result\`       TINYINT UNSIGNED NOT NULL DEFAULT 0,
-                PRIMARY KEY (\`match_id\`, \`account_id\`),
+                UNIQUE KEY \`uq_match_participants_match_account\` (\`match_id\`, \`account_id\`),
                 FOREIGN KEY (\`match_id\`) REFERENCES \`matches\` (\`id\`) ON DELETE CASCADE,
-                FOREIGN KEY (\`account_id\`) REFERENCES \`accounts\` (\`id\`) ON DELETE CASCADE
+                FOREIGN KEY (\`account_id\`) REFERENCES \`accounts\` (\`id\`) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         `,
     },
