@@ -84,6 +84,29 @@
 - 白名單的 `hostAddress` 早就換成 VPN 位址了（`2026-09-20-1530` 那次），設計稿裡的舊 LAN IP
   已更正。**任何地方都不要抄寫死值。**
 
+### ✅ 2026-09-21 上午：DUAL-PICO 程式面全部完成，等第一次實跑
+
+- 十個新動作（`launch_client`／`close_client`／`login_as`／`join_room`／`set_ready`／
+  `host_start_battle`／`enter_battle`／`console_cmd_on`／`leave_battle`／`idle_nudge`）已實作。
+- 劇本：`dual-netspeed.json`（完整 18 步）＋ 拆成三段的
+  `dual-netspeed-a/b/c.json`（上限 360／300／720 秒）。
+- 護欄：preflight 五項（**新增 `desktop_resolution`**）、整輪 dead-man（預設 1500 秒，
+  在**步驟之間**的安全點停）。**preflight 目前在真實環境全綠。**
+- 第二個測試帳號 `mrotesthost`（id=6）已建好並在白名單。
+- **第一次實跑拆三段，用「遠端在場」跑**（定義見 `reference/unattended-policy.md`）。
+
+**第一次實跑最該盯的三個地方**（worker 自陳，照風險排序）：
+1. `join_room` 的雙擊座標 `ROOM_LIST_FIRST_ROW_CLICK=(920,310)` —— **純推測**，
+   從一張舊的、非 4:3 截圖按比例外推。A 段跑完會有 1600x1200 的大廳截圖，**用它把真值量出來再跑 B 段**。
+2. 雙擊時序 —— 兩次 `CLICK_AT` 擠進同一次 `batch`，但各自還有閉迴路移動確認，間隔沒量過。
+3. `leave_battle` 的 `BATTLE_ESC_LEAVE_BUTTON=(798,675)` —— 比 1 更弱，
+   全專案**沒有**戰鬥中 ESC 選單的截圖，是照抄通知對話框的值在賭模板重用。
+
+**一條還沒採納的線索**：`journal/2026-09-20-2030-same-machine-and-netspeed.md` 末段建議
+「在**加入房間之前、大廳時**就先下 `netspeed`」——兩次實測都是進戰場後才下的，
+值會不會在大廳就決定、被帶進新連線握手，完全沒排除過。**排成 C 段之後的第二個變體**
+（一次只改一個變數，不要混進第一次實跑）。
+
 ### 下一步（解析度與殘留行程處理掉之後）
 
 1. 跑 `tools/create-second-test-account.js --dry-run` 核對輸出 → `--apply` → 完整重啟
