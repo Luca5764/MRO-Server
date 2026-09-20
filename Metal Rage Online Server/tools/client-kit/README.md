@@ -1,6 +1,6 @@
 # 朋友端安裝套件（client-kit）
 
-給拿到全新解壓縮客戶端資料夾（archive.org 上的 `MetalRage Online.rar`，見 `docs/reference/setup.md`）的朋友用。跟著這頁做完，就能透過 VPN 連進我們的伺服器。
+給拿到全新解壓縮客戶端資料夾（archive.org 上的 `MetalRage Online.rar`，見 `docs/reference/setup.md`）的朋友用。跟著這頁做完，就能透過 VPN 連進我們的伺服器。（英文版、Radmin VPN 導向的精簡版見 `docs/reference/join-guide.en.md`。）
 
 ## 開始之前
 
