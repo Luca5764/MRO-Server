@@ -78,3 +78,17 @@ MaxClientRate=100000
 MaxInternetClientRate=100000
 ```
 這是為了改善多人戰鬥時的延遲在測試中的設定，**還沒驗證有沒有效**（待 NET 實驗結論）。`setup-client.ps1` 不會動這一段，維持你 ini 檔案原本的樣子；如果 Lucas 之後確認有效，會再更新這份 README。
+
+## 卡頓修正（2026-09-20，建議每台都做一次）
+
+有些電腦上，Windows 會在遊戲每次丟出保護殼的例外時，自動寫一個約 29 MB 的當機傾印檔，寫檔期間整個遊戲會凍結約 0.25 秒。玩起來就是不定時的卡頓；當房主時，房裡其他人還會看到怪物瞬移、子彈沒傷害。
+
+**檢查有沒有中招：** 打開 `%LOCALAPPDATA%\CrashDumps`（在檔案總管網址列貼上），如果裡面一直有新的 `MetalRage.exe*.dmp`，就是這個問題。
+
+**修正**（以系統管理員身分開 PowerShell，貼一次就好）：
+```powershell
+New-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\MetalRage.exe' -Force | Out-Null
+New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\MetalRage.exe' -Name DumpCount -Value 0 -PropertyType DWord -Force | Out-Null
+Remove-Item "$env:LOCALAPPDATA\CrashDumps\MetalRage.exe*.dmp" -Force -ErrorAction SilentlyContinue
+```
+只影響這個遊戲，其他程式的當機回報不變；想還原就把那個機碼刪掉。依據見 `docs/journal/2026-09-20-1240-stutter-root-cause.md`。
