@@ -4,9 +4,11 @@
 #
 # By default this only removes the plain LAN rule set (same as before
 # -VirtualSubnet existed on lan-open.ps1). Pass -Virtual to also remove the
-# separate VPN/virtual-subnet rule set lan-open.ps1 -VirtualSubnet added
-# (docs/reference/setup.md "跨網路連線（VPN）") -- the two are independent
-# so closing the LAN rules does not require also closing the VPN ones.
+# separate VPN rule set lan-open.ps1 -FromWhitelist or -VirtualSubnet added
+# (docs/reference/setup.md "跨網路連線（VPN）") -- matched by rule name only,
+# so it is removed the same way regardless of which of those two modes
+# created it. The two rule sets (LAN vs VPN) are independent so closing the
+# LAN rules does not require also closing the VPN ones.
 #
 # Requires: elevated PowerShell (Run as Administrator).
 param(

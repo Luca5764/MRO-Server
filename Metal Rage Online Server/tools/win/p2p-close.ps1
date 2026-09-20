@@ -1,9 +1,10 @@
 # Undo p2p-open.ps1: remove the MRO-P2P firewall rules. Idempotent.
 # The 'MRO-P2P-*' wildcard below already matches both rules p2p-open.ps1 can
 # create -- the default "-RemoteSubnet" rule (MRO-P2P-UDP-$Port) and the
-# separate "-VirtualSubnet" rule (MRO-P2P-VPN-UDP-$Port,
-# docs/reference/setup.md "跨網路連線（VPN）") -- so this always clears
-# both, same "one full undo" behavior as before -VirtualSubnet existed.
+# separate VPN rule (MRO-P2P-VPN-UDP-$Port, added by either -FromWhitelist
+# or -VirtualSubnet, docs/reference/setup.md "跨網路連線（VPN）") -- so this
+# always clears both, same "one full undo" behavior regardless of which mode
+# created the VPN rule.
 # Requires an elevated PowerShell (Run as Administrator).
 $ErrorActionPreference = 'Stop'
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
