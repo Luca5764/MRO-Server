@@ -169,7 +169,10 @@ def validate_experiment(exp):
                 raise ExperimentError(f"step {i}: join_room needs params.room_name as a non-empty string")
         if name == "console_cmd_on":
             text = params.get("text")
-            if not isinstance(text, str) or not actions._console_cmd_on_allowed(text):
+            allowed = isinstance(text, str) and (
+                text in actions.CONSOLE_CMD_ON_WHITELIST_EXACT or bool(actions.NETSPEED_CMD_RE.match(text))
+            )
+            if not allowed:
                 raise ExperimentError(
                     f"step {i}: console_cmd_on needs params.text in "
                     f"{sorted(actions.CONSOLE_CMD_ON_WHITELIST_EXACT)} or matching 'netspeed <digits>'"
