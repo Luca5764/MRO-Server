@@ -57,3 +57,33 @@
 ## 工具
 
 `tools/chat-markers.js`（commit e277c2f）：`packetlog.js` 的 marker 只認大廳 0x00220501 與房內 0x00220505，戰鬥中的聊天是 0x00220507／0x00220509，封包有記但沒變成 marker。這支從紀錄離線解回來，不必為了修 `CHAT_CQ` 而重啟伺服器打斷測試。
+
+---
+
+## 追加（18:40）：主武器量測，H-AMMO-DESYNC 也排除
+
+上面那輪用的是輔助武器（`ACH`，InventoryGroup 2/3），所以沒有 `HitLoc===` 這行，分母只能靠 HUD 彈藥數。改用**主武器**（`MTE`，InventoryGroup 1）之後，`BaseProjectile_Fire.uc:135-139` 會在本機無條件寫 `HitLoc=== > <vector>`，分母也從 log 來，完全不需要看彈藥——這點很重要，因為 `sup1` 會讓彈藥停止遞減（[OBS] 操作者：「卡 70 發然後能一直開火」）。
+
+同一場、同一把武器、只差 `sup1` 一個變數：
+
+| | 扣扳機 | 生成 | 缺口 | 失敗串長度 |
+|---|---|---|---|---|
+| 基準（96 發打空） | 96 | 83 | **13.5%** | 3, 2, 2, 1×6 |
+| `sup1` 之後 | 42 | 37 | **11.9%** | 1×5 |
+
+[LOG] `MetalRage.log`，`MTE_I` 第一次出現之後的區段；切分點是操作者的遊戲內 marker「開完sup1 子彈回歸96」（10:37:18 UTC）之後的 42 發。
+
+❌ **H-AMMO-DESYNC 排除。** `sup1`（`ServerInfiniteAmmoMode(true)`）在房主端直接對三把武器 `SupplyAmmo()`（`W_DefaultMechForWeapon.uc:800-806`），房主那份彈藥保證是滿的，`:1324` 的 `HasAmmo()` 閘門不可能擋；缺口卻沒有變。
+
+失敗的形狀也不符合彈藥不同步：那個機制預期的是「房主那份先見底，之後連續整串失敗到加入者也打空」，實測是**散布在整輪的孤立單發**（基準輪前半 69 發漏 11、後半漏 7，沒有遞增趨勢）。
+
+## 剩下的疑點
+
+`W_DefaultMechForWeapon.uc:43-96` 的複寫宣告裡，去程 `ServerFireProjectileCenterLoc_MH` 是 **reliable**，回程 `ClientFireProjectileCenterLoc_MH` 是 **`reliable ToAll`**。兩邊都宣告可靠，卻實測掉 13%。`ToAll` 是 GameHi 自訂的關鍵字（原版 UE2 沒有），實際實作 ⬜。
+
+## 下一步（待 PM 評估）
+
+角色對調，分辨掉在去程還是回程，而且不需要任何人數發數：Lucas 當房主並開 `WeaponLog`，筆電當射手用主武器砲類打空一個彈匣，只回報**起始彈藥數**一個數字。房主為遠端玩家執行 `ServerFireProjectileCenterLoc_MH` 時會本機生成（`:1317-1321`），所以房主 log 的 `Fire` 數＝房主接受了幾發。
+
+- 房主 log ≈ 筆電彈藥數 → 掉在回程的 `ToAll`
+- 房主 log 明顯少 → 掉在去程，`reliable` 宣告與實際不符
