@@ -52,11 +52,11 @@
 2. **「調整大小以符合視窗／Resize to fit」要關掉。**
    Chrome 遠端桌面在 Windows 主機上可能會**改變主機的顯示解析度**；視窗位置與大小一變，
    atlas 座標與 `Get-MetalRageWindow` 的尺寸閘門就全部對不上。
-   preflight **將會**有一項比對桌面解析度與 atlas 預期值，他連上之後若解析度變了就擋下來，
-   到時請他關掉那個選項再試。
-   ⚠️ **這一項還沒實作（2026-09-21）**：目前 preflight 比對的是 `OptionAll.ini` 的
-   `op_Display` ScreenSize（遊戲的設定值），**不是桌面實際解析度與視窗 client area**。
-   在補上之前，起跑前請**人工**確認遠端桌面的「調整大小以符合視窗」是關的。
+   preflight 的 `desktop_resolution` 這一項會比對**主機桌面解析度**與 atlas 需求
+   （2026-09-21 已實作）：他連上之後若解析度被改小，preflight 會擋下來，到時請他關掉
+   那個選項再試。目前實測桌面是 2560x1440、atlas 需求 client ≥ 1600x1200，綠燈。
+   注意這一項和 per-instance 的 `resolution`（比對 `OptionAll.ini` 的 `op_Display`
+   ScreenSize）是**兩件事**，兩項都要過。
 
 **遠端在場只適用於「新動作的第一次實跑」這一條。** 丙類的其他項目（部署、重啟測試伺服器、
 DB 變更、用測試帳號以外的帳號、花遊戲內貨幣、翻線上開關）照舊要操作者**明確同意**，
