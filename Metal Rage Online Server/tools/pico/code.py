@@ -85,6 +85,9 @@ KEY_MAP = {
     "HOME": Keycode.HOME, "END": Keycode.END,
     "PAGE_UP": Keycode.PAGE_UP, "PAGE_DOWN": Keycode.PAGE_DOWN,
     "CAPS_LOCK": Keycode.CAPS_LOCK,
+    # Punctuation (some clients drop these when typed at full speed; PRESS them)
+    "MINUS": Keycode.MINUS, "PERIOD": Keycode.PERIOD, "COMMA": Keycode.COMMA,
+    "SLASH": Keycode.FORWARD_SLASH, "EQUALS": Keycode.EQUALS,
     # Modifiers
     "SHIFT": Keycode.LEFT_SHIFT, "LSHIFT": Keycode.LEFT_SHIFT, "RSHIFT": Keycode.RIGHT_SHIFT,
     "CTRL": Keycode.LEFT_CONTROL, "LCTRL": Keycode.LEFT_CONTROL, "RCTRL": Keycode.RIGHT_CONTROL,
@@ -183,21 +186,52 @@ def key_press(key_name, duration_ms=50):
         kbd.release(kc)
     return True, used_ms
 
+# Punctuation for type_text: char -> (keycode, needs_shift). Without this table
+# type_text silently dropped every symbol (2026-09-20: "SPMaxUP_BD" arrived in the
+# client console as "SPMaxUPBD", which is why underscore commands looked unusable).
+CHAR_MAP = {
+    '-': (Keycode.MINUS, False), '_': (Keycode.MINUS, True),
+    '=': (Keycode.EQUALS, False), '+': (Keycode.EQUALS, True),
+    '.': (Keycode.PERIOD, False), '>': (Keycode.PERIOD, True),
+    ',': (Keycode.COMMA, False), '<': (Keycode.COMMA, True),
+    '/': (Keycode.FORWARD_SLASH, False), '?': (Keycode.FORWARD_SLASH, True),
+    ';': (Keycode.SEMICOLON, False), ':': (Keycode.SEMICOLON, True),
+    "'": (Keycode.QUOTE, False), '"': (Keycode.QUOTE, True),
+    '[': (Keycode.LEFT_BRACKET, False), '{': (Keycode.LEFT_BRACKET, True),
+    ']': (Keycode.RIGHT_BRACKET, False), '}': (Keycode.RIGHT_BRACKET, True),
+    '\\': (Keycode.BACKSLASH, False), '|': (Keycode.BACKSLASH, True),
+    '`': (Keycode.GRAVE_ACCENT, False), '~': (Keycode.GRAVE_ACCENT, True),
+    '!': (Keycode.ONE, True), '@': (Keycode.TWO, True), '#': (Keycode.THREE, True),
+    '$': (Keycode.FOUR, True), '%': (Keycode.FIVE, True), '^': (Keycode.SIX, True),
+    '&': (Keycode.SEVEN, True), '*': (Keycode.EIGHT, True),
+    '(': (Keycode.NINE, True), ')': (Keycode.ZERO, True),
+}
+
+# Hold each key ~40 ms: the game reads the keyboard through DirectInput and polls
+# per frame, so a press+release inside one frame can be missed (2026-09-20: a held
+# 150 ms MINUS registered in the console when the same key typed at full speed did
+# not reach it).
+TYPE_HOLD_S = 0.04
+
 def type_text(text):
     if not kbd:
         return
     for ch in text:
-        # If in keymap (A-Z, 0-9, space)
+        shift = False
+        kc = None
         if ch == ' ':
-            kbd.send(Keycode.SPACE)
+            kc = Keycode.SPACE
+        elif ch in CHAR_MAP:
+            kc, shift = CHAR_MAP[ch]
         elif ch.upper() in KEY_MAP:
             kc = KEY_MAP[ch.upper()]
-            if ch.isupper():
+            shift = ch.isupper()
+        if kc is not None:
+            if shift:
                 kbd.press(Keycode.LEFT_SHIFT)
-                kbd.press(kc)
-                kbd.release_all()
-            else:
-                kbd.send(kc)
+            kbd.press(kc)
+            time.sleep(TYPE_HOLD_S)
+            kbd.release_all()
         feed_watchdog()
         time.sleep(0.02)
 

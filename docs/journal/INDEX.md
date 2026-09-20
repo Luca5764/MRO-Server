@@ -160,3 +160,4 @@
 | 2026-09-19 | `2026-09-19-2350-disable-xigncode-patch.md` | `0x0002008D` | — | XIGNCODE 旁路修補（中階，待審，操作者審批）：逆向定位全客戶端唯一載入 XIGNCODE 的模組為 ZNetwork.dll（內嵌 zwave_sdk_client_dll.dll）；利用 GameHi 原廠 dedicated server 旁路機制，在 ZNetwork.dll 0x70301 套用 1-byte patch（74 5E -> EB 5E），無條件傳入 (0, 0) 跳過 XIGNCODE 初始化、註冊與探針發送；交付 tools/patch_disable_xigncode.py（含自動備份與還原）；cmp -l 驗證剛好 1 byte 變更；已套用修補。 |
 | 2026-09-20 | `2026-09-20-0110-escort-smoke.md` | `0x00220221` | — | 護送（9007）無人冒煙：開得起來，GameCampaign 走完 5 回合回房；Boss／教學／雙 Boss 狀態。 |
 | 2026-09-20 | `2026-09-20-1100-client-oom-crash.md` | — | — | 夜間連跑多場後客戶端虛擬記憶體不足當掉；無人套件要限制連續場次。 |
+| 2026-09-20 | `2026-09-20-1130-sp-bind-test.md` | — | — | SPMaxUP_BD 在 Grade 0 可用；setinput_BD 無效；修好 Pico 打字丟符號的 bug。 |
