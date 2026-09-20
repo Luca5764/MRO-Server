@@ -733,3 +733,53 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - `User.ini`：`ConfiguredInternetSpeed=100000`、`ConfiguredLanSpeed=100000`。
 - [OBS] dusk 那台也已經調成 100000。
 - → 兩端都是 10 萬，所以「速率上限太低」不足以單獨解釋投射物消失，除非引擎實際採用的不是這組值（加入者走哪一組速率、URL 有沒有 ?LAN 正在查，`research/2026-09-20-projectile-replication/`）。實驗仍照 PM 的三段式，但基準要用「目前值」而不是「出廠值」，並註明出廠值其實是引擎內建。
+
+## NETSPEED-INIT-2：客戶端送出的 10000 是誰寫的（唯讀，可給中階）
+
+開立：2026-09-20 高階。承 `journal/2026-09-20-2255-netspeed-init-exhausted.md`。
+
+### 目標
+
+找出客戶端 `ServerConnection` 的 `CurrentNetSpeed`（物件 `+0x50`）初值 10000 的寫入指令。
+
+### 範圍
+
+`Engine.dll` 靜態反組譯。**只走一條路**：上一輪掃出的 324 筆
+`mov dword ptr [reg+0x50], reg32`（非立即值）候選，用 **call graph 由上而下限定範圍**——
+從客戶端連線建立的已知入口（`UNetDriver::InitConnect`、`UNetPendingLevel` 建構、
+`UGameEngine::Browse`）往下走，只看實際可達的函式，不要再對整個 3 MB DLL 做字面比對。
+
+### 背景
+
+已排除（不要重做）：
+- `IpDrv.dll 0x10714880` 全函式與三個子呼叫：無 `+0x50` 寫入。
+- `Engine.dll UNetPendingLevel::NotifyReceivedText 0x104c6960`：對 `+0x50` 只有一筆**讀取**
+  （`0x104c7019`），`esi` 已逐指令確認是 `UNetConnection*`（函式開頭用 `NetDriver+0x3c`
+  ＝`ServerConnection` 做過斷言）。
+- `Engine.dll`／`Core.dll`／`IpDrv.dll` 窮舉掃描「字面值 10000 寫進 `+0x50`」：**零命中**
+  （涵蓋 disp8／disp32／SIB 全變形）。
+- `CurrentNetSpeed` 不是腳本 UProperty（`Engine.NetConnection` 是空殼；`Engine.Player` 只有
+  `ConfiguredInternetSpeed=9636`、`ConfiguredLanSpeed=20000`）→ CDO 複製理論排除。
+
+**最有鑑別力的一條 [TEST]（2026-09-20，`journal/2026-09-20-2153-server-netspeed.md`）**：
+把兩份安裝的 `IpDrv.dll` 的 `MaxClientRate`／`MaxInternetClientRate` 都改成 100000 後，
+加入者 `stat net` 顯示 **Speed = 100000**，但**房主的 log 仍印 `Client netspeed is 10000`**。
+→ 任何候選答案都必須同時解釋這兩件事。最省事的解釋是「`stat net` 顯示的欄位」與
+「join 時送進 NETSPEED token 的欄位」**不是同一個**，或送出時間早於該值被設定。
+**先用一個小時去驗證這個解釋**（比對 `stat net` 讀的是哪個物件的哪個偏移），
+可能比繼續掃 324 筆更快到答案。
+
+### 限制
+
+唯讀。不 attach debugger（客戶端有 anti-attach）。不啟動遊戲。不標 ✅。
+位址一律完整 8 位 hex。找不到就寫清楚排除了什麼、卡在哪，不要猜。
+
+### 交付
+
+`docs/journal/<日期>-<HHMM>-netspeed-init-3.md` ＋ `INDEX.md` 追加一列（標「🟡 待審」），
+大段輸出放 `docs/research/2026-09-20-netspeed-init/`。
+
+### 完成條件
+
+找到寫入指令（VA ＋ 所屬函式 ＋ 值的來源），或明確證明「靜態手段已用盡」並列出
+還沒排除的最後候選集合。**上面那條 [TEST] 的矛盾一定要有交代。**
