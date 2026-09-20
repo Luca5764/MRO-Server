@@ -61,6 +61,23 @@ const pool = mysql.createPool({
     ...dbConfig,
     waitForConnections: true,
     connectionLimit: 10,
+    // Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "疑點 --
+    // 時間欄位"): mysql2's own `timezone` option (client-side JS Date <->
+    // SQL string conversion -- NOT a `SET time_zone` on the MySQL session,
+    // and NOT what NOW()/CURRENT_TIMESTAMP use, those stay server-side)
+    // defaults to 'local', i.e. whatever OS timezone the Node process
+    // happens to run under. Pinned to 'Z' (UTC) so a JS `Date` bound as a
+    // DATETIME parameter (currently only database/db.js's
+    // recordMatchWithAccumulation(), P3 step 3's matches/match_rounds
+    // started_at/ended_at) always converts the same way regardless of what
+    // machine the server runs on -- see docs/design/
+    // p3-step3-writeback-impl.md §2.1 for what this means for those
+    // columns. grep confirms nothing else in this codebase currently reads
+    // a TIMESTAMP/DATETIME column back into application logic (accounts.
+    // created_at/last_login, tutorials.completed_at are written via SQL
+    // NOW() and never read anywhere outside database/db.js itself), so this
+    // has no observable effect on any existing wire-facing behaviour.
+    timezone: 'Z',
 });
 
 /**
@@ -539,6 +556,197 @@ async function updateLastLogin(accountId)
     );
 }
 
+// Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "需修改 --
+// 整場寫回不是原子操作" / "需修改 -- UPDATE 靜默零列"): recordMatch() and
+// applyMatchAccumulation() used to be two separate functions, each opening
+// its own pool.getConnection()/transaction -- match-stats.js's
+// scheduleMatchWriteback() called recordMatch() once, then looped calling
+// applyMatchAccumulation() per participant, so a mid-loop failure left
+// matches/match_rounds/match_participants committed with only some
+// participants' records/mech_levels updated ("不接受逐玩家部分成功", Sol's
+// own words on the design doc). These have been merged into
+// recordMatchWithAccumulation() below, which does the matches/rounds/
+// participants inserts AND every accumulation UPDATE on the same
+// connection inside one transaction -- any failure (including an
+// affectedRows mismatch, see insertAccumulation below) rolls back
+// everything, not just the accumulation loop.
+//
+// insertMatchRow/insertRoundRows/insertParticipantRows/insertAccumulation
+// below are private helpers (not exported) that take an already-open `conn`
+// -- factored out of the single function so the SQL text/param order is
+// identical to what test/p3-db-recordmatch.js already asserted before this
+// restructuring, not because anything else calls them independently.
+
+async function insertMatchRow(conn, match)
+{
+    const [result] = await conn.execute(
+        `INSERT INTO matches
+            (room_id, map_id, difficulty, round_target, host_account_id,
+             started_at, ended_at, result, win_team_rank, is_test, suspicious)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            match.roomId ?? null,
+            match.mapId,
+            match.difficulty || 0,
+            match.roundTarget,
+            match.hostAccountId ?? null,
+            new Date(match.startedAtMs),
+            match.endedAtMs != null ? new Date(match.endedAtMs) : null,
+            match.result || 0,
+            match.winTeamRank || 0,
+            match.isTest ? 1 : 0,
+            match.suspicious ? 1 : 0,
+        ]
+    );
+    return result.insertId;
+}
+
+async function insertRoundRows(conn, matchId, rounds)
+{
+    for (const round of rounds) {
+        await conn.execute(
+            `INSERT INTO match_rounds
+                (match_id, round_number, started_at, duration_seconds, death_cn_count, suspicious)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+                matchId,
+                round.roundNumber,
+                new Date(round.startedAtMs),
+                Math.max(0, Math.round(round.durationSeconds || 0)),
+                round.deathCnCount || 0,
+                round.suspicious ? 1 : 0,
+            ]
+        );
+    }
+}
+
+async function insertParticipantRows(conn, matchId, participants)
+{
+    for (const participant of participants) {
+        await conn.execute(
+            `INSERT INTO match_participants
+                (match_id, account_id, team, kills, deaths, exp_gained, point_gained, result)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                matchId,
+                participant.accountId,
+                participant.team || 0,
+                participant.kills || 0,
+                participant.deaths || 0,
+                participant.expGained || 0,
+                participant.pointGained || 0,
+                participant.result || 0,
+            ]
+        );
+    }
+}
+
+// Sol batch6 review point 4 ("需修改 -- UPDATE 靜默零列"): the UPDATE ...
+// WHERE account_id = ? must affect exactly one row -- an unknown/deleted
+// account, or a typo'd mechType with no matching mech_levels row, used to
+// commit silently and report success. Now throws (which the caller's
+// transaction rolls back on) when affectedRows is anything other than 1.
+async function insertAccumulation(conn, accountId, delta)
+{
+    const [recordsResult] = await conn.execute(
+        `UPDATE records
+            SET exp = exp + ?, wins = wins + ?, losses = losses + ?, draws = draws + ?,
+                kills = kills + ?, deaths = deaths + ?
+          WHERE account_id = ?`,
+        [
+            delta.exp || 0,
+            delta.wins || 0,
+            delta.losses || 0,
+            delta.draws || 0,
+            delta.kills || 0,
+            delta.deaths || 0,
+            accountId,
+        ]
+    );
+    if (recordsResult.affectedRows !== 1) {
+        throw new Error(`applyMatchAccumulation: expected UPDATE records to affect 1 row for account_id=${accountId}, affected ${recordsResult.affectedRows}`);
+    }
+
+    if (delta.mechType) {
+        const [mechResult] = await conn.execute(
+            `UPDATE mech_levels
+                SET exp = exp + ?, kills = kills + ?, deaths = deaths + ?, sorties = sorties + ?
+              WHERE account_id = ? AND mech_type = ?`,
+            [
+                delta.mechExp || 0,
+                delta.mechKills || 0,
+                delta.mechDeaths || 0,
+                delta.mechSorties || 0,
+                accountId,
+                delta.mechType,
+            ]
+        );
+        if (mechResult.affectedRows !== 1) {
+            throw new Error(`applyMatchAccumulation: expected UPDATE mech_levels to affect 1 row for account_id=${accountId} mech_type=${delta.mechType}, affected ${mechResult.affectedRows}`);
+        }
+    }
+}
+
+/**
+ * P3 step 3 (docs/design/p3-step1-writeback.md §2.2/§3, docs/design/
+ * p3-step3-writeback-impl.md; Sol batch6 review points 3/4): insert one
+ * finished match + its rounds + participants, AND every accumulation delta
+ * in `accumulations`, all in a single transaction. Requires the `matches`/
+ * `match_rounds`/`match_participants` tables from
+ * tools/migrate-p3-match-tables.js to already exist.
+ *
+ * Only ever called for a match that reached EndGame_SN -- never for an
+ * aborted match (dispatch/room/match-stats.js's
+ * ABORTED_MATCHES_ARE_NOT_PERSISTED; the caller there simply never calls
+ * this for that case, this function does not itself special-case anything).
+ *
+ * `accumulations` is a separate array from `participants`, not derived from
+ * it here -- match-stats.js's caller passes an empty array for an is_test
+ * match (matches/rounds/participants rows are still written, is_test=1,
+ * but nothing accumulates into records/mech_levels -- Lead decision
+ * 2026-09-20, unchanged by this restructuring).
+ *
+ * @param {object} match
+ * @param {number|null} match.roomId
+ * @param {number} match.mapId
+ * @param {number} match.difficulty
+ * @param {number} match.roundTarget
+ * @param {number|null} match.hostAccountId
+ * @param {number} match.startedAtMs - Date.now()-style ms epoch
+ * @param {number|null} match.endedAtMs
+ * @param {number} match.result - Campaign_CN action byte: 1 win, 2 fail
+ * @param {number} [match.winTeamRank]
+ * @param {boolean} [match.isTest]
+ * @param {boolean} [match.suspicious]
+ * @param {Array<{roundNumber: number, startedAtMs: number, durationSeconds: number, deathCnCount: number, suspicious?: boolean}>} rounds
+ * @param {Array<{accountId: number, team?: number, kills?: number, deaths?: number, expGained?: number, pointGained?: number, result?: number}>} participants
+ * @param {Array<{accountId: number, exp?: number, wins?: number, losses?: number, draws?: number, kills?: number, deaths?: number, mechType?: number, mechExp?: number, mechKills?: number, mechDeaths?: number, mechSorties?: number}>} accumulations
+ * @returns {Promise<number>} the new matches.id
+ */
+async function recordMatchWithAccumulation(match, rounds, participants, accumulations)
+{
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const matchId = await insertMatchRow(conn, match);
+        await insertRoundRows(conn, matchId, rounds);
+        await insertParticipantRows(conn, matchId, participants);
+
+        for (const delta of accumulations) {
+            await insertAccumulation(conn, delta.accountId, delta);
+        }
+
+        await conn.commit();
+        return matchId;
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
 async function getItemCatalog()
 {
     const [rows] = await pool.execute(
@@ -577,6 +785,7 @@ module.exports = {
     saveEquippedLoadout,
     completeTutorial,
     updateLastLogin,
+    recordMatchWithAccumulation,
     _setItemEquipsModeForTests,
     _setP1bNoDefaultItemsForTests,
 };

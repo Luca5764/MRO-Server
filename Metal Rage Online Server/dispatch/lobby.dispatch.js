@@ -588,8 +588,14 @@ class ZLobbyDispatch
                 // storage meant the scoreboard was tied to the host
                 // connection alone. Falls back to client.battleStats_,
                 // unchanged, when no room is tracked at all.
-                const EXP_PER_KILL = 10;
-                const POINT_PER_KILL = 10;
+                // P3 step 3 (dispatch/room/match-stats.js): this placeholder
+                // used to be declared locally here; it now lives in
+                // match-stats.js (which also needs it for the DB writeback
+                // economy fields) so there is exactly one copy instead of
+                // two that could silently drift apart. Still the same 10/10
+                // placeholder value, not a verified original-game number.
+                const EXP_PER_KILL = matchStats.EXP_PER_KILL;
+                const POINT_PER_KILL = matchStats.POINT_PER_KILL;
                 const accountIdForDeath = Number(client.accountIndex_ || client.accountId_ || 1);
                 const roomForDeath = rooms.isRoomJoinEnabled()
                     ? rooms.getRoomByAccount(accountIdForDeath)

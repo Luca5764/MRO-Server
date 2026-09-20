@@ -1926,7 +1926,28 @@ class ZGateGameDispatch
                     // comment in room/room-leave.js.
                     const accountIdForBattleLeave = Number(client.accountIndex_ || client.accountId_ || 1);
                     const roomForBattleLeave = rooms.getRoomByAccount(accountIdForBattleLeave);
-                    handleBattleLeave(accountIdForBattleLeave, roomForBattleLeave);
+                    // Sol batch6 review (docs/research/2026-09-20-sol-review/
+                    // p3.md, "需修改 -- Step 2/中斷 marker"): this in-battle
+                    // Leave_CQ never routes through room-leave.js's
+                    // leaveRoomAndNotify() (it does not remove the sender's
+                    // room membership, see the comment above), so that
+                    // function's own matchStats.emitMatchAborted() call
+                    // never runs for this path -- a host who presses ESC and
+                    // leaves mid-battle got EndGame_SN sent to everyone else,
+                    // but the match's matchStats was left dangling
+                    // (unfinalized) until whatever ran next overwrote it.
+                    // Capture "was this the host, before handleBattleLeave
+                    // flips room.state" so the marker only fires for the
+                    // host-cut-short case handleBattleLeave's own EndGame_SN
+                    // branch already covers -- a non-host battle-leave keeps
+                    // the match going (room.state stays 'playing'), so it
+                    // must not abort matchStats.
+                    const wasHostForBattleLeave = !!(roomForBattleLeave
+                        && roomForBattleLeave.hostAccountId === accountIdForBattleLeave);
+                    const battleLeaveHandled = handleBattleLeave(accountIdForBattleLeave, roomForBattleLeave);
+                    if (battleLeaveHandled && wasHostForBattleLeave) {
+                        matchStats.emitMatchAborted(roomForBattleLeave, 'host-left-battle');
+                    }
                 }
 
                 return true;

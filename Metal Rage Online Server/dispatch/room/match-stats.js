@@ -30,6 +30,15 @@ function _setMatchStatsModeForTest(mode)
 }
 
 const packetlog = require('../../packetlog.js');
+// P3 step 3 (docs/design/p3-step1-writeback.md, MATCH_WRITEBACK_MODE):
+// only ever touched from scheduleMatchWriteback() below, and only when
+// that switch is enabled -- required unconditionally at module load (same
+// precedent as every other dispatch/*.js file that requires database/db.js
+// at the top) rather than lazily inside the writeback function, so
+// test/match-stats.js's existing installFakeModule(DB_PATH, ...) swap
+// (done before any dispatch module is required) is guaranteed to already
+// be in place by the time this module's own require() runs.
+const db = require('../../database/db');
 
 // docs/design/p3-step1-writeback.md §6 (high-tier review point 4): PvE map
 // ids run 9001+, grouped in 3s per difficulty tier -- [SRC] ZPanel_PVE.uc:328
@@ -53,6 +62,40 @@ function difficultyFromMapId(mapId)
 // instead of being re-guessed by whichever step adds the DB write.
 const ABORTED_MATCHES_ARE_NOT_PERSISTED = true;
 
+// P3 step 3 (docs/design/p3-step1-writeback.md §2.3, high-tier review point
+// 7 step 3): gates the actual DB write. Independent of MATCH_STATS_MODE on
+// purpose -- MATCH_STATS_MODE alone (step 2) must stay memory+log only
+// forever if this switch is never turned on, so a deployment can run step 2
+// (round timing, MATCH-SUMMARY markers) without ever touching the DB.
+// isMatchWritebackEnabled() is only ever consulted from emitMatchSummary()
+// below, and only after isMatchStatsEnabled() has already been checked
+// there -- so in practice this can only have an effect while
+// MATCH_STATS_MODE is also 'enabled' (there is no room.matchStats to write
+// back otherwise).
+let MATCH_WRITEBACK_MODE = 'disabled'; // 'disabled' | 'enabled'
+
+function isMatchWritebackEnabled()
+{
+    return MATCH_WRITEBACK_MODE === 'enabled';
+}
+
+// Test-only hook, same pattern as _setMatchStatsModeForTest above.
+function _setMatchWritebackModeForTest(mode)
+{
+    MATCH_WRITEBACK_MODE = mode;
+}
+
+// P3 step 3 (docs/design/p3-step1-writeback.md §2.2 point 3, journal/
+// 2026-09-17-21-battle-score-totals.md): the same per-kill exp/point
+// placeholder Death_SN's builder has used since S1 -- moved here (lobby.
+// dispatch.js's Death_CN handler now reads matchStats.EXP_PER_KILL/
+// POINT_PER_KILL instead of declaring its own copy) so there is exactly one
+// place this number lives, instead of two copies that could silently drift
+// apart. Still an unconfirmed placeholder, not a verified original-game
+// value (docs/design/p3-step1-writeback.md §4 "沒找到台版數字").
+const EXP_PER_KILL = 10;
+const POINT_PER_KILL = 10;
+
 /**
  * Starts a fresh room.matchStats. Call on an *accepted* Room Game Start CQ
  * (0x00222103) -- gate.game.dispatch.js already host-gates and resets
@@ -69,6 +112,17 @@ const ABORTED_MATCHES_ARE_NOT_PERSISTED = true;
 function startMatch(room, { hostAccountId, mapId, roundTarget })
 {
     if (!isMatchStatsEnabled() || !room) return;
+    // Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "需修改
+    // -- Step 2/participant 生命週期"): snapshot every current room member's
+    // metadata (team/mech/is_test) right here, at match start, instead of
+    // re-reading room.members at summary time -- see ensureParticipantMeta
+    // below for the mid-match-joiner half of this and emitMatchSummary for
+    // why this map, not room.members, is what the summary/writeback payload
+    // is built from.
+    const participantsMeta = new Map();
+    for (const member of (room.members ? room.members.values() : [])) {
+        participantsMeta.set(member.accountId, buildParticipantMeta(member, true));
+    }
     room.matchStats = {
         hostAccountId,
         mapId,
@@ -77,8 +131,47 @@ function startMatch(room, { hostAccountId, mapId, roundTarget })
         rounds: [],
         currentRound: null,
         participants: new Map(), // accountId -> { kills, deaths }
+        participantsMeta, // accountId -> { team, mechType, isTest, presentAtStart }
         finalized: false,
     };
+}
+
+// Sol batch6 review point 1: same fields emitMatchSummary used to read
+// straight off room.members at summary time -- factored out so
+// startMatch()'s initial snapshot and ensureParticipantMeta()'s mid-match
+// snapshot use identical logic.
+function buildParticipantMeta(member, presentAtStart)
+{
+    return {
+        team: member.team || 0,
+        // mechType: client.currentHangarSlot_ (1..8) -- undefined (not a
+        // guessed 0/1) when the client never went through a handler that
+        // sets it, so applyMatchAccumulation() knows to skip the
+        // mech_levels update rather than crediting the wrong mech.
+        mechType: member.client && Number(member.client.currentHangarSlot_) > 0
+            ? Number(member.client.currentHangarSlot_)
+            : undefined,
+        isTest: !!(member.client && member.client.isTestAccount_),
+        presentAtStart,
+    };
+}
+
+// Sol batch6 review point 1 ("Members who join mid-match"): a Death_CN
+// attacker/victim who is not in matchStats.participantsMeta yet (i.e. it
+// joined the room after startMatch() took its snapshot) gets its metadata
+// captured here, the first time it is attributed a kill or death --
+// `presentAtStart: false` records it was not there at the start. A member
+// who joins mid-match and never appears in any Death_CN (no kill, no
+// death) is never added and does not appear in the eventual summary/
+// writeback -- same "only what we can attribute" precedent Death_CN's own
+// index-0-is-AI skip already uses. No-op if `accountId` is already known
+// or is not a current room member (nothing to snapshot from).
+function ensureParticipantMeta(room, matchStats, accountId)
+{
+    if (!accountId || matchStats.participantsMeta.has(accountId)) return;
+    const member = room && room.members ? room.members.get(accountId) : null;
+    if (!member) return;
+    matchStats.participantsMeta.set(accountId, buildParticipantMeta(member, false));
 }
 
 function participantStats(matchStats, accountId)
@@ -138,12 +231,17 @@ function beginRound(room)
 function recordDeathCn(room, attackerIndex, victimIndex)
 {
     if (!isMatchStatsEnabled() || !room || !room.matchStats) return;
-    if (room.matchStats.currentRound)
-        room.matchStats.currentRound.deathCnCount++;
-    if (attackerIndex && attackerIndex !== victimIndex)
-        participantStats(room.matchStats, attackerIndex).kills++;
-    if (victimIndex)
-        participantStats(room.matchStats, victimIndex).deaths++;
+    const ms = room.matchStats;
+    if (ms.currentRound)
+        ms.currentRound.deathCnCount++;
+    if (attackerIndex && attackerIndex !== victimIndex) {
+        ensureParticipantMeta(room, ms, attackerIndex);
+        participantStats(ms, attackerIndex).kills++;
+    }
+    if (victimIndex) {
+        ensureParticipantMeta(room, ms, victimIndex);
+        participantStats(ms, victimIndex).deaths++;
+    }
 }
 
 /**
@@ -192,24 +290,42 @@ function emitMatchSummary(room, { result })
     const ms = room.matchStats;
     ms.finalized = true;
 
+    // Sol batch6 review point 1: both loops below are built from the
+    // match-start snapshot (+ any mid-match joiners ensureParticipantMeta()
+    // added), NOT from room.members -- a participant who left before
+    // EndGame_SN must still appear here with their real kills/deaths/
+    // is_test/team/mechType, not be silently dropped (and, for is_test,
+    // possibly flip the whole match's is_test flag) just because they are
+    // no longer a current room member.
     const participants = [];
-    for (const member of (room.members ? room.members.values() : [])) {
-        const st = ms.participants.get(member.accountId) || { kills: 0, deaths: 0 };
-        // is_test: ISTEST-WIRE (docs/backlog.md; design doc §5 step 3) --
-        // config/allowed-users.json entries may carry an `isTest` field,
-        // read into client.isTestAccount_ at login
-        // (account.dispatch.js's CQ_LOGIN_WASABII and
-        // gamelogin.dispatch.js's Login_Again_CQ, both via
-        // config/whitelist.js's isTestAccount()). Still read defensively
-        // (`member.client &&`) since not every member.client is guaranteed
-        // to have gone through either of those handlers in every test/edge
-        // case.
-        const isTest = !!(member.client && member.client.isTestAccount_);
+    // P3 step 3 (docs/design/p3-step3-writeback-impl.md): DB-only payload,
+    // built in the same loop but deliberately kept out of `participants`/
+    // `summary` above -- that JSON shape is the MATCH-SUMMARY marker's log
+    // format, already relied on by test/match-stats.js and any log tooling
+    // that greps it. Team/mech/economy fields are new to this step and are
+    // only ever read by scheduleMatchWriteback() below.
+    const participantsForDb = [];
+    for (const [accountId, meta] of ms.participantsMeta) {
+        const st = ms.participants.get(accountId) || { kills: 0, deaths: 0 };
         participants.push({
-            account_id: member.accountId,
+            account_id: accountId,
             kills: st.kills,
             deaths: st.deaths,
-            is_test: isTest,
+            is_test: meta.isTest,
+        });
+        // result: PvE is co-op, so every participant shares the room's
+        // result (win/fail) -- there is no opposing-team concept yet for
+        // "result" to disagree with `result` on a per-participant basis.
+        const participantResult = result === 1 ? 1 : (result === 2 ? 2 : 0);
+        participantsForDb.push({
+            accountId,
+            team: meta.team,
+            kills: st.kills,
+            deaths: st.deaths,
+            expGained: st.kills * EXP_PER_KILL,
+            pointGained: st.kills * POINT_PER_KILL,
+            result: participantResult,
+            mechType: meta.mechType,
         });
     }
     const isTest = participants.some((p) => p.is_test);
@@ -226,6 +342,119 @@ function emitMatchSummary(room, { result })
         host_account_id: ms.hostAccountId,
     };
     packetlog.marker(`MATCH-SUMMARY ${JSON.stringify(summary)}`, 'auto');
+
+    // P3 step 3 (docs/design/p3-step1-writeback.md, MATCH_WRITEBACK_MODE):
+    // fire-and-forget, never awaited here -- see scheduleMatchWriteback's
+    // own header comment for why this cannot block or throw into the
+    // dispatch path that called emitMatchSummary(). No-op unless
+    // MATCH_WRITEBACK_MODE is enabled; ABORTED_MATCHES_ARE_NOT_PERSISTED
+    // is upheld simply by this call only existing in emitMatchSummary(),
+    // never in emitMatchAborted() below.
+    if (isMatchWritebackEnabled())
+        scheduleMatchWriteback(room, ms, result, participantsForDb, isTest);
+}
+
+/**
+ * P3 step 3 (docs/design/p3-step1-writeback.md, docs/design/
+ * p3-step3-writeback-impl.md; Sol batch6 review point 3): persists one
+ * finished match to the DB. Fire-and-forget -- returns immediately (does
+ * not return a Promise the caller could accidentally await), so it can
+ * never block the EndGame_SN packet path emitMatchSummary() is called
+ * from. Its own async IIFE catches everything: a DB failure only logs
+ * (console.error + a MATCH-WRITEBACK-FAILED marker), it never throws back
+ * into emitMatchSummary()/dispatch() because there is no synchronous call
+ * for it to throw into.
+ *
+ * Only ever called from emitMatchSummary() above, so a match reaches this
+ * function if and only if it reached EndGame_SN (ABORTED_MATCHES_ARE_NOT_PERSISTED).
+ *
+ * Sol batch6 review point 3 ("需修改 -- 整場寫回不是原子操作"): the matches/
+ * match_rounds/match_participants inserts and every non-test participant's
+ * records/mech_levels accumulation are now a single call to
+ * db.recordMatchWithAccumulation() -- one DB transaction, not "insert, then
+ * a separate transaction per participant". A failure anywhere (including
+ * an affectedRows mismatch inside db.js) rolls back the whole match, so a
+ * MATCH-WRITEBACK-FAILED marker now means "nothing was written", never
+ * "partially written".
+ *
+ * LEAD DECISION (2026-09-20): an is_test match still gets its matches/
+ * match_rounds/match_participants rows recorded, but never accumulates into
+ * records/mech_levels -- implemented by passing an empty `accumulations`
+ * array to db.recordMatchWithAccumulation() when isTest (see below).
+ *
+ * @param {import('../../rooms.js').Room} room
+ * @param {object} ms - room.matchStats, already finalized by the caller
+ * @param {number} result - Campaign_CN action byte, 1 win / 2 fail
+ * @param {Array<object>} participantsForDb - see emitMatchSummary's own loop
+ * @param {boolean} isTest
+ */
+function scheduleMatchWriteback(room, ms, result, participantsForDb, isTest)
+{
+    const matchPayload = {
+        roomId: room.id,
+        mapId: ms.mapId,
+        difficulty: difficultyFromMapId(ms.mapId),
+        roundTarget: ms.roundTarget,
+        hostAccountId: ms.hostAccountId,
+        startedAtMs: ms.startedAt,
+        endedAtMs: Date.now(),
+        result,
+        // win_team_rank: not yet threaded through from lobby.dispatch.js's
+        // pveFixedRank -- see docs/design/p3-step3-writeback-impl.md open
+        // questions. Always 0 (schema default) for now.
+        winTeamRank: 0,
+        isTest,
+        // suspicious: P7's threshold is not implemented yet (docs/backlog.md
+        // AUTO section "先留欄位") -- always false from this step.
+        suspicious: false,
+    };
+    const roundsPayload = ms.rounds.map((r) => ({
+        roundNumber: r.round_number,
+        startedAtMs: r.started_at,
+        durationSeconds: r.duration_seconds,
+        deathCnCount: r.death_cn_count,
+        suspicious: false,
+    }));
+
+    // LEAD DECISION (2026-09-20, coordinator, resolving open question 2 from
+    // docs/design/p3-step3-writeback-impl.md §6): an is_test match's
+    // matches/match_rounds/match_participants rows are still written
+    // (useful for debugging the writeback pipeline itself), but it must
+    // NEVER accumulate into records/mech_levels. The whole point of a
+    // dedicated test account (docs/reference/unattended-policy.md,
+    // docs/backlog.md AUTO section) is that unattended/cheated runs never
+    // pollute real stats -- accumulation is exactly that pollution. Passing
+    // an empty accumulations array (rather than a separate early-return
+    // branch, now that both are one call) is the explicit mechanism; the
+    // isTest=true note on the success marker below still records this was
+    // a deliberate skip, not an accident.
+    const accumulations = isTest ? [] : participantsForDb.map((participant) => ({
+        accountId: participant.accountId,
+        exp: participant.expGained,
+        wins: participant.result === 1 ? 1 : 0,
+        losses: participant.result === 2 ? 1 : 0,
+        kills: participant.kills,
+        deaths: participant.deaths,
+        mechType: participant.mechType,
+        mechExp: participant.expGained,
+        mechKills: participant.kills,
+        mechDeaths: participant.deaths,
+        mechSorties: 1,
+    }));
+
+    (async () => {
+        try {
+            const matchId = await db.recordMatchWithAccumulation(matchPayload, roundsPayload, participantsForDb, accumulations);
+            if (isTest) {
+                packetlog.marker(`MATCH-WRITEBACK-OK matchId=${matchId} room=${room.id} isTest=true (accumulation skipped)`, 'auto');
+            } else {
+                packetlog.marker(`MATCH-WRITEBACK-OK matchId=${matchId} room=${room.id}`, 'auto');
+            }
+        } catch (err) {
+            console.error(`[match-stats] MATCH_WRITEBACK_MODE: failed to persist room #${room.id}'s match: ${err.message}`);
+            packetlog.marker(`MATCH-WRITEBACK-FAILED room=${room.id} error=${err.message}`, 'auto');
+        }
+    })();
 }
 
 /**
@@ -255,6 +484,8 @@ function emitMatchAborted(room, reason)
 module.exports = {
     isMatchStatsEnabled,
     _setMatchStatsModeForTest,
+    isMatchWritebackEnabled,
+    _setMatchWritebackModeForTest,
     startMatch,
     beginRound,
     recordDeathCn,
@@ -263,4 +494,6 @@ module.exports = {
     emitMatchAborted,
     difficultyFromMapId,
     ABORTED_MATCHES_ARE_NOT_PERSISTED,
+    EXP_PER_KILL,
+    POINT_PER_KILL,
 };
