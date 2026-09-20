@@ -34,17 +34,30 @@ classification, the runner stops immediately, sends a raw RESET (release all
 keys, best-effort), ends the pico session, and writes a FAIL report. It never
 tries to recover or retry past that point -- same policy as
 docs/reference/unattended.md 第 2 節.
+
+Preflight (docs/research/2026-09-20-dual-pico/design.md 2b, PM 2026-09-20
+decision): before `run` opens a real pico session or starts any client, it
+runs run_preflight() -- a read-only check (resolution vs atlas, pico
+foreground gate reachable, STOP file absent, no residual process per
+instance) for every instance the experiment will use. Any failure there
+stops the run before anything is touched (see docs/reference/
+unattended-policy.md 丁類第一條: a read-only measurement task once started a
+client, then could not close it because of exactly this resolution
+mismatch). `preflight <exp>` runs only this check and exits, for manual/
+scripted verification without running the experiment.
 """
 
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 import actions  # noqa: E402
+import client_ctl  # noqa: E402
 import screens  # noqa: E402
 
 REPORTS_DIR = os.path.join(SCRIPT_DIR, "logs", "reports")
@@ -134,6 +147,24 @@ def validate_experiment(exp):
     sc = exp.get("stop_conditions", {})
     if not isinstance(sc, dict):
         raise ExperimentError("'stop_conditions' must be an object")
+    # Optional dual-client instance table (docs/research/2026-09-20-dual-pico/
+    # design.md section 1) consumed by resolve_instances() below for
+    # preflight. No existing experiment file declares this -- every one of
+    # them falls back to resolve_instances()'s single client_ctl.DEFAULT_
+    # INSTANCE entry, so this validation is a no-op for all of them.
+    clients_field = exp.get("clients")
+    if clients_field is not None:
+        if not isinstance(clients_field, dict) or not clients_field:
+            raise ExperimentError("'clients' must be a non-empty object of id -> "
+                                   "{proc_name?, install_dir_win?, bat_path_win?}")
+        for cid, spec in clients_field.items():
+            if not isinstance(cid, str) or not cid:
+                raise ExperimentError("'clients' keys must be non-empty strings")
+            if not isinstance(spec, dict):
+                raise ExperimentError(f"clients[{cid!r}] must be an object")
+            for key in ("proc_name", "install_dir_win", "bat_path_win"):
+                if key in spec and not isinstance(spec[key], str):
+                    raise ExperimentError(f"clients[{cid!r}].{key} must be a string")
 
 
 def _keepalive_suffix(params):
@@ -224,6 +255,244 @@ def describe_step(step):
 
 
 # ---------------------------------------------------------------------------
+# Preflight (docs/research/2026-09-20-dual-pico/design.md 2b): every check
+# here is read-only -- no client is launched, no OptionAll.ini is written
+# (PM 2026-09-20: resolution fixes wait for the operator), and the only
+# Pico/Win32 calls made are `ping` and `session set-proc` (a local state
+# write, see pico_ctl.py's session_set_proc docstring), both explicitly
+# allowed by docs/reference/unattended-policy.md 丁類第一條 even for
+# read-only tasks. Nothing here brings a window forward or sends a
+# click/key/type command.
+# ---------------------------------------------------------------------------
+
+# The atlas's client size (1600x1200) is not derivable from manifest.json's
+# shot_size/client_offset by itself -- CLIENT_OFFSET only anchors the
+# top-left crop origin (screens.py: "client_xy = shot_xy - CLIENT_OFFSET"),
+# not a border-subtraction formula for the whole window frame. 1600x1200 is
+# a separately-confirmed fact (docs/research/2026-09-20-dual-pico/
+# design.md P5) that also happens to be hardcoded as pico_serial.ps1's
+# $ReadyClientWidth/$ReadyClientHeight for the SAME shot_size. So rather
+# than inventing an unverified formula, this pins both known values and
+# fails loudly (not silently) if the atlas is ever rebuilt at a different
+# shot_size, instead of comparing against a now-stale client size.
+ATLAS_KNOWN_SHOT_SIZE = (1616, 1239)
+ATLAS_KNOWN_CLIENT_SIZE = (1600, 1200)
+
+_OPTION_ALL_SCREEN_SIZE_RE = re.compile(r'op_Display=\(ScreenSize="(\d+)x(\d+)"')
+
+
+def _atlas_expected_client_size():
+    """Returns ((w, h), None) or (None, reason). Reads tools/pico/atlas/
+    manifest.json's shot_size -- see the ATLAS_KNOWN_* comment above for why
+    this doesn't try to recompute the client size from it."""
+    manifest_path = os.path.join(SCRIPT_DIR, "atlas", "manifest.json")
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    except OSError as ex:
+        return None, f"could not read {manifest_path}: {ex}"
+    shot_size = tuple(manifest.get("shot_size") or [])
+    if shot_size != ATLAS_KNOWN_SHOT_SIZE:
+        return None, (f"manifest shot_size {shot_size} != {ATLAS_KNOWN_SHOT_SIZE} that this "
+                       f"preflight's known client-size mapping ({ATLAS_KNOWN_CLIENT_SIZE}) was "
+                       f"verified against -- the atlas was rebuilt for a different resolution, "
+                       f"update ATLAS_KNOWN_SHOT_SIZE/ATLAS_KNOWN_CLIENT_SIZE in runner.py by hand")
+    return ATLAS_KNOWN_CLIENT_SIZE, None
+
+
+def _read_option_all_screen_size(instance):
+    """Reads (never writes) <instance install dir>\\data\\System\\
+    OptionAll.ini's op_Display=(ScreenSize="WxH",...) key -- design.md 2b
+    row 1. Returns ((w, h), ini_path_wsl, None) on success, or
+    (None, ini_path, reason) on failure. `instance` is a
+    client_ctl.ClientInstance; direct path only, same rule as
+    client_ctl.win_dir_to_wsl's own docstring (never through the
+    'MetalRage\\' reparse point)."""
+    ini_win = instance.install_dir_win.rstrip("\\") + r"\data\System\OptionAll.ini"
+    try:
+        ini_wsl = client_ctl.win_dir_to_wsl(ini_win)
+    except Exception as ex:
+        return None, ini_win, f"could not resolve WSL path for {ini_win}: {ex}"
+    try:
+        with open(ini_wsl, "rb") as f:
+            raw = f.read()
+    except OSError as ex:
+        return None, ini_wsl, f"could not read {ini_wsl}: {ex}"
+    # [TEST] 2026-09-20 (this task): both installs' OptionAll.ini are UTF-16LE
+    # with a BOM (\xff\xfe...), a common UE2-on-Windows ini convention --
+    # reading as UTF-8 silently returns garbage (no regex match, not a
+    # decode error) instead of failing loudly, so the BOM is checked
+    # explicitly rather than assumed.
+    if raw.startswith(b"\xff\xfe"):
+        content = raw.decode("utf-16-le", errors="replace")
+    elif raw.startswith(b"\xfe\xff"):
+        content = raw.decode("utf-16-be", errors="replace")
+    else:
+        content = raw.decode("utf-8", errors="replace")
+    m = _OPTION_ALL_SCREEN_SIZE_RE.search(content)
+    if not m:
+        return None, ini_wsl, f"no op_Display=(ScreenSize=\"WxH\"...) key found in {ini_wsl}"
+    return (int(m.group(1)), int(m.group(2))), ini_wsl, None
+
+
+def check_resolution(instance):
+    """design.md 2b row 1: instance's in-game resolution vs what the atlas
+    needs. Returns (ok, detail); detail always names the current value, the
+    expected value, and which file/key, per this task's contract -- does
+    NOT change OptionAll.ini (PM 2026-09-20: resolution fixes wait for the
+    operator to decide, see design.md 2b's closing paragraph)."""
+    expected, size_err = _atlas_expected_client_size()
+    if size_err:
+        return False, size_err
+    found, ini_path, read_err = _read_option_all_screen_size(instance)
+    if read_err:
+        return False, f"{instance.id}: {read_err}"
+    if found != expected:
+        return False, (f"{instance.id}: {ini_path} op_Display ScreenSize={found[0]}x{found[1]}, "
+                        f"atlas needs client {expected[0]}x{expected[1]} (manifest.json shot_size "
+                        f"{ATLAS_KNOWN_SHOT_SIZE}) -- change the in-game resolution or rebuild the "
+                        f"atlas for {found[0]}x{found[1]}, see design.md P5; not done automatically")
+    return True, f"{instance.id}: {ini_path} ScreenSize={found[0]}x{found[1]} matches atlas"
+
+
+def check_no_residual_process(instance):
+    """design.md 2b row 4: this instance must not already have a process
+    running before this run starts one. Exact process-name match only
+    (client_ctl.ps1's `Get-Process -Name $ProcName`, design.md 不變式 6 --
+    'MetalRage' is a prefix of 'MetalRage2', -like/wildcard would conflate
+    them). Reuses client_ctl.get_status(), the same status query `client_ctl.py
+    status` uses."""
+    try:
+        st = client_ctl.get_status(instance)
+    except SystemExit as ex:
+        return False, f"{instance.id}: client_ctl.get_status() aborted ({ex}) -- is powershell.exe reachable?"
+    if st["state"] == "not_running":
+        return True, f"{instance.id}: no {instance.proc_name} process running"
+    if st["state"] == "error":
+        return False, f"{instance.id}: could not check for a residual process: {st.get('detail')}"
+    return False, (f"{instance.id}: residual {instance.proc_name} process pid={st.get('pid')} "
+                    f"state={st['state']} -- close it before this run starts")
+
+
+def check_stop_file():
+    """design.md 2b row 3, same kill-switch path every other gate uses."""
+    path = client_ctl.stop_file_wsl()
+    if os.path.exists(path):
+        return False, f"STOP file present ({path}) -- remove it before running"
+    return True, f"no STOP file at {path}"
+
+
+def check_pico_gate(instances):
+    """design.md 2b row 2, done once for the whole preflight (one shared
+    Pico). Opens a short-lived probe session of its own -- distinct from
+    and always ended before run_experiment()'s real session (see
+    run_preflight() below) -- pings the Pico, then for every instance
+    confirms `session set-proc <name>` succeeds (a pure local state write,
+    see pico_ctl.py's session_set_proc docstring -- not itself a Pico/
+    hardware call). Sends no click/key/type/RESET and brings no window
+    forward.
+
+    Returns (ok, detail, per_instance) where per_instance is
+    {id: (ok, detail)}."""
+    import subprocess
+    per_instance = {}
+
+    ping = subprocess.run([sys.executable, actions.PICO_CTL, "ping"],
+                           capture_output=True, text=True, timeout=40)
+    if ping.returncode != 0 or "[PICO PONG]" not in ping.stdout:
+        detail = f"pico ping failed (rc={ping.returncode}): {ping.stdout.strip()} {ping.stderr.strip()}"
+        for cid, _inst in instances:
+            per_instance[cid] = (False, detail)
+        return False, detail, per_instance
+
+    start = subprocess.run([sys.executable, actions.PICO_CTL, "session", "start", "preflight"],
+                            capture_output=True, text=True, timeout=15)
+    if start.returncode != 0:
+        detail = f"pico session start failed (rc={start.returncode}): {start.stdout.strip()} {start.stderr.strip()}"
+        for cid, _inst in instances:
+            per_instance[cid] = (False, detail)
+        return False, detail, per_instance
+
+    try:
+        all_ok = True
+        for cid, inst in instances:
+            sp = subprocess.run([sys.executable, actions.PICO_CTL, "session", "set-proc", inst.proc_name],
+                                 capture_output=True, text=True, timeout=15)
+            ok = sp.returncode == 0
+            per_instance[cid] = (ok, f"session set-proc {inst.proc_name!r} -> rc={sp.returncode}: "
+                                      f"{sp.stdout.strip()} {sp.stderr.strip()}")
+            all_ok = all_ok and ok
+    finally:
+        subprocess.run([sys.executable, actions.PICO_CTL, "session", "end"], capture_output=True, text=True, timeout=15)
+
+    detail = ("pico ping ok, session set-proc ok for every instance" if all_ok
+              else "pico ping ok, but session set-proc failed for at least one instance (see per-instance detail)")
+    return all_ok, detail, per_instance
+
+
+def resolve_instances(exp):
+    """Returns [(id, client_ctl.ClientInstance), ...] for every instance
+    this experiment's steps will use, from an optional top-level 'clients'
+    object (docs/research/2026-09-20-dual-pico/design.md section 1;
+    validated by validate_experiment() above). No existing experiment file
+    declares 'clients' -- every one of them falls back to a single entry
+    using client_ctl.DEFAULT_INSTANCE (the main install, proc 'MetalRage'),
+    so preflight still checks that one instance for every such script. This
+    is deliberate, not a gap: the incident that triggered this task
+    (docs/reference/unattended-policy.md 丁類第一條) was a single-client
+    scenario, not a dual-client one."""
+    clients_field = exp.get("clients")
+    if not clients_field:
+        return [(client_ctl.DEFAULT_INSTANCE.id, client_ctl.DEFAULT_INSTANCE)]
+    out = []
+    for cid, spec in clients_field.items():
+        out.append((cid, client_ctl.ClientInstance(
+            id=cid,
+            proc_name=spec.get("proc_name", client_ctl.DEFAULT_INSTANCE.proc_name),
+            install_dir_win=spec.get("install_dir_win", client_ctl.DEFAULT_INSTANCE.install_dir_win),
+            bat_path_win=spec.get("bat_path_win", client_ctl.DEFAULT_INSTANCE.bat_path_win),
+        )))
+    return out
+
+
+def run_preflight(exp):
+    """Runs every docs/research/2026-09-20-dual-pico/design.md 2b check for
+    every instance resolve_instances(exp) returns, BEFORE run_experiment()
+    opens its real pico session or starts any client (docs/reference/
+    unattended-policy.md 丁類第一條, PM 2026-09-20). Runs every check (does
+    not stop at the first failure) so a single report shows everything
+    wrong with the environment at once. Returns (ok, report); never raises
+    for an ordinary check failure -- only a genuinely unexpected exception
+    propagates."""
+    instances = resolve_instances(exp)
+    report = {"instances": [cid for cid, _ in instances], "checks": [], "ok": None}
+    all_ok = True
+
+    ok, detail = check_stop_file()
+    report["checks"].append({"check": "stop_file", "instance": None, "ok": ok, "detail": detail})
+    all_ok = all_ok and ok
+
+    for cid, inst in instances:
+        ok, detail = check_resolution(inst)
+        report["checks"].append({"check": "resolution", "instance": cid, "ok": ok, "detail": detail})
+        all_ok = all_ok and ok
+
+    for cid, inst in instances:
+        ok, detail = check_no_residual_process(inst)
+        report["checks"].append({"check": "no_residual_process", "instance": cid, "ok": ok, "detail": detail})
+        all_ok = all_ok and ok
+
+    gate_ok, gate_detail, gate_per_instance = check_pico_gate(instances)
+    report["checks"].append({"check": "pico_foreground_gate", "instance": None, "ok": gate_ok, "detail": gate_detail})
+    for cid, (ok, detail) in gate_per_instance.items():
+        report["checks"].append({"check": "pico_foreground_gate_set_proc", "instance": cid, "ok": ok, "detail": detail})
+    all_ok = all_ok and gate_ok
+
+    report["ok"] = all_ok
+    return all_ok, report
+
+
+# ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
 def fail_closed(ctx):
@@ -258,6 +527,7 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
         "dry_run": dry_run,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "build_event": None,
+        "preflight": None,
         "precondition": None,
         "steps": [],
         "anomalies": [],
@@ -281,6 +551,18 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
     report["build_event"] = actions.find_build_event(ctx.logs_dir)
     if report["build_event"] is None:
         report["anomalies"].append(f"no build event found under {ctx.logs_dir} (no session-*.jsonl, or no 'build' line)")
+
+    # Preflight (design.md 2b / unattended-policy.md 丁類第一條): must pass
+    # BEFORE any client is started -- no session has been opened and no
+    # client has been touched yet at this point, so a failure here needs no
+    # fail_closed() cleanup (there is nothing to reset or close).
+    preflight_ok, preflight_report = run_preflight(exp)
+    report["preflight"] = preflight_report
+    if not preflight_ok:
+        report["anomalies"].append("preflight failed -- no client was started, see report['preflight']")
+        report["result"] = "FAIL"
+        write_report(report)
+        return report, 1
 
     stop = exp.get("stop_conditions", {})
     max_consecutive_failures = stop.get("max_consecutive_failures", 1)
@@ -392,6 +674,11 @@ def write_report(report):
                     f"nonDefault={list(be.get('nonDefault', {}).keys())}\n")
         else:
             f.write("build: (no build event found in session log)\n")
+        pf = report.get("preflight")
+        if pf:
+            f.write(f"preflight: ok={pf['ok']} instances={pf['instances']}\n")
+            for c in pf["checks"]:
+                f.write(f"  - [{c['check']}] instance={c['instance']} ok={c['ok']} :: {c['detail']}\n")
         pre = report.get("precondition")
         if pre:
             f.write(f"precondition: expected={pre['expected']} got={pre['got']} ok={pre['ok']}\n")
@@ -513,6 +800,11 @@ def main():
     p_val = sub.add_parser("validate", help="validate an experiment file's structure, no plan printed")
     p_val.add_argument("experiment")
 
+    p_pre = sub.add_parser("preflight", help="run only the design.md 2b preflight checks for an "
+                                              "experiment file's instance(s) -- never opens a real "
+                                              "session, never starts a client")
+    p_pre.add_argument("experiment")
+
     p_suite = sub.add_parser("suite", help="run (or --dry-run plan) a suite file: sequential experiments, "
                                             "stops on the first non-PASS (fail-closed)")
     p_suite.add_argument("suite")
@@ -530,6 +822,17 @@ def main():
             sys.exit(1)
         print("[OK] experiment file is valid")
         return
+
+    if args.cmd == "preflight":
+        try:
+            exp = load_experiment(args.experiment)
+        except (ExperimentError, FileNotFoundError, json.JSONDecodeError) as ex:
+            print(f"[INVALID] {ex}")
+            sys.exit(1)
+        ok, report = run_preflight(exp)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        print(f"[{'PASS' if ok else 'FAIL'}] preflight for {exp['id']}")
+        sys.exit(0 if ok else 1)
 
     if args.cmd == "run":
         try:
