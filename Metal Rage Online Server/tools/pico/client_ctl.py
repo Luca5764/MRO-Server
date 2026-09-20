@@ -175,7 +175,23 @@ def cmd_status():
 # halting exactly like any other pico_ctl.py input command (see pico_ctl.py's
 # `raw` action and pico_serial.ps1's Invoke-CloseWindow).
 # ---------------------------------------------------------------------------
+SHOT_SH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "win", "shot.sh")
+
+
+def bring_game_to_front():
+    """screen.ps1 (via shot.sh) calls SetForegroundWindow on the real game window,
+    which is how the runner takes focus back from whatever the operator last used
+    (2026-09-20: a planned relaunch was correctly BLOCKED because Discord was in
+    the foreground). Best-effort: the gate in pico_serial.ps1 still decides."""
+    try:
+        subprocess.run(["bash", SHOT_SH, "--name", "front-before-close"],
+                        capture_output=True, text=True, timeout=60)
+    except Exception:
+        pass
+
+
 def close_window():
+    bring_game_to_front()
     proc = subprocess.run([sys.executable, PICO_CTL_PY, "raw", "CLOSE_WINDOW"],
                            capture_output=True, text=True, timeout=30)
     out = (proc.stdout or proc.stderr or "").strip()
