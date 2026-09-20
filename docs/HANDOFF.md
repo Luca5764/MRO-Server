@@ -25,42 +25,46 @@
 9. **對外**：README 改寫、`docs/PROTOCOL-SUMMARY.en.md`、`reference/join-guide.en.md`、里程碑 tag 都已 push。文件裡的區網 IP 一律用佔位值，**不要寫回真實 IP**。
 10. **與上游作者 Moon 的交流**：他更正了 `Game_User_Add` 是 `0x10734140`（`0x107343e0` 是道具清單），核對成立。
 
-### 投射物消失（最有價值的未結案）
+### 投射物消失 — 成因已定位（2026-09-20 晚）
 
-今天換了量測方法之後有實質進展。**方法本身值得先讀**（`journal/2026-09-20-1820-projectile-loss-counted.md`）：
+**結論：不是網路，是引擎的送出預算。** 完整經過見 `journal/2026-09-20-1820-projectile-loss-counted.md` 與 `journal/2026-09-20-2030-same-machine-and-netspeed.md`。
 
-- 客戶端主控台指令 `WeaponLog`（`ZBase/W_DPCForWeapon.uc:1011`）打開後，`MetalRage.log` 每發寫一行開火動畫；**主武器**（InventoryGroup==1）另外寫一行 `HitLoc=== >`。
-- 開火動畫只在生成函式 `FireProjectileCenterLoc_UJ` 內播（`W_BaseProjectile_Weapon.uc:910`），`HitLoc===` 在本機無條件寫（`BaseProjectile_Fire.uc:135-139`）。**兩者相減＝缺口**，不需要任何人數發數。
-- **分母一律用 `HitLoc===` 的行數，不要用 HUD 彈藥數**：雙臂武器一次扣兩發。今天連續兩次踩這個坑，第二次害我下錯結論。
-- 射手必須是**加入者**；房主自己開槍是本機直接生成，看不出東西。
-- log 每 4 KB 才寫檔，測完要離開戰場、必要時關掉遊戲才會 flush 完。
+機制（`Engine.dll` `AActor::ProcessRemoteFunction` VA `0x105234b0`，位址已核對）：
+- `0x10523597`／`0x10523633` 用 `0xc00000`（ToAll|ToTheOthers）選廣播分支
+- `0x105236a5` 廣播迴圈對**每個 connection** 呼叫 `IsNetReady(0)`
+- `0x105236ad` 回 false 就**跳過該 connection —— 不排隊、不重傳**
+- → 宣告的 `reliable` 只在封包送出之後才算數
 
-量到的（射手＝加入者，走 VPN）：
+門檻吃的是 `CurrentNetSpeed`，實測 **10000 B/s**（÷ `NetServerMaxTickRate` 30 ≈ 每 tick 333 bytes），戰鬥中光移動複寫就吃光。
 
-| | 扣扳機 | 缺口 | 失敗串 |
-|---|---|---|---|
-| 輔武 ACH | 70 | 10% | — |
-| 主武 MTE 基準 | 48 | **20.8%** | `1,3,2,2,1,1` |
-| 主武 MTE ＋ `sup1`（無限彈） | 90 | **8.9%** | `1×8`（全是孤立單發） |
+證據：
 
-- ❌ **H-SPAWN-FAIL 排除**：缺的那些發**連開火動畫都沒有**，而動畫在 `Spawn()` 之前播，所以不是生成失敗，是整個生成函式沒被呼叫。
-- ✅ **去程 100%**：角色對調（Lucas 當房主並開 `WeaponLog`、完全不開火，筆電當射手打空一個彈匣）後，房主端收到 34/34。**缺口全部在回程** `ClientFireProjectileCenterLoc_MH`（`reliable ToAll`）。
-- ❌ **不是線路掉包**：兩個 VPN IP 之間 `ping -n 200` 遺失 0%（抖動 20–189 ms）。
-- ❌ **`ToAll` 沒有拿掉可靠性**：`FunctionFlags` 顯示 `NetReliable` 有設。`ToAll` ＝ bit `0x00400000`、`ToTheOthers` ＝ `0x00800000`（三組函式對照吻合）。
-- ❌ **收端沒有閘門**：`ClientFireProjectileCenterLoc_MH` 唯一的條件是 `Weapons_UJ[i] != none`，三個 `FireProjectileCenterLoc_UJ` 實作都把 `PlayFireAnim()` 放在第一或第二個敘述，武器類別沒有任何 `state`。所以不是「抖動讓下一發撞上冷卻」。
-- 🟡 **H-AMMO-DESYNC 可能解釋一部分**：`sup1` 把缺口 20.8%→8.9%（Fisher p≈0.06），而且**成串失敗全部消失、只剩孤立單發**。
+| 環境 | 缺口 |
+|---|---|
+| VPN，無 `sup1` | 20.8% |
+| VPN，`sup1` | 8.9% |
+| **同機雙開（迴路、0% 掉包、ping 20ms）** | **32–35%** |
 
-目前最自洽的是**雙成因**：成串失敗 ← `HasAmmo()` 閘門（彈藥不同步）；殘留的約 9% 孤立單發 ← 回程 `ToAll`。
+同機**更糟**，所以網路品質 ❌。去程 100%（房主收到 34/34），缺口全在回程 ❌ 線路掉包（200 ping 0% 遺失）❌ `ToAll` 不可靠（`FunctionFlags` 有 `NetReliable`；`ToAll`=bit `0x00400000`、`ToTheOthers`=`0x00800000`）❌ 收端有時間閘門（進入點只有一個 none 檢查）。🟡 `HasAmmo()` 閘門可能解釋成串的那部分（`sup1` 讓成串失敗消失）。
 
-還沒做的兩項（PM 排的四項對照裡的第 2 項＋樣本數）：
+**改不動的地方：** 加入者端改 ini 無效——`Engine/GameInfo.uc:1504` 的 `ClientCapBandwidth()` 在登入時用房主的值覆蓋加入者，而房主的值來自連線 URL 的 `NETSPEED=`，客戶端自己組 URL 時沒帶。我們送的那個欄位只有 15 字元且由客戶端組 `%s:%d/%s`（`gate.game.dispatch.js:405-414`），塞不進去。[TEST] 兩端 `DefUser.ini` 改成 100000、重開，`stat net` 仍是 10000。→ 要提高只剩改客戶端二進位檔，**那是另一個層級的決定，未做**。
 
-1. **區網基準**：同樣的量測，筆電接回家裡網路不走 VPN。孤立單發也接近 9% → 與線路無關，是引擎固有行為，直接標成已知限制；掉到 0 → 線路品質問題，緩解方向明確（選線路好的當房主）。
-2. **慢速射擊對照**（同一場、VPN 上）：連按到底 vs 每發間隔一秒，各約 100 次扣扳機。腳本層已確認沒有閘門（❌ H-CLIENT-GATE，見下），但引擎層的頻寬／可靠佇列仍可能在連發時丟呼叫，只有這個對照分得出來。
-3. **`sup1` 樣本加大**：同一場打兩段各 100 次扣扳機。現在操作者自己能開主控台，不需要 AI 介入。
+**量測方法**（可重複，只要射手一台，不需要任何人數發數）：
+1. 遊戲裡按 **ScrollLock**（Pico 韌體送出真實 F24）開主控台
+2. `WeaponLog` → Enter → ESC。**每次重開客戶端都要重開一次**，而且它是 toggle
+3. 射手必須是**加入者**，武器必須是**主武器砲類**
+4. 打完**關掉客戶端**才會完整 flush（4KB 緩衝，離開戰場不保證）
+5. 分母 `HitLoc===` 的行數（只有主武器寫），分子開火動畫。**絕對不要用 HUD 彈藥數當分母**——雙臂武器一次扣兩發
 
-之後才考慮反組譯引擎處理 `0x00400000` 的送出路徑（PM 設上限半天，排在上面兩項之後）。
+### 同機雙開（DUAL-CLIENT，已完成）
 
-PM 對影響面的判斷：這 13%（修正後 9–21%）**不擋 M3**，若根因在客戶端引擎我們改不了，只能緩解；四項做完就把結論寫進 K1 的「已知限制」與 `PROTOCOL-SUMMARY.en.md`，然後往下走（VPN 完整場、第三人、ASSIST-FIX、P3）。
+可行。`docs/reference/setup.md` 應補一節。要點：
+- 副本 `C:\Games\MetalRage Online 2`（robocopy 整份複製，1.9 GB／8 秒）
+- **單一實例鎖看的是行程名稱**：把 exe 複製成 `MetalRage2.exe`（byte-identical）就能並存。不是 XIGNCODE（換成停用版 DLL 行為不變），也不是具名核心物件（34 個候選全部開不到）
+- Win11 的 `DisableExceptionChainValidation` 按 exe 檔名註冊，新檔名要自己加一筆（`C:\Users\su200\mr2-ifeo.reg`，管理員合併一次，不用重開機）
+- 用副本的 `Play Second Client.bat` 啟動，它會用 `-log=run-<時間>.log` 讓每輪各自一個檔
+- **陷阱**：安裝目錄下的 `MetalRage\` 是指回根目錄的 junction，robocopy 原樣重建，所以副本的 `MetalRage\...` 指向主力安裝。判斷 log 屬於誰看檔頭 `Init: Base directory:`
+- **陷阱**：引擎 log 檔名跟著執行檔走，`MetalRage2.exe` 寫 `data\System\MetalRage2.log`，而且每次啟動**截斷**同名檔
 
 ### 等操作者的
 
