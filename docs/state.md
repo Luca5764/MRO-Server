@@ -157,7 +157,7 @@
 | 同一函式，以及 `gamelogin.dispatch.js` 的 `SA_LOBBY_ENTER` | 送 `0x00230112`，標為「Lobby Enter SA」 | `0x00230112` 是 `Timeout_SN`（`ZDispatchGame`），不在場景 6 時會被丟棄。`ZDispatchLobby::Enter_SA` 是 `0x00220232` ✅ [DLL]，但它進的是大廳還是房間 ⬜。 | 在大廳送等於沒送；在場景 6 送可能會觸發逾時處理 ⬜ |
 | `lobby.dispatch.js` case `0x00230111` | 大廳中當成「Lobby Enter CQ」回應 | `Timeout_CN`，只在場景 6 送出。✅ [DLL] | 大廳時的分支可能永遠不會觸發 ⬜ |
 | `lobby.dispatch.js` case `0x00230101` | 註解「Possible Lobby Enter」，回空的 `0x00230102` | `ChangeSlot_CN`／`ChangeSlot_SN`。✅ [DLL] | 選機體的回應內容不對 |
-| `lobby.dispatch.js` case `0x00230121` | 註解「Lobby Leave (guessed)」 | `Assist_CN`。✅ [DLL] | 回應無效果，但無害 |
+| `lobby.dispatch.js` case `0x00230121` | 註解「Lobby Leave (guessed)」 | `Assist_CN`。✅ [DLL] | 回應無效果，但無害 | **更正 2026-09-20：「無害」講得太滿。**[DLL] `Assist_SN` handler `0x107d5fa0` 的成功路徑會讀到 body+0x17/+0x18，超出我們送的 16 bytes 全零回覆（每場 500 次以上）；`Special_SN 0x107d6300` 更會把 body+0x19 當指標解參考。跟 Death_SN 當初同一類失敗，見 `research/2026-09-20-fallback-ack-audit/notes.md`。
 | `lobby.dispatch.js` 檔名與整段 `0x23xxxx` | 叫 lobby | 整段屬於 `ZDispatchGame`；檔內註解已自行承認 | 只是名稱誤導 |
 | `game.dispatch.js` 攔截整段 `0x25xxxx` 並稱為「對戰」 | — | 客戶端的 `0x0025xxxx` handler 全屬 `ZDispatchCard`；對戰在 `0x0022xxxx`／`0x0023xxxx`／`0x0042xxxx`。✅ [DLL] | 名稱誤導 |
 | `game.dispatch.js` 對 C→S `0x00250102` 回 `0x00250103` | 客戶端確實會送 `0x00250102` ✅ [LOG] | `0x00250103` 不在 dispatch map，回應會被忽略 ✅ [DLL]；`0x00250102` 的真名 ⬜ | 回應無效果 |
