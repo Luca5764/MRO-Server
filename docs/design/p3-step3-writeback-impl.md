@@ -201,12 +201,15 @@ transaction）。這代表：如果 `recordMatch` 失敗，完全不會有累加
   範圍的最小改動精神），留給下一步。
 - `suspicious`（`matches`/`match_rounds`都）：永遠 `false`。P7 的門檻邏輯還沒做，`backlog.md`
   AUTO 段落本來就只要求「先留欄位」，本次沒有實作任何判定。
-- `is_test`：沿用 step 2 既有的「host 或任一 participant 是測試帳號，整場就是 `is_test=1`」，
-  **不會因為 `is_test=1` 就跳過寫入**——`matches`/`match_rounds`/`match_participants` 照樣寫，
-  `records`/`mech_levels` 照樣累加。理由：`is_test` 欄位存在的目的（`backlog.md` AUTO 段落「比賽
-  紀錄要帶測試標記，避免污染戰績」）讀起來像是「讓之後的排行榜/戰績查詢可以用這個欄位過濾掉」，
-  不是「乾脆不寫」。但**這個判斷本身沒有被操作者或高階明確確認過**，是本次實作的解讀，列進第 6
-  節。
+- `is_test`（**Lead decision 2026-09-20，已裁定，取代原本的實作猜測**）：沿用 step 2 既有的
+  「host 或任一 participant 是測試帳號，整場就是 `is_test=1`」。`matches`/`match_rounds`/
+  `match_participants` 三張表照樣寫入（`is_test=1`，方便除錯整條寫回管線），**但完全跳過這場的
+  每一個 `applyMatchAccumulation()` 呼叫**——`records`/`mech_levels` 對這場一律不動。原因：專用
+  測試帳號（`docs/reference/unattended-policy.md`、`backlog.md` AUTO 段落）存在的目的就是讓
+  無人值守/開作弊指令的場次不污染真實戰績，累加正是那種污染。`scheduleMatchWriteback()` 裡是一個
+  明確、有註解的 `if (isTest) { ...; return; }` 分支（不是靜默過濾），註解裡標明這是
+  coordinator 2026-09-20 的裁定；`test/match-writeback.js` 的
+  `testIsTestMatchRecordedButNotAccumulated` 驗證「三表照寫、零次累加呼叫」。
 - `mech_levels` 累加用哪個 `mech_type`：讀 `member.client.currentHangarSlot_`（跟
   `gate.game.dispatch.js` 既有的 `selectedMech` 欄位同一個來源），沒有的話（`undefined`）整個
   跳過那個帳號的 `mech_levels` 更新（`records` 還是照樣更新）——不是猜一個預設值。
@@ -220,7 +223,7 @@ transaction）。這代表：如果 `recordMatch` 失敗，完全不會有累加
 |---|---|---|
 | `test/p3-match-tables-migration.js` | migration，fake pool | 全新建立、冪等重跑、部分已建、`--dry-run` |
 | `test/p3-db-recordmatch.js` | `db.js` 的兩個新函式，fake pool，檢查 SQL 文字/參數 | INSERT 順序、transaction/rollback、`records`/`mech_levels` 累加寫法 |
-| `test/match-writeback.js` | `match-stats.js` 的寫回流程，`db.recordMatch`/`applyMatchAccumulation` 整個 mock 掉 | switch off（沒有任何 DB 呼叫，`MATCH-SUMMARY` 不受影響）、完整一場（matches/rounds/participants 欄位、累加算式）、中斷的場不寫、DB 失敗只記 log 不拋錯 |
+| `test/match-writeback.js` | `match-stats.js` 的寫回流程，`db.recordMatch`/`applyMatchAccumulation` 整個 mock 掉 | switch off（沒有任何 DB 呼叫，`MATCH-SUMMARY` 不受影響）、完整一場（matches/rounds/participants 欄位、累加算式）、中斷的場不寫、DB 失敗只記 log 不拋錯、**is_test 的場三表照寫但零次累加呼叫（Lead decision 2026-09-20）** |
 
 跑過的指令與結果：
 
@@ -253,9 +256,11 @@ node test/replay-golden.js   # ALL SAMPLES PASS，8384 封包的 PvE 整場樣�
 2. **`--dry-run` 仍然要求 `ALLOW_REAL_DB_WRITE`/`P3_BACKUP_CONFIRMED`**（§1.2）：沿用
    `merge-e1-shared-duplicates.js` 的既有慣例，但嚴格說 `--dry-run` 不寫任何東西，要求備份確認
    可能過度保守。維持現狀等 Sol 表態要不要放寬。
-3. **`is_test` 不影響是否寫入**（§3.5）：`matches`/`records`/`mech_levels` 對測試帳號照樣寫入
-   累加，只是打上 `is_test=1` 供之後查詢過濾。這是本次實作的解讀，**沒有操作者或高階的明確確認**
-   ——如果原意其實是「is_test 的場完全不要動 `records`/`mech_levels`」，這裡要改。
+3. ~~**`is_test` 不影響是否寫入**~~ — **已裁定（Lead decision，2026-09-20，coordinator）：**
+   `matches`/`match_rounds`/`match_participants` 三張表照樣寫入（`is_test=1`），但
+   `records`/`mech_levels` **一律不累加**（一個明確的 `if (isTest) { ...; return; }` 分支，
+   `scheduleMatchWriteback()` 裡有標明是這次裁定；`test/match-writeback.js`
+   `testIsTestMatchRecordedButNotAccumulated` 驗證）。詳見 §3.5。此項**已解決，不再是開放問題**。
 4. **`match_participants.account_id` 的 FK 維持 `ON DELETE CASCADE`**（§1.1），跟
    `matches.host_account_id` 改成 `ON DELETE SET NULL` 方向不一致——原因是複合主鍵欄位不能為
    NULL（技術限制，非選擇），但這個推論沒有被覆核過。

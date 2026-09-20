@@ -30,6 +30,12 @@
 //      (nothing for a caller in dispatch/lobby.dispatch.js to catch), and
 //      db.applyMatchAccumulation is never called for that match (recordMatch
 //      failed before the accumulation loop is ever reached).
+//   5. LEAD DECISION (2026-09-20, resolving open question 2 from docs/design/
+//      p3-step3-writeback-impl.md §6): an is_test match still calls
+//      db.recordMatch (matches/match_rounds/match_participants rows are
+//      written, is_test=true) but never calls db.applyMatchAccumulation --
+//      a dedicated test account must never pollute real records/mech_levels
+//      totals.
 //
 // Run: node test/match-writeback.js  (exit 0 = pass, exit 1 = fail)
 
@@ -79,6 +85,18 @@ function makeRoom()
         members: new Map([
             [1, { accountId: 1, team: 0, client: { currentHangarSlot_: 3, isTestAccount_: false } }],
             [2, { accountId: 2, team: 0, client: { currentHangarSlot_: 5, isTestAccount_: false } }],
+        ]),
+    };
+}
+
+/** Same as makeRoom(), but account 2 is a configured test account. */
+function makeRoomWithTestAccount()
+{
+    return {
+        id: 43,
+        members: new Map([
+            [1, { accountId: 1, team: 0, client: { currentHangarSlot_: 3, isTestAccount_: false } }],
+            [2, { accountId: 2, team: 0, client: { currentHangarSlot_: 5, isTestAccount_: true } }],
         ]),
     };
 }
@@ -312,12 +330,54 @@ async function testDbErrorIsLoggedAndSwallowed()
     }
 }
 
+// LEAD DECISION (2026-09-20, resolving open question 2 from docs/design/
+// p3-step3-writeback-impl.md §6): an is_test match's rows are still written
+// (is_test=true, useful for debugging the writeback pipeline itself), but
+// it must never accumulate into records/mech_levels -- a dedicated test
+// account (docs/reference/unattended-policy.md, docs/backlog.md AUTO
+// section) exists precisely so unattended/cheated runs never pollute real
+// stats, and accumulation is exactly that pollution.
+async function testIsTestMatchRecordedButNotAccumulated()
+{
+    matchStats._setMatchStatsModeForTest('enabled');
+    matchStats._setMatchWritebackModeForTest('enabled');
+    const spies = installDbSpies();
+    const markers = captureMarkers((t) => t.startsWith('MATCH-'));
+
+    try {
+        const room = makeRoomWithTestAccount(); // account 2 is a test account
+        playTwoRoundMatch(room);
+        matchStats.emitMatchSummary(room, { result: 1 });
+        await flushAsync();
+
+        assert.strictEqual(spies.recordMatchCalls.length, 1, 'an is_test match must still call db.recordMatch');
+        const { match, rounds, participants } = spies.recordMatchCalls[0];
+        assert.strictEqual(match.isTest, true, 'matches.is_test must be true (host OR any participant is the test account)');
+        assert.strictEqual(rounds.length, 2, 'match_rounds rows must still be written for an is_test match');
+        assert.strictEqual(participants.length, 2, 'match_participants rows must still be written for an is_test match');
+
+        assert.strictEqual(spies.applyAccumulationCalls.length, 0, 'an is_test match must NEVER call db.applyMatchAccumulation, for any participant');
+
+        const okMarkers = markers.captured.filter((t) => t.startsWith('MATCH-WRITEBACK-OK '));
+        assert.strictEqual(okMarkers.length, 1, 'expected exactly one MATCH-WRITEBACK-OK marker');
+        assert.ok(okMarkers[0].includes('isTest=true'), 'the success marker should note that this was an is_test match (accumulation skipped)');
+
+        console.log('[match-writeback test] PASS: an is_test match still writes matches/match_rounds/match_participants rows but never calls applyMatchAccumulation');
+    } finally {
+        markers.restore();
+        spies.restore();
+        matchStats._setMatchStatsModeForTest('disabled');
+        matchStats._setMatchWritebackModeForTest('disabled');
+    }
+}
+
 async function main()
 {
     await testSwitchOffNoWriteback();
     await testFullMatchWriteback();
     await testAbortedMatchNotWritten();
     await testDbErrorIsLoggedAndSwallowed();
+    await testIsTestMatchRecordedButNotAccumulated();
     console.log('[match-writeback test] ALL CHECKS PASS');
     process.exit(0);
 }

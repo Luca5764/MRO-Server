@@ -324,6 +324,11 @@ function emitMatchSummary(room, { result })
  * Only ever called from emitMatchSummary() above, so a match reaches this
  * function if and only if it reached EndGame_SN (ABORTED_MATCHES_ARE_NOT_PERSISTED).
  *
+ * LEAD DECISION (2026-09-20): an is_test match still gets its matches/
+ * match_rounds/match_participants rows recorded, but never accumulates into
+ * records/mech_levels -- see the `if (isTest)` branch inside the IIFE below
+ * for the full reasoning.
+ *
  * @param {import('../../rooms.js').Room} room
  * @param {object} ms - room.matchStats, already finalized by the caller
  * @param {number} result - Campaign_CN action byte, 1 win / 2 fail
@@ -361,6 +366,23 @@ function scheduleMatchWriteback(room, ms, result, participantsForDb, isTest)
     (async () => {
         try {
             const matchId = await db.recordMatch(matchPayload, roundsPayload, participantsForDb);
+
+            // LEAD DECISION (2026-09-20, coordinator, resolving open question
+            // 2 from docs/design/p3-step3-writeback-impl.md §6): an is_test
+            // match's matches/match_rounds/match_participants rows are still
+            // written above (useful for debugging the writeback pipeline
+            // itself), but it must NEVER accumulate into records/mech_levels.
+            // The whole point of a dedicated test account
+            // (docs/reference/unattended-policy.md, docs/backlog.md AUTO
+            // section) is that unattended/cheated runs never pollute real
+            // stats -- accumulation is exactly that pollution. This is an
+            // explicit branch, not a silent filter, so a reviewer can find
+            // the decision here rather than infer it from an early return.
+            if (isTest) {
+                packetlog.marker(`MATCH-WRITEBACK-OK matchId=${matchId} room=${room.id} isTest=true (accumulation skipped)`, 'auto');
+                return;
+            }
+
             for (const participant of participantsForDb) {
                 await db.applyMatchAccumulation(participant.accountId, {
                     exp: participant.expGained,
