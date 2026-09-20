@@ -90,11 +90,14 @@ SHOT_SH = os.path.join(MRO_SERVER_DIR, "tools", "win", "shot.sh")
 SHOTS_DIR = os.path.join(REPO_ROOT, "shots")
 
 CLIENT_CTL_PS1 = os.path.join(SCRIPT_DIR, "client_ctl.ps1")
-WIN_CLIENT_CTL_PS1_LOCAL = "/mnt/c/Users/su200/mro-client-ctl.ps1"
-WIN_CLIENT_CTL_PS1_PATH = "C:\\Users\\su200\\mro-client-ctl.ps1"
 
 CLIENT_LOG_WSL = "/mnt/c/Games/MetalRage Online/data/Log/MetalRage.log"
-STOP_FILE_WSL = "/mnt/c/Users/su200/mro-pico/STOP"  # same kill switch as pico_serial.ps1
+
+
+def stop_file_wsl():
+    """Same kill switch path as pico_serial.ps1's $StopFile, resolved via
+    pico.win_user_profile_wsl() (see pico_ctl.py)."""
+    return os.path.join(pico.win_user_profile_wsl(), "mro-pico", "STOP")
 
 RESTART_LIMIT = 3
 WAIT_READY_MS = 90000
@@ -110,14 +113,16 @@ def run_ps1(action, *args, timeout=15):
     if not os.path.exists(pico.PS_PATH):
         print("[ERR] powershell.exe not found; is this running under WSL with Windows accessible?")
         sys.exit(1)
+    win_local = os.path.join(pico.win_user_profile_wsl(), "mro-client-ctl.ps1")
+    win_path = pico.win_user_profile() + "\\mro-client-ctl.ps1"
     try:
-        subprocess.run(["cp", CLIENT_CTL_PS1, WIN_CLIENT_CTL_PS1_LOCAL], check=True, capture_output=True)
+        subprocess.run(["cp", CLIENT_CTL_PS1, win_local], check=True, capture_output=True)
     except Exception as ex:
         print(f"[ERR] unable to copy client_ctl.ps1 to Windows: {ex}")
         sys.exit(1)
 
     cmd = [pico.PS_PATH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-           WIN_CLIENT_CTL_PS1_PATH, action] + [str(a) for a in args]
+           win_path, action] + [str(a) for a in args]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                               errors="replace", timeout=timeout)
@@ -303,8 +308,9 @@ def cmd_restart(step, reason, dry_run):
         _refuse("no session open (run: pico_ctl.py session start \"<purpose>\")", step, halt=False)
     if state.get("halted"):
         _refuse(f"session halted: {state.get('halt_reason')}", step, halt=False)
-    if os.path.exists(STOP_FILE_WSL):
-        _refuse(f"STOP file present ({STOP_FILE_WSL})", step, halt=True)
+    stop_file = stop_file_wsl()
+    if os.path.exists(stop_file):
+        _refuse(f"STOP file present ({stop_file})", step, halt=True)
 
     count = state.get("client_restart_count", 0)
     if count >= RESTART_LIMIT:
@@ -393,8 +399,9 @@ def cmd_relaunch(reason, dry_run):
         _refuse("no session open (run: pico_ctl.py session start \"<purpose>\")", "relaunch", halt=False)
     if state.get("halted"):
         _refuse(f"session halted: {state.get('halt_reason')}", "relaunch", halt=False)
-    if os.path.exists(STOP_FILE_WSL):
-        _refuse(f"STOP file present ({STOP_FILE_WSL})", "relaunch", halt=True)
+    stop_file = stop_file_wsl()
+    if os.path.exists(stop_file):
+        _refuse(f"STOP file present ({stop_file})", "relaunch", halt=True)
 
     count = state.get("client_relaunch_count", 0)
 

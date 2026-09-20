@@ -6,8 +6,11 @@
 #   tools/win/shot.sh --name foo   name the file
 set -e
 PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
-WINTMP='C:\Users\su200\mro-shot.png'
-WINTMP_WSL=/mnt/c/Users/su200/mro-shot.png
+HERE="$(dirname "${BASH_SOURCE[0]}")"
+source "$HERE/winuser.sh"
+WINPROFILE_WSL=$(win_userprofile_wsl) || exit 1
+WINTMP_WSL="$WINPROFILE_WSL/mro-shot.png"
+WINTMP=$(wslpath -w "$WINTMP_WSL")
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SHOTS="$REPO/shots"
 NAME="shot-$(date +%H%M%S)"
@@ -22,8 +25,8 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "$SHOTS"
-cp "$(dirname "${BASH_SOURCE[0]}")/screen.ps1" /mnt/c/Users/su200/mro-screen.ps1
-OUT=$("$PS" -NoProfile -ExecutionPolicy Bypass -File 'C:\Users\su200\mro-screen.ps1' \
+cp "$HERE/screen.ps1" "$WINPROFILE_WSL/mro-screen.ps1"
+OUT=$("$PS" -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w "$WINPROFILE_WSL/mro-screen.ps1")" \
         -Out "$WINTMP" "${ARGS[@]}" 2>&1 | tr -d '\r' | tail -1)
 
 case "$OUT" in

@@ -39,7 +39,7 @@
 
 `pico_ctl.py` 預設透過 **USB CDC 序列埠（COM port）** 跟 Pico 溝通，不需要 WiFi、不需要 `settings.toml`。
 
-WSL 無法直接開 Windows 的 COM port，所以實際的序列埠存取是由 `tools/pico/pico_serial.ps1`（Windows PowerShell 腳本）執行；`pico_ctl.py` 透過 `powershell.exe` 呼叫它，做法跟 `tools/win/drive.sh` 呼叫 `input.ps1` 一樣（腳本會先被複製到 `C:\Users\su200\`，因為 PowerShell 沒辦法可靠地從 `\\wsl` 路徑執行）。
+WSL 無法直接開 Windows 的 COM port，所以實際的序列埠存取是由 `tools/pico/pico_serial.ps1`（Windows PowerShell 腳本）執行；`pico_ctl.py` 透過 `powershell.exe` 呼叫它，做法跟 `tools/win/drive.sh` 呼叫 `input.ps1` 一樣（腳本會先被複製到 Windows 使用者的個人資料夾 `%USERPROFILE%\`，因為 PowerShell 沒辦法可靠地從 `\\wsl` 路徑執行）。
 
 板子插上 Windows 後，裝置管理員會出現一個對應 VID `239A` / PID `8162`（console CDC 介面）的 COM port（例如 `COM6`）。`pico_serial.ps1` 預設會用這個 VID/PID 自動偵測 COM port，通常不用手動指定；如果自動偵測失敗（例如同時插了不只一個 Pico），可以固定指定：
 
@@ -143,7 +143,7 @@ Session 狀態存在 `tools/pico/.pico_session`（已加進 `.gitignore`，不�
 
 ### 5. 緊急停止（Kill Switch）
 以下任一動作都能立刻讓所有輸入指令失效：
-- 在 Windows 建立檔案 `C:\Users\su200\mro-pico\STOP`（可以是空檔案），刪掉它才會恢復。
+- 在 Windows 建立檔案 `%USERPROFILE%\mro-pico\STOP`（可以是空檔案），刪掉它才會恢復。
 - 直接拔掉 Pico 的 USB 排線。
 
 STOP 檔案的檢查跟前景視窗閘門一樣是 fail-closed、每個指令送出前都查。

@@ -34,8 +34,8 @@
 #      MetalRage window's client area, and the cursor must actually converge to
 #      within +/-4px of it (read back, corrected, re-checked) before CLICK fires.
 #      CLOSE_WINDOW (see below) has its own, window-frame-relative version of this.
-#   3. Kill switch: if C:\Users\su200\mro-pico\STOP exists, every gated command is
-#      blocked (create the file, or just unplug the Pico's USB cable).
+#   3. Kill switch: if <user profile>\mro-pico\STOP exists (see $StopFile below), every
+#      gated command is blocked (create the file, or just unplug the Pico's USB cable).
 #   4. Text gate: TYPE only accepts printable ASCII (0x20-0x7E).
 # Every one of these gates is FAIL-CLOSED: if a Win32 query throws, returns a null
 # handle, or can't identify the foreground process, that is a BLOCKED result, not a
@@ -215,7 +215,7 @@ function Get-MetalRageWindow {
 $ReadyClientWidth = 1600
 $ReadyClientHeight = 1200
 
-$StopFile = "C:\Users\su200\mro-pico\STOP"
+$StopFile = Join-Path $env:USERPROFILE "mro-pico\STOP"
 $PrimaryBounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 # Foreground processes that mean "the interactive desktop is not what we think it is"
 # (lock screen, UAC prompt, Windows security dialogs) -- fail closed, do not treat as

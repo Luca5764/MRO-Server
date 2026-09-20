@@ -53,9 +53,51 @@ LOG_DIR = os.path.join(SCRIPT_DIR, "logs")
 ACTIONS_LOG = os.path.join(LOG_DIR, "actions.log")
 PS_PATH = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 PICO_SERIAL_PS1 = os.path.join(SCRIPT_DIR, "pico_serial.ps1")
-WIN_PICO_SERIAL_PS1_LOCAL = "/mnt/c/Users/su200/mro-pico-serial.ps1"
-WIN_PICO_SERIAL_PS1_PATH = "C:\\Users\\su200\\mro-pico-serial.ps1"
 TMUX_SERVER_SESSION = "server"
+
+_WIN_USER_PROFILE = None  # cache for win_user_profile(), one powershell.exe call per process
+
+
+def win_user_profile():
+    """Resolve the Windows user profile dir (e.g. "C:\\Users\\alice") via
+    powershell.exe's $env:USERPROFILE, cached for the life of this process. Needed
+    because scripts get copied under the Windows user's profile before running
+    (powershell.exe can't reliably run a script from a \\wsl path) -- see
+    run_serial_commands() and client_ctl.py's run_ps1(). Fails closed: exits
+    rather than guessing a path if the lookup doesn't work.
+    """
+    global _WIN_USER_PROFILE
+    if _WIN_USER_PROFILE is not None:
+        return _WIN_USER_PROFILE
+    try:
+        res = subprocess.run(
+            [PS_PATH, "-NoProfile", "-Command", "$env:USERPROFILE"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+        )
+        profile = res.stdout.strip()
+    except Exception as ex:
+        print(f"[ERR] Unable to resolve Windows user profile via powershell.exe: {ex}")
+        sys.exit(1)
+    if res.returncode != 0 or not profile:
+        print("[ERR] Unable to resolve Windows user profile ($env:USERPROFILE gave no output)")
+        sys.exit(1)
+    _WIN_USER_PROFILE = profile
+    return _WIN_USER_PROFILE
+
+
+def win_user_profile_wsl():
+    """win_user_profile(), converted to its /mnt/c/... WSL path via wslpath -u."""
+    try:
+        res = subprocess.run(["wslpath", "-u", win_user_profile()],
+                              capture_output=True, text=True, timeout=10)
+        wsl_path = res.stdout.strip()
+    except Exception as ex:
+        print(f"[ERR] Unable to convert Windows user profile path via wslpath: {ex}")
+        sys.exit(1)
+    if res.returncode != 0 or not wsl_path:
+        print("[ERR] wslpath -u could not convert the Windows user profile path")
+        sys.exit(1)
+    return wsl_path
 
 
 class PicoBlocked(Exception):
@@ -246,13 +288,15 @@ def run_serial_commands(commands, port=None, timeout=30.0):
         print("[ERR] powershell.exe not found; is this running under WSL with Windows accessible?")
         sys.exit(1)
 
+    win_local = os.path.join(win_user_profile_wsl(), "mro-pico-serial.ps1")
+    win_path = win_user_profile() + "\\mro-pico-serial.ps1"
     try:
-        subprocess.run(["cp", PICO_SERIAL_PS1, WIN_PICO_SERIAL_PS1_LOCAL], check=True, capture_output=True)
+        subprocess.run(["cp", PICO_SERIAL_PS1, win_local], check=True, capture_output=True)
     except Exception as ex:
         print(f"[ERR] Unable to copy pico_serial.ps1 to Windows: {ex}")
         sys.exit(1)
 
-    cmd = [PS_PATH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", WIN_PICO_SERIAL_PS1_PATH]
+    cmd = [PS_PATH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", win_path]
     pico_port = port or get_pico_port()
     if pico_port:
         cmd += ["-Port", pico_port]

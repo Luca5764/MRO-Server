@@ -155,4 +155,4 @@ ledger 裡有一條方法學紀錄,是因為曾經一輪改兩處,症狀變了�
 ### PowerShell 腳本的編碼陷阱（2026-09-20）
 - Windows PowerShell 5.1（不是 pwsh）讀**沒有 BOM 的 UTF-8** `.ps1` 時，會用系統字碼頁（cp950）解碼。中文註解被解錯後，可能冒出假的引號或大括號，造成語法錯誤，甚至改變邏輯。**含中文的 `.ps1` 一律存成 UTF-8 with BOM**（例如 `printf '\xEF\xBB\xBF'` 加在檔頭）。
 - `[void]... | Out-Null` 不能連用：`[void]` 之後接管線，PS 5.1 會報「引數類型不能是 System.Void」（2026-09-20 pico 視窗挑選的 bug）。
-- 靜態語法檢查：把檔案複製到 `C:\Users\su200\...`，再用 `[System.Management.Automation.Language.Parser]::ParseFile` 檢查。
+- 靜態語法檢查：把檔案複製到 `%USERPROFILE%\...`，再用 `[System.Management.Automation.Language.Parser]::ParseFile` 檢查。
