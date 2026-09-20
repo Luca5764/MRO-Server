@@ -6,6 +6,8 @@ reacting to a packet — see `docs/state.md` and the linked journals for full ev
 are `ZNetwork.dll` file offsets (ImageBase `0x10700000`, RVA == file offset). Anything not
 listed here should be treated as unknown, not assumed.
 
+Confidence: every item below has either DLL evidence or a live client test (usually both). Most have not yet been reviewed by a second team, so treat them as "we tested this and it works for us", not as a specification. Corrections are welcome — one of the entries below exists because an outside reader caught a mislabelled address.
+
 ## Wire format
 
 - **Header is big-endian, body is little-endian.** Fixed 16-byte header: `u32 BE` CRC32,
