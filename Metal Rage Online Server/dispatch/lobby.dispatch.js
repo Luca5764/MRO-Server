@@ -186,10 +186,54 @@ class ZLobbyDispatch
                 return true;
             }
 
-            // Lobby Leave
+            // Assist_CN (ZDispatchGame::Assist_CN, built at 0x107d9c60), NOT
+            // a lobby leave despite this case's old guessed name -- see
+            // docs/journal/2026-09-17-15-assist-cn-sn-format.md. Sent from
+            // DefaultMech.uc's Game_Assist() whenever a player deals
+            // damage/heal or gets assisted in battle (native gates
+            // Game_Host_Check && Game_Play_Check). Real body is 7 bytes:
+            // u16 AssistUserIndex, u16 UserIndex, u8 AssistType, u8 Action,
+            // u8 HP.
             case 0x00230121:
             {
-                console.log(`[ZLobbyDispatch] >> Lobby Leave CQ (guessed)`);
+                // ASSIST-FIX (docs/backlog.md, docs/research/
+                // 2026-09-20-assist-fix/notes.md, docs/research/
+                // 2026-09-20-fallback-ack-audit/notes.md): the client's
+                // Assist_SN success-path handler (0x107d5fa0) reads out to
+                // body+0x18, so the old 16-byte-padded zero reply here was
+                // an out-of-bounds read on the client, same failure shape as
+                // the Special_SN bug. rooms.isAssistSnFormatEnabled() gates
+                // a 25-byte (0x19) reply that echoes the CN's own fields
+                // back -- see the switch's own comment in rooms.js for why
+                // the index echo and the length fix must ship together. A
+                // CN body shorter than the real 7 bytes falls back to the
+                // old zero reply (never index past the buffer).
+                if (rooms.isAssistSnFormatEnabled() && body.length >= 7) {
+                    const assistUserIndex = body.readUInt16LE(0);
+                    const userIndex = body.readUInt16LE(2);
+                    const assistType = body[4];
+                    const action = body[5];
+                    const hp = body[6];
+                    console.log(`[ZLobbyDispatch] >> Assist_CN assistUser=${assistUserIndex} user=${userIndex} type=${assistType} action=${action} hp=${hp} -> Sent Assist_SN 0x00230122 (0x19 body)`);
+                    const [msg, sb] = getExactMessageBuffer(0x00230122, 0x19);
+                    sb.writeUInt16LE(0, 0x00); // Status -- must stay 0 (client success gate)
+                    sb.writeUInt32LE(0, 0x02); // Result -- must stay 0 (client success gate)
+                    // 0x06..0x09 left 0: no read of these bytes in the handler.
+                    sb.writeUInt16LE(assistUserIndex, 0x0A); // AssistUserIndex, echoed from the CN
+                    sb.writeUInt16LE(userIndex, 0x0C);       // UserIndex, echoed from the CN
+                    sb[0x0E] = assistType; // AssistType, echoed from the CN
+                    sb[0x0F] = action;     // Action, echoed from the CN (log-only on the client)
+                    sb[0x10] = hp;         // HP, echoed from the CN (log-only on the client)
+                    // 0x11/0x13/0x15/0x17 (the Exp/Point pairs fed into
+                    // Game_User_Assist_Set) left 0: no known formula yet --
+                    // see notes.md §3, do not guess.
+                    client.send(msg);
+                    return true;
+                }
+                if (rooms.isAssistSnFormatEnabled()) {
+                    console.log(`[ZLobbyDispatch] >> Assist_CN body too short (${body.length} bytes, need >= 7) -- falling back to zero Assist_SN`);
+                }
+                console.log(`[ZLobbyDispatch] >> Assist_CN`);
                 const [msg, respBody] = client.getMessageBuffer(0x00230122, 0x6);
                 respBody.writeUint16LE(0x0000, 0);
                 respBody.writeUint32LE(0x0000, 2);
