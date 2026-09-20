@@ -1,0 +1,36 @@
+{
+  "id": "dual-netspeed-b",
+  "purpose": "dual-netspeed 第一次實跑的 B 段 (design.md 第7節: A 段成功才跑這段): both instances launch and log in, host creates a PvE room, joiner joins it and readies up -- then BOTH leave the room (single-client leave_room, focused explicitly per instance since it takes no client_id -- see actions.py) and close, same self-terminating rule as -a.json. Covers join_room/set_ready/idle_nudge (design.md L5's 80s room-idle kick mitigation) beyond what -a.json tested. Does NOT touch host_start_battle/enter_battle/console_cmd_on/leave_battle -- those are C段 only. Success = result PASS: join_room's ENTER_SA send pkt and set_ready's User_State_SN send pkt both show up (conn-filtered) in their step detail, both leave_room steps land on screen=lobby, both close_client steps report the process gone. If it halts, look first at join_room (ROOM_LIST_FIRST_ROW_CLICK is an UNTESTED coordinate per actions.py's own docstring -- a bad double-click there is the most likely first failure) and, if that passes, at set_ready/idle_nudge for an L5 80s-idle Leave_CQ appearing before set_ready's own pkt.",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    },
+    "joiner": {
+      "proc_name": "MetalRage",
+      "install_dir_win": "C:\\Games\\MetalRage Online",
+      "bat_path_win": "C:\\Games\\MetalRage Online\\Play With Log.bat"
+    }
+  },
+  "steps": [
+    {"action": "launch_client", "params": {"client_id": "host"}},
+    {"action": "login_as", "params": {"client_id": "host", "account": "mrotesthost"}},
+    {"action": "launch_client", "params": {"client_id": "joiner"}},
+    {"action": "login_as", "params": {"client_id": "joiner", "account": "mrotest"}},
+    {"action": "focus_client", "params": {"client_id": "host"}},
+    {"action": "create_pve_room"},
+    {"action": "join_room", "params": {"client_id": "joiner", "room_name": "dual-netspeed-b (auto-named, label only)"}},
+    {"action": "idle_nudge", "params": {"client_id": "host"}},
+    {"action": "set_ready", "params": {"client_id": "joiner"}},
+    {"action": "leave_room"},
+    {"action": "focus_client", "params": {"client_id": "host"}},
+    {"action": "leave_room"},
+    {"action": "close_client", "params": {"client_id": "joiner"}},
+    {"action": "close_client", "params": {"client_id": "host"}}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_wall_clock_s": 300,
+  "max_image_reviews": 0
+}

@@ -1,0 +1,28 @@
+{
+  "id": "dual-netspeed-a",
+  "purpose": "dual-netspeed 第一次實跑的 A 段 (design.md 第7節「第一次實跑要拆成三段」表): both instances launch and log in, then BOTH close again -- this segment self-terminates, it must not leave either process running for a later B/C run, since docs/reference/unattended-policy.md's 'remote presence' rule treats each segment as its own independent unattended run. Covers launch_client/login_as/focus_client(already tested elsewhere)/close_client only -- no room, no battle. host (copy install MetalRage2, account mrotesthost, patched IpDrv.dll MaxClientRate/MaxInternetClientRate=100000) and joiner (main install MetalRage, account mrotest) are the same 'clients' table as dual-netspeed.json/-b/-c. Success = result PASS: both logins land on the lobby screen (login_as's own screen=lobby check) and both close_client steps report the process gone. If it halts, look first at whichever login_as step failed (screenshot + session-log CQ_LOGIN_WASABII pkt in its detail) -- that is almost always either a stale login screen state or the account not being in the whitelist yet.",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    },
+    "joiner": {
+      "proc_name": "MetalRage",
+      "install_dir_win": "C:\\Games\\MetalRage Online",
+      "bat_path_win": "C:\\Games\\MetalRage Online\\Play With Log.bat"
+    }
+  },
+  "steps": [
+    {"action": "launch_client", "params": {"client_id": "host"}},
+    {"action": "login_as", "params": {"client_id": "host", "account": "mrotesthost"}},
+    {"action": "launch_client", "params": {"client_id": "joiner"}},
+    {"action": "login_as", "params": {"client_id": "joiner", "account": "mrotest"}},
+    {"action": "close_client", "params": {"client_id": "joiner"}},
+    {"action": "close_client", "params": {"client_id": "host"}}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_wall_clock_s": 360,
+  "max_image_reviews": 0
+}
