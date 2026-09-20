@@ -1,0 +1,59 @@
+# 投射物消失：第一次數得出來的缺口（2026-09-20 18:20）
+
+## 為什麼要重測
+
+先前兩輪（09:31、09:54）是雙方在聊天室一發一發回報 `1`／`0`。那個方法有三個問題，操作者直接說「要數子彈、哪發消失、回報就是一件不現實的事情」：
+
+1. 客戶端會擋連續發言（`發言過於頻繁`），節流不在我們伺服器，封包根本沒送出來，所以 log 也看不到；
+2. 射手同時要開槍、要看對方畫面、要打字，數不準（操作者原話：「靠杯我數不來」）；
+3. 第二輪中途對方回報 `very lag`，整段資料被汙染。
+
+這輪改成讓客戶端自己數。
+
+## 方法
+
+客戶端內建主控台指令 `WeaponLog`（`ZBase/W_DPCForWeapon.uc:1011`）會翻 `class'Weapon'.default.bShowLog`，打開後 `MetalRage/data/Log/MetalRage.log` 會寫出每一次開火動畫與每一次爆炸特效。**只需要射手這一台開**，筆電完全不用動。
+
+角色分配很重要：**射手必須是加入者**。房主自己開槍是本機直接生成，log 一定對得上，看不出東西。
+
+- 房主：筆電（test）
+- 射手／加入者：桌機（Lucas），武器 `HACH01`（砲），彈藥 70 發
+
+計數方式：
+- **扣扳機次數** = HUD 彈藥掉了多少。開槍那台在 `DoFireEffect()` 是無條件先扣彈的（`ZBaseWeapon/BaseProjectile_Fire.uc:363-366,398`），所以彈藥數就是扳機數。
+- **實際生成數** = log 裡 `Now Animation Name : Map_PC04.ACH_a   Fire` 的行數。這行來自 `W_DefaultWeaponAttachment.uc:244` 的 `PlayAnimWithTwinGun`，而在投射物路徑上它只被 `W_BaseProjectile_Weapon.uc:910` 呼叫，也就是生成函式 `FireProjectileCenterLoc_UJ` 內部。
+
+## 結果
+
+- [OBS] 2026-09-20 18:2x，彈藥 **70 → 0**，即 70 次扣扳機。
+- [LOG] `MetalRage.log` 第 910 行 `WeaponLog=====> Started` 之後：`Fire` **63**、投射物爆炸（`ZEmiWepGround.HACH01_Exp*`）**63**、`ReLoad` **62**（最後一發把彈匣打空，沒有重新裝填動畫）。
+- 序列是 63 組完整的 `Fire → 爆炸 → ReLoad`，**沒有任何一組殘缺**。
+- **缺口 = 70 − 63 = 7 發（10%）。** 與操作者當場目測「大概只看到 60 發左右」一致。
+
+## 推論
+
+那 7 發**沒有進到 `FireProjectileCenterLoc_UJ`**：如果進去了，`:910` 的開火動畫會先播（在 `Spawn()` 之前），log 就會留下 `Fire` 而沒有後續爆炸。實際上是整組三行都不存在。
+
+- ❌ **H-SPAWN-FAIL 排除。** 「移動中 `CenterLocation` 過時，`Spawn()` 在自己的碰撞體內失敗」預期會留下有 `Fire`、沒有爆炸的殘缺組，一組都沒有。
+- 剩下的解釋是房主那端沒有發出 `ClientFireProjectileCenterLoc_MH`。該呼叫被 `Weapons_UJ[WeaponIndex].HasAmmo()` 包著（`ZBase/W_DefaultMechForWeapon.uc:1324-1336`），而彈藥不是複寫變數、補彈的回程 RPC 是 unreliable（見 `docs/research/2026-09-20-projectile-replication/ammo-desync.md`）。→ **H-AMMO-DESYNC** 仍然站著 🟡。
+
+## 還沒排除的
+
+- 這一輪沒有同時記錄房主端的 log，所以「房主收到了但沒廣播」與「房主根本沒收到那個 RPC」還分不開。`ServerFireProjectileCenterLoc_MH` 是 reliable，理論上不該掉，但沒有實測證據。
+- 缺口是否成串、是否集中在彈匣後段，這輪的 log 沒有時間戳，看不出來。
+
+## 下一步
+
+同樣的量測，開打前先在主控台打 `sup1`（`W_DPCForWeapon.uc:925` → `ServerInfiniteAmmoMode(true)`，reliable client→host，兩邊同時 `SupplyAmmo()`），再打滿一個彈匣。缺口歸零就確認 H-AMMO-DESYNC，照樣缺 7 發就排除彈藥這條。
+
+## 附帶：操作者現在能自己開主控台
+
+主控台熱鍵是 F24，一般鍵盤沒有，而客戶端不吃軟體注入的按鍵，先前只能請 AI 用 Pico 送（要遊戲在前景、每次約 3 秒，戰鬥中不可行）。
+
+改法：USB 主機會把鍵盤 LED 狀態廣播給**所有**鍵盤，所以操作者按自己鍵盤的 ScrollLock，Pico 看得到，再由 Pico 送出真實 F24（commit 742eb6d，`tools/pico/code.py` 的 `poll_led_hotkey`）。[TEST] 2026-09-20 一次就開起來。
+
+這一輪也浪費了一次：`WeaponLog` 是 toggle，AI 誤判第一次沒送出去而補送一次，等於關掉，害操作者那 70 發完全沒記到 log。之後一律先 `grep 'WeaponLog=====> \(Started\|Ended\)'` 確認狀態再開始。
+
+## 工具
+
+`tools/chat-markers.js`（commit e277c2f）：`packetlog.js` 的 marker 只認大廳 0x00220501 與房內 0x00220505，戰鬥中的聊天是 0x00220507／0x00220509，封包有記但沒變成 marker。這支從紀錄離線解回來，不必為了修 `CHAT_CQ` 而重啟伺服器打斷測試。

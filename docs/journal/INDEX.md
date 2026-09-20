@@ -163,3 +163,4 @@
 | 2026-09-20 | `2026-09-20-1130-sp-bind-test.md` | — | — | SPMaxUP_BD 在 Grade 0 可用；setinput_BD 無效；修好 Pico 打字丟符號的 bug。 |
 | 2026-09-20 | `2026-09-20-1240-stutter-root-cause.md` | — | — | 卡頓根因：例外觸發 Windows 錯誤回報，WerFault 暫停整個遊戲行程 140–273 ms；推翻 H-Y0DA。 |
 | 2026-09-20 | `2026-09-20-1530-m3r-vpn-rehearsal.md` | `0x00420115` | — | M3 預演：筆電走手機熱點＋Radmin VPN，兩個方向都打得起來。 |
+| 2026-09-20 | `2026-09-20-1820-projectile-loss-counted.md` | — | — | 用客戶端 WeaponLog 自動計數：70 發扣扳機只生成 63 發，缺口 10%；排除 H-SPAWN-FAIL。 |
