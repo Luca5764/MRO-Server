@@ -1,0 +1,39 @@
+{
+  "id": "dual-netspeed",
+  "purpose": "First same-machine dual-client script (docs/research/2026-09-20-dual-pico/design.md section 7): host (copy install, MetalRage2, account mrotesthost, patched IpDrv.dll MaxClientRate/MaxInternetClientRate=100000) launches and logs in; joiner (main install, MetalRage, account mrotest) launches and logs in, staying in the lobby with the room list open; focus_client(host) + create_pve_room (existing single-client action, room name is whatever the client auto-assigns -- this action has no room-naming field, so join_room's room_name param below is a traceability LABEL only, never matched on screen, see actions.py's join_room() docstring); join_room(joiner) (double-click the one visible room row -- UNTESTED coordinate, see actions.py's ROOM_LIST_FIRST_ROW_CLICK); one unconditional idle_nudge(host) between join_room and set_ready (design.md's '超過50秒就先idle_nudge(host)' is time-conditional, but this runner's step list has no branching -- an early nudge is harmless, see actions.py's idle_nudge() docstring); set_ready(joiner); host_start_battle(); enter_battle(joiner) (no click -- mech-select is automatic, see actions.py's CHANGE_SLOT_CN_OPCODE comment); console_cmd_on(joiner, 'netspeed 100000'); a 5s settle; console_cmd_on(joiner, 'stat net'); leave_battle for both; close_client for both (flushes each instance's data/System/run-*.log). Reading the host's run-*.log for 'Client netspeed is N' afterward (design.md section 7 step 10) is a manual/analysis step done AFTER this script exits, not a runner action -- it needs no Pico/client/server interaction.",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    },
+    "joiner": {
+      "proc_name": "MetalRage",
+      "install_dir_win": "C:\\Games\\MetalRage Online",
+      "bat_path_win": "C:\\Games\\MetalRage Online\\Play With Log.bat"
+    }
+  },
+  "steps": [
+    {"action": "launch_client", "params": {"client_id": "host"}},
+    {"action": "login_as", "params": {"client_id": "host", "account": "mrotesthost"}},
+    {"action": "launch_client", "params": {"client_id": "joiner"}},
+    {"action": "login_as", "params": {"client_id": "joiner", "account": "mrotest"}},
+    {"action": "focus_client", "params": {"client_id": "host"}},
+    {"action": "create_pve_room"},
+    {"action": "join_room", "params": {"client_id": "joiner", "room_name": "dual-netspeed (auto-named, label only)"}},
+    {"action": "idle_nudge", "params": {"client_id": "host"}},
+    {"action": "set_ready", "params": {"client_id": "joiner"}},
+    {"action": "host_start_battle", "params": {"client_id": "host"}},
+    {"action": "enter_battle", "params": {"client_id": "joiner"}},
+    {"action": "console_cmd_on", "params": {"client_id": "joiner", "text": "netspeed 100000"}},
+    {"action": "keepalive_wait", "params": {"seconds": 5}},
+    {"action": "console_cmd_on", "params": {"client_id": "joiner", "text": "stat net"}},
+    {"action": "leave_battle", "params": {"client_id": "joiner"}},
+    {"action": "leave_battle", "params": {"client_id": "host"}},
+    {"action": "close_client", "params": {"client_id": "joiner"}},
+    {"action": "close_client", "params": {"client_id": "host"}}
+  ],
+  "stop_conditions": {"max_consecutive_failures": 1},
+  "max_image_reviews": 0
+}
