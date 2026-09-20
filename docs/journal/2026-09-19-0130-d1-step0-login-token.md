@@ -54,7 +54,7 @@
 
 ## 實機驗證（2026-09-19 01:28，單人，Claude 高階）
 
-- build：`test-server@57a1f3f dirty=true nonDefault=[GAME_INFO_TIME_LIMIT_MODE] whitelist=on(2 users) publicHost=192.168.1.105`（`logs/session-20260919-012749.jsonl` 第一筆）。
+- build：`test-server@57a1f3f dirty=true nonDefault=[GAME_INFO_TIME_LIMIT_MODE] whitelist=on(2 users) publicHost=192.168.0.10`（`logs/session-20260919-012749.jsonl` 第一筆）。
 - [LOG] 第 26 行，conn1（9211）送出 Gate `Leave_SA 0x00220132`：`000000000000｜01000000｜dde7ba25`，也就是 body+0x06 accountId=1、+0x0A key=0x25bae7dd。
 - [LOG] 第 32 行，conn2（30907）收到 `Login_Again_CQ 0x00110124`：`01000000dde7ba25`，跟伺服器發出的完全一致。
 - log 裡沒有 `WARNING: Login_Again`／`REFUSING` marker → 走的是 token 路徑。

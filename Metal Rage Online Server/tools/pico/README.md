@@ -210,11 +210,11 @@ python3 tools/pico/client_ctl.py relaunch --reason "夜間長跑前重開一次"
    WIFI_PASSWORD = "你的WiFi密碼"
    HTTP_PORT = 8080
    ```
-2. 存檔後板子會自動重啟。板子上的綠燈或 Serial 會顯示連線成功取得的 IP（例如 `192.168.1.50`）。
+2. 存檔後板子會自動重啟。板子上的綠燈或 Serial 會顯示連線成功取得的 IP（例如 `192.168.0.50`）。
 
 ### 主控端切換成 HTTP 模式
 ```bash
-python3 tools/pico/pico_ctl.py set_ip 192.168.1.50   # 存進 tools/pico/.pico_ip
+python3 tools/pico/pico_ctl.py set_ip 192.168.0.50   # 存進 tools/pico/.pico_ip
 PICO_TRANSPORT=http python3 tools/pico/pico_ctl.py ping
 ```
 

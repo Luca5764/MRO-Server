@@ -1,6 +1,6 @@
 # M3：朋友遠端連線（VPN，Tailscale）
 
-> 🟡 **整份指南尚未實測（2026-09-19 撰寫）。** 第一次測試的情境是操作者自己的兩台設備：桌機（伺服器主機，Win11，區網 `192.168.1.105`）留在家用網路，筆電切到**手機行動熱點**充當「遠端朋友」。每一條網段／連接埠的主張都附了引用；沒有引用的地方標 🟡／[GUESS]，代表只是照既有腳本行為推論，還沒有實機驗證過。跑完第一次測試後，這份指南要回頭勘誤。
+> 🟡 **整份指南尚未實測（2026-09-19 撰寫）。** 第一次測試的情境是操作者自己的兩台設備：桌機（伺服器主機，Win11，區網 `192.168.0.10`）留在家用網路，筆電切到**手機行動熱點**充當「遠端朋友」。每一條網段／連接埠的主張都附了引用；沒有引用的地方標 🟡／[GUESS]，代表只是照既有腳本行為推論，還沒有實機驗證過。跑完第一次測試後，這份指南要回頭勘誤。
 >
 > 為什麼選 Tailscale：操作者要求「工具不重要，簡單就好」；Tailscale 裝完登入同一個帳號就自動組網，不用自己開 VPN Server、設路由，比 WireGuard/OpenVPN 手動配置的門檻低。
 
@@ -75,7 +75,7 @@ cd '\\wsl.localhost\Ubuntu\home\lucas\mro-reverse\Metal Rage Online Server\tools
 .\lan-open.ps1 -Subnet 100.64.0.0/10
 ```
 
-- 依據：`tools/win/lan-open.ps1` 本來就支援 `-Subnet` 覆寫自動偵測的網段（`docs/reference/setup.md`「自動偵測抓錯網段時可以用 `-Subnet 192.168.1.0/24` 這種參數覆寫」）。
+- 依據：`tools/win/lan-open.ps1` 本來就支援 `-Subnet` 覆寫自動偵測的網段（`docs/reference/setup.md`「自動偵測抓錯網段時可以用 `-Subnet 192.168.0.0/24` 這種參數覆寫」）。
 - **這裡務必手動指定 `-Subnet`，不要靠自動偵測。** 腳本的 `Get-LanSubnetCidr` 只用 `InterfaceAlias -notmatch 'vEthernet|WSL|Loopback|Tap|VPN|Virtual'` 排除虛擬介面（見腳本原始碼），Tailscale 介面的別名（很可能是 `Tailscale`）不在這個排除清單裡，會被當成候選網卡；如果它跟真正的實體區網卡同時被偵測到，腳本只會取第一個候選並印警告，可能選錯（`Get-LanSubnetCidr` 函式裡 `$list.Count -gt 1` 的分支）。
 - 這支腳本開的是 **TCP** 9211／30907 的 portproxy＋防火牆規則，跟下面的 UDP 30907 P2P 規則是兩回事、不衝突（`docs/reference/setup.md`「戰鬥 P2P（N2）」）。
 

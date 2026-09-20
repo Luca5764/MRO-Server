@@ -38,7 +38,7 @@
      .\client-kit\setup-client.ps1 -ServerIp <IP> -HostSubnet 10.147.0.0/16
      ```
      （VPN 的網段是多少，問 Lucas——他會照 `docs/reference/setup.md`「跨網路連線（VPN）」那節的設定告
-     訴你；沒填的話預設是 `192.168.1.0/24`，同一個家用網路不用管這個參數。）
+     訴你；沒填的話預設是 `192.168.0.0/24`，同一個家用網路不用管這個參數。）
    - 伺服器端（Lucas 那邊）完整的 VPN 設定步驟見 `docs/reference/setup.md`「跨網路連線（VPN）」一節；
      另外 Tailscale 專用的操作流程見 `docs/reference/vpn-guide.md`（🟡 尚未實機驗證過完整流程）。
 4. 腳本跑完會印一段摘要，確認沒有紅字的錯誤訊息。

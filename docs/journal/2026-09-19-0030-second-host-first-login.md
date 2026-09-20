@@ -4,8 +4,8 @@
 
 1. N0：操作者用系統管理員執行 `tools/win/lan-open.ps1`。[TEST] `netsh interface portproxy show all` 顯示 9211 和 30907 都轉到 WSL `192.168.217.8`。
 2. 第一次嘗試：[LOG] `session-20260918-233617.jsonl`：第二台（`dusk`）在 9211 登入成功，但沒有連到 30907。原因是 `Server_Add_SN 0x00220101` 的遊戲伺服器位址寫死 `127.0.0.1`（`account.dispatch.js:740`），第二台連到的是它自己。
-3. N1 修正（`f8fc052`）：位址改讀 `config/server.json` 的 `publicHost`，沒有設定時維持 127.0.0.1。本機設定為 `192.168.1.105`，並開啟白名單（`Lucas`、`dusk`）。
-4. 第二次：[LOG] `session-20260919-002245.jsonl`，build 事件：`test-server@f8fc052 dirty=true nonDefault=[GAME_INFO_TIME_LIMIT_MODE] whitelist=on(2 users) publicHost=192.168.1.105`。
+3. N1 修正（`f8fc052`）：位址改讀 `config/server.json` 的 `publicHost`，沒有設定時維持 127.0.0.1。本機設定為 `192.168.0.10`，並開啟白名單（`Lucas`、`dusk`）。
+4. 第二次：[LOG] `session-20260919-002245.jsonl`，build 事件：`test-server@f8fc052 dirty=true nonDefault=[GAME_INFO_TIME_LIMIT_MODE] whitelist=on(2 users) publicHost=192.168.0.10`。
 
 ## Fable 要求的三項檢查
 

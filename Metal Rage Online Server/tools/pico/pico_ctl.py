@@ -19,7 +19,7 @@ Usage:
   ./pico_ctl.py type "Hello World"          # Type text via keyboard (printable ASCII only)
   ./pico_ctl.py batch "PING" "KEY F5"       # Send several raw commands in one call
   ./pico_ctl.py set_port COM6               # Save serial port (else auto-detected)
-  ./pico_ctl.py set_ip 192.168.1.50         # Save Pico's WiFi IP (http transport only)
+  ./pico_ctl.py set_ip 192.168.0.50         # Save Pico's WiFi IP (http transport only)
 
 Unattended safety: everything except ping/set_ip/set_port/session/raw-PING/raw-RESET
 requires an open session (see `session start`), and is gated by pico_serial.ps1

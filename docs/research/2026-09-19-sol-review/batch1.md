@@ -10,7 +10,7 @@
 
 部分成立 — Gate token 身分鏈 — `0x107dc823`/`0x107dc82a` 檢查 0/0，`0x107dc831`/`0x107dc834` 讀 body+0x06/+0x0A，`0x107dc846` 呼叫 thunk；`0x10715f70` 將兩參數存到 `0x108e5504/08`，`0x107c3ef5`/`0x107c3f00` 原樣組成 Login_Again_CQ。`session-20260919-012749.jsonl:26,32` 的 `01000000dde7ba25` 完全一致。惟 state 的「目前伺服器送 0、用 last_login」已失實：同一 log 已送非零 token，現行 `gate.dispatch.js`／`gamelogin.dispatch.js` 也已走 token（只有單帳號缺 token 才 fallback）。
 
-部分成立 — 區網第二台登入、大廳／商城與來源 IP — `session-20260919-002245.jsonl:2-3,21,26,32,82-93` 證明 build 使用 `publicHost=192.168.1.105`＋白名單，dusk 從同一 peer `192.168.208.1` 連到 9211/30907、帳號 3，且進到商城路徑並收到 `0x00240241/42`。但「需要 portproxy＋publicHost＋白名單」一次改了三個外部條件，log 不能各自建立必要性；畫面實際進大廳／商城也只有 journal [OBS]、沒有 shot。
+部分成立 — 區網第二台登入、大廳／商城與來源 IP — `session-20260919-002245.jsonl:2-3,21,26,32,82-93` 證明 build 使用 `publicHost=192.168.0.10`＋白名單，dusk 從同一 peer `192.168.208.1` 連到 9211/30907、帳號 3，且進到商城路徑並收到 `0x00240241/42`。但「需要 portproxy＋publicHost＋白名單」一次改了三個外部條件，log 不能各自建立必要性；畫面實際進大廳／商城也只有 journal [OBS]、沒有 shot。
 
 成立 — `Room_Boundary_SN 0x00220213` 欄位順序 — `0x107ea95d` 讀 body+0 到 ROOM_INFO+0x1c（CurrentUser），`0x107ea964` 讀 body+1 到 +0x18（MaxUser）；`ZNetwork_DJ.uc:558-566` 的 struct 與 `ZPage_Room.uc:768` 的 `MaxUser/2` 相符。`session-20260919-122616.jsonl:2760,2801` 在 cb0a8bb 後分別送 `0108`、`0208`。
 

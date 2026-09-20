@@ -106,7 +106,7 @@ cd '\\wsl.localhost\Ubuntu\home\lucas\mro-reverse\Metal Rage Online Server\tools
 .\lan-close.ps1
 ```
 
-`lan-open.ps1` 會自動抓 WSL2 目前的 IP（`wsl hostname -I`）和 Windows 這台機器的區網網段（排除 WSL 的 `vEthernet`、VPN、loopback 等虛擬介面），對 9211 與 30907 各建一條 `netsh interface portproxy` 轉發規則，並且各加一條 Windows 防火牆 inbound 規則（名稱前綴 `MRO-LAN-`，`RemoteAddress` 限制在偵測到的區網網段、`Profile` 限制在 Private/Domain，不含 Public）。自動偵測抓錯網段時可以用 `-Subnet 192.168.1.0/24` 這種參數覆寫。
+`lan-open.ps1` 會自動抓 WSL2 目前的 IP（`wsl hostname -I`）和 Windows 這台機器的區網網段（排除 WSL 的 `vEthernet`、VPN、loopback 等虛擬介面），對 9211 與 30907 各建一條 `netsh interface portproxy` 轉發規則，並且各加一條 Windows 防火牆 inbound 規則（名稱前綴 `MRO-LAN-`，`RemoteAddress` 限制在偵測到的區網網段、`Profile` 限制在 Private/Domain，不含 Public）。自動偵測抓錯網段時可以用 `-Subnet 192.168.0.0/24` 這種參數覆寫。
 
 `lan-close.ps1` 會刪掉 9211／30907 的 portproxy 規則，以及所有 `MRO-LAN-*` 開頭的防火牆規則，兩支腳本互為還原。
 
@@ -173,7 +173,7 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 登入伺服器會在 `Server_Add_SN 0x00220101` 告訴客戶端遊戲伺服器的位址。預設是 `127.0.0.1`，只有同一台機器連得到。要讓區網或 VPN 上的其他機器連進來，在 `Metal Rage Online Server/config/server.json` 設定：
 
 ```json
-{ "publicHost": "192.168.1.105" }
+{ "publicHost": "192.168.0.10" }
 ```
 
 - 填 Windows 主機在區網（或 VPN）上的 IP，不是 WSL 的 IP。改完要完整重啟伺服器。
@@ -188,7 +188,7 @@ MySQL，資料表：`accounts`、`records`、`mech_levels`、`mech_licenses`、`
 ## 戰鬥 P2P（N2）
 
 - 房主進戰場時，`MetalRage.exe` 會監聽 **UDP 30907**（2026-09-19 單人戰實測：`Get-NetUDPEndpoint` 顯示 `0.0.0.0:30907`）；在大廳時沒有任何監聽。其他玩家直接連房主這台。
-- Windows 原本只有 Public 設定檔的 MetalRage 規則，家用網路是 Private，所以 UDP 被擋。每台可能當房主的機器（主機、筆電）都要用系統管理員身分執行 `tools/win/p2p-open.ps1`：加 Inbound UDP 30907、只限 Private、只限 `192.168.1.0/24`。要還原就執行 `p2p-close.ps1`。
+- Windows 原本只有 Public 設定檔的 MetalRage 規則，家用網路是 Private，所以 UDP 被擋。每台可能當房主的機器（主機、筆電）都要用系統管理員身分執行 `tools/win/p2p-open.ps1`：加 Inbound UDP 30907、只限 Private、只限 `192.168.0.0/24`。要還原就執行 `p2p-close.ps1`。
 - 這和主機上 `lan-open.ps1` 的 **TCP** 30907 portproxy 協定不同，不會衝突。
 - 房主的區網 IP 寫在 `config/allowed-users.json` 該帳號的 `hostAddress`（D1-6）。
 
@@ -228,7 +228,7 @@ VPN 工具怎麼選（ZeroTier／Radmin VPN／Tailscale／Hamachi 的免費額�
    伺服器。
 3. 防火牆／portproxy：`tools/win/lan-open.ps1` 和 `tools/win/p2p-open.ps1` 都有 `-VirtualSubnet` 參數
    （`p2p-open.ps1` 沿用既有的 `-RemoteSubnet` 覆寫機制不變，`-VirtualSubnet` 是另外**新增、獨立**的一
-   組規則，不會動到原本區網 `192.168.1.0/24` 那組）：
+   組規則，不會動到原本區網 `192.168.0.0/24` 那組）：
    ```powershell
    .\lan-open.ps1 -VirtualSubnet <VPN網段，例如 10.147.0.0/16>
    .\p2p-open.ps1 -VirtualSubnet <VPN網段>
@@ -250,3 +250,5 @@ VPN 情境下同一件事**還沒有驗證過**：伺服器主機用自己的 VP
 
 如果連不到，先檢查 `lan-open.ps1` 的 `-VirtualSubnet` 有沒有真的涵蓋主機自己的 VPN IP（防火牆規則的
 `RemoteAddress` 網段要包含主機自己），portproxy 本身監聽 `0.0.0.0` 理論上不分來源，但沒有實測驗證。
+
+> **文件裡的區網 IP 都是佔位值。** 2026-09-20 為了公開 repo，把實際位址換成 `192.168.0.10`（主機）、`192.168.0.20`（第二台）、`192.168.0.30`（筆電）、網段 `192.168.0.0/24`。真正的值只存在本機、已 gitignore 的 `config/server.json` 與 `config/allowed-users.json`，還有防火牆腳本的參數。照文件操作時請換成自己的位址。

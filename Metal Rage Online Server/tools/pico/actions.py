@@ -1034,9 +1034,17 @@ def login(ctx, account):
     if not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
         raise ActionError("login account must be non-empty printable ASCII")
     t0 = time.monotonic()
-    pre = _precondition(ctx, "login", "login", _screen_check("login"))
-    if pre:
-        return pre
+    # A freshly launched client shows the splash first; the login screen can take
+    # ~30 s to appear (2026-09-20 relaunch run), so wait instead of a one-shot check.
+    if ctx.dry_run:
+        pre = _precondition(ctx, "login", "login", _screen_check("login"))
+        if pre:
+            return pre
+    else:
+        okl, grayl, detl, scorel, shotl, _ = wait_for(ctx, "login-screen", 60.0, _screen_check("login"))
+        if not okl:
+            return ActionResult("login", False, grayl, time.monotonic() - t0,
+                                 f"login screen not shown within 60s: {detl}", shotl, scorel, [])
     steps = []
     # IME_EN (WM_INPUTLANGCHANGEREQUEST) did NOT stop the Bopomofo IME from eating
     # the account text live on 2026-09-20 (client showed 「ID、密碼只能使用0~9、a~z、

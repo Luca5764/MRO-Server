@@ -3,7 +3,7 @@ Init: Name subsystem initialized
 Init: Detected: Microsoft Windows NT 6.2 (Build: 9200)
 Init: Version: 3369 (134.29)
 Init: Compiled: Nov  8 2010 20:59:51
-Init: Command line:  -globalid=TW&ip=192.168.1.128&port=9211&age=30
+Init: Command line:  -globalid=TW&ip=192.168.0.20&port=9211&age=30
 Init: Character set: Unicode
 Init: Base directory: C:\Games\MetalRage Online\data\System\
 Init: Ini:MetalRage.ini   UserIni:User.ini

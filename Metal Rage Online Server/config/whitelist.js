@@ -96,7 +96,7 @@ function load()
                     } else if (!isDottedIpv4Literal(trimmed)) {
                         console.warn(
                             `[whitelist] hostAddress "${trimmed}" for user "${entry.name}" is not a dotted `
-                            + `IPv4 literal (e.g. "192.168.1.42") -- ignoring (battle start as host in a room `
+                            + `IPv4 literal (e.g. "192.168.0.42") -- ignoring (battle start as host in a room `
                             + `with other members will be refused for this account until it is fixed)`
                         );
                     } else {

@@ -31,7 +31,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ServerIp,
 
-    [string]$HostSubnet = '192.168.1.0/24'
+    [string]$HostSubnet = '192.168.0.0/24'
 )
 
 $ErrorActionPreference = 'Stop'

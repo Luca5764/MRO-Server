@@ -403,9 +403,9 @@ function buildReadyHostSnMsg(ip, port, mapCacheKey, ipOnly = false)
     // RHSN-IP: the client itself builds "%s:%d/%s" from this field, the
     // port and its own map, and keeps only the first 15 chars of the field.
     // [LOG] laptop MetalRage.log 2026-09-19 15:20:49 (joiner): we sent
-    // "192.168.1.105/Map_PC04" and the client did
-    //   [ ZPage_Room ][ GameStart ]  start 192.168.1.105/M:30907/Map_PC04?team=0
-    //   Browse: 192.168.1.105/M:30907?team=0?Name=4#Map_PC04 -> Attemp LoadMap Failed
+    // "192.168.0.10/Map_PC04" and the client did
+    //   [ ZPage_Room ][ GameStart ]  start 192.168.0.10/M:30907/Map_PC04?team=0
+    //   Browse: 192.168.0.10/M:30907?team=0?Name=4#Map_PC04 -> Attemp LoadMap Failed
     // So the multi-member path (ipOnly) sends the bare IP. The legacy
     // single-connection path keeps the old "IP/Map" string unchanged.
     const ipWithMap = ipOnly ? ip : ip + '/' + mapName;

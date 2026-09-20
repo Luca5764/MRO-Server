@@ -28,14 +28,14 @@
 
 - 主目錄固定停在 `reverse-work`。執行者各自開 `~/mro-wt/<名稱>`，新開的 worktree 要 symlink `MetalRage`（不然 golden 會壞）和 `node_modules`。子 agent 絕對不可以動主目錄的工作區。
 - 伺服器：tmux `server`，跑在 `~/mro-wt/test`（dirty＝一堆驗證中的開關，開關收斂任務進行中，見「進行中」）。設定檔都在主目錄，用 symlink 指過去：
-  - `config/server.json`：publicHost 192.168.1.105、pveExtraLives 7、pveFixedRank 10
-  - `config/allowed-users.json`：dusk、Lucas 帶 hostAddress 192.168.1.105、test 帶 hostAddress 192.168.1.103
+  - `config/server.json`：publicHost 192.168.0.10、pveExtraLives 7、pveFixedRank 10
+  - `config/allowed-users.json`：dusk、Lucas 帶 hostAddress 192.168.0.10、test 帶 hostAddress 192.168.0.30
   - `database/config.json`
 - 動 `dispatch/` 以內的檔案 → `/reload`；動 `rooms.js`、`database/db.js`、`config/`、`server.js`、`packetlog.js` → 要完整重啟，操作者要重登。重啟前先下 `/conns` 確認沒人在線。
 - 機器：
-  - 主機 Lucas（Win11，192.168.1.105，有線）
+  - 主機 Lucas（Win11，192.168.0.10，有線）
   - 第二台 dusk（Win10，要用原廠 exe）
-  - 筆電 test（Win11，192.168.1.103）。筆電的客戶端 log 可以從 `\\192.168.1.103\MROLog` 讀（主機已經存好帳密）。客戶端 log 每 4 KB 才寫一次檔：出事時先別關遊戲，請操作者進出機庫把緩衝擠出來。
+  - 筆電 test（Win11，192.168.0.30）。筆電的客戶端 log 可以從 `\\192.168.0.30\MROLog` 讀（主機已經存好帳密）。客戶端 log 每 4 KB 才寫一次檔：出事時先別關遊戲，請操作者進出機庫把緩衝擠出來。
 - 戰鬥是 P2P，房主監聽 UDP 30907。每台可能當房主的機器都要跑 `tools/win/p2p-open.ps1` 或同效果的規則，而且網路要設成 Private。
 - 頻寬：dusk 的 `User.ini` Configured*Speed 和主機 `MetalRage.ini` MaxClientRate 都改成 100000，閃現改善了（🟡）。
 - 資料庫備份：`~/mro-backups/mro-before-e1-20260919-170807.sql`（E1 遷移前）。

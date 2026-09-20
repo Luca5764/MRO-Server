@@ -1,6 +1,6 @@
 # 同區網連線步驟（給玩家）
 
-適用：跟伺服器主機在同一個家用網路（192.168.1.x）。伺服器主機是 Lucas 那台（`192.168.1.105`）。
+適用：跟伺服器主機在同一個家用網路（192.168.1.x）。伺服器主機是 Lucas 那台（`192.168.0.10`）。
 
 ## A. 伺服器主機（Lucas）：每次開玩前
 
@@ -16,14 +16,14 @@
 2. **選對 exe**：
    - **Win11**：不用動。
    - **Win10**：把 `data\System\_original_backup\MetalRage.exe` 複製到 `data\System\`，覆蓋原本的 `MetalRage.exe`。用錯的話，遊戲一開就閃退。
-3. **改伺服器位址**，三個地方都改成 `192.168.1.105`：
-   - `Play Metal Rage Online.bat` 最後一行的 `ip=127.0.0.1` → `ip=192.168.1.105`
+3. **改伺服器位址**，三個地方都改成 `192.168.0.10`：
+   - `Play Metal Rage Online.bat` 最後一行的 `ip=127.0.0.1` → `ip=192.168.0.10`
    - `data\System\MetalRage.ini` 的 `ServerIP=`
    - `data\System\Default.ini` 的 `ServerIP=`
 4. **網路設成私人網路**：設定 → 網路和網際網路 → 目前的 Wi-Fi／乙太網路 → 網路設定檔類型選「私人」。
 5. **開戰鬥用的防火牆**：用系統管理員身分開 PowerShell，貼上：
    ```
-   New-NetFirewallRule -DisplayName "MRO-P2P-UDP-30907" -Direction Inbound -Protocol UDP -LocalPort 30907 -Profile Private -RemoteAddress 192.168.1.0/24 -Action Allow
+   New-NetFirewallRule -DisplayName "MRO-P2P-UDP-30907" -Direction Inbound -Protocol UDP -LocalPort 30907 -Profile Private -RemoteAddress 192.168.0.0/24 -Action Allow
    ```
 6. **第一次開遊戲**：對 `Play Metal Rage Online.bat` 按右鍵，選「以系統管理員身分執行」。只有第一次需要這樣，之後直接點兩下就好。
 7. （選用）**中文介面**：遊戲關著時，點兩下遊戲資料夾裡的 `switch.cmd`。再點一次切回英文。

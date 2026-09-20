@@ -15,4 +15,4 @@
 - `Not Register Font:MingLiu`、三行 `ImportText: Bad termination`（上游英文化文字檔的引號問題）、`Browse: Index.tzp?disconnect → failed: return ENTRY.`、`NULL call failed`，這些在主機上也一模一樣，不是 Win10 特有的。
 - `appRequestExit(0)`：正常關閉，不是當掉。
 - [LOG] **客戶端連不上伺服器時，log 裡不會留下任何網路相關的紀錄。** 排查連線問題要看伺服器的 session log。已寫進 `reference/tools.md`。
-- ⚠️ 第二台的啟動參數是 `ip=192.168.1.128`，但這台伺服器主機的區網 IP 是 `192.168.1.105`（[TEST] 高階 2026-09-19 用 `ipconfig.exe` 查到；N0 調查時也是同一個值）。如果 .128 不是別的轉送位址，第二台要改成 `.105`。
+- ⚠️ 第二台的啟動參數是 `ip=192.168.0.20`，但這台伺服器主機的區網 IP 是 `192.168.0.10`（[TEST] 高階 2026-09-19 用 `ipconfig.exe` 查到；N0 調查時也是同一個值）。如果 .128 不是別的轉送位址，第二台要改成 `.105`。

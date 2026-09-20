@@ -9,7 +9,7 @@
 #
 # Scope (hard constraint: never expose to untrusted networks):
 #   Inbound, UDP, local port 30907, Private profile only,
-#   remote address limited to the LAN subnet (default 192.168.1.0/24).
+#   remote address limited to the LAN subnet (default 192.168.0.0/24).
 # UDP 30907 does not conflict with lan-open.ps1's TCP 30907 portproxy on
 # the server PC: different protocol.
 #
@@ -22,7 +22,7 @@
 # Undo: p2p-close.ps1 (removes both rule sets unconditionally -- see that
 # script's header). Requires an elevated PowerShell (Run as Administrator).
 param(
-    [string]$RemoteSubnet = '192.168.1.0/24',
+    [string]$RemoteSubnet = '192.168.0.0/24',
     [int]$Port = 30907,
     [string]$VirtualSubnet = ''
 )

@@ -81,7 +81,7 @@ for target of room.members:
 {
     "users": [
         "Lucas",
-        { "name": "dusk", "hostAddress": "192.168.1.42" }
+        { "name": "dusk", "hostAddress": "192.168.0.42" }
     ]
 }
 ```

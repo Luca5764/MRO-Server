@@ -22,7 +22,7 @@
 # (pass -Virtual to it as well to also remove the -VirtualSubnet rules).
 param(
     [int[]]$Ports = @(9211, 30907),
-    # Override auto-detected LAN subnet, e.g. -Subnet "192.168.1.0/24"
+    # Override auto-detected LAN subnet, e.g. -Subnet "192.168.0.0/24"
     [string]$Subnet = "",
     # Restrict the firewall rule to these Windows network profiles. Public
     # is intentionally excluded by default -- see AGENTS.md 硬性約束 #2
@@ -83,7 +83,7 @@ function Get-LanSubnetCidr {
             $_.InterfaceAlias -notmatch 'vEthernet|WSL|Loopback|Tap|VPN|Virtual'
         }
     if (-not $candidates) {
-        throw "could not auto-detect a LAN adapter; pass -Subnet explicitly, e.g. -Subnet 192.168.1.0/24"
+        throw "could not auto-detect a LAN adapter; pass -Subnet explicitly, e.g. -Subnet 192.168.0.0/24"
     }
     $list = @($candidates)
     if ($list.Count -gt 1) {
