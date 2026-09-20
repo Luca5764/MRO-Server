@@ -160,3 +160,25 @@ Fisher 精確檢定 p ≈ 0.063（未達顯著，但方向明確）。
 不受影響的結論：❌ H-SPAWN-FAIL（依據是「缺的發數連開火動畫都沒有」，與發數怎麼算無關）；✅ 去程 100%（那一輪本來就是 68÷2 算的）。
 
 **教訓：** 這份日誌先前兩次把 HUD 彈藥數直接當扣扳機數，兩次都沒有先確認每發消耗幾點彈藥。`BaseProjectile_Fire.uc` 的 `ConsumeAmmo( ThisModeNum )` 消耗量由武器設定決定，雙臂武器一次生成兩發。**以後一律用 `HitLoc===` 的行數當分母**（主武器才有），不要用彈藥數；輔助武器沒有這行，就得先用 5 連擊實測彈藥消耗比。
+
+---
+
+## 追加（19:20）：H-CLIENT-GATE ❌ —— 收端在播動畫之前沒有任何閘門
+
+PM 提的假設（比反組譯便宜）：RPC 其實送到了，但客戶端的函式在播動畫之前就因為某個時間／狀態閘門 return 了（武器還在換彈、`NextFireTime`／`FireRate` 檢查、`bFiring` 旗標之類），而回程的**抖動**（實測 20／43／189 ms）會讓下一發的回應在本機武器還沒回到可發射狀態時到達。
+
+純讀原始碼查核，結果是**沒有任何閘門**：
+
+- 進入點 `ClientFireProjectileCenterLoc_MH`（`W_DefaultMechForWeapon.uc:1338-1342`）整個函式只有一個條件：
+  `if( Weapons_UJ[ WeaponIndex ] != none ) Weapons_UJ[ WeaponIndex ].FireProjectileCenterLoc_UJ( ... );`
+- `FireProjectileCenterLoc_UJ` 的三個實作，`PlayFireAnim()` 都是**第一或第二個敘述**，前面沒有任何 return：
+  - `W_BaseProjectile_Weapon.uc:891-911`（通用，單管／雙管分支各自先播動畫再 `Spawn()`）
+  - `BaseProjectile_Range_Weapon.uc:8-25`
+  - `BaseProjectile_SniperRifleGunMethod_Weapon.uc:406-412`
+- 相關類別（`W_BaseProjectile_Weapon`、`W_DefaultWeapon`、`BaseProjectile_Range_Weapon`、`Engine/Weapon`、`W_DefaultMechForWeapon`）**一個 `state` 區塊都沒有**；`DefaultMech` 只有 `state Dying`，它的 `ignores` 清單（`DefaultMech.uc:2796`）不含任何武器函式。
+
+→ ❌ **H-CLIENT-GATE 排除（腳本層）。** 已送達的呼叫唯一可能沒有動作的原因是**收端的 `Weapons_UJ[WeaponIndex]` 為 `none`**（換裝備、武器被打掉），那不是時間閘門。
+
+順帶一個佐證：房主端 `ServerFireProjectileCenterLoc_MH:1324` 的第二個區塊直接寫 `Weapons_UJ[ WeaponIndex ].HasAmmo()`，**沒有 none 檢查**——如果房主那份是 `none`，log 會出現 `Accessed None` 的 ScriptWarning。角色對調那輪房主端的 log 沒有任何武器相關的 warning，所以至少房主端的武器參考一直是有效的。
+
+剩下的只剩引擎處理 `0x00400000`（`ToAll`）的送出路徑，以及「收端武器參考短暫為 none」這兩條。PM 建議的**慢速射擊對照**仍然值得做：腳本層沒有閘門，但引擎層的頻寬／可靠佇列（`IsNetReady`）仍可能在連發時丟呼叫。

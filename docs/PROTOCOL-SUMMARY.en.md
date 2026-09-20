@@ -107,6 +107,32 @@ Confidence: every item below has either DLL evidence or a live client test (usua
   `LocalDumps\MetalRage.exe` subkey with `DumpCount=0`. Confirmed by CPU trace before/after.
   (`journal/2026-09-20-1240-stutter-root-cause.md`)
 
+## Projectile replication (P2P battle, not our server)
+
+- Projectiles are **not replicated actors**. The shooter sends `ServerFireProjectileCenterLoc_MH`
+  (reliable, client->host); the host spawns its own copy and then calls
+  `ClientFireProjectileCenterLoc_MH` (**`reliable ToAll`**), and every client spawns its own copy
+  locally. Damage is declared only by the shooter's own copy
+  (`bMyProj = Instigator.IsLocallyControlled()`). So "I cannot see my own shot" and "it does no
+  damage" are necessarily the same event; hitscan uses a lighter path with no actor spawn and is
+  not affected.
+- `ToAll` and `ToTheOthers` are **GameHi-added replication keywords**, not stock UE2. In the
+  compiled packages they are two extra `FunctionFlags` bits on top of the normal ones:
+  **`ToAll` = `0x00400000`, `ToTheOthers` = `0x00800000`**. Both keep `FUNC_NetReliable`
+  (`0x00000080`) — e.g. `ClientFireProjectileCenterLoc_MH` is `0x004201c2`, a plain reliable
+  client function is `0x000200c2`, and a genuinely unreliable one such as `ClientAmmoAgency` is
+  `0x00020142`. Read them with `tools/uetool <pkg.u> flags <Class.Function>`.
+- **Known limitation, cause not yet found:** a joiner loses roughly 10-20% of its projectile
+  shots — the host accepts them all (measured 34/34), but the shot never materialises anywhere,
+  including on the shooter's own screen. The client's own log can count this for you: the console
+  command `WeaponLog` makes every fire animation and every trigger pull appear in
+  `MetalRage/data/Log/MetalRage.log`, and the fire animation is played *inside* the spawn
+  function, so a lost shot leaves no trace at all. Use the `HitLoc===` lines (main weapon only)
+  as the denominator, never the HUD ammo count — twin-arm weapons spend two rounds per pull.
+  Ammo is not a replicated variable, and the host gates the broadcast on its own copy of the
+  shooter's ammo, which explains the *clustered* losses but not the isolated ones.
+  (`journal/2026-09-20-1820-projectile-loss-counted.md`)
+
 ---
 
 Anything not covered here is unverified. `docs/state.md` is the living source of truth (updated
