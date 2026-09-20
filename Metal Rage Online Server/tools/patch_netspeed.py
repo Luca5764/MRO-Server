@@ -70,17 +70,36 @@ import sys
 # The build this was derived from. Refuse anything else: the offsets below are
 # file positions in this exact binary, and writing them into a different build
 # would corrupt an unrelated instruction.
-EXPECTED_SHA256 = 'fc51fe1240ee34111fc1a483e74a1b131d4b69f2b2a0940adbb4a860a138d24e'
-EXPECTED_SIZE = 5390336
-
-# file offset -> (original value, description)
-PATCHES = {
-    0x1a0546: (15000, 'MaxClientRate (netspeed ceiling)'),
-    0x1a0550: (10000, 'MaxInternetClientRate (default connection rate)'),
+# Two modules write these fields, and the one that wins is the subclass:
+# Engine.dll's UNetDriver::StaticConstructor runs first, then IpDrv.dll's
+# UTcpNetDriver::StaticConstructor overwrites both with the same literals.
+# [TEST] 2026-09-20: patching Engine.dll alone changed nothing at all -- the
+# host still logged "Client netspeed is 10000" and `netspeed` still clamped at
+# 15000. **ipdrv is the one that matters.**
+MODULES = {
+    'ipdrv': {
+        'rel': os.path.join('data', 'System', 'IpDrv.dll'),
+        'size': 233472,
+        # UTcpNetDriver::StaticConstructor, VA 0x10714693 / 0x1071469d
+        'patches': {
+            0x14699: (15000, 'MaxClientRate (netspeed ceiling)'),
+            0x146a3: (10000, 'MaxInternetClientRate (default connection rate)'),
+        },
+        'clamp_only': [0x14699],
+    },
+    'engine': {
+        'rel': os.path.join('data', 'System', 'Engine.dll'),
+        'size': 5390336,
+        'sha256': 'fc51fe1240ee34111fc1a483e74a1b131d4b69f2b2a0940adbb4a860a138d24e',
+        # UNetDriver::StaticConstructor, VA 0x104a0540 / 0x104a054a.
+        # Kept for completeness; on its own it has no effect.
+        'patches': {
+            0x1a0546: (15000, 'MaxClientRate (base class, overwritten by IpDrv)'),
+            0x1a0550: (10000, 'MaxInternetClientRate (base class, overwritten by IpDrv)'),
+        },
+        'clamp_only': [0x1a0546],
+    },
 }
-CLAMP_ONLY = [0x1a0546]
-
-REL = os.path.join('data', 'System', 'Engine.dll')
 
 
 def sha256(path):
@@ -95,7 +114,7 @@ def read_u32(data, off):
     return struct.unpack_from('<I', data, off)[0]
 
 
-def describe(data):
+def describe(data, PATCHES):
     for off, (orig, what) in sorted(PATCHES.items()):
         cur = read_u32(data, off)
         state = 'original' if cur == orig else f'patched (was {orig})'
@@ -104,6 +123,8 @@ def describe(data):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[1])
+    ap.add_argument('--module', choices=sorted(MODULES), default='ipdrv',
+                    help='which module to patch (default ipdrv, the one that wins)')
     ap.add_argument('--target', required=True,
                     help='install root, e.g. "/mnt/c/Games/MetalRage Online 2"')
     ap.add_argument('--rate', type=int, default=100000,
@@ -114,7 +135,13 @@ def main():
     ap.add_argument('--check', action='store_true', help='report current values and exit')
     a = ap.parse_args()
 
-    dll = os.path.join(a.target, REL)
+    mod = MODULES[a.module]
+    PATCHES = mod['patches']
+    CLAMP_ONLY = mod['clamp_only']
+    EXPECTED_SIZE = mod['size']
+    EXPECTED_SHA256 = mod.get('sha256')
+
+    dll = os.path.join(a.target, mod['rel'])
     bak = dll + '.bak-netspeed'
 
     if not os.path.isfile(dll):
@@ -132,7 +159,7 @@ def main():
         data = bytearray(f.read())
 
     print(f'{dll}\n  size   {len(data)}\n  sha256 {sha256(dll)}')
-    describe(data)
+    describe(data, PATCHES)
 
     if a.check:
         return
@@ -143,7 +170,7 @@ def main():
     # something this script could have written.
     if len(data) != EXPECTED_SIZE:
         sys.exit(f'refusing: size {len(data)} != {EXPECTED_SIZE}, this is a different build')
-    if sha256(dll) != EXPECTED_SHA256 and not os.path.isfile(bak):
+    if EXPECTED_SHA256 and sha256(dll) != EXPECTED_SHA256 and not os.path.isfile(bak):
         sys.exit('refusing: hash does not match the expected build and there is no '
                  'backup here, so this file has been modified by something else')
 
@@ -165,7 +192,7 @@ def main():
     print(f'\nwrote {a.rate} to {len(targets)} offset(s):')
     with open(dll, 'rb') as f:
         after = f.read()
-    describe(after)
+    describe(after, PATCHES)
     print(f'  sha256 now {sha256(dll)}')
     print('\nRestore with: --restore')
 
