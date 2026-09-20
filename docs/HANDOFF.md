@@ -5,24 +5,51 @@
 
 ---
 
-## ⚡ 交接快照（2026-09-19 晚，Claude 高階組長）
+## ⚡ 交接快照（2026-09-20 深夜，Claude 高階組長）
 
-> 目標與里程碑看 `docs/roadmap.md`。PM 是 Fable（tmux `fable`；SendMessage 名稱會跟著 session 標題變，2026-09-20 是 `xigncode bypass script`，連不到就先 ListAgents），只在四個關卡找他（實作前核 bytes、合併前機械核對、里程碑判定、跟 ✅ 衝突），有進度時另外主動回報一則。
-> 跨公司審查：Sol（tmux `sol`，Codex gpt-5.6-sol）**2026-09-20 起恢復額度**。送審順序（PM 排）：1) P3 第 3 步（schema＋migration＋寫回，連同 p3-step12 的第 1、2 步）2) ASSIST-FIX／Special_SN 的 bytes 3) E1 遷移事後審 4) D2 PvP（等 Moon 的目標類封包表一起送）5) D1-6 之後 batch2–5 沒涵蓋的多人路徑。不用送：Pico 與無人值守工具、卡頓調查、舊客戶端盤點、純文件。待審清單見 `research/2026-09-20-review-status/pending.md`。
+> 目標與里程碑看 `docs/roadmap.md`。PM 是 Fable（tmux `fable`；SendMessage 的名稱會跟著它的 session 標題變，連不到先 ListAgents 或問操作者）。
+> 跨公司審查：Sol（tmux `sol`，Codex gpt-5.6-sol）**2026-09-20 起有額度**，今天做了三份：`research/2026-09-20-sol-review/{p3.md,p3-round2.md,assist-fix.md}`。
+> 待審清單見 `research/2026-09-20-review-status/pending.md`（真正沒人審過的還有 66 處，最大宗是 `journal/2026-09-19-0330-d1-step4-room-join.md`）。
 > 本段每次交接**整段改寫**。
 
-### 2026-09-20 凌晨：無人時段（操作者在睡覺，結論一律 🟡）
-- **客戶端**：XIGNCODE 修補已還原成原版（00:50）；軟體輸入和 taskkill 修補前後都無效，AI 操作遊戲只能走 Pico。
-- **Pico runner 全部實跑 PASS**：U-pve-fullmatch（原版客戶端）、U-shop-tabs、U-shop-tabs-idle（閒置 120 秒沒被踢）、U-pve-escort（護送 9007，新的地圖無關戰場判斷）。登入動作會處理注音輸入法（第一次被吃掉就按 SHIFT 重試一次）。見 `journal/2026-09-19-2230-unattended-trial-01.md`、`journal/2026-09-20-0110-escort-smoke.md`。
-- **等操作者醒著才做**：
-  1. 計畫性重開＋自動登入的第一次實測（`U-relaunch-login`，會用 Pico 點 X 關掉客戶端）→ 通過之後才能跑 H1 ×20；
-  2. `U-pve-fail`（GameCampaign 2）：不在核准清單上；
-  3. **P3 第 1、2 步在分支 `p3-step12`（worktree `~/mro-wt/p3-step12`，f56b43e＋94be5b7），PM 已過 bytes 關卡，但規定等操作者說一聲才合併、`/reload`，再跑 U-pve-fullmatch 並看機庫數字**。第 1 步會改 9211 的 RecordInfo_SN（修正舊的錯誤佈局，每次登入都會送），第 2 步 MATCH_STATS_MODE 預設關閉。
-  4. 卡頓 trace 要管理員權限：最高權限排程工作要不要建；
-  5. 上游作者卡頓影片的連結；
-  6. AGENTS 第 1 條補「靜態分析 y0da 可以，修改不行」；
-  7. 中斷的場不寫戰績（`match-stats.js` 的 `ABORTED_MATCHES_ARE_NOT_PERSISTED`）要操作者拍板。
-- P3 第 3 步（migration）等 Sol。Y0DA-STUTTER、BOSS 已開 backlog。
+### 今天（2026-09-20）完成的
+
+1. **卡頓根因解決** — 不是網路、不是我們的伺服器：保護殼每 4–5 分鐘丟一次無害例外，而第三方藍牙程式建立的 `LocalDumps` 機碼讓 Windows 每次都寫 29 MB 傾印檔、凍結整個行程 140–260 ms。解法：`LocalDumps\MetalRage.exe` 的 `DumpCount=0`。`journal/2026-09-20-1240-stutter-root-cause.md`、K1 說明已寫入。H-Y0DA ❌、H-ASSIST-AV ❌。
+2. **M3-R 預演成功**（PM 判定 ✅）— 筆電走手機熱點＋Radmin VPN，兩個方向都開房、開戰、可操控。`journal/2026-09-20-1530-m3r-vpn-rehearsal.md`。**M3 本身還差**：VPN 上打完整一場（含結算回房）＋真正的第三人照 K1 自己裝起來。
+3. **Pico 自動化完整可用** — 登入（含注音重試）、整場 PvE、商店、護送地圖、計畫性重開客戶端（Pico 點 X 關閉，因為 taskkill 被拒）。執行腳本自己判定每步成敗，模型不在迴圈裡。政策見 `reference/unattended-policy.md`。
+4. **測試帳號 `mrotest`** 已建，白名單標 `isTest`，之後無人清單都用它。
+5. **修掉的 bug**：離開房間回大廳看不到別人的房（26be66c，已上線）、登入顯示 `Player`（/reload 版本不同步，已完整重啟修正）、Pico 打字會丟掉所有符號。
+6. **P3（戰績寫回）第 1–3 步全部完成並經 Sol 審查**，已合併但**開關全部關閉**：
+   - 第 1 步（9211/30907 共用 RecordInfo builder）已上線驗證 ✅；
+   - 第 2 步（Room 層統計，只寫 marker）已上線、開關 `MATCH_STATS_MODE` 目前在測試樹是開的；
+   - 第 3 步（三張表 migration＋寫回）**Sol：合併 GO、執行 migration 或開 `MATCH_WRITEBACK_MODE` NO-GO**，還要補 schema 後檢查、真 MySQL 驗證、`point_gained` 語意。
+7. **ASSIST-FIX**（每場 500 次的 `Assist_SN` 回覆長度不足造成客戶端越界讀）已實作、開關 `ASSIST_SN_FORMAT_MODE` 預設關。Sol 第一輪 NO-GO 的那一項（短 body fallback）已修，**還沒回送 Sol 確認**。
+8. **對外**：README 改寫、`docs/PROTOCOL-SUMMARY.en.md`（16 條給其他實作者）、`reference/join-guide.en.md`（給遠端測試者的英文說明）、里程碑 tag `m1-two-clients-one-room`／`m2-two-player-pve-match`，都已 push（github.com/Luca5764/MRO-Server）。文件裡的區網 IP 換成佔位值、寫死的 Windows 使用者名稱改成執行時取得。
+9. **與上游作者 Moon 的技術交流**（信由 PM 寫、操作者寄）：他更正了我們一個位址標籤（`Game_User_Add` 是 `0x10734140`，`0x107343e0` 是道具清單），我們核對成立；我們則找到他可能也有的高頻 bug（Assist_SN）。
+
+### 投射物問題（最有價值的未結案）
+
+症狀定案 [OBS]：**發射端看不到自己的投射物；被打的那端看得到、但沒有受到傷害**。
+機制已查清（`research/2026-09-20-projectile-replication/notes.md`）：投射物不是複寫的 actor，而是房主用 `ClientFireProjectileCenterLoc_MH`（reliable ToAll）通知所有人**各自本地生成**；傷害只由開槍者自己那顆（`bMyProj`）申報。所以「看不到」與「沒傷害」必然成對。
+- ❌ 複寫飢餓（NetPriority）、❌ 視覺呈現問題、❌ H-AMMO-DESYNC（房主有 spawn 就代表 HasAmmo 為真）。
+- 🟡 **H-SPAWN-FAIL（目前最有力）**：生成座標是開火當下的世界座標，RPC 繞一圈回來時開槍者已移動，生成點可能落在自己機體碰撞體內 → `Spawn()` 失敗。指紋：**移動中開火容易失敗、站著幾乎不會**。
+- 下一步就是 `docs/next-test.md` 的三組各 20 發（站定／橫移／前進），每發記「自己看到／對方看到／目標掉血」。還沒查的：投射物碰撞設定、`Spawn()` 回 None 時腳本怎麼走、前推距離。
+
+### 等操作者的
+
+1. **投射物三組各 20 發的計數測試**（`docs/next-test.md`）——最有價值。
+2. VPN 上打完整一場（含結算回房），M3 就少一項。
+3. 重跑防火牆腳本收斂：`lan-open.ps1 -FromWhitelist`、`p2p-open.ps1 -FromWhitelist`（腳本已複製到 `%USERPROFILE%\mro-fw`），跑完確認舊的 26.0.0.0/8 規則消失而不是並存。
+4. Moon 的連線（英文說明已備好：`reference/join-guide.en.md`）。
+5. `stat net`／`stat fps` 能不能用（新動作，第一次要他在場）。
+
+### 還沒做完的工作
+
+- ASSIST-FIX 送 Sol 複審那一項；通過後才實測（基準已存：`shots/assist-base-res-2.png`，結算全 0）。
+- P3 第 3 步的三項 must-fix（schema 後檢查、真 MySQL、`point_gained`）。
+- RELOAD-GUARD（`/reload` 偵測 dispatch 以外的變更就拒絕）。
+- E1 遷移的事後審查、D2 PvP 設計稿（等 Moon 的目標類封包表）。
+- `trace-task` worktree 還在（SYSTEM 版排程腳本，操作者決定不建排程，可留可刪）。
 
 ### 環境
 
