@@ -61,6 +61,23 @@ const pool = mysql.createPool({
     ...dbConfig,
     waitForConnections: true,
     connectionLimit: 10,
+    // Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "疑點 --
+    // 時間欄位"): mysql2's own `timezone` option (client-side JS Date <->
+    // SQL string conversion -- NOT a `SET time_zone` on the MySQL session,
+    // and NOT what NOW()/CURRENT_TIMESTAMP use, those stay server-side)
+    // defaults to 'local', i.e. whatever OS timezone the Node process
+    // happens to run under. Pinned to 'Z' (UTC) so a JS `Date` bound as a
+    // DATETIME parameter (currently only database/db.js's
+    // recordMatchWithAccumulation(), P3 step 3's matches/match_rounds
+    // started_at/ended_at) always converts the same way regardless of what
+    // machine the server runs on -- see docs/design/
+    // p3-step3-writeback-impl.md §2.1 for what this means for those
+    // columns. grep confirms nothing else in this codebase currently reads
+    // a TIMESTAMP/DATETIME column back into application logic (accounts.
+    // created_at/last_login, tutorials.completed_at are written via SQL
+    // NOW() and never read anywhere outside database/db.js itself), so this
+    // has no observable effect on any existing wire-facing behaviour.
+    timezone: 'Z',
 });
 
 /**
