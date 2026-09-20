@@ -63,6 +63,23 @@ account / conn_id / launch_time`（`conn_id` 登入後才填，見第 4 節；`l
 **`screen.ps1:83` 的 `SetForegroundWindow` 已經是通用的**，`$hwnd` 來自 `-Proc` 分支——
 所以 I1+I2 做完，「把指定實例叫到前景」就不必新寫任何 Win32 呼叫。
 
+## 2b. Preflight：啟動客戶端之前一定要跑（PM 2026-09-20 裁決）
+
+**原則：啟動任何客戶端之前，先確認關閉路徑可用。** 2026-09-20 晚踩到的就是反例——
+一個唯讀量測任務啟動了客戶端，結果因為 P5 的尺寸閘門關不掉，擋住了整晚的雙開。
+
+`runner` 在 session 開始時、**啟動任何實例之前**，對每一個要用到的實例做：
+
+| 檢查 | 怎麼做 | 不過就 |
+|---|---|---|
+| 解析度與 atlas 相符 | 讀該實例的 `data\System\OptionAll.ini` 的 `op_Display=(ScreenSize="WxH",...)`，比對 `tools/pico/atlas/manifest.json` 的 `shot_size` 換算出的 client 尺寸 | **直接 fail，不啟動客戶端**，報告寫明現值、期望值、要改哪個檔 |
+| 前景閘門可用 | Pico session 可開、`ping` 有回應、允許的前景行程名設得下去 | 直接 fail，不啟動 |
+| STOP 檔不存在 | 既有機制 | 直接 fail |
+| 該實例沒有殘留行程 | 行程名精確比對 | 直接 fail，報告寫明 PID |
+
+**不要**做成「session 開始時自動改解析度、結束時還原」——那是改操作者的遊玩設定，
+要等操作者表態（PM 2026-09-20）。
+
 ## 3. 新動作清單
 
 每一個都是 `actions.py` 的新函式，簽名照既有慣例 `fn(ctx, **params) -> ActionResult`。
