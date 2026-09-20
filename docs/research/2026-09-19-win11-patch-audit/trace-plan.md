@@ -43,7 +43,7 @@
 ## 離線分析
 
 ```bash
-python3 "Metal Rage Online Server/tools/win/trace/analyze_presentmon.py" \
+python3 "Metal Rage Online Server/tools/win/trace-analysis/analyze_presentmon.py" \
     /mnt/c/Users/<你的 Windows 使用者名稱>/mro-trace/<ts>/presentmon.csv \
     --threshold-ms 50 \
     --start-marker /mnt/c/Users/<你的 Windows 使用者名稱>/mro-trace/<ts>/start-marker.json
