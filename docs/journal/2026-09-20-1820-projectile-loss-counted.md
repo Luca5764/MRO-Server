@@ -87,3 +87,51 @@
 
 - 房主 log ≈ 筆電彈藥數 → 掉在回程的 `ToAll`
 - 房主 log 明顯少 → 掉在去程，`reliable` 宣告與實際不符
+
+---
+
+## 追加（18:56）：角色對調——去程 100%，缺口全在回程
+
+PM 評估後排了四項對照（見下），這是第 1 項。
+
+**做法：** Lucas 當房主並開著 `WeaponLog`，**完全不開火**（驗證：這段 log 裡 `HitLoc===` 為 0），筆電加入當射手，用主武器 `MTE_a` 打空一個彈匣。房主為遠端玩家執行 `ServerFireProjectileCenterLoc_MH` 時會在本機生成（`W_DefaultMechForWeapon.uc:1317-1321`），所以房主 log 的開火動畫數＝**房主接受了幾發**。
+
+**結果：** [OBS] 筆電起始彈藥 68 發（marker 10:51:58）、打空（10:53:10）。[LOG] 房主端 `MTE_a   Fire` **34** 次。
+
+34 剛好是 68 的一半，一度分不出「去程掉一半」與「一次扣兩發」。[OBS] 操作者以 5 連擊實測確認**一次扣兩發彈藥**，所以 68 發彈藥＝**34 次扣扳機**。
+
+→ **去程 34/34 ＝ 100%。缺口全部在回程。**
+
+程式碼對得上：主武器兩隻手臂都完好時，客戶端只送**一次** `ServerFireProjectileCenterLoc_MH`（左右槍口中點 `CenterLoc`，`BaseProjectile_Fire.uc:253-291`），房主端 `FireProjectileCenterLoc_UJ` 的雙管分支從這一次呼叫生成兩發、只播一次開火動畫（`W_BaseProjectile_Weapon.uc:934-985`）。
+
+房主端沒有爆炸與 `ReLoad` 的 log，與「那是遠端玩家的副本」一致（裝填動畫由本機武器狀態機驅動，爆炸特效受 `EffectIsRelevant` 管），不是異常。
+
+## 追加：另外兩項對照
+
+**第 3 項 — VPN 本身的掉包率。** [TEST] 桌機 → 筆電 Radmin IP `26.98.113.112`，`ping -n 200`：**傳送 200、收到 200、遺失 0（0%）**，來回時間 20／43／189 ms（最小／平均／最大）。→ **不是線路掉包。** 但抖動將近 10 倍，與筆電走手機熱點一致。
+
+**第 4 項 — `ToAll` 的 function flags。** 用 `tools/uetool` 加的 `flags` 指令直接讀 `ZBase.u` 的原生 `FunctionFlags`：
+
+| 函式 | FunctionFlags | NetReliable |
+|---|---|---|
+| `ServerFireProjectileCenterLoc_MH`（reliable） | `0x000200c2` | 有 |
+| `ClientHitEnemy_UJ`（reliable） | `0x000200c2` | 有 |
+| `ClientFireProjectileCenterLoc_MH`（**reliable ToAll**） | `0x004201c2` | **有** |
+| `ClientNapalmExp_MH`（reliable ToAll） | `0x004201c2` | 有 |
+| `ClientThirdPersonEffect_YN`（reliable ToTheOthers） | `0x008201c2` | 有 |
+| `ClientAmmoAgency`（unreliable） | `0x00020142` | **沒有** |
+
+→ **`ToAll` 沒有拿掉可靠性**，宣告與旗標一致。兩個 GameHi 自訂關鍵字各對應一個額外 bit：**`ToAll` = `0x00400000`、`ToTheOthers` = `0x00800000`**（三組函式完全吻合）。
+
+所以 H-TOALL-UNRELIABLE **在旗標層面不成立**；還活著的是「引擎處理 `0x00400000` 的那段自訂程式碼走了另一條送出路徑、繞過重傳」，那只能反組譯。
+
+射手端 log 也沒有任何武器相關的 `ScriptWarning`（只有導航與觀戰的 `Accessed None`）。
+
+## 目前狀態
+
+| | 項目 | 結果 |
+|---|---|---|
+| 1 | 角色對調 | ✅ 去程 100%，缺口全在回程 |
+| 2 | 區網基準（不走 VPN） | ⬜ 未做 |
+| 3 | VPN 掉包率 | ❌ 0%，不是線路掉包 |
+| 4 | `ToAll` function flags | ❌ NetReliable 有設 |
