@@ -1,0 +1,28 @@
+// ======== 0x1042b450  IsNetReady  @ 1042b450 ========
+/* public: virtual int __thiscall UNetConnection::IsNetReady(int) */
+
+int __thiscall UNetConnection::IsNetReady(UNetConnection *this,int param_1)
+
+{
+  int iVar1;
+  void *local_10;
+  undefined1 *puStack_c;
+  undefined4 local_8;
+  
+                    /* 0x12b450  5854  ?IsNetReady@UNetConnection@@UAEHH@Z */
+  puStack_c = &LAB_10658950;
+  local_10 = ExceptionList;
+  local_8 = 0;
+  ExceptionList = &local_10;
+  if (param_1 != 0) {
+    ExceptionList = &local_10;
+    iVar1 = FBitWriter::GetNumBytes((FBitWriter *)(this + 0x288));
+    *(int *)(this + 0x14c) = -iVar1;
+  }
+  iVar1 = FBitWriter::GetNumBytes((FBitWriter *)(this + 0x288));
+  ExceptionList = local_10;
+  return (uint)(*(int *)(this + 0x14c) + iVar1 < 1);
+}
+
+
+INFO  REPORT: Save succeeded for processed file: /Engine.dll (HeadlessAnalyzer)

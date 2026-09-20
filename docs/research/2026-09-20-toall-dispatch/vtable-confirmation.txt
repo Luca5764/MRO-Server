@@ -1,0 +1,31 @@
+Confirming Engine.dll vtable slot +0x94 == UNetConnection::IsNetReady
+=======================================================================
+
+Export: `?IsNetReady@UNetConnection@@UAEHH@Z` @ VA 0x1042b450 (public virtual
+int __thiscall UNetConnection::IsNetReady(int)).
+
+UNetConnection's UObject-facing vtable export: `??_7UNetConnection@@6BUObject@@@`
+@ VA 0x10692b88 (in .data, dword array of function pointers).
+
+Read dword at (0x10692b88 + 0x94) from Engine.dll on disk (file offset via
+tools/disasm.py's section mapping, .data section VA==file offset relation
+does NOT hold for Engine.dll like it does for ZNetwork.dll, so this used
+pefile's own PointerToRawData/VirtualAddress mapping, not a hardcoded
+subtraction):
+
+  vt(UNetConnection)+0x94 -> 0x1042b450
+
+This exactly matches the exported IsNetReady address, confirming
+ProcessRemoteFunction's virtual call `(**(code**)(*piVar7 + 0x94))(0)` (raw
+asm: `call dword ptr [edx + 0x94]` at VA 0x105236a5, and `call dword ptr
+[eax + 0x94]` at VA 0x1052371c) really is UNetConnection::IsNetReady(0),
+i.e. the objects iterated by the ProcessRemoteFunction broadcast loop
+(`local_40` array, populated by FUN_103a97d0 == FArray copy from
+`*(NetDriver+0x40)+0x30`, almost certainly UNetDriver::ClientConnections)
+are UNetConnection* pointers, not UChannel*.
+
+(For reference, UChannel's own vtable export `??_7UChannel@@6B@` @
+0x106925a8 has a 0 at +0x94 -- UChannel::IsNetReady is not itself exported
+by mangled name in this DLL's export table under that exact slot for the
+base class version actually used here; not pursued further since the
+UNetConnection match above is unambiguous and sufficient for this task.)

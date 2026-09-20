@@ -1,0 +1,128 @@
+// ======== 0x105234b0  ProcessRemoteFunction  @ 105234b0 ========
+/* public: virtual int __thiscall AActor::ProcessRemoteFunction(class UFunction *,void *,struct
+   FFrame *) */
+
+int __thiscall
+AActor::ProcessRemoteFunction(AActor *this,UFunction *param_1,void *param_2,FFrame *param_3)
+
+{
+  byte bVar1;
+  void **ppvVar2;
+  undefined1 *puVar3;
+  int iVar4;
+  UFunction *pUVar5;
+  UStruct *pUVar6;
+  int *piVar7;
+  FFrame local_58 [24];
+  int local_40;
+  int local_3c;
+  AActor *local_2c;
+  undefined4 local_28;
+  int local_24;
+  int local_20;
+  int *local_1c;
+  int local_18;
+  undefined1 *local_14;
+  void *local_10;
+  undefined1 *puStack_c;
+  int local_8;
+  
+                    /* 0x2234b0  6705
+                       ?ProcessRemoteFunction@AActor@@UAEHPAVUFunction@@PAXPAUFFrame@@@Z */
+  puStack_c = &LAB_10660ad8;
+  local_10 = ExceptionList;
+  local_14 = &stack0xffffff9c;
+  local_8 = 0;
+  if (((*(uint *)(param_1 + 0x84) & 0x2000) == 0) &&
+     (-1 < (char)((uint)*(undefined4 *)(this + 0x6c) >> 8))) {
+    if ((2 < (byte)this[0x7e]) || (local_18 = 1, (*(uint *)(param_1 + 0x84) & 0x500) != 0)) {
+      local_18 = 0;
+    }
+    ppvVar2 = &local_10;
+    puVar3 = &stack0xffffff9c;
+    if (*(int *)(*(int *)(this + 0xa0) + 0x8c) != 0) {
+      if (*(int *)(*(int *)(*(int *)(this + 0xa0) + 0x8c) + 0x3c) != 0) {
+        return local_18;
+      }
+      ExceptionList = &local_10;
+      ProcessDemoRecFunction(this,param_1,param_2,param_3);
+      ppvVar2 = ExceptionList;
+      puVar3 = local_14;
+    }
+    local_14 = puVar3;
+    ExceptionList = ppvVar2;
+    if (*(char *)(*(int *)(this + 0x9c) + 0x5f0) != '\0') {
+      if (((byte)param_1[0x84] & 0x40) != 0) {
+        iVar4 = (**(code **)(*(int *)this + 0x1d4))();
+        local_1c = (int *)0x0;
+        if ((this[0x7e] != (AActor)0x4) ||
+           (((iVar4 != 0 &&
+             (local_1c = (int *)FUN_103a8450(*(undefined4 *)(iVar4 + 0x574)), local_1c != (int *)0x0
+             )) || ((*(uint *)(param_1 + 0x84) & 0xc00000) != 0)))) {
+          while (pUVar5 = UFunction::GetSuperFunction(param_1), pUVar5 != (UFunction *)0x0) {
+            param_1 = UFunction::GetSuperFunction(param_1);
+          }
+          local_24 = 0;
+          pUVar6 = (UStruct *)(**(code **)(*(int *)param_1 + 0x7c))();
+          iVar4 = FFrame::FFrame(local_58,(UObject *)this,pUVar6,(uint)*(ushort *)(param_1 + 0x8a),
+                                 (void *)0x0);
+          bVar1 = **(byte **)(iVar4 + 0xc);
+          *(byte **)(iVar4 + 0xc) = *(byte **)(iVar4 + 0xc) + 1;
+          (**(code **)(GNatives_exref + (uint)bVar1 * 4))(iVar4,&local_24);
+          if (local_24 != 0) {
+            if ((*(char *)(*(int *)(this + 0x9c) + 0x5f0) == '\x01') ||
+               (*(char *)(*(int *)(this + 0x9c) + 0x5f0) == '\x02')) {
+              local_18 = 1;
+              piVar7 = local_1c;
+            }
+            else {
+              local_18 = 0;
+              piVar7 = *(int **)(*(int *)(*(int *)(this + 0xa0) + 0x40) + 0x3c);
+            }
+            FArray::FArray((FArray *)&local_40);
+            local_8._0_1_ = 1;
+            if (((*(uint *)(param_1 + 0x84) & 0xc00000) == 0) || (local_18 == 0)) {
+              if ((piVar7 != (int *)0x0) &&
+                 (((char)*(uint *)(param_1 + 0x84) < '\0' ||
+                  (iVar4 = (**(code **)(*piVar7 + 0x94))(0), iVar4 != 0)))) {
+                FUN_10522560(this,piVar7,param_1,param_2,local_18);
+              }
+            }
+            else {
+              FUN_103a97d0(*(int *)(*(int *)(this + 0xa0) + 0x40) + 0x30);
+              if ((char)param_1[0x84] < '\0') {
+                local_28 = 0;
+                if (param_3 != (FFrame *)0x0) {
+                  local_28 = *(undefined4 *)(param_3 + 0xc);
+                }
+                for (local_20 = 0; local_20 < local_3c; local_20 = local_20 + 1) {
+                  piVar7 = *(int **)(local_40 + local_20 * 4);
+                  iVar4 = (**(code **)(*piVar7 + 0x94))(0);
+                  if (((iVar4 != 0) &&
+                      (local_2c = this, iVar4 = FUN_1042c330(&local_2c), iVar4 != 0)) &&
+                     (((*(uint *)(param_1 + 0x84) & 0x800000) == 0 || (local_1c != piVar7)))) {
+                    if (param_3 != (FFrame *)0x0) {
+                      *(undefined4 *)(param_3 + 0xc) = local_28;
+                    }
+                    FUN_10522560(this,piVar7,param_1,param_2,local_18);
+                  }
+                }
+              }
+            }
+            local_8 = (uint)local_8._1_3_ << 8;
+            FUN_103a9740();
+            ExceptionList = local_10;
+            return 1;
+          }
+        }
+      }
+      ExceptionList = local_10;
+      return local_18;
+    }
+  }
+  ExceptionList = local_10;
+  return 0;
+}
+
+
+INFO  REPORT: Save succeeded for processed file: /Engine.dll (HeadlessAnalyzer)
