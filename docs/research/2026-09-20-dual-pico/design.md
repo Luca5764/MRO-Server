@@ -1,6 +1,6 @@
 # DUAL-PICO 設計稿：同機雙客戶端無人值守（2026-09-20，高階）
 
-狀態：**v2 —— PM 2026-09-20 審過，六項修訂已併入，可以派 worker。** 依據是兩份唯讀盤點
+狀態：**v3 —— PM 審過的 v2 ＋ P1 的結果（launcher 與 log 認檔方式已定），六項修訂已併入，可以派 worker。** 依據是兩份唯讀盤點
 （explorer，2026-09-20 晚），引用的行號都來自那兩份回報。v2 的修訂點在每節標了「(PM)」。
 
 ## 0. 不變式（先寫死，實作不准偏離）
@@ -27,13 +27,21 @@ CLIENTS = {
             launcher "Play Second Client.bat",  IpDrv.dll 已修補(100000),
             account <第二測試帳號>
   "joiner": proc "MetalRage",   dir "C:\Games\MetalRage Online",
-            launcher "Play Metal Rage Online.bat", 原廠,
-            account mrotest
+            launcher "Play With Log.bat"  ← v3 改（原本是 "Play Metal Rage Online.bat"）,
+            原廠, account mrotest
 }
 ```
 
-每個實例的執行期狀態：`id / proc_name / install_dir / launcher / engine_log /
-game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
+每個實例的執行期狀態：`id / proc_name / install_dir / launcher / log_path /
+account / conn_id / launch_time`（`conn_id` 登入後才填，見第 4 節；`log_path` 啟動後才解析，
+見第 6 節 P1）。
+
+**v3 的 launcher 決定（P1 的結果）**：兩個實例都用帶 `-log=` 的 launcher，讓兩邊的主訊號
+檔**同一種類型**（各自安裝的 `data\System\run-<STAMP>.log`）：
+- host → 副本的 `Play Second Client.bat`（已經帶 `-log=`）
+- joiner → 主安裝的 `Play With Log.bat`（2026-09-20 21:26 建立，已經帶 `-log=`）
+  **不要用 `Play Metal Rage Online.bat`**——它不帶 `-log=`，log 會落到
+  `data\Log\MetalRage.log` 而且**每次重開被截斷**，量測會被下一次啟動毀掉。
 
 **角色分配的理由**（kickoff 指定，不要對調）：副本的 `IpDrv.dll` 已把
 `MaxClientRate`／`MaxInternetClientRate` 改成 100000，所以副本當**房主**才有意義——
@@ -48,7 +56,7 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
 | I2 | `tools/win/screen.ps1:70-80` | 只有 `-Proc` **精確等於** `"MetalRage"` 才走 `Get-MetalRageWindow`（EnumWindows 找同行程最大可見視窗）；其他值落入舊版 `MainWindowHandle` 邏輯，而那個舊邏輯 2026-09-19 實測會抓到啟動畫面 | 把 `Get-MetalRageWindow`（41-67 行）參數化成吃行程名，**任何** `-Proc` 值都走它；舊路徑刪掉或只留在明確指定時 |
 | I3 | `tools/pico/pico_serial.ps1` `Test-ForegroundGate`（約 229-284） | 硬編 `$fgProc.Name -ne "MetalRage"` → Blocked | 允許的前景行程名改成可設定的**單一值**，由 `pico_ctl` 在切換 active 實例時寫進 session 狀態。維持 fail-closed：值沒設就 Blocked。**必須用 `-eq` 精確比對**，且 worker 要附一個離線測試：前景是 `MetalRage2`、允許值是 `MetalRage` → **必須 Blocked**（PM） |
 | I4 | `tools/pico/client_ctl.ps1:39-41` | `$ProcName`／`$BatPath` 寫死主安裝 | 加「目標實例」參數，行程名與 launcher 從實例表來 |
-| I5 | `tools/pico/client_ctl.py:94,241-282` | `CLIENT_LOG_WSL` 寫死主安裝的 `MetalRage.log` | 依實例選 log；讀檔頭 `Init: Base directory:` 驗證這份 log 真的屬於該實例（見第 6 節 P1） |
+| I5 | `tools/pico/client_ctl.py:94,241-282` | `CLIENT_LOG_WSL` 寫死主安裝的 `data/Log/MetalRage.log` | **v3 改寫**：log 改成**執行期解析**——`launch_client` 記下啟動時刻，之後在該實例的 `data/System/` 找「啟動後才出現、mtime 最新」的 `run-*.log`，再用檔頭 `Init: Base directory:` 核對等於該實例的安裝路徑，不符就 fail-closed。路徑一律用**直接路徑**（`/mnt/c/Games/MetalRage Online[ 2]/data/...`），**絕對不要穿過 `MetalRage\` 這一段** |
 | I6 | `tools/pico/actions.py:164-171` `Context` | 全域單例，沒有「哪個客戶端」欄位 | 加 `clients`（實例表）與 `active_client`；所有輸入動作先經 `focus_client` |
 | I7 | `tools/pico/actions.py:1217-1275` `find_pkts_since` | 只按 `since_ms` 篩，不看 `conn` | 加 `conn=` 過濾；新 helper `resolve_conn_id(account)` |
 
@@ -105,12 +113,19 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
   現有劇本只處理過房主。沒定義就會在「非預期畫面就停」這一關卡住。
 - **L2：`MetalRage2` 的截圖可能抓到啟動畫面。** I2 沒做好就會重現 2026-09-19 那個舊問題。
   所以 `launch_client` 的主訊號用 log 檔頭而不是畫面。
-- **L3：副本的 `MetalRage\` 是 junction，指回主安裝。** 兩個實例的 `data\Log\` 有可能
-  是同一個目錄。這是實作前必須先釐清的事實，見 P1。
+- **L3（P1 已解決，2026-09-20）：`MetalRage\` 的 reparse point 只影響穿過它的路徑。**
+  兩份安裝的 `MetalRage\` 都是 WSL 建的 `LX_SYMLINK`（tag `0xa000001d`），buffer 內容都是
+  `/home/lucas/mro-reverse/MetalRage`，而那個又指回**主安裝**——所以副本的
+  `...\MetalRage Online 2\MetalRage\...` 其實繞回主安裝。
+  **但兩份安裝各自的 `data/Log`、`data/System` 是真正不同的目錄**（inode 實證：`data/System`
+  主 `1407374883884089` vs 副 `2251799813956129`；`data/Log` 主 `2251799814006291` vs
+  副 `118219490218740864`）。現有程式碼用的是不穿過 `MetalRage\` 的直接路徑，所以本來就
+  沒踩到這個陷阱。**規則：一律用直接路徑，不要用 `MetalRage\` 前綴。**
 
 ## 6. 實作前要先釐清的事實（P，唯讀，先做）
 
-- **P1（擋路，PM 擴大）：副本與主安裝共用了哪些路徑，不只 log。** junction 若涵蓋
+- ~~**P1（擋路）**~~ **→ 已解決，2026-09-20（見 L3 與下面的「P1 結果」）。**
+- **P1 的殘留項（PM 擴大的部分，仍待辦）：** junction 若涵蓋
   `User.ini`／`MetalRage.ini`／`OptionAll`，兩個實例就**共用設定**——UE2 的 `netspeed`
   指令會 `SaveConfig` 寫回 `User.ini`，帳號欄位的記憶也在裡面，這會影響劇本與之後的量測。
   同時要說清楚「副本的 `IpDrv.dll` 已修補、主安裝原廠」在 junction 結構下**為什麼成立**
@@ -133,6 +148,21 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
 - **P3：`MetalRage2` 截圖驗證。** I2 改完後，對 `MetalRage2` 截一張圖確認抓到的是遊戲
   視窗不是啟動畫面。
 
+### P1 結果（2026-09-20，唯讀盤點）
+
+| 問題 | 答案 |
+|---|---|
+| `HitLoc===`（WeaponLog）寫到哪 | **只在 `data/System/` 的 `run-*.log`**（`-log=` 啟動才有）。`data/Log/MetalRage.log` **0 筆** |
+| `Client netspeed is` 寫到哪 | **只在 `data/System/` 的 `run-*.log`**，兩份安裝都已經有實例（目前值都還是 10000）。`data/Log/MetalRage.log` **0 筆** |
+| 兩個實例會不會寫同一個檔 | **不會**，`data/Log`、`data/System` 兩份安裝 inode 不同 |
+| 怎麼認定一份 log 屬於誰 | 檔頭 `Init: Base directory:`，**所有**類型的 log 都有，已逐檔核對無例外 |
+
+`run-*.log` 的檔名是 `run-<HHMMSS.ss>.log`（`.bat` 用 `%time%` 組的），自動化拿不到精確值，
+所以要用「啟動時刻之後、mtime 最新」＋檔頭核對**兩層一起**認檔。
+
+🟡 未驗：原生 Win32 process 能不能穿透 `LX_SYMLINK` 型 reparse point。不影響結論，
+因為 `.bat` 是 `cd /d "%~dp0data\System"` 直接切目錄，遊戲寫 log 不經過那一段。
+
 ## 7. 第一個劇本：netspeed（next-test.md 的實驗）
 
 前置：伺服器在跑、兩個帳號都在白名單、STOP 檔不存在、P1–P3 都過。
@@ -149,7 +179,9 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
 7. 等 5 秒 → `console_cmd_on(joiner, "stat net")`（拿得到就截圖，拿不到不擋）
 8. `leave_battle(joiner)`、`leave_battle(host)`
 9. `close_client(joiner)`、`close_client(host)`（關掉才會完整 flush）
-10. 讀**房主**的 log，找 `Client netspeed is N`
+10. 讀**房主**（副本）這一輪的 `data/System/run-*.log`，找 `Client netspeed is N`
+    （認檔方式見 P1 結果；找之前先核對檔頭 `Init: Base directory:` 是
+    `C:\Games\MetalRage Online 2\data\System\`）
 
 **判讀**（next-test.md 已定）：
 - `N = 15000` → 只有房主那台要改（`MaxClientRate` clamp 生效）
