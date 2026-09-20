@@ -26,3 +26,12 @@
   - ReadyThread：凍結前後喚醒 MetalRage 執行緒的來源，**WerFault.exe 佔 186 次**，主執行緒在 4.024s 正是被 `WerFault.exe (71944)` 喚醒的。
 - → 排除清單只抑制回報，**不會阻止 WerFault 附加**。下一步請操作者停用 WerSvc 服務（`Stop-Service WerSvc -Force`、`Set-Service WerSvc -StartupType Disabled`），再量一次。
 - [OBS] 操作者觀察：用**道具很多的 Lucas** 帳號很快就復現，**什麼都沒有的 mrotest** 觸發少很多。🟡 可能是道具多的帳號會讓客戶端多跑會出例外的那段程式碼（例如道具清單處理）。伺服器在這 102 秒內送過兩批各約 80 個 `0x00240241`／`0x00240242`（每個 903 bytes）給 Lucas，但時間點（51.6–51.8 秒）跟凍結（3.7／73 秒）沒有重疊，所以不是封包直接觸發。
+
+## 真正的機制（2026-09-20 13:30，✅ 未經跨公司審查）
+- [OBS] 停用 `WerSvc` 服務之後，操作者回報「好像真的沒卡了」。
+- [TEST] `C:\Users\<user>\AppData\Local\CrashDumps\` 裡有 **10 個 29 MB 的 MetalRage 傾印檔**，時間 13:20–13:24（卡頓那幾分鐘），共 278 MB。→ 每一次卡頓就是 Windows 在寫一個 29 MB 的當機傾印檔，寫檔期間整個行程被暫停。
+- [TEST] 解析傾印檔（自寫的 minidump parser）：例外 `0xc0000005`，位址 **0x3**，不屬於任何已載入模組（解殼後的動態程式碼）。也就是呼叫了空指標。保護殼自己有處理常式接住，所以遊戲不會當。出錯的執行緒不是主執行緒。
+- [TEST] 登錄檔 `HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps` 底下只有第三方程式（`AltA2dp*`，藍牙音訊）的子機碼。**但只要這個機碼存在，Windows 就會對所有程式啟用本機傾印**（預設路徑 `%LOCALAPPDATA%\CrashDumps`），所以遊戲也被收集。
+- 結論：卡頓＝保護殼丟例外 → Windows 本機傾印功能被第三方程式打開 → WerFault 附加、暫停整個行程寫 29 MB 檔案 → 140–260 ms 凍結。**跟伺服器、網路、WSL 無關**，也不是 y0da 自己在暫停執行緒（H-Y0DA 已被推翻）。
+- 建議的精準解法（比停用整個服務好）：`LocalDumps\MetalRage.exe` 加 `DumpCount=0`，其他程式的錯誤回報維持正常。待操作者實測。
+- 朋友的機器要不要處理，看各自有沒有 `LocalDumps` 機碼；這是系統設定，不是遊戲問題。
