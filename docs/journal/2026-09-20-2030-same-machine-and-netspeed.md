@@ -98,3 +98,35 @@ DUAL-CLIENT 契約（`docs/backlog.md`）原本設 20 分鐘上限。實際卡�
 15000 從哪來 ⬜：不在任何 ini（grep 過兩份安裝）、不在解密腳本、也不是 `Engine.dll` 裡的 32-bit 立即數（唯一的 `15000` 位元組序列在 `0x105a0546` 附近，是 `mov word ptr [esi], 0x88db` 那段的巧合，不是運算元）。
 
 **明天的第一條線：** 從那兩個 UTF-16 `NETSPEED` 字串往回追 xref，找到處理該指令的函式，夾值應該就在附近。若能推到 100000，對比會大到不需要統計。
+
+## 6. 更正與定案（21:15）：15000 是編譯期常數，純設定的路全部走完
+
+**更正第 5 節。** 我寫「`15000` 那組位元組是巧合、不是運算元」是**錯的**——我從立即數中段開始反組譯才對不齊。子 agent 找到正確的位置（`journal/2026-09-20-2130-netspeed-clamp.md`），我回頭核對確認：
+
+```
+Engine.dll  UNetDriver::StaticConstructor (export VA 0x104a00f0)
+  0x104a0540  mov dword ptr [ebx+0x1168], 0x3a98   ; 15000 -> MaxClientRate
+  0x104a054a  mov dword ptr [ebx+0x116c], 0x2710   ; 10000 -> MaxInternetClientRate
+```
+
+**一次解釋完兩個實測值**：連線預設的 `CurrentNetSpeed` 10000 ＝ `MaxInternetClientRate`；`netspeed` 被夾在 15000 ＝ `MaxClientRate`。夾法是 `min(要求值, MaxClientRate)`，在 `UViewport::Exec`（export VA `0x104154f0`）VA `0x104156f0-0x104156ff`：讀 `[esi+0x1168]`、`cmp ebx,eax; jge; mov eax,ebx`，寫回 connection `+0x50`。同一個 cap 欄位在 `ULevel::NotifyReceivedText`（export VA `0x1047ec80`）VA `0x1047f9a4` 另做完整的 `Clamp(v,1800,cap)`。
+
+**純設定的路全部走完，一條都不通** [TEST] 2026-09-20 21:10：
+- `[IpDrv.TcpNetDriver] MaxClientRate/MaxInternetClientRate=100000`（原本就有）❌
+- `[Engine.Player] ConfiguredInternetSpeed/ConfiguredLanSpeed=100000`（User.ini，兩端）❌
+- `DefUser.ini` 的出廠 9636 改成 100000 ❌
+- **`[Engine.NetDriver] MaxClientRate/MaxInternetClientRate=100000`**（子 agent 建議，因為屬性宣告在基底類別）→ 兩端加上、兩端重開：`stat net` 仍 10000，`netspeed 100000` 仍夾在 15000 ❌。已還原（`MetalRage.ini.bak-netdriver`）。
+
+→ 這兩個值是 `StaticConstructor` 寫死的編譯期常數，**不是 config 可讀的屬性**。要提高只剩改 `Engine.dll` 兩個 4-byte 值：
+
+| file offset | 現值 | 意義 |
+|---|---|---|
+| `0x1a0546` | `98 3A 00 00`（15000） | `MaxClientRate` — `netspeed` 的上限 |
+| `0x1a0550` | `10 27 00 00`（10000） | `MaxInternetClientRate` — 連線預設值 |
+
+只改前者：要靠主控台下 `netspeed` 才生效。兩個都改：不下指令也生效。
+
+**尚未決定，等操作者與 PM 定調。** 相關事實：
+- 丟呼叫的是 authority 端（房主）的廣播迴圈，所以**理論上只有當房主那台需要改**；但我們的玩法裡每個人都可能開房。
+- y0da 監控的是 `MetalRage.exe` 的 `.text`；[TEST] 2026-09-19 對 `ZNetwork.dll` 做 1-byte patch 客戶端正常運作，所以**改 companion DLL 不觸發 y0da** 在這個客戶端上是實測成立的。但 `Engine.dll` 本身的保護狀況 ⬜ 沒查過。
+- 效果強度仍只有 n=35 的證據（32.4%→22.9%，未達顯著）。改二進位檔之前值得先把樣本補足，或直接用 10000 vs 100000 的大對比一次定案。
