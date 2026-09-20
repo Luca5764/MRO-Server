@@ -162,6 +162,30 @@ class ActionResult:
 
 
 @dataclass
+class ClientState:
+    """One dual-client instance's runtime state (docs/research/2026-09-20-
+    dual-pico/design.md section 1's per-client fields). id/proc_name are the
+    static config focus_client() needs; install_dir_win/bat_path_win are
+    kept here too so a future launch_client()/login_as() action has
+    everything in one place, but are not read by anything in this task's
+    scope (I6/I7 only add focus_client() and the conn-lookup helpers).
+    account/conn_id/launch_time_ms are filled in as a run progresses (by
+    login_as()/launch_client(), neither implemented this task).
+
+    This module never imports client_ctl.ClientInstance -- kept as a
+    separate, smaller struct on purpose, matching this module's existing
+    habit of shelling out to client_ctl.py/pico_ctl.py rather than
+    importing them (see module docstring)."""
+    id: str
+    proc_name: str
+    install_dir_win: str = None
+    bat_path_win: str = None
+    account: str = None
+    conn_id: int = None
+    launch_time_ms: float = None
+
+
+@dataclass
 class Context:
     dry_run: bool = False
     shots_dir: str = DEFAULT_SHOTS_DIR
@@ -169,6 +193,13 @@ class Context:
     poll_interval_s: float = 1.5
     shot_seq: int = 0
     run_id: str = "run"
+    # Dual-client support (docs/research/2026-09-20-dual-pico/design.md I6).
+    # Both default empty -- every existing single-client script never
+    # populates them, so focus_client()/the input-primitive guard below are
+    # no-ops and every existing action's behavior is unchanged (see
+    # focus_client()'s and _require_focused_client()'s docstrings).
+    clients: dict = field(default_factory=dict)   # id -> ClientState
+    active_client: str = None
 
 
 # ---------------------------------------------------------------------------
@@ -187,21 +218,55 @@ def run_pico(ctx, *args):
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip(), elapsed
 
 
-def take_screenshot(ctx, label):
+def take_screenshot(ctx, label, proc=None):
     """Runs tools/win/shot.sh --name <run_id>-<seq>-<label>, returns the saved
-    path. In dry-run mode returns None without touching anything."""
+    path. In dry-run mode returns None without touching anything.
+
+    proc (default None) adds '--proc <name>' to the shot.sh call, capturing
+    that instance's window instead of shot.sh's own default ("MetalRage",
+    unaffected here) -- see focus_client() (docs/research/2026-09-20-
+    dual-pico/design.md I6), the only caller that passes it."""
     if ctx.dry_run:
         return None
     ctx.shot_seq += 1
     name = f"{ctx.run_id}-{ctx.shot_seq:02d}-{label}"
-    proc = subprocess.run(["bash", SHOT_SH, "--name", name], capture_output=True, text=True)
-    lines = [l for l in proc.stdout.splitlines() if l.strip()]
-    if proc.returncode != 0 or not lines:
-        raise ActionError(f"shot.sh failed (rc={proc.returncode}): {proc.stdout} {proc.stderr}")
+    args = ["bash", SHOT_SH]
+    if proc:
+        args += ["--proc", proc]
+    args += ["--name", name]
+    proc_result = subprocess.run(args, capture_output=True, text=True)
+    lines = [l for l in proc_result.stdout.splitlines() if l.strip()]
+    if proc_result.returncode != 0 or not lines:
+        raise ActionError(f"shot.sh failed (rc={proc_result.returncode}): {proc_result.stdout} {proc_result.stderr}")
     return lines[0].strip()
 
 
+def _require_focused_client(ctx):
+    """Called by every primitive that sends real input to the game
+    (click_at/key/mouse_wiggle/type_text below) -- docs/research/2026-09-20-
+    dual-pico/design.md section 0 rule 7's "焦點切換的順序寫死...才准送任何輸入".
+    This is a cheap fail-closed presence check, NOT a re-verification of the
+    actual Windows foreground window on every keystroke (that already
+    happened once, inside focus_client(), which is the only thing allowed to
+    change ctx.active_client -- see its docstring for the full switch
+    sequence and readback).
+
+    No-op when ctx.clients is empty -- every existing single-client script
+    never populates it, so this never raises for them, and every action
+    built on these primitives behaves exactly as before this task. Once
+    ctx.clients IS populated (a dual-client run), raises ActionError if no
+    focus_client(id) call has happened yet (ctx.active_client is None) --
+    fail closed rather than silently sending input to whatever the OS
+    foreground currently is."""
+    if not ctx.clients:
+        return
+    if ctx.active_client is None:
+        raise ActionError("dual-client Context has clients configured but no "
+                           "active_client focused yet -- call focus_client(id) first")
+
+
 def click_at(ctx, xy, button="left"):
+    _require_focused_client(ctx)
     x, y = xy
     for fname, fxy in FORBIDDEN_CLICKS.items():
         if (x, y) == fxy:
@@ -210,6 +275,7 @@ def click_at(ctx, xy, button="left"):
 
 
 def key(ctx, key_name):
+    _require_focused_client(ctx)
     return run_pico(ctx, "key", key_name)
 
 
@@ -217,6 +283,7 @@ def mouse_wiggle(ctx, distance=1):
     """Zero-net mouse movement (MOVE <distance> 0 then MOVE <-distance> 0),
     used only as a harmless "still here" input by keepalive_wait() below --
     see its docstring for why a mouse move was chosen over a key press."""
+    _require_focused_client(ctx)
     return [run_pico(ctx, "move", distance, 0), run_pico(ctx, "move", -distance, 0)]
 
 
@@ -251,6 +318,7 @@ KEEPALIVE_KEY = "SHIFT"  # unused for keepalive since 2026-09-20: SHIFT toggles 
 
 
 def type_text(ctx, text):
+    _require_focused_client(ctx)
     if not all(0x20 <= ord(c) <= 0x7E for c in text):
         raise ActionError("console_cmd text must be printable ASCII (see pico_ctl.py TYPE gate)")
     return run_pico(ctx, "type", text)
@@ -331,13 +399,19 @@ def wait_for_log_markers(ctx, timeout_s, predicates, poll_interval_s=1.0, baseli
     return ok, found, time.monotonic() - t0
 
 
-def wait_for_log_pkts(ctx, timeout_s, predicates, poll_interval_s=1.0, baseline_ms=None):
+def wait_for_log_pkts(ctx, timeout_s, predicates, poll_interval_s=1.0, baseline_ms=None, conn=None):
     """Same contract as wait_for_log_markers() above, but polls
     find_pkts_since()'s raw {ev:'pkt', dir, op, ...} lines instead of
     {ev:'marker'} text -- predicates are fn(entry: dict) -> bool over the
     whole pkt record (not a text sentence), for signals that have no
     packetlog.marker() call to poll (see campaign_fail()'s docstring for why
     this exists: action=2's Campaign_CN reply has no R-ROUND marker).
+
+    conn (default None, docs/research/2026-09-20-dual-pico/design.md I7/
+    section 4): when given, only pkts from that connection are considered --
+    threaded straight through to find_pkts_since(). Every existing caller
+    here omits it, so find_pkts_since() sees conn=None and behaves exactly
+    as before this task (no filtering).
 
     Returns (ok: bool, found: dict[name, entry|None], elapsed_s). In dry-run
     mode returns (True, {}, 0.0) immediately without reading anything."""
@@ -348,7 +422,7 @@ def wait_for_log_pkts(ctx, timeout_s, predicates, poll_interval_s=1.0, baseline_
         baseline_ms = _newest_log_ms(ctx.logs_dir)
     found = {name: None for name in predicates}
     while True:
-        for entry in find_pkts_since(ctx.logs_dir, baseline_ms):
+        for entry in find_pkts_since(ctx.logs_dir, baseline_ms, conn=conn):
             for name, pred in predicates.items():
                 if found[name] is None and pred(entry):
                     found[name] = entry
@@ -1126,6 +1200,79 @@ def relaunch_client(ctx, account, reason="planned unattended relaunch"):
                          login_result.score, steps + login_result.steps, login_result.rounds)
 
 
+def focus_client(ctx, client_id):
+    """Triggered by nothing the player does -- an internal step for
+    dual-client unattended runs (docs/research/2026-09-20-dual-pico/
+    design.md I6), called before any action that needs to send input to a
+    SPECIFIC instance when more than one is running. Implements section 0
+    rule 7's fixed switch order, each step gating the next (any failure
+    halts here, returns ok=False -- no retry, no stealing focus again):
+
+      1. Change the foreground process name pico_serial.ps1's gate accepts,
+         via `pico_ctl.py session set-proc <name>` (writes active_proc into
+         the shared .pico_session file -- see pico_ctl.py's
+         run_serial_commands()/_serial_cmd_extra_args()). Requires an
+         already-open session (same require_session() gate every other
+         pico_ctl.py input command uses).
+      2. SetForegroundWindow on that instance's window, via
+         `tools/win/shot.sh --proc <name>` (screen.ps1 does this as a side
+         effect of capturing a screenshot -- see take_screenshot()'s `proc`
+         param).
+      3. Read back the ACTUAL foreground process via client_ctl.py's
+         `foreground` subcommand -- a plain Win32 GetForegroundWindow()
+         query that sends no input and is not itself gated. Only if this
+         equals the target proc_name does ctx.active_client get updated,
+         which is what _require_focused_client() (the guard every
+         click_at/key/type_text/mouse_wiggle call makes) checks before
+         allowing any input through.
+
+    client_id must be a key in ctx.clients (a dict of id -> ClientState,
+    populated by the caller -- not by this function). Every existing
+    single-client script never populates ctx.clients, so this action is
+    simply never called in that case; nothing else in this module changes
+    behavior as a result of this function existing (see
+    _require_focused_client()'s and take_screenshot()'s docstrings for the
+    two places that would otherwise be affected)."""
+    t0 = time.monotonic()
+    if client_id not in ctx.clients:
+        detail = f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})"
+        return ActionResult("focus_client", False, False, time.monotonic() - t0, detail, None, None, [])
+    inst = ctx.clients[client_id]
+
+    if ctx.dry_run:
+        ctx.active_client = client_id
+        detail = f"dry-run: would focus {client_id!r} ({inst.proc_name})"
+        return ActionResult("focus_client", True, False, time.monotonic() - t0, detail, None, None, [])
+
+    steps = []
+    rc, out, err, elapsed = run_pico(ctx, "session", "set-proc", inst.proc_name)
+    steps.append((rc, out, err, elapsed))
+    if rc != 0:
+        detail = f"session set-proc {inst.proc_name!r} failed (rc={rc}): {out} {err}"
+        return ActionResult("focus_client", False, False, time.monotonic() - t0, detail, None, None, steps)
+
+    shot_path = None
+    try:
+        shot_path = take_screenshot(ctx, f"focus-{client_id}", proc=inst.proc_name)
+    except ActionError as ex:
+        detail = f"shot.sh --proc {inst.proc_name} failed: {ex}"
+        return ActionResult("focus_client", False, False, time.monotonic() - t0, detail, None, None, steps)
+
+    fg_proc = subprocess.run([sys.executable, CLIENT_CTL, "foreground"],
+                              capture_output=True, text=True, timeout=15)
+    steps.append((fg_proc.returncode, fg_proc.stdout.strip(), fg_proc.stderr.strip(), 0.0))
+    actual = fg_proc.stdout.strip() if fg_proc.returncode == 0 else None
+    if actual != inst.proc_name:
+        detail = (f"foreground readback mismatch after SetForegroundWindow: expected "
+                  f"{inst.proc_name!r}, got {actual!r} (rc={fg_proc.returncode}, "
+                  f"raw stdout={fg_proc.stdout.strip()!r} stderr={fg_proc.stderr.strip()!r})")
+        return ActionResult("focus_client", False, False, time.monotonic() - t0, detail, shot_path, None, steps)
+
+    ctx.active_client = client_id
+    detail = f"focused {client_id!r} ({inst.proc_name}), foreground confirmed"
+    return ActionResult("focus_client", True, False, time.monotonic() - t0, detail, shot_path, None, steps)
+
+
 ACTIONS = {
     "goto_shop": goto_shop,
     "shop_tab": shop_tab,
@@ -1144,6 +1291,7 @@ ACTIONS = {
     "wait_result_then_room": wait_result_then_room,
     "leave_room": leave_room,
     "login": login,
+    "focus_client": focus_client,
     "relaunch_client": relaunch_client,
 }
 
@@ -1243,14 +1391,21 @@ def find_markers_since(logs_dir, since_ms, limit=200):
     return out[-limit:]
 
 
-def find_pkts_since(logs_dir, since_ms, limit=200):
+def find_pkts_since(logs_dir, since_ms, limit=200, conn=None):
     """Returns up to `limit` most recent {ev:'pkt', dir, op, len, hex, ...}
     lines (see packetlog.js's packet()) with ms > since_ms from the newest
     session log, oldest first. Same shape/semantics as find_markers_since()
     above but over raw packet records instead of {ev:'marker'} text -- used
     when no packetlog.marker() call exists for the signal this task needs
     (campaign_fail's EndGame_SN, deltest's Death_CN/Death_SN counts). Empty
-    list (not an error) if there is no logs dir / file."""
+    list (not an error) if there is no logs dir / file.
+
+    conn (default None, docs/research/2026-09-20-dual-pico/design.md I7/
+    section 4): when given, only entries whose 'conn' field equals it are
+    returned -- packetlog.js's client.connId_, the one field that actually
+    tells two simultaneous clients apart ('port' does not, see design.md
+    section 4). Every existing caller omits this (conn=None means "no
+    filtering, every connection"), so this parameter is purely additive."""
     path = newest_session_log(logs_dir)
     if path is None:
         return []
@@ -1267,12 +1422,41 @@ def find_pkts_since(logs_dir, since_ms, limit=200):
                     continue
                 if entry.get("ev") != "pkt":
                     continue
+                if conn is not None and entry.get("conn") != conn:
+                    continue
                 if entry.get("ms", 0) <= since_ms:
                     continue
                 out.append(entry)
     except OSError:
         return []
     return out[-limit:]
+
+
+def resolve_conn_id(logs_dir, account, since_ms):
+    """Finds `account`'s conn id from pkt records written after since_ms in
+    the newest session log (docs/research/2026-09-20-dual-pico/design.md
+    section 4: "ctx.accountId_／ctx.nickname_ 也在 pkt 裡，但登入前不會出現").
+    The login_cq pkt itself (LOGIN_CQ_OPCODE, see login()) has an empty ctx
+    -- the account name only shows up in ctx.nickname on pkts sent AFTER
+    login succeeds (confirmed against a real session log 2026-09-20: the
+    very next send pkts on that conn, e.g. 0x00210101, already carry
+    {"accountId":1,"nickname":"Lucas"}) -- so this scans forward from
+    since_ms for the first entry whose ctx.nickname exactly equals `account`
+    and returns its 'conn' field.
+
+    Exact string match only (no case-folding/partial match) -- account names
+    are validated printable-ASCII elsewhere (see login()'s check) and two
+    different accounts should never share a nickname on the same server.
+
+    Returns the conn id (int) or None if no matching entry exists yet
+    (caller should treat None as "not resolved yet", not as an error --
+    there's a small window between login_cq itself and the first pkt
+    carrying ctx.nickname)."""
+    for entry in find_pkts_since(logs_dir, since_ms):
+        c = entry.get("ctx") or {}
+        if c.get("nickname") == account:
+            return entry.get("conn")
+    return None
 
 
 def tail_pico_markers(logs_dir, since_ms=None, limit=50):

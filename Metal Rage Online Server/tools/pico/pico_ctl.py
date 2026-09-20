@@ -9,6 +9,12 @@ Usage:
   ./pico_ctl.py ping                        # Test connection and latency (no session needed)
   ./pico_ctl.py session start "why"         # Open an unattended-run session (required below)
   ./pico_ctl.py session end                 # Close it
+  ./pico_ctl.py session set-proc MetalRage2 # Dual-client: change which process the foreground
+                                             #   gate accepts (see actions.py's focus_client(),
+                                             #   docs/research/2026-09-20-dual-pico/design.md I6).
+                                             #   Requires an open session. Single-client scripts
+                                             #   never call this -- the gate stays "MetalRage".
+  ./pico_ctl.py session get-proc            # Read-only: print the current active_proc, or "(none)"
   ./pico_ctl.py key F5                      # Press F5 (Ready / Start)
   ./pico_ctl.py key ENTER                   # Press Enter (Login)
   ./pico_ctl.py press W 1500                # Hold W for 1.5 seconds (walk)
@@ -194,6 +200,49 @@ def session_end():
     log_action("session end", f"{purpose} (client restarts: {restarts})")
 
 
+def session_set_proc(proc_name):
+    """Sets 'active_proc' in the open session's state file -- the ONE thing
+    dual-client automation (docs/research/2026-09-20-dual-pico/design.md I6)
+    needs from this module: pico_serial.ps1's foreground gate must be told
+    which process is currently the intended target BEFORE any input is
+    sent, via -AllowedProc (see _serial_cmd_extra_args() below). Requires an
+    open, non-halted session -- same require_session() gate as every other
+    input-adjacent pico_ctl.py command -- since this changes what the gate
+    will accept for every subsequent command in this session. Called by
+    actions.py's focus_client(), never by a single-client script (none of
+    which know this subcommand exists)."""
+    require_session(f"session set-proc {proc_name}")
+    state = _load_session()
+    state["active_proc"] = proc_name
+    _save_session(state)
+    print(f"[PICO] active_proc set to {proc_name!r}")
+    log_action(f"session set-proc {proc_name}", "ok")
+
+
+def session_get_proc():
+    """Read-only: prints the open session's current active_proc (or
+    '(none)' if there is no open session / it was never set). No session
+    gate -- purely informational, used for manual inspection/offline
+    testing, never by any action."""
+    state = _load_session()
+    proc_name = state.get("active_proc") if state else None
+    print(proc_name if proc_name else "(none)")
+
+
+def _serial_cmd_extra_args():
+    """Returns ['-AllowedProc', <name>] if the open session has an
+    active_proc set (session_set_proc() above, i.e. actions.py's
+    focus_client() ran at least once in this session), else [] -- so
+    pico_serial.ps1 falls back to its own hardcoded default ("MetalRage")
+    exactly as it did before this task whenever no dual-client focus switch
+    has happened (every existing single-client script's session never sets
+    active_proc, so this always returns [] for them -- see
+    run_serial_commands())."""
+    state = _load_session()
+    active_proc = state.get("active_proc") if state else None
+    return ["-AllowedProc", active_proc] if active_proc else []
+
+
 def halt_session(reason):
     state = _load_session()
     if state is not None and not state.get("halted"):
@@ -300,6 +349,7 @@ def run_serial_commands(commands, port=None, timeout=30.0):
     pico_port = port or get_pico_port()
     if pico_port:
         cmd += ["-Port", pico_port]
+    cmd += _serial_cmd_extra_args()
     cmd += list(commands)
 
     t0 = time.monotonic()
@@ -427,7 +477,7 @@ def main():
 
     if action == "session":
         if len(sys.argv) < 3:
-            print('Usage: ./pico_ctl.py session (start "<purpose>" | end)')
+            print('Usage: ./pico_ctl.py session (start "<purpose>" | end | set-proc <NAME> | get-proc)')
             sys.exit(1)
         sub = sys.argv[2].lower()
         if sub == "start":
@@ -435,8 +485,15 @@ def main():
             session_start(purpose)
         elif sub == "end":
             session_end()
+        elif sub == "set-proc":
+            if len(sys.argv) < 4:
+                print("Usage: ./pico_ctl.py session set-proc <PROC_NAME>")
+                sys.exit(1)
+            session_set_proc(sys.argv[3])
+        elif sub == "get-proc":
+            session_get_proc()
         else:
-            print('Usage: ./pico_ctl.py session (start "<purpose>" | end)')
+            print('Usage: ./pico_ctl.py session (start "<purpose>" | end | set-proc <NAME> | get-proc)')
             sys.exit(1)
         return
 
