@@ -689,3 +689,7 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
   - 一般房（非協力）從沒完整跑過；
   - `Boss_SN 0x00230138` 沒實作。
 - 先做唯讀格式分析，再決定。排在 P4。
+
+## SHARE-UPSTREAM：分享給上游的發現
+- Win11 卡頓的根因與一行檢查法（`%LOCALAPPDATA%\CrashDumps` 是否一直產生 MetalRage 傾印檔），見 `journal/2026-09-20-1240-stutter-root-cause.md`。上游 Win11 修正的作者自己也有這個卡頓。
+- 等操作者跟 moonlight 的對話有進展再送出；一併放進之後要寫的 `docs/PROTOCOL-SUMMARY.en.md`。
