@@ -11,31 +11,35 @@
 // switch/error-handling behaviour, both already covered by
 // test/match-stats.js for the opcode-flow side.
 //
+// Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "需修改 --
+// 整場寫回不是原子操作"): db.recordMatch()/db.applyMatchAccumulation() were
+// merged into one db.recordMatchWithAccumulation(match, rounds, participants,
+// accumulations) call -- these tests were updated to spy on that single
+// function instead of two.
+//
 // Cases (task contract "one full match; matches row fields, N round rows,
 // participants, accumulation math, aborted -> nothing written, switch off ->
 // nothing at all, DB error -> logged and swallowed"):
 //   1. Switch off (MATCH_STATS_MODE enabled, MATCH_WRITEBACK_MODE disabled):
 //      emitMatchSummary still emits its MATCH-SUMMARY marker (step 2,
-//      unaffected) but db.recordMatch/applyMatchAccumulation are never
-//      called.
-//   2. Both switches on, a 2-round match: db.recordMatch is called once with
-//      the correct matches/rounds/participants payload; db.applyMatchAccumulation
-//      is called once per participant with the correct accumulation deltas
-//      (exp/point = kills * EXP_PER_KILL/POINT_PER_KILL, wins/losses from
-//      the match result, mechType from client.currentHangarSlot_).
-//   3. Aborted match (emitMatchAborted, never reaches EndGame_SN): neither
-//      db function is ever called, even with both switches on
-//      (ABORTED_MATCHES_ARE_NOT_PERSISTED).
-//   4. db.recordMatch rejects: emitMatchSummary() itself does not throw
-//      (nothing for a caller in dispatch/lobby.dispatch.js to catch), and
-//      db.applyMatchAccumulation is never called for that match (recordMatch
-//      failed before the accumulation loop is ever reached).
+//      unaffected) but db.recordMatchWithAccumulation is never called.
+//   2. Both switches on, a 2-round match: db.recordMatchWithAccumulation is
+//      called once with the correct matches/rounds/participants payload and
+//      one accumulations[] entry per participant (exp/point = kills *
+//      EXP_PER_KILL/POINT_PER_KILL, wins/losses from the match result,
+//      mechType from client.currentHangarSlot_).
+//   3. Aborted match (emitMatchAborted, never reaches EndGame_SN):
+//      db.recordMatchWithAccumulation is never called, even with both
+//      switches on (ABORTED_MATCHES_ARE_NOT_PERSISTED).
+//   4. db.recordMatchWithAccumulation rejects: emitMatchSummary() itself does
+//      not throw (nothing for a caller in dispatch/lobby.dispatch.js to
+//      catch).
 //   5. LEAD DECISION (2026-09-20, resolving open question 2 from docs/design/
 //      p3-step3-writeback-impl.md §6): an is_test match still calls
-//      db.recordMatch (matches/match_rounds/match_participants rows are
-//      written, is_test=true) but never calls db.applyMatchAccumulation --
-//      a dedicated test account must never pollute real records/mech_levels
-//      totals.
+//      db.recordMatchWithAccumulation (matches/match_rounds/
+//      match_participants rows are written, is_test=true) but with an empty
+//      accumulations[] array -- a dedicated test account must never pollute
+//      real records/mech_levels totals.
 //
 // Run: node test/match-writeback.js  (exit 0 = pass, exit 1 = fail)
 
@@ -117,24 +121,17 @@ function playTwoRoundMatch(room)
 function installDbSpies()
 {
     const recordMatchCalls = [];
-    const applyAccumulationCalls = [];
-    const originalRecordMatch = db.recordMatch;
-    const originalApply = db.applyMatchAccumulation;
+    const original = db.recordMatchWithAccumulation;
 
-    db.recordMatch = async (match, rounds, participants) => {
-        recordMatchCalls.push({ match, rounds, participants });
+    db.recordMatchWithAccumulation = async (match, rounds, participants, accumulations) => {
+        recordMatchCalls.push({ match, rounds, participants, accumulations });
         return 12345; // fake matches.id
-    };
-    db.applyMatchAccumulation = async (accountId, delta) => {
-        applyAccumulationCalls.push({ accountId, delta });
     };
 
     return {
         recordMatchCalls,
-        applyAccumulationCalls,
         restore() {
-            db.recordMatch = originalRecordMatch;
-            db.applyMatchAccumulation = originalApply;
+            db.recordMatchWithAccumulation = original;
         },
     };
 }
@@ -152,8 +149,7 @@ async function testSwitchOffNoWriteback()
         matchStats.emitMatchSummary(room, { result: 1 });
         await flushAsync();
 
-        assert.strictEqual(spies.recordMatchCalls.length, 0, 'MATCH_WRITEBACK_MODE disabled: db.recordMatch must never be called');
-        assert.strictEqual(spies.applyAccumulationCalls.length, 0, 'MATCH_WRITEBACK_MODE disabled: db.applyMatchAccumulation must never be called');
+        assert.strictEqual(spies.recordMatchCalls.length, 0, 'MATCH_WRITEBACK_MODE disabled: db.recordMatchWithAccumulation must never be called');
         const summaryMarkers = markers.captured.filter((t) => t.startsWith('MATCH-SUMMARY '));
         assert.strictEqual(summaryMarkers.length, 1, 'step 2 behaviour (MATCH-SUMMARY marker) must be unaffected by the writeback switch being off');
         const writebackMarkers = markers.captured.filter((t) => t.startsWith('MATCH-WRITEBACK'));
@@ -181,8 +177,8 @@ async function testFullMatchWriteback()
         matchStats.emitMatchSummary(room, { result: 1 }); // win
         await flushAsync();
 
-        assert.strictEqual(spies.recordMatchCalls.length, 1, 'expected exactly one db.recordMatch call');
-        const { match, rounds, participants } = spies.recordMatchCalls[0];
+        assert.strictEqual(spies.recordMatchCalls.length, 1, 'expected exactly one db.recordMatchWithAccumulation call');
+        const { match, rounds, participants, accumulations } = spies.recordMatchCalls[0];
 
         // --- matches row fields ---
         assert.strictEqual(match.roomId, 42);
@@ -230,18 +226,20 @@ async function testFullMatchWriteback()
         assert.strictEqual(p2.pointGained, 10);
         assert.strictEqual(p2.mechType, 5);
 
-        // --- accumulation math ---
-        assert.strictEqual(spies.applyAccumulationCalls.length, 2, 'expected one db.applyMatchAccumulation call per participant');
-        const acc1 = spies.applyAccumulationCalls.find((c) => c.accountId === 1).delta;
-        const acc2 = spies.applyAccumulationCalls.find((c) => c.accountId === 2).delta;
+        // --- accumulation math (same one-transaction call's accumulations[] array) ---
+        assert.strictEqual(accumulations.length, 2, 'expected one accumulations[] entry per participant');
+        const acc1 = accumulations.find((a) => a.accountId === 1);
+        const acc2 = accumulations.find((a) => a.accountId === 2);
 
         assert.deepStrictEqual(acc1, {
+            accountId: 1,
             exp: 20, wins: 1, losses: 0,
             kills: 2, deaths: 1,
             mechType: 3, mechExp: 20, mechKills: 2, mechDeaths: 1, mechSorties: 1,
         }, 'account 1 accumulation delta must match kills/deaths/exp and a win, never an overwrite');
 
         assert.deepStrictEqual(acc2, {
+            accountId: 2,
             exp: 10, wins: 1, losses: 0,
             kills: 1, deaths: 2,
             mechType: 5, mechExp: 10, mechKills: 1, mechDeaths: 2, mechSorties: 1,
@@ -249,9 +247,9 @@ async function testFullMatchWriteback()
 
         const okMarkers = markers.captured.filter((t) => t.startsWith('MATCH-WRITEBACK-OK '));
         assert.strictEqual(okMarkers.length, 1, 'expected exactly one MATCH-WRITEBACK-OK marker');
-        assert.ok(okMarkers[0].includes('matchId=12345'), 'MATCH-WRITEBACK-OK must include the matchId db.recordMatch returned');
+        assert.ok(okMarkers[0].includes('matchId=12345'), 'MATCH-WRITEBACK-OK must include the matchId db.recordMatchWithAccumulation returned');
 
-        console.log('[match-writeback test] PASS: a full 2-round match writes correct matches/rounds/participants rows and accumulation deltas');
+        console.log('[match-writeback test] PASS: a full 2-round match writes correct matches/rounds/participants rows and accumulation deltas in one call');
     } finally {
         markers.restore();
         spies.restore();
@@ -273,8 +271,7 @@ async function testAbortedMatchNotWritten()
         matchStats.emitMatchAborted(room, 'host-left'); // never reached EndGame_SN
         await flushAsync();
 
-        assert.strictEqual(spies.recordMatchCalls.length, 0, 'ABORTED_MATCHES_ARE_NOT_PERSISTED: db.recordMatch must never be called for an aborted match');
-        assert.strictEqual(spies.applyAccumulationCalls.length, 0, 'ABORTED_MATCHES_ARE_NOT_PERSISTED: db.applyMatchAccumulation must never be called either');
+        assert.strictEqual(spies.recordMatchCalls.length, 0, 'ABORTED_MATCHES_ARE_NOT_PERSISTED: db.recordMatchWithAccumulation must never be called for an aborted match');
         const abortedMarkers = markers.captured.filter((t) => t.startsWith('MATCH-ABORTED '));
         assert.strictEqual(abortedMarkers.length, 1, 'the (memory/log-only) MATCH-ABORTED marker must still be emitted');
 
@@ -291,11 +288,8 @@ async function testDbErrorIsLoggedAndSwallowed()
 {
     matchStats._setMatchStatsModeForTest('enabled');
     matchStats._setMatchWritebackModeForTest('enabled');
-    const originalRecordMatch = db.recordMatch;
-    db.recordMatch = async () => { throw new Error('fake DB connection refused'); };
-    let applyCalled = false;
-    const originalApply = db.applyMatchAccumulation;
-    db.applyMatchAccumulation = async () => { applyCalled = true; };
+    const original = db.recordMatchWithAccumulation;
+    db.recordMatchWithAccumulation = async () => { throw new Error('fake DB connection refused'); };
     const markers = captureMarkers((t) => t.startsWith('MATCH-'));
     const errors = captureConsoleError();
 
@@ -311,7 +305,6 @@ async function testDbErrorIsLoggedAndSwallowed()
 
         await flushAsync();
 
-        assert.strictEqual(applyCalled, false, 'a recordMatch failure must stop before the per-participant accumulation loop');
         assert.ok(errors.captured.some((line) => line.includes('fake DB connection refused')), 'the DB error must be logged via console.error');
         const failedMarkers = markers.captured.filter((t) => t.startsWith('MATCH-WRITEBACK-FAILED '));
         assert.strictEqual(failedMarkers.length, 1, 'expected exactly one MATCH-WRITEBACK-FAILED marker');
@@ -319,12 +312,11 @@ async function testDbErrorIsLoggedAndSwallowed()
         const okMarkers = markers.captured.filter((t) => t.startsWith('MATCH-WRITEBACK-OK '));
         assert.strictEqual(okMarkers.length, 0, 'must not also emit a success marker');
 
-        console.log('[match-writeback test] PASS: a db.recordMatch failure is logged (console.error + MATCH-WRITEBACK-FAILED) and swallowed, never thrown');
+        console.log('[match-writeback test] PASS: a db.recordMatchWithAccumulation failure is logged (console.error + MATCH-WRITEBACK-FAILED) and swallowed, never thrown');
     } finally {
         markers.restore();
         errors.restore();
-        db.recordMatch = originalRecordMatch;
-        db.applyMatchAccumulation = originalApply;
+        db.recordMatchWithAccumulation = original;
         matchStats._setMatchStatsModeForTest('disabled');
         matchStats._setMatchWritebackModeForTest('disabled');
     }
@@ -336,7 +328,10 @@ async function testDbErrorIsLoggedAndSwallowed()
 // it must never accumulate into records/mech_levels -- a dedicated test
 // account (docs/reference/unattended-policy.md, docs/backlog.md AUTO
 // section) exists precisely so unattended/cheated runs never pollute real
-// stats, and accumulation is exactly that pollution.
+// stats, and accumulation is exactly that pollution. Sol batch6 review
+// point 3: this is now expressed as an empty accumulations[] array passed
+// to the single recordMatchWithAccumulation() call, not a separate
+// early-return before a second DB call.
 async function testIsTestMatchRecordedButNotAccumulated()
 {
     matchStats._setMatchStatsModeForTest('enabled');
@@ -350,19 +345,19 @@ async function testIsTestMatchRecordedButNotAccumulated()
         matchStats.emitMatchSummary(room, { result: 1 });
         await flushAsync();
 
-        assert.strictEqual(spies.recordMatchCalls.length, 1, 'an is_test match must still call db.recordMatch');
-        const { match, rounds, participants } = spies.recordMatchCalls[0];
+        assert.strictEqual(spies.recordMatchCalls.length, 1, 'an is_test match must still call db.recordMatchWithAccumulation');
+        const { match, rounds, participants, accumulations } = spies.recordMatchCalls[0];
         assert.strictEqual(match.isTest, true, 'matches.is_test must be true (host OR any participant is the test account)');
         assert.strictEqual(rounds.length, 2, 'match_rounds rows must still be written for an is_test match');
         assert.strictEqual(participants.length, 2, 'match_participants rows must still be written for an is_test match');
 
-        assert.strictEqual(spies.applyAccumulationCalls.length, 0, 'an is_test match must NEVER call db.applyMatchAccumulation, for any participant');
+        assert.strictEqual(accumulations.length, 0, 'an is_test match must pass an EMPTY accumulations[] array -- never accumulate for any participant');
 
         const okMarkers = markers.captured.filter((t) => t.startsWith('MATCH-WRITEBACK-OK '));
         assert.strictEqual(okMarkers.length, 1, 'expected exactly one MATCH-WRITEBACK-OK marker');
         assert.ok(okMarkers[0].includes('isTest=true'), 'the success marker should note that this was an is_test match (accumulation skipped)');
 
-        console.log('[match-writeback test] PASS: an is_test match still writes matches/match_rounds/match_participants rows but never calls applyMatchAccumulation');
+        console.log('[match-writeback test] PASS: an is_test match still writes matches/match_rounds/match_participants rows but passes an empty accumulations[] array');
     } finally {
         markers.restore();
         spies.restore();

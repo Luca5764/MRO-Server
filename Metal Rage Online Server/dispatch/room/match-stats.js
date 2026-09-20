@@ -356,22 +356,31 @@ function emitMatchSummary(room, { result })
 
 /**
  * P3 step 3 (docs/design/p3-step1-writeback.md, docs/design/
- * p3-step3-writeback-impl.md): persists one finished match to the DB.
- * Fire-and-forget -- returns immediately (does not return a Promise the
- * caller could accidentally await), so it can never block the EndGame_SN
- * packet path emitMatchSummary() is called from. Its own async IIFE catches
- * everything: a DB failure only logs (console.error + a
- * MATCH-WRITEBACK-FAILED marker), it never throws back into
- * emitMatchSummary()/dispatch() because there is no synchronous call for it
- * to throw into.
+ * p3-step3-writeback-impl.md; Sol batch6 review point 3): persists one
+ * finished match to the DB. Fire-and-forget -- returns immediately (does
+ * not return a Promise the caller could accidentally await), so it can
+ * never block the EndGame_SN packet path emitMatchSummary() is called
+ * from. Its own async IIFE catches everything: a DB failure only logs
+ * (console.error + a MATCH-WRITEBACK-FAILED marker), it never throws back
+ * into emitMatchSummary()/dispatch() because there is no synchronous call
+ * for it to throw into.
  *
  * Only ever called from emitMatchSummary() above, so a match reaches this
  * function if and only if it reached EndGame_SN (ABORTED_MATCHES_ARE_NOT_PERSISTED).
  *
+ * Sol batch6 review point 3 ("需修改 -- 整場寫回不是原子操作"): the matches/
+ * match_rounds/match_participants inserts and every non-test participant's
+ * records/mech_levels accumulation are now a single call to
+ * db.recordMatchWithAccumulation() -- one DB transaction, not "insert, then
+ * a separate transaction per participant". A failure anywhere (including
+ * an affectedRows mismatch inside db.js) rolls back the whole match, so a
+ * MATCH-WRITEBACK-FAILED marker now means "nothing was written", never
+ * "partially written".
+ *
  * LEAD DECISION (2026-09-20): an is_test match still gets its matches/
  * match_rounds/match_participants rows recorded, but never accumulates into
- * records/mech_levels -- see the `if (isTest)` branch inside the IIFE below
- * for the full reasoning.
+ * records/mech_levels -- implemented by passing an empty `accumulations`
+ * array to db.recordMatchWithAccumulation() when isTest (see below).
  *
  * @param {import('../../rooms.js').Room} room
  * @param {object} ms - room.matchStats, already finalized by the caller
@@ -407,41 +416,40 @@ function scheduleMatchWriteback(room, ms, result, participantsForDb, isTest)
         suspicious: false,
     }));
 
+    // LEAD DECISION (2026-09-20, coordinator, resolving open question 2 from
+    // docs/design/p3-step3-writeback-impl.md §6): an is_test match's
+    // matches/match_rounds/match_participants rows are still written
+    // (useful for debugging the writeback pipeline itself), but it must
+    // NEVER accumulate into records/mech_levels. The whole point of a
+    // dedicated test account (docs/reference/unattended-policy.md,
+    // docs/backlog.md AUTO section) is that unattended/cheated runs never
+    // pollute real stats -- accumulation is exactly that pollution. Passing
+    // an empty accumulations array (rather than a separate early-return
+    // branch, now that both are one call) is the explicit mechanism; the
+    // isTest=true note on the success marker below still records this was
+    // a deliberate skip, not an accident.
+    const accumulations = isTest ? [] : participantsForDb.map((participant) => ({
+        accountId: participant.accountId,
+        exp: participant.expGained,
+        wins: participant.result === 1 ? 1 : 0,
+        losses: participant.result === 2 ? 1 : 0,
+        kills: participant.kills,
+        deaths: participant.deaths,
+        mechType: participant.mechType,
+        mechExp: participant.expGained,
+        mechKills: participant.kills,
+        mechDeaths: participant.deaths,
+        mechSorties: 1,
+    }));
+
     (async () => {
         try {
-            const matchId = await db.recordMatch(matchPayload, roundsPayload, participantsForDb);
-
-            // LEAD DECISION (2026-09-20, coordinator, resolving open question
-            // 2 from docs/design/p3-step3-writeback-impl.md §6): an is_test
-            // match's matches/match_rounds/match_participants rows are still
-            // written above (useful for debugging the writeback pipeline
-            // itself), but it must NEVER accumulate into records/mech_levels.
-            // The whole point of a dedicated test account
-            // (docs/reference/unattended-policy.md, docs/backlog.md AUTO
-            // section) is that unattended/cheated runs never pollute real
-            // stats -- accumulation is exactly that pollution. This is an
-            // explicit branch, not a silent filter, so a reviewer can find
-            // the decision here rather than infer it from an early return.
+            const matchId = await db.recordMatchWithAccumulation(matchPayload, roundsPayload, participantsForDb, accumulations);
             if (isTest) {
                 packetlog.marker(`MATCH-WRITEBACK-OK matchId=${matchId} room=${room.id} isTest=true (accumulation skipped)`, 'auto');
-                return;
+            } else {
+                packetlog.marker(`MATCH-WRITEBACK-OK matchId=${matchId} room=${room.id}`, 'auto');
             }
-
-            for (const participant of participantsForDb) {
-                await db.applyMatchAccumulation(participant.accountId, {
-                    exp: participant.expGained,
-                    wins: participant.result === 1 ? 1 : 0,
-                    losses: participant.result === 2 ? 1 : 0,
-                    kills: participant.kills,
-                    deaths: participant.deaths,
-                    mechType: participant.mechType,
-                    mechExp: participant.expGained,
-                    mechKills: participant.kills,
-                    mechDeaths: participant.deaths,
-                    mechSorties: 1,
-                });
-            }
-            packetlog.marker(`MATCH-WRITEBACK-OK matchId=${matchId} room=${room.id}`, 'auto');
         } catch (err) {
             console.error(`[match-stats] MATCH_WRITEBACK_MODE: failed to persist room #${room.id}'s match: ${err.message}`);
             packetlog.marker(`MATCH-WRITEBACK-FAILED room=${room.id} error=${err.message}`, 'auto');
