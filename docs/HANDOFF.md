@@ -5,6 +5,75 @@
 
 ---
 
+## 🌙 夜間報告（2026-09-20 23:00–23:5x，Claude 執行者）
+
+**結論先說：今晚沒有跑 netspeed 劇本，被兩件事擋住，明早需要操作者做兩件事（見下）。**
+程式該做的都做完並合併了，全部有離線測試、主力親自重跑過。
+
+### ⚠️ 明早需要操作者做的兩件事
+
+1. **按一下那個卡住的客戶端的 X。** 主安裝有一個殘留的 `MetalRage.exe`（**pid=66356**，
+   停在登入畫面，沒登入、沒操作、沒連伺服器）。它關不掉：`taskkill`／`Stop-Process`
+   對這個客戶端一律被系統拒絕（既有已知事實，它以提升權限執行），而專案唯一支援的
+   關閉路徑（Pico 點擊標題列 X）被下面第 2 點的閘門擋住。**它佔著 `MetalRage.exe`
+   這個行程名，在它關掉之前同機雙開的加入者那一側起不來。**
+2. **同不同意把兩個實例的遊戲解析度設回 atlas 對應值（1600x1200）？**
+   兩份安裝現在都是 **1152x864**（`data\System\OptionAll.ini` 的
+   `op_Display=(ScreenSize="1152x864",...)`），而 Pico 的 atlas 是照 1616x1239 截圖
+   （client 1600x1200）建的。PM 裁決：先備份、可還原、寫進 HANDOFF，**要操作者同意才改**。
+   也請確認一下 **1152x864 是不是你今晚為了同時看兩個視窗自己調的**——副本是 20:07
+   robocopy 來的就已經是這個值，而今天稍早幾輪 Pico 無人跑是成功的。
+
+### 今晚最重要的發現：Pico 自動化現在對主安裝是全線癱瘓的
+
+不是雙開才有的問題。`pico_serial.ps1` 的 `Get-MetalRageWindow` 有一道尺寸閘門
+（client area < 1600x1200 就判定成 splash → BLOCKED），而它是**所有** gated Pico 指令
+共用的前置檢查。解析度一旦跟 atlas 不符，截圖、點擊、按鍵、連 `CLOSE_WINDOW` 全部送不出去。
+[TEST] `client_ctl.close_client()` 回
+`largest visible 'MetalRage' window is too small (client 1152x864, need >=1600x1200)`。
+
+怎麼撞到的：一個**唯讀**的量測任務啟動了客戶端，結果關不掉。PM 因此定了新的丁類條件：
+**啟動任何客戶端之前，先確認關閉路徑可用**（已寫進 `reference/unattended-policy.md`）。
+
+### 今晚完成並合併的（全部在 `reverse-work`）
+
+| # | 內容 | 驗證 |
+|---|---|---|
+| 1 | **接手核對** `ProcessRemoteFunction` 那條 ✅ 五個位址全部成立；`ULevel::Listen` 的「無條件覆寫」更正成**條件**覆寫（原廠值下必定執行，結果仍是 10000，結論不變） | verifier 重跑組語 |
+| 2 | **DUAL-PICO I1–I3**：`shot.sh --proc`、`screen.ps1` 任何行程名都走 `Get-MetalRageWindow`（會抓到啟動畫面的舊路徑已移除）、`pico_serial.ps1` 的 `-AllowedProc` | 6 個 fail-closed 斷言，主力重跑 |
+| 3 | **DUAL-PICO I4–I7**：`client_ctl` 吃 `--proc`/`--bat`、`run-*.log` 執行期解析並核對檔頭、`Context.clients` + `focus_client()`、pkt 查詢可依 `conn` 過濾 | 22+6 個斷言 ＋ 真實 session log，主力重跑 |
+| 4 | **preflight**：啟動任何客戶端前檢查解析度／殘留行程／STOP 檔／前景閘門 | **主力在真實環境重跑，如預期 fail**（抓到解析度不符 ＋ pid=66356） |
+| 5 | **第二測試帳號腳本** `tools/create-second-test-account.js`（預設 dry-run，`--apply` 前先 mysqldump，冪等，`hostAddress` 執行期沿用 `mrotest`） | **尚未執行過**，含 dry-run |
+| 6 | `patch_netspeed.py` 檔頭與 `--help` 對齊實際行為 | diff 全在字串內 |
+| 7 | **NETSPEED 初值追查**：兩條候選路徑完整排除、三個 DLL 窮舉掃描「字面值 10000 寫進 `+0x50`」零命中、`Engine.NetConnection` 在腳本包裡是空殼（排除 CDO 複製理論）。剩餘線索開成 backlog `NETSPEED-INIT-2` | 🟡 待審 |
+
+### 今晚確立的事實（會影響之後每一次量測）
+
+- **客戶端執行期間，`-log=` 產生的 `data\System\run-*.log` 是鎖住的，從 WSL 連 `cat` 都不行**
+  （[TEST]，`Permission denied`）。比「4 KB 緩衝」更強：無論引擎怎麼 flush，自動化都不可能
+  在客戶端還開著時讀它。→ 任何「等 log 出現某一行」的即時完成條件**都不可能成立**。
+- **`HitLoc===`（WeaponLog）與 `Client netspeed is` 只寫進 `data\System\run-*.log`**，
+  `data\Log\MetalRage.log` 兩邊都是 0 筆。`next-test.md` 原本寫錯，已更正。
+- **兩個實例不會寫到同一個檔**：junction 只影響穿過 `MetalRage\` 的路徑，兩份安裝各自的
+  `data/Log`、`data/System` 是真正不同的目錄（inode 實證）。**規則：程式一律用直接路徑。**
+- **客戶端的 `.ini` 是 UTF-16LE 帶 BOM**，用 utf-8 讀不會報錯、會靜默拿到亂碼
+  （`reference/tools.md` 已記）。
+- 白名單的 `hostAddress` 早就換成 VPN 位址了（`2026-09-20-1530` 那次），設計稿裡的舊 LAN IP
+  已更正。**任何地方都不要抄寫死值。**
+
+### 下一步（解析度與殘留行程處理掉之後）
+
+1. 跑 `tools/create-second-test-account.js --dry-run` 核對輸出 → `--apply` → 完整重啟
+   （改 `config/` 不能 `/reload`，重啟前先 `/conns`）。
+2. 寫雙開劇本 `experiments/dual-netspeed.json`（步驟在
+   `research/2026-09-20-dual-pico/design.md` 第 7 節，含房主 80 秒防掛機的順序調整）。
+3. 設計稿還沒做的：`login_as`／`join_room`／`set_ready`／`host_start_battle`／`enter_battle`／
+   `console_cmd_on`／`leave_battle`／`idle_nudge` 這些動作，以及 `close_client(id)` 的
+   「先切焦點再點 X」；`docs/reference/` 的「同機雙開自動化」一節。
+4. 還沒釐清的 P4：加入者的機體選擇頁上主控台開不開得起來。
+
+---
+
 ## ⚡ 交接快照（2026-09-20 晚上，Claude 高階組長）
 
 > 目標與里程碑看 `docs/roadmap.md`。PM 是 Fable（SendMessage 的名稱會跟著它的 session 標題變，連不到先 ListAgents 或問操作者）。
