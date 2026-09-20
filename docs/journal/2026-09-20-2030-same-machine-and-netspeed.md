@@ -213,3 +213,40 @@ IpDrv.dll  UTcpNetDriver::StaticConstructor
 3. 區網基準（等筆電開機），預測仍為「個位數缺口」。
 
 **今晚附帶確認的事實**（對之後的決策有用）：修補 `Engine.dll`／`IpDrv.dll` 後客戶端登入、開房、進戰場全部正常，**不觸發任何保護機制**。
+
+## 10. 兩條平行線的結果（22:30）
+
+操作者延長到 22:30 後派了兩個子 agent 平行分析（分析可以平行，實驗不行）。
+
+### A：客戶端那個 10000 的來源 —— 未找到，但釐清了房主端的 cap
+
+`docs/journal/2026-09-20-2223-netspeed-init.md`。
+
+**釐清的**：`0x1047a730` 那段所屬函式是 **`ULevel::Listen`**（export VA `0x1047a5e0`），也就是**開房那一刻**執行：
+
+```
+0x1047a730-749  無條件： MaxClientRate = MaxInternetClientRate   （原廠 10000 < 15000 → 執行）
+0x1047a75e-77c  人數 >16 時再夾一次回 10000
+```
+
+→ 原廠狀態下**房主一開房，自己的上限就從 15000 掉到 10000**。這解釋了房主端的 cap，也解釋了為什麼「只改 `StaticConstructor` 的常數」在房主端會被蓋掉。
+
+**沒找到的**：客戶端 `ServerConnection` 的 `+0x50` 是誰寫成 10000 的。建構鏈 `IpDrv UTcpNetDriver::InitConnect`（`0x10714ff0`）→ `StaticConstructObject` → IpDrv `0x10714880` → `Engine UNetConnection::InitOut`（`0x1042b320`）逐行核對，**沒有任何 `mov [reg+0x50], ...`**。
+
+**仍未解開的矛盾** 🟡：原廠時 `netspeed 100000` 被夾在 **15000** 而不是 10000。若 `netspeed` 讀的是同一個 NetDriver，`ULevel::Listen` 之後應該得到 10000。推測是加入者身上的 driver 沒跑過 `Listen`（那是房主才做的），但未證實。
+
+### B：伺服器端注入 `?NETSPEED=` —— ❌ 無路
+
+`docs/journal/2026-09-20-2223-netspeed-url.md`。
+
+`Ready_Host_SN`（`0x00420115`）真身 `ZNetwork.dll` `0x107d5700`，**只讀兩個欄位**：port 與 IP 字串。字串長度硬上限在 `0x107d5778`（`cmp eax, 0x10` / `jge`）＝ **16 個寬字元**（我核對過）。`192.168.0.10` 就吃掉 13 個，`?NETSPEED=100000` 需要 17 個 → **塞不下**。同組另一個位址相關的 `HostChange_SN`（`0x00420121`）不讀 body。而且真正組出 `%s:%d/%s?team=0` 的邏輯不在 `ZNetwork.dll` 裡。
+
+→ **「完全不碰客戶端」的解法不存在。** 要解這個問題一定得動客戶端：改檔案，或每場下指令。
+
+**順帶更正**：`dispatch/gate.game.dispatch.js:405-414` 的註解寫「只取前 15 個字元」，實際是 **16**（`0x107d5778`）。差一個字元不影響既有結論，但註解要改。
+
+### 還沒試過的一件事 🟡
+
+今晚兩次下 `netspeed` 都是**已經在戰場裡**，而握手送 token 是在**進戰場的那一刻**。**從來沒有在「加入之前」下過指令。** 若客戶端的 `CurrentNetSpeed` 在大廳就已經有值並被帶進新連線，那麼在大廳先下 `netspeed 100000` 再加入，握手送出去的就會是大的值。
+
+這是兩分鐘、不改任何檔案的測試，今晚的資料完全沒有排除它。**排明天第一件。**
