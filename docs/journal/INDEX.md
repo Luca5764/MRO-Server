@@ -168,3 +168,4 @@
 | 2026-09-20 | `2026-09-20-2030-same-machine-and-netspeed.md` | — | — | 同機雙開成功（卡點是行程名稱）；同機缺口 33%，比跨網路更糟；機制是 ToAll 廣播迴圈卡 IsNetReady，而 CurrentNetSpeed 只有 10000。 |
 | 2026-09-20 | `2026-09-20-2130-netspeed-clamp.md` | — | — | netspeed 夾在 15000 的來源：`Engine.dll` `UViewport::Exec` 與 `ULevel::NotifyReceivedText` 都對 `UNetDriver->MaxClientRate` 做 clamp，該值編譯寫死在 `UNetDriver::StaticConstructor`（VA 0x104a0540），不是讀 ini。 |
 | 2026-09-20 | `2026-09-20-2153-server-netspeed.md` | — | — | 中階（🟡 待審）：`Client netspeed is` log 只在收到文字含 `"NETSPEED"` token 時才印並寫 connection+0x50，clamp 只夾上限；IpDrv.dll 對 MaxClientRate/MaxInternetClientRate 只有 StaticConstructor 那一組引用，找不到 10000 這個預設值真正的寫入點，卡在 connection 初始化路徑未定位。 |
+| 2026-09-20 | `2026-09-20-2223-netspeed-url.md` | — | — | 中階（🟡 待審）：`Ready_Host_SN` 封包只帶 port + 16 寬字元的 IP 欄位（無第二欄位），字元數已被 IP 佔滿塞不下 `?NETSPEED=`；真正組 URL 的邏輯不在 ZNetwork.dll，伺服器端注入 NETSPEED 看起來無路可走。

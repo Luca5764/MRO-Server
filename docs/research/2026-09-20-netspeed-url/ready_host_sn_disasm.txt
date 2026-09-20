@@ -1,0 +1,96 @@
+ZNetwork.dll (installed client, /mnt/c/Games/MetalRage Online/data/System/ZNetwork.dll)
+Export thunk:  0x1070a254  ?Ready_Host_SN@ZDispatchGame@@QAEXPAUFormat@System@Share@@PAD@Z
+  0x1070a254  jmp 0x107d5700          <- real body (only the first jmp in this run of
+                                          export thunks belongs to Ready_Host_SN; the
+                                          rest of the "func" dump past this line are
+                                          unrelated adjacent export thunks, not part of
+                                          this function -- do not read past the first jmp)
+
+Real body @ 0x107d5700 (thiscall: ecx=ZDispatchGame*, stack args esp+4=Format*, esp+8=char* pad;
+after prologue, ebp = Format* = raw frame pointer, i.e. header+body together, matching the
+project's convention that string offsets in this handler are ABSOLUTE frame offsets, not
+body-relative):
+
+  0x107d5700  sub    esp, 0x24
+  0x107d5703  mov    al, [ecx+4]
+  0x107d5706  test   al, al
+  0x107d5708  mov    [esp], ecx
+  0x107d570b  jne    0x107d573c        ; active-connection check; inactive path just logs
+                                          "Failed - Active" (string @0x1082b260/0x1082b280)
+                                          and returns -- not the path we care about
+
+  ; --- active path, builds the join address ---
+  0x107d573c  xor eax, eax
+  0x107d573e..0x107d5766  zero several local dwords (esp+4/8/c/14/18/24/28/2c)
+  0x107d574a  push ebp
+  0x107d574b  mov  ebp, [esp+0x2c]      ; ebp = arg1 = Format* (raw frame pointer)
+  0x107d5757  push esi
+  0x107d5758  push edi
+  0x107d575d  lea  edi, [ebp+0x13]      ; edi = &frame[0x13]  (ANSI IP/host string field;
+                                           absolute offset 0x13 = server body offset 0x03
+                                           given the 0x10-byte frame header, matching
+                                           buildReadyHostSnMsg()'s respBody.write(...,0x03,...))
+  0x107d5760  test edi, edi
+  0x107d576a  je   0x107d57b0           ; dead in practice (edi can't be null: ebp+0x13)
+
+  0x107d576c  mov  esi, [0x1091b834]    ; import Core.dll ?winGetSizeUNICODE@@YAHPBD@Z
+  0x107d5772  push edi
+  0x107d5773  call esi                  ; winGetSizeUNICODE(edi) -> ANSI-char count of the
+                                           null-terminated string at frame+0x13
+  0x107d5778  cmp  eax, 0x10
+  0x107d577b  jge  0x107d57a2           ; if count >= 16: esi = 0x10 (clamp to EXACTLY 16)
+  0x107d577d  push edi
+  0x107d577e  call esi                  ; else: recompute count (same call), esi = eax (<16)
+  0x107d5785  test esi, esi
+  0x107d5787  jle  0x107d57a9           ; count<=0: skip copy, just null the dest
+
+  0x107d5789  push esi                  ; count
+  0x107d578a  lea  ecx, [esp+0x14]      ; dest = local wide-char buffer
+  0x107d578e  push edi                  ; src
+  0x107d578f  push ecx                  ; dst
+  0x107d5790  call [0x1091b830]         ; Core.dll ?winToUNICODE@@YAPAGPAGPBDH@Z
+                                           (WORD* winToUNICODE(WORD* dst, const char* src, int n))
+  0x107d5799  mov  word ptr [esp+esi*2+0xe], 0   ; null-terminate dest at index `esi`
+
+  0x107d57b0  ...
+  0x107d57b8  movzx esi, word ptr [ebp+0x10]      ; PORT = frame+0x10 (u16)
+  0x107d57bc..0x107d57e1  log "IP : %s, PORT : %d" (strings @0x1082b2a0/0x1082b2c0) with the
+                            wide dest buffer and port -- just a client-log line, not the URL build
+  0x107d57e4  push esi                  ; port
+  0x107d57e5  lea  eax, [esp+0x14]      ; the wide ip-string buffer (max 16 wchars + NUL)
+  0x107d57e9  push eax
+  0x107d57ea  mov  ecx, 0x108e9b70      ; global UClass* (Core.dll import table confirms
+                                           [0x1091b990] = ?GetDefaultObject@UClass@@QAEPAVUObject@@XZ)
+  0x107d57ef  call [0x1091b990]         ; UClass::GetDefaultObject() -> UObject* default instance
+  0x107d57f5  mov  ecx, eax
+  0x107d57f7  call 0x10709f4d           ; thunk -> 0x1071a570 (see below): stores the two
+                                           stack args (ip-string ptr, port) into UObject
+                                           member fields at [this+0xfb0] (string) and
+                                           [this+0xfbc] (port, via a further Core.dll
+                                           property-copy import at [0x1091b85c]).
+                                           No "%s:%d/%s" literal and no further string
+                                           concatenation happens inside ZNetwork.dll past
+                                           this point -- the actual URL assembly (adding the
+                                           map name and any "?xxx=" suffix) is not present in
+                                           this DLL's code, consistent with it living in
+                                           UnrealScript bytecode / Engine.dll, which this
+                                           task's time budget did not reach.
+
+0x10709f4d thunk -> 0x1071a570:
+  0x1071a570  mov eax, [esp+4]          ; port arg
+  0x1071a578  lea ecx, [esi+0xfb0]
+  0x1071a57e  call [0x1091b85c]         ; Core.dll import, string-property setter
+  0x1071a588  mov [esi+0xfbc], ecx      ; port stored as a plain dword field
+  0x1071a58f  ret 8
+
+Core.dll imports resolved (pefile IMPORT table, ordinal-less, by name):
+  0x1091b830  Core.dll  ?winToUNICODE@@YAPAGPAGPBDH@Z
+  0x1091b834  Core.dll  ?winGetSizeUNICODE@@YAHPBD@Z
+  0x1091b884  Core.dll  ?GIsClient@@3HA
+  0x1091b990  Core.dll  ?GetDefaultObject@UClass@@QAEPAVUObject@@XZ
+  0x1091ba40  Engine.dll ?GZNetworkManager@@3PAVZNetworkManagerInterface@@A
+
+Sibling opcode checked for a second usable field:
+  0x00420121  ZDispatchGame::HostChange_SN, export thunk 0x10702cf2 -> 0x107d5a00.
+  Body only reads the this-pointer's own +4 flag byte and +9 byte; it never touches the
+  packet's Format*/body at all (no field reads). Not a source of extra URL data.
