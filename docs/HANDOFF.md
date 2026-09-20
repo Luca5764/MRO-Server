@@ -31,7 +31,7 @@
   - `config/server.json`：publicHost 192.168.0.10、pveExtraLives 7、pveFixedRank 10
   - `config/allowed-users.json`：dusk、Lucas 帶 hostAddress 192.168.0.10、test 帶 hostAddress 192.168.0.30
   - `database/config.json`
-- 動 `dispatch/` 以內的檔案 → `/reload`；動 `rooms.js`、`database/db.js`、`config/`、`server.js`、`packetlog.js` → 要完整重啟，操作者要重登。重啟前先下 `/conns` 確認沒人在線。
+- 動 `dispatch/` 以內的檔案 → `/reload`；動 `rooms.js`、`database/db.js`、`config/`、`server.js`、`packetlog.js` → 要完整重啟，操作者要重登。重啟前先下 `/conns` 確認沒人在線。　**2026-09-20 又踩一次：`/reload` 之後 dispatch 新程式呼叫 `config/whitelist.js` 的新函式，但那個模組沒被重載，登入整批掉進「DB unavailable」備援、暱稱顯示成 `Player`。合併內容只要碰到 dispatch 以外的檔案，一律完整重啟。**
 - 機器：
   - 主機 Lucas（Win11，192.168.0.10，有線）
   - 第二台 dusk（Win10，要用原廠 exe）
