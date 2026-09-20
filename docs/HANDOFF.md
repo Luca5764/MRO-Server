@@ -10,7 +10,30 @@
 **結論先說：今晚沒有跑 netspeed 劇本，被兩件事擋住，明早需要操作者做兩件事（見下）。**
 程式該做的都做完並合併了，全部有離線測試、主力親自重跑過。
 
-### ⚠️ 明早需要操作者做的兩件事
+### ✅ 那兩件事已於 2026-09-21 06:5x 處理完（操作者同意，經 PM 轉達）
+
+1. **pid 66356 已由操作者手動關掉**，`tasklist` 確認沒有任何 MetalRage 行程。
+   昨晚那個 halted 的 Pico session 也已 `session end` 清掉。
+2. **兩個實例的解析度已改回 atlas 對應值**：`data\System\OptionAll.ini` 的
+   `op_Display` ScreenSize `1152x864` → **`1600x1200`**。操作者確認 1152x864 是他自己
+   為了左右並排看兩個視窗才縮的，沒有別的用途。
+   - **只動這一個欄位**，同一行其他鍵逐字不變（兩份的 `ScreenBrightness` 不同——主安裝
+     0.400000、副本 0.200000——都原樣保留）。
+   - **備份**：各自目錄下的 `OptionAll.ini.bak-screensize-20260921-065633`。
+   - **還原指令**（客戶端沒在跑時執行）：
+     ```
+     cp "/mnt/c/Games/MetalRage Online/data/System/OptionAll.ini.bak-screensize-20260921-065633" \
+        "/mnt/c/Games/MetalRage Online/data/System/OptionAll.ini"
+     cp "/mnt/c/Games/MetalRage Online 2/data/System/OptionAll.ini.bak-screensize-20260921-065633" \
+        "/mnt/c/Games/MetalRage Online 2/data/System/OptionAll.ini"
+     ```
+   - 這些 ini 是 **UTF-16LE 帶 BOM**，讀寫都要用對編碼（`reference/tools.md` 有記）。
+     寫回後重讀確認過 BOM 還在、沒有亂碼。
+   - 操作者之後若要手動並排雙開會自己再調小。**「session 開始改、結束還原」先不做。**
+   - 這是操作者同意的**設定檔**改動，**不代表**放寬「主安裝的遊戲檔案不動」——DLL、exe 一律不碰。
+3. **`runner.py preflight` 因此從 FAIL 變 PASS**（五項全綠）。這就是驗收。
+
+### ⚠️（已處理，保留原文供對照）昨晚需要操作者做的兩件事
 
 1. **按一下那個卡住的客戶端的 X。** 主安裝有一個殘留的 `MetalRage.exe`（**pid=66356**，
    停在登入畫面，沒登入、沒操作、沒連伺服器）。它關不掉：`taskkill`／`Stop-Process`
