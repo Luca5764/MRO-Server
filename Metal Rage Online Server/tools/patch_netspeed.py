@@ -2,8 +2,13 @@
 """
 Raise the client's two hard-coded network rate limits.
 
-DRAFT -- prepared 2026-09-20, NOT approved and NOT run against any install yet.
-See docs/journal/2026-09-20-2030-same-machine-and-netspeed.md before using it.
+As of 2026-09-20 this has already been run once, against the test copy
+`C:\Games\MetalRage Online 2` (--module ipdrv only; the main install's
+Engine.dll and IpDrv.dll are still stock). See
+docs/journal/2026-09-20-2030-same-machine-and-netspeed.md and
+docs/journal/2026-09-20-2130-netspeed-clamp.md for how the two fields and the
+clamp were found, and docs/HANDOFF.md ("客戶端目前的非原廠狀態") for the
+current patch state of both installs before running this again.
 
 Why this exists
 ---------------
@@ -15,11 +20,20 @@ retransmit, even though the function is declared `reliable ToAll`. The budget
 comes from `CurrentNetSpeed`, which is 10000 B/s; at NetServerMaxTickRate 30
 that is ~333 bytes per tick, and ordinary movement replication alone spends it.
 
-Both limits are written as literals by `UNetDriver::StaticConstructor`
-(export VA 0x104a00f0):
+Both limits are compiled-in literals, written by `UNetDriver::StaticConstructor`
+(export VA 0x104a00f0) in Engine.dll:
 
     0x104a0540  mov dword ptr [ebx+0x1168], 0x3a98   ; 15000 MaxClientRate
     0x104a054a  mov dword ptr [ebx+0x116c], 0x2710   ; 10000 MaxInternetClientRate
+
+and again, with the same two literals, by `UTcpNetDriver::StaticConstructor`
+(VA 0x10714693 / 0x1071469d) in IpDrv.dll -- the subclass, which runs after
+Engine.dll's and wins. [TEST] 2026-09-20: patching only Engine.dll changed
+nothing at runtime, the host still logged "Client netspeed is 10000" and
+`netspeed` still clamped at 15000. That is why `--module ipdrv` is the
+default and the only one of the two that has an observable effect on its
+own; `--module engine` patches the base-class copy of the same two fields
+and is kept only so both call sites are covered if that ever changes.
 
 They are not config properties: `[IpDrv.TcpNetDriver]`, `[Engine.NetDriver]`
 and `[Engine.Player]` were all tried on both installs and none of them moves
@@ -39,19 +53,26 @@ Safety
 ------
 Engine.dll is an ordinary unpacked MSVC binary (standard section names, import
 table intact, .text entropy 6.56, no Themida/y0da/VMProtect signatures), unlike
-ZNetwork.dll. y0da watches `MetalRage.exe`'s own .text, and a 1-byte patch of
-ZNetwork.dll ran fine on 2026-09-19, but **Engine.dll has never been patched on
-this client**, so the first run belongs on a disposable copy with the operator
-watching.
+ZNetwork.dll. y0da watches `MetalRage.exe`'s own .text, not Engine.dll or
+IpDrv.dll, and a 1-byte patch of ZNetwork.dll ran fine on 2026-09-19. That
+entropy/import-table check was only ever done for Engine.dll, not for
+IpDrv.dll (the module this script patches by default) -- treat a first run
+against a new install as unverified for that reason, and prefer a disposable
+copy with the operator watching.
 
-This script refuses to touch an install whose Engine.dll is not the exact build
-it was written for, always writes a .bak first, and can put it back.
+This script refuses to touch an install whose target DLL is not the exact
+size it was written for (and, for `--module engine`, not the exact sha256
+either -- `--module ipdrv` has no pinned hash because the test copy's
+IpDrv.dll is already patched, so there is no single stock hash to check
+against). It always writes a `.bak-netspeed` first if one does not already
+exist for that DLL, and `--restore` copies that backup back over it.
 
 Usage
 -----
-  tools/patch_netspeed.py --target "/mnt/c/Games/MetalRage Online 2"
-  tools/patch_netspeed.py --target ... --rate 100000        (default)
-  tools/patch_netspeed.py --target ... --clamp-only         (leave the default alone)
+  tools/patch_netspeed.py --target "/mnt/c/Games/MetalRage Online 2"              (patches IpDrv.dll, the default module, at rate 100000)
+  tools/patch_netspeed.py --target ... --module engine                            (patches Engine.dll instead; no effect alone, see above)
+  tools/patch_netspeed.py --target ... --rate 50000
+  tools/patch_netspeed.py --target ... --clamp-only         (leave MaxInternetClientRate/the default rate alone, only raise the netspeed ceiling)
   tools/patch_netspeed.py --target ... --restore
   tools/patch_netspeed.py --target ... --check              (report only)
 
@@ -124,14 +145,19 @@ def describe(data, PATCHES):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[1])
     ap.add_argument('--module', choices=sorted(MODULES), default='ipdrv',
-                    help='which module to patch (default ipdrv, the one that wins)')
+                    help="which module to patch: ipdrv (default, IpDrv.dll, "
+                    "the subclass constructor that runs last and is the only "
+                    "one with an observable effect) or engine (Engine.dll, "
+                    "the base class; overwritten by ipdrv at runtime, so "
+                    "patching it alone does nothing)")
     ap.add_argument('--target', required=True,
                     help='install root, e.g. "/mnt/c/Games/MetalRage Online 2"')
     ap.add_argument('--rate', type=int, default=100000,
                     help='new value in bytes/sec (default 100000)')
     ap.add_argument('--clamp-only', action='store_true',
                     help='only raise the netspeed ceiling, leave the default at 10000')
-    ap.add_argument('--restore', action='store_true', help='put the .bak back')
+    ap.add_argument('--restore', action='store_true',
+                    help='put the .bak-netspeed backup back over the target DLL')
     ap.add_argument('--check', action='store_true', help='report current values and exit')
     a = ap.parse_args()
 
