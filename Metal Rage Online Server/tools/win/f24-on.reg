@@ -1,0 +1,16 @@
+Windows Registry Editor Version 5.00
+
+; ScrollLock (scancode 0x46) -> F24 (scancode 0x76)
+;
+; The client's console hotkey is IK_F24 (Engine.Console.ConsoleHotKey=135) and
+; ConsoleHotKey is not a config variable, so it cannot be changed from an ini.
+; User.ini key binds do not work either -- the client sets its bindings at
+; runtime via setinput_BD. That leaves sending a real F24, which no normal
+; keyboard has.
+;
+; This maps it in the keyboard class driver, below the injected-input APIs the
+; client rejects, so the keystroke is indistinguishable from any other physical
+; key. Machine-wide, needs a reboot, and ScrollLock stops being ScrollLock until
+; f24-off.reg is applied.
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Keyboard Layout]
+"Scancode Map"=hex:00,00,00,00,00,00,00,00,02,00,00,00,76,00,46,00,00,00,00,00

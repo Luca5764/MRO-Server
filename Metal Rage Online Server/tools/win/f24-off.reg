@@ -1,0 +1,6 @@
+Windows Registry Editor Version 5.00
+
+; Undo f24-on.reg: remove the mapping entirely, ScrollLock goes back to normal.
+; Needs a reboot, same as applying it.
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Keyboard Layout]
+"Scancode Map"=-

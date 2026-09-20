@@ -120,6 +120,59 @@ except Exception as e:
     print(f"[HID] Error initializing USB HID devices: {e}")
 
 # ---------------------------------------------------------------------------
+# Scroll Lock -> F24 (the operator's own console key)
+# ---------------------------------------------------------------------------
+# The client's console hotkey is IK_F24 and ConsoleHotKey is not a config
+# variable, so it cannot be moved to a key that exists on a real keyboard. The
+# client also ignores software-injected keys, so an AutoHotkey-style remap does
+# not work either -- F24 has to come from real USB hardware, which is what this
+# board is.
+#
+# That left the operator unable to open the console without asking the lead to
+# send a keystroke from WSL, which needs the game in the foreground and takes a
+# few seconds per press -- useless in the middle of a match.
+#
+# A USB host mirrors the keyboard LED state to every attached keyboard, so when
+# the operator presses Scroll Lock on their own keyboard, this board is told
+# about it. One physical key press on their keyboard, one real F24 keystroke out
+# of this board. Nothing is injected and no key is remapped system-wide.
+#
+# Either edge counts: Scroll Lock is a toggle, so turning it on and turning it
+# off are both "the operator pressed the key".
+LED_SCROLL_LOCK = 0x04
+HOTKEY_KEYCODE = "F24"
+
+hotkey_enabled = True
+_last_scroll_led = None
+
+
+def poll_led_hotkey():
+    global _last_scroll_led
+
+    if kbd is None:
+        return
+
+    try:
+        scroll = kbd.led_status[0] & LED_SCROLL_LOCK
+    except Exception:
+        return  # host has not sent a report yet, or the HID device went away
+
+    if _last_scroll_led is None:
+        _last_scroll_led = scroll  # first reading is the baseline, not a press
+        return
+
+    if scroll == _last_scroll_led:
+        return
+
+    _last_scroll_led = scroll
+
+    if not hotkey_enabled:
+        return
+
+    ok, _used_ms = key_press(HOTKEY_KEYCODE)
+    print(f"[HOTKEY] scroll-lock -> {HOTKEY_KEYCODE} ({'ok' if ok else 'FAILED'})")
+
+# ---------------------------------------------------------------------------
 # Mouse & Keyboard Dispatcher
 # ---------------------------------------------------------------------------
 def parse_key(key_name):
@@ -312,6 +365,18 @@ def execute_command(cmd_str):
             release_all()
             return 200, "RESET released all keys"
 
+        elif action == "HOTKEY":
+            # HOTKEY [ON|OFF|STATUS] -- the Scroll Lock -> F24 watcher above.
+            global hotkey_enabled
+            arg = parts[1].upper() if len(parts) > 1 else "STATUS"
+            if arg == "ON":
+                hotkey_enabled = True
+            elif arg == "OFF":
+                hotkey_enabled = False
+            elif arg != "STATUS":
+                return 400, "ERR: HOTKEY takes ON, OFF or STATUS"
+            return 200, f"HOTKEY {'ON' if hotkey_enabled else 'OFF'} (scroll-lock -> {HOTKEY_KEYCODE})"
+
         else:
             return 400, f"ERR: Unknown action '{action}'"
 
@@ -372,6 +437,9 @@ def main():
 
     while True:
         feed_watchdog()
+
+        # 0. The operator's own Scroll Lock press (see poll_led_hotkey).
+        poll_led_hotkey()
 
         # 1. Process USB Serial
         if supervisor.runtime.serial_bytes_available:
