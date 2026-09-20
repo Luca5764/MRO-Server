@@ -205,33 +205,45 @@ class ZLobbyDispatch
                 // the Special_SN bug. rooms.isAssistSnFormatEnabled() gates
                 // a 25-byte (0x19) reply that echoes the CN's own fields
                 // back -- see the switch's own comment in rooms.js for why
-                // the index echo and the length fix must ship together. A
-                // CN body shorter than the real 7 bytes falls back to the
-                // old zero reply (never index past the buffer).
-                if (rooms.isAssistSnFormatEnabled() && body.length >= 7) {
-                    const assistUserIndex = body.readUInt16LE(0);
-                    const userIndex = body.readUInt16LE(2);
-                    const assistType = body[4];
-                    const action = body[5];
-                    const hp = body[6];
-                    console.log(`[ZLobbyDispatch] >> Assist_CN assistUser=${assistUserIndex} user=${userIndex} type=${assistType} action=${action} hp=${hp} -> Sent Assist_SN 0x00230122 (0x19 body)`);
+                // the index echo and the length fix must ship together.
+                //
+                // SOL-REVIEW-7 item 4 (docs/research/2026-09-20-sol-review/
+                // assist-fix.md): while the switch is enabled, the reply is
+                // ALWAYS the full 25-byte body, even for a short/malformed
+                // CN -- falling back to the old 16-byte shape here would
+                // still have status=0/result=0, so the client would still
+                // take the exact success path (0x107d5fa0) whose
+                // out-of-bounds read this fix exists to remove. A short CN
+                // just gets its echo fields (0x0A-0x10) zeroed instead of
+                // real values (index 0 never hits a real row in
+                // Game_User_Assist_Set, so it is as safe as the old
+                // all-zero reply, without the OOB read).
+                if (rooms.isAssistSnFormatEnabled()) {
+                    const haveFullBody = body.length >= 7;
+                    const assistUserIndex = haveFullBody ? body.readUInt16LE(0) : 0;
+                    const userIndex = haveFullBody ? body.readUInt16LE(2) : 0;
+                    const assistType = haveFullBody ? body[4] : 0;
+                    const action = haveFullBody ? body[5] : 0;
+                    const hp = haveFullBody ? body[6] : 0;
+                    if (haveFullBody) {
+                        console.log(`[ZLobbyDispatch] >> Assist_CN assistUser=${assistUserIndex} user=${userIndex} type=${assistType} action=${action} hp=${hp} -> Sent Assist_SN 0x00230122 (0x19 body)`);
+                    } else {
+                        console.log(`[ZLobbyDispatch] >> Assist_CN body too short (${body.length} bytes, need >= 7) -- sending zero-echo Assist_SN 0x00230122 (0x19 body, no OOB fallback)`);
+                    }
                     const [msg, sb] = getExactMessageBuffer(0x00230122, 0x19);
                     sb.writeUInt16LE(0, 0x00); // Status -- must stay 0 (client success gate)
                     sb.writeUInt32LE(0, 0x02); // Result -- must stay 0 (client success gate)
                     // 0x06..0x09 left 0: no read of these bytes in the handler.
-                    sb.writeUInt16LE(assistUserIndex, 0x0A); // AssistUserIndex, echoed from the CN
-                    sb.writeUInt16LE(userIndex, 0x0C);       // UserIndex, echoed from the CN
-                    sb[0x0E] = assistType; // AssistType, echoed from the CN
-                    sb[0x0F] = action;     // Action, echoed from the CN (log-only on the client)
-                    sb[0x10] = hp;         // HP, echoed from the CN (log-only on the client)
+                    sb.writeUInt16LE(assistUserIndex, 0x0A); // AssistUserIndex, echoed from the CN (0 if short)
+                    sb.writeUInt16LE(userIndex, 0x0C);       // UserIndex, echoed from the CN (0 if short)
+                    sb[0x0E] = assistType; // AssistType, echoed from the CN (0 if short)
+                    sb[0x0F] = action;     // Action, echoed from the CN (log-only on the client, 0 if short)
+                    sb[0x10] = hp;         // HP, echoed from the CN (log-only on the client, 0 if short)
                     // 0x11/0x13/0x15/0x17 (the Exp/Point pairs fed into
                     // Game_User_Assist_Set) left 0: no known formula yet --
                     // see notes.md §3, do not guess.
                     client.send(msg);
                     return true;
-                }
-                if (rooms.isAssistSnFormatEnabled()) {
-                    console.log(`[ZLobbyDispatch] >> Assist_CN body too short (${body.length} bytes, need >= 7) -- falling back to zero Assist_SN`);
                 }
                 console.log(`[ZLobbyDispatch] >> Assist_CN`);
                 const [msg, respBody] = client.getMessageBuffer(0x00230122, 0x6);

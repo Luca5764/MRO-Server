@@ -10,15 +10,19 @@
 // test/round-advance.js: calls the real ZLobbyDispatch.dispatch() directly
 // (no socket, no server.js) against a fake client.
 //
-// Three cases (per the task contract):
+// Three cases (per the task contract, short-body case revised per
+// SOL-REVIEW-7 item 4, docs/research/2026-09-20-sol-review/assist-fix.md):
 //   1. Switch off (default) -> byte-identical to today: Assist_SN
 //      0x00230122 with a 16-byte all-zero body.
 //   2. Switch on, a real 7-byte CN body (`00000300040150` from
 //      docs/research/2026-09-20-assist-fix/notes.md §2's session log
 //      sample) -> every byte of the 25-byte reply body checked.
-//   3. Switch on, a short/malformed CN body (< 7 bytes) -> falls back to
-//      the same 16-byte all-zero body as case 1, never indexing past the
-//      short buffer.
+//   3. Switch on, a short/malformed CN body (< 7 bytes) -> STILL the full
+//      25-byte body (never the old 16-byte shape -- that body's
+//      status=0/result=0 would still send the client down the
+//      out-of-bounds success path this fix exists to remove), but with
+//      the echo fields (0x0A-0x10) zeroed instead of read from the short
+//      CN, never indexing past its buffer.
 //
 // Run: node test/assist-sn-format.js  (exit 0 = pass, exit 1 = fail)
 
@@ -129,14 +133,39 @@ function runSwitchOnShortBodyCase()
 
     const sent = lastSent(client);
     assert.strictEqual(sent.op, ASSIST_SN, `expected Assist_SN, got ${sent.op}`);
-    assert.strictEqual(sent.len, 0x10, `short-body fallback should stay 16 bytes, got ${sent.len}`);
-    assert.strictEqual(sent.hex, '00'.repeat(0x10), `short-body fallback should stay all-zero, got ${sent.hex}`);
+    // SOL-REVIEW-7 item 4: a short CN must NOT get the old 16-byte shape
+    // while the switch is enabled -- that body's status=0/result=0 would
+    // still send the client down the out-of-bounds success path. It gets
+    // the full 25-byte body with the echo fields zeroed instead.
+    assert.strictEqual(sent.len, 0x19, `short-body reply must still be the full 25 bytes while enabled, got ${sent.len}`);
+    const expected = buildExpectedSnBody(0, 0, 0, 0, 0);
+    assert.strictEqual(sent.hex, expected.toString('hex'),
+        `short-body Assist_SN mismatch\n  got:      ${sent.hex}\n  expected: ${expected.toString('hex')}`);
 
     rooms._resetForTests();
-    console.log('[assist-sn-format] PASS: switch on + short CN body -> falls back to zero Assist_SN, no OOB index');
+    console.log('[assist-sn-format] PASS: switch on + short CN body -> full 25-byte Assist_SN with zeroed echo fields, no OOB index');
+}
+
+function runSwitchOffShortBodyCase()
+{
+    rooms._resetForTests();
+    const lobbyDispatch = new LobbyDispatch();
+
+    const client = makeFakeClient(4, 30907);
+    const shortBody = REAL_CN_BODY.subarray(0, 3);
+    const handled = lobbyDispatch.dispatch(client, ASSIST_CN, shortBody);
+    assert.strictEqual(handled, true, 'Assist_CN should be handled even with a short body');
+
+    const sent = lastSent(client);
+    assert.strictEqual(sent.op, ASSIST_SN, `expected Assist_SN, got ${sent.op}`);
+    assert.strictEqual(sent.len, 0x10, `default body should stay 16 bytes for a short CN too, got ${sent.len}`);
+    assert.strictEqual(sent.hex, '00'.repeat(0x10), `default body should stay all-zero for a short CN too, got ${sent.hex}`);
+
+    console.log('[assist-sn-format] PASS: switch off + short CN body -> still byte-identical 16-byte zero Assist_SN');
 }
 
 runSwitchOffCase();
+runSwitchOffShortBodyCase();
 runSwitchOnRealBodyCase();
 runSwitchOnShortBodyCase();
 
