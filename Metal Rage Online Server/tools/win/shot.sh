@@ -1,9 +1,10 @@
 #!/bin/bash
 # Screenshot the game (or the whole desktop) into shots/ where it can be read.
 #
-#   tools/win/shot.sh              the MetalRage window
-#   tools/win/shot.sh --full       every monitor
-#   tools/win/shot.sh --name foo   name the file
+#   tools/win/shot.sh                    the MetalRage window
+#   tools/win/shot.sh --proc MetalRage2  a different instance's window (dual-client)
+#   tools/win/shot.sh --full             every monitor
+#   tools/win/shot.sh --name foo         name the file
 set -e
 PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 HERE="$(dirname "${BASH_SOURCE[0]}")"
@@ -19,6 +20,7 @@ ARGS=(-Proc MetalRage)
 while [ $# -gt 0 ]; do
     case "$1" in
         --full) ARGS=(-Full); shift ;;
+        --proc) ARGS=(-Proc "$2"); shift 2 ;;
         --name) NAME="$2"; shift 2 ;;
         *) echo "unknown option $1"; exit 1 ;;
     esac

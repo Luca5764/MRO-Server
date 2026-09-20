@@ -5,11 +5,19 @@
 # loop), one line in, one "[<code>] <msg>" line out per command.
 #
 # Usage:
-#   pico_serial.ps1 [-Port COM6] "PING" ["CLICK left" ...]
+#   pico_serial.ps1 [-Port COM6] [-AllowedProc MetalRage] "PING" ["CLICK left" ...]
 #
 # If -Port is omitted, auto-detects the Pico by PNPDeviceID (VID_239A&PID_8162&MI_00,
 # the console CDC interface of the board's composite USB descriptor) and prints the
 # resolved port to stderr so callers can see what was picked.
+#
+# -AllowedProc names the ONE process the foreground gate (below) accepts as "the
+# game" -- defaults to "MetalRage" so every existing single-instance caller is
+# unaffected. Dual-client automation (docs/research/2026-09-20-dual-pico/design.md
+# I3) passes "MetalRage2" when the second instance is the active one. Compared with
+# exact string equality only (see Test-ForegroundProcessAllowed) -- never -like or a
+# wildcard, since "MetalRage" is a prefix of "MetalRage2" and a fuzzy match would let
+# input aimed at one instance's gate pass while the other instance is focused.
 #
 # Multiple commands can be passed in one invocation (PowerShell startup is slow, so
 # batching avoids paying that cost per command). Commands are sent in order; for each
@@ -21,15 +29,17 @@
 # This script may be run with nobody watching the screen, so it is the last line of
 # defense against a stray keystroke landing in the wrong window. Every command except
 # PING and RESET is gated immediately before it is sent, IN THIS SAME PROCESS:
-#   1. Foreground gate: the foreground window's process must be MetalRage, not
-#      minimized, and its window rect must lie fully within the PRIMARY monitor
+#   1. Foreground gate: the foreground window's process must be the one named by
+#      -AllowedProc (defaults to "MetalRage"; see the option's own comment above),
+#      compared with exact string equality only (Test-ForegroundProcessAllowed) --
+#      not minimized, and its window rect must lie fully within the PRIMARY monitor
 #      (the game lives there; the second monitor has terminals/editors). The lock
 #      screen / secure desktop (LockApp, LogonUI, consent.exe as foreground process)
 #      is explicitly treated as blocked, not as "no game running". It must also be
 #      the REAL game window, not the splash a freshly launched client briefly shows
 #      alongside it (Get-MetalRageWindow: the largest visible top-level window of
-#      any MetalRage process, required to have a >=1600x1200 client area) -- see
-#      that function's comment below.
+#      any process named $AllowedProc, required to have a >=1600x1200 client area)
+#      -- see that function's comment below.
 #   2. Click target gate (CLICK_AT, see below): the target must resolve inside the
 #      MetalRage window's client area, and the cursor must actually converge to
 #      within +/-4px of it (read back, corrected, re-checked) before CLICK fires.
@@ -73,11 +83,15 @@
 # a lone command with no -Port flag (the common case) silently landed in $Port
 # instead of $Commands. Verified by hand against Windows PowerShell 5.1.
 $Port = $null
+$AllowedProc = "MetalRage"
 $Commands = New-Object System.Collections.Generic.List[string]
 $i = 0
 while ($i -lt $args.Count) {
     if ($args[$i] -eq '-Port' -and ($i + 1) -lt $args.Count) {
         $Port = $args[$i + 1]
+        $i += 2
+    } elseif ($args[$i] -eq '-AllowedProc' -and ($i + 1) -lt $args.Count) {
+        $AllowedProc = $args[$i + 1]
         $i += 2
     } else {
         $Commands.Add($args[$i])
@@ -164,20 +178,26 @@ public class PicoGuardWin32 {
 "@
 
 # Get-MetalRageWindow -- resolves the REAL game window as the largest visible
-# top-level window belonging to any process named MetalRage (EnumWindows, not
+# top-level window belonging to any process named $ProcName (EnumWindows, not
 # Process.MainWindowHandle). A freshly launched client shows TWO visible
 # top-level windows at once: a small splash (~420x260) and the real game
 # window; MainWindowHandle returns whichever Windows picked as "main", which
 # was observed to be the splash, not the game window (2026-09-19 relaunch
 # trial, docs/journal/2026-09-19-2230-unattended-trial-01.md). Returns $null
-# if MetalRage isn't running or has no visible window yet. Duplicated
-# verbatim in client_ctl.ps1 and tools/win/screen.ps1 -- each of those is
-# also a standalone script copied to Windows and run on its own via `-File`
-# (see WIN_PICO_SERIAL_PS1_* in pico_ctl.py), so a dot-sourced shared library
-# is not an option here; this is the same reason the RECT struct above is
-# already duplicated per-file rather than shared.
+# if $ProcName isn't running or has no visible window yet. $ProcName defaults
+# to $AllowedProc (see the -AllowedProc argument above) so the one call site
+# below (Test-ForegroundGate) stays a one-line call; dual-client automation
+# (docs/research/2026-09-20-dual-pico/design.md I3) sets $AllowedProc to
+# "MetalRage2" for the second instance -- matched by Get-Process's own exact
+# name lookup, no -like/wildcard. Duplicated verbatim in client_ctl.ps1 and
+# tools/win/screen.ps1 -- each of those is also a standalone script copied to
+# Windows and run on its own via `-File` (see WIN_PICO_SERIAL_PS1_* in
+# pico_ctl.py), so a dot-sourced shared library is not an option here; this is
+# the same reason the RECT struct above is already duplicated per-file rather
+# than shared.
 function Get-MetalRageWindow {
-    $procs = @(Get-Process MetalRage -ErrorAction SilentlyContinue)
+    param([string]$ProcName = $AllowedProc)
+    $procs = @(Get-Process $ProcName -ErrorAction SilentlyContinue)
     if ($procs.Count -eq 0) { return $null }
     $script:MrwPids = @($procs | ForEach-Object { $_.Id })
     $script:MrwBest = [IntPtr]::Zero
@@ -223,6 +243,21 @@ $PrimaryBounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 $SecureDesktopProcessNames = @("LockApp", "LogonUI", "consent", "SecHealthUI")
 $Exempt = @("PING", "RESET")
 
+# Pure string comparison, no Win32/process calls -- kept separate from
+# Test-ForegroundGate so it can be unit-tested on its own (everything else in this
+# gate depends on Win32 P/Invoke calls that only work on Windows; see
+# tools/pico/Test-ForegroundProcessAllowed.tests.ps1). Exact match ONLY (-eq):
+# "MetalRage" is a prefix of "MetalRage2" (dual-client's second instance), so
+# -like/StartsWith/wildcard here would let one instance's foreground satisfy the
+# other instance's gate. Fail-closed: a null/empty allowed name blocks everything,
+# it does not mean "allow any process".
+function Test-ForegroundProcessAllowed {
+    param([string]$ActualProcName, [string]$AllowedProcName)
+    if ([string]::IsNullOrEmpty($AllowedProcName)) { return $false }
+    if ([string]::IsNullOrEmpty($ActualProcName)) { return $false }
+    return $ActualProcName -eq $AllowedProcName
+}
+
 # Every exit from this function is a deliberate hashtable @{ Blocked; Reason; Handle }.
 # Wrapped in try/catch so ANY unexpected failure (a Win32 call throwing, a process
 # query failing, etc.) also resolves to Blocked -- fail closed, never fail open.
@@ -244,38 +279,38 @@ function Test-ForegroundGate {
         if ($SecureDesktopProcessNames -contains $fgProc.Name) {
             return @{ Blocked = $true; Reason = "secure desktop / lock screen active (foreground process '$($fgProc.Name)')"; Handle = $fg }
         }
-        $mrProcs = Get-Process MetalRage -ErrorAction SilentlyContinue
+        $mrProcs = Get-Process $AllowedProc -ErrorAction SilentlyContinue
         if (-not $mrProcs) {
-            return @{ Blocked = $true; Reason = "MetalRage process not running"; Handle = $fg }
+            return @{ Blocked = $true; Reason = "'$AllowedProc' process not running"; Handle = $fg }
         }
-        if ($fgProc.Name -ne "MetalRage") {
-            return @{ Blocked = $true; Reason = "foreground window belongs to process '$($fgProc.Name)' (pid $fgPid), not MetalRage"; Handle = $fg }
+        if (-not (Test-ForegroundProcessAllowed -ActualProcName $fgProc.Name -AllowedProcName $AllowedProc)) {
+            return @{ Blocked = $true; Reason = "foreground window belongs to process '$($fgProc.Name)' (pid $fgPid), not the allowed process '$AllowedProc'"; Handle = $fg }
         }
         if ([PicoGuardWin32]::IsIconic($fg)) {
-            return @{ Blocked = $true; Reason = "foreground MetalRage window is minimized"; Handle = $fg }
+            return @{ Blocked = $true; Reason = "foreground '$AllowedProc' window is minimized"; Handle = $fg }
         }
-        # A freshly launched client has TWO visible MetalRage windows at once (the
-        # splash, ~420x260, and the real game window) -- see Get-MetalRageWindow's
-        # comment above. Require BOTH that a real-sized MetalRage window exists AND
-        # that it is the one actually in the foreground (this only VERIFIES current
-        # focus, it never calls SetForegroundWindow -- see README's 「不用 Pico 點擊
-        # 來搶前景」; tools/win/screen.ps1 is the sanctioned way to bring the game
-        # forward). If the splash is the only MetalRage window, its client area is
-        # too small and this blocks; if the real window exists but the splash still
-        # has focus, the handle-equality check below blocks instead.
-        $mainWin = Get-MetalRageWindow
+        # A freshly launched client has TWO visible windows of process $AllowedProc at
+        # once (the splash, ~420x260, and the real game window) -- see
+        # Get-MetalRageWindow's comment above. Require BOTH that a real-sized window
+        # exists AND that it is the one actually in the foreground (this only
+        # VERIFIES current focus, it never calls SetForegroundWindow -- see README's
+        # 「不用 Pico 點擊來搶前景」; tools/win/screen.ps1 is the sanctioned way to
+        # bring the game forward). If the splash is the only window, its client area
+        # is too small and this blocks; if the real window exists but the splash
+        # still has focus, the handle-equality check below blocks instead.
+        $mainWin = Get-MetalRageWindow -ProcName $AllowedProc
         if ($null -eq $mainWin) {
-            return @{ Blocked = $true; Reason = "no visible MetalRage window found"; Handle = $fg }
+            return @{ Blocked = $true; Reason = "no visible '$AllowedProc' window found"; Handle = $fg }
         }
         $mainClientRect = New-Object PicoGuardWin32+RECT
         $okMainClient = [PicoGuardWin32]::GetClientRect($mainWin.Handle, [ref]$mainClientRect)
         $mainClientW = if ($okMainClient) { $mainClientRect.Right - $mainClientRect.Left } else { 0 }
         $mainClientH = if ($okMainClient) { $mainClientRect.Bottom - $mainClientRect.Top } else { 0 }
         if (-not $okMainClient -or $mainClientW -lt $ReadyClientWidth -or $mainClientH -lt $ReadyClientHeight) {
-            return @{ Blocked = $true; Reason = "largest visible MetalRage window is too small (client ${mainClientW}x${mainClientH}, need >=${ReadyClientWidth}x${ReadyClientHeight} -- likely the splash, or the game window is not ready yet)"; Handle = $fg }
+            return @{ Blocked = $true; Reason = "largest visible '$AllowedProc' window is too small (client ${mainClientW}x${mainClientH}, need >=${ReadyClientWidth}x${ReadyClientHeight} -- likely the splash, or the game window is not ready yet)"; Handle = $fg }
         }
         if ($fg -ne $mainWin.Handle) {
-            return @{ Blocked = $true; Reason = "foreground MetalRage window is not the main game window (foreground handle $fg differs from the largest visible MetalRage window $($mainWin.Handle), $($mainWin.Width)x$($mainWin.Height) -- likely the splash is focused)"; Handle = $fg }
+            return @{ Blocked = $true; Reason = "foreground '$AllowedProc' window is not the main game window (foreground handle $fg differs from the largest visible '$AllowedProc' window $($mainWin.Handle), $($mainWin.Width)x$($mainWin.Height) -- likely the splash is focused)"; Handle = $fg }
         }
         $r = $mainWin.Rect
         $onPrimary = ($r.Left -ge $PrimaryBounds.Left) -and ($r.Right -le $PrimaryBounds.Right) -and

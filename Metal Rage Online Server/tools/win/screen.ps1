@@ -1,6 +1,7 @@
 # Capture the screen, or one window, to a PNG.
 #
 #   -Proc MetalRage    capture that process's main window (brings it forward)
+#   -Proc MetalRage2   same, for the second (dual-client) instance's process
 #   -Full              capture every monitor instead
 #
 # Written because reverse engineering this client means judging what is on the
@@ -33,11 +34,14 @@ public class Win {
 # the full rationale (duplicated here verbatim for the same reason: this script is
 # also copied to Windows and run standalone via `-File`, see tools/win/shot.sh).
 # Resolves the REAL game window as the largest visible top-level window belonging to
-# any MetalRage process -- NOT Process.MainWindowHandle, which was observed to
+# any process named $ProcName -- NOT Process.MainWindowHandle, which was observed to
 # return a freshly launched client's small splash window instead of the real one
 # (2026-09-19 relaunch trial, docs/journal/2026-09-19-2230-unattended-trial-01.md).
-# Only used for -Proc MetalRage (the only value tools/win/shot.sh ever passes);
-# any other -Proc value keeps the old MainWindowHandle-based lookup below.
+# Used for every -Proc value (dual-client instances are two separate processes, e.g.
+# "MetalRage" and "MetalRage2" -- see docs/research/2026-09-20-dual-pico/design.md
+# I2). $ProcName is matched exactly via Get-Process's own name lookup below; no
+# -like/wildcard anywhere in this file, since "MetalRage" is a prefix of
+# "MetalRage2" and a fuzzy match would resolve the wrong instance's window.
 function Get-MetalRageWindow {
     param([string]$ProcName)
     $procs = @(Get-Process $ProcName -ErrorAction SilentlyContinue)
@@ -68,16 +72,17 @@ function Get-MetalRageWindow {
 
 $rect = $null
 if (-not $Full -and $Proc -ne "") {
-    if ($Proc -eq "MetalRage") {
-        $win = Get-MetalRageWindow -ProcName $Proc
-        if ($win -eq $null) { Write-Output "no window for process '$Proc'"; exit 1 }
-        $hwnd = $win.Handle
-    } else {
-        $p = Get-Process $Proc -ErrorAction SilentlyContinue |
-             Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-        if ($p -eq $null) { Write-Output "no window for process '$Proc'"; exit 1 }
-        $hwnd = $p.MainWindowHandle
-    }
+    # Every -Proc value goes through Get-MetalRageWindow now (EnumWindows, largest
+    # visible top-level window of that exact process name). The old
+    # Process.MainWindowHandle-based fallback that used to run for any -Proc other
+    # than "MetalRage" is removed: 2026-09-19's relaunch trial showed
+    # MainWindowHandle can return a freshly launched client's small splash window
+    # instead of the real game window (docs/journal/2026-09-19-2230-unattended-
+    # trial-01.md), and dual-client's second instance (-Proc MetalRage2) needs the
+    # same real-window resolution the first instance already gets.
+    $win = Get-MetalRageWindow -ProcName $Proc
+    if ($win -eq $null) { Write-Output "no window for process '$Proc'"; exit 1 }
+    $hwnd = $win.Handle
 
     if ([Win]::IsIconic($hwnd)) { [void][Win]::ShowWindow($hwnd, 9) }
     [void][Win]::SetForegroundWindow($hwnd)
