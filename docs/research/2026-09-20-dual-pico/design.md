@@ -1,7 +1,7 @@
 # DUAL-PICO 設計稿：同機雙客戶端無人值守（2026-09-20，高階）
 
-狀態：**設計稿，待 PM 過目後才派 worker 實作。** 依據是兩份唯讀盤點
-（explorer，2026-09-20 晚），引用的行號都來自那兩份回報。
+狀態：**v2 —— PM 2026-09-20 審過，六項修訂已併入，可以派 worker。** 依據是兩份唯讀盤點
+（explorer，2026-09-20 晚），引用的行號都來自那兩份回報。v2 的修訂點在每節標了「(PM)」。
 
 ## 0. 不變式（先寫死，實作不准偏離）
 
@@ -13,6 +13,11 @@
    `MetalRage.exe`。
 4. 只用標 `isTest` 的帳號。
 5. 無人時段得到的結論一律 🟡。
+6. **行程名稱一律精確比對（PM）。** `MetalRage` 是 `MetalRage2` 的前綴——任何一處用
+   `-like`、`StartsWith`、`Get-Process -Name MetalRage*` 或萬用字元，前景閘門就會把兩個
+   實例當成同一個，**這是這個設計最容易出的致命錯**。I2／I3／I4 一律用 `-eq`／精確字串比對。
+7. **焦點切換的順序寫死（PM）：** 先改允許的前景行程名 → `SetForegroundWindow` →
+   **回讀前景行程名確認** → 才准送任何輸入。中間任何一步失敗就 halt，不重試、不搶前景。
 
 ## 1. 實例模型
 
@@ -41,7 +46,7 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
 |---|---|---|---|
 | I1 | `tools/win/shot.sh:17,19-25` | `ARGS=(-Proc MetalRage)` 寫死，參數迴圈只認 `--full`／`--name` | 加 `--proc NAME`，透傳給 `screen.ps1`（它的 `param()` 本來就有 `-Proc`） |
 | I2 | `tools/win/screen.ps1:70-80` | 只有 `-Proc` **精確等於** `"MetalRage"` 才走 `Get-MetalRageWindow`（EnumWindows 找同行程最大可見視窗）；其他值落入舊版 `MainWindowHandle` 邏輯，而那個舊邏輯 2026-09-19 實測會抓到啟動畫面 | 把 `Get-MetalRageWindow`（41-67 行）參數化成吃行程名，**任何** `-Proc` 值都走它；舊路徑刪掉或只留在明確指定時 |
-| I3 | `tools/pico/pico_serial.ps1` `Test-ForegroundGate`（約 229-284） | 硬編 `$fgProc.Name -ne "MetalRage"` → Blocked | 允許的前景行程名改成可設定的**單一值**，由 `pico_ctl` 在切換 active 實例時寫進 session 狀態。維持 fail-closed：值沒設就 Blocked |
+| I3 | `tools/pico/pico_serial.ps1` `Test-ForegroundGate`（約 229-284） | 硬編 `$fgProc.Name -ne "MetalRage"` → Blocked | 允許的前景行程名改成可設定的**單一值**，由 `pico_ctl` 在切換 active 實例時寫進 session 狀態。維持 fail-closed：值沒設就 Blocked。**必須用 `-eq` 精確比對**，且 worker 要附一個離線測試：前景是 `MetalRage2`、允許值是 `MetalRage` → **必須 Blocked**（PM） |
 | I4 | `tools/pico/client_ctl.ps1:39-41` | `$ProcName`／`$BatPath` 寫死主安裝 | 加「目標實例」參數，行程名與 launcher 從實例表來 |
 | I5 | `tools/pico/client_ctl.py:94,241-282` | `CLIENT_LOG_WSL` 寫死主安裝的 `MetalRage.log` | 依實例選 log；讀檔頭 `Init: Base directory:` 驗證這份 log 真的屬於該實例（見第 6 節 P1） |
 | I6 | `tools/pico/actions.py:164-171` `Context` | 全域單例，沒有「哪個客戶端」欄位 | 加 `clients`（實例表）與 `active_client`；所有輸入動作先經 `focus_client` |
@@ -57,13 +62,15 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
 | 動作 | 做什麼 | 完成條件（主／輔） | 逾時 |
 |---|---|---|---|
 | `focus_client(id)` | `shot.sh --proc <proc>` 把該實例叫到前景，寫進 `ctx.active_client`，同步更新 I3 的允許前景行程名 | **主**：回讀前景行程名 == 目標；**輔**：截圖能分類成已知畫面 | 10s |
-| `launch_client(id)` | 用該實例的 launcher 啟動 | **主**：該實例的 log 出現檔頭且 `Init: Base directory:` 指向該實例的安裝目錄；**輔**：畫面分類 == `login` | 120s |
+| `launch_client(id)` | 用該實例的 launcher 啟動 | **主（PM 修訂）**：該行程存在 **且** 找得到它的遊戲視窗；**輔**：畫面分類 == `login`、log 檔頭 `Init: Base directory:`。**不要等 log**（見 L4） | 120s |
 | `close_client(id)` | 關掉該實例（讓客戶端 log 完整 flush） | **主**：行程消失 | 30s |
 | `login_as(id, account)` | `focus_client` → 既有 `login()` 流程 | **主**：session log 出現該帳號的登入 pkt（`0x00110151` recv），並由它**取得並記下 `conn_id`**；**輔**：畫面 == `lobby` | 90s |
 | `join_room(id, room_name)` | 大廳房間清單點選 → 加入 | **主**：`conn` 過濾後該實例收到房間相關 pkt；**輔**：畫面 == `room` | 45s |
 | `set_ready(id)` | 房內按準備 | **主**：`User_State_SN 0x00220401` 對應 pkt；**輔**：截圖 READY | 20s |
-| `host_start_battle()` | `focus_client(host)` → F5 | **主**：`Game_Start_SN` 送出的 pkt（**不要只靠 `gameStarted_ false -> true` marker，見第 5 節 L1**）；**輔**：雙方畫面 == `battle` | 120s |
-| `console_cmd_on(id, text)` | `focus_client(id)` → F24 開主控台 → 打字 → Enter → ESC | **主**：該實例的客戶端 log 出現對應回應行；**輔**：主控台開／關的截圖 | 30s |
+| `host_start_battle()` | `focus_client(host)` → F5 | **主**：`Game_Start_SN` 送出的 pkt（**不要只靠 `gameStarted_ false -> true` marker，見 L1**）；**輔**：雙方畫面 == `battle` | 120s |
+| `enter_battle(id)` | 加入者開戰後的畫面流程（PM）：載入 → **機體選擇頁 `ZSlotSelectPage`** → 戰場。沿用既有的選機動作 | **主**：`ChangeSlot_CN 0x00230101` / `Respawn_CN` 的 pkt（`conn` 過濾）；**輔**：畫面分類 | 120s |
+| `idle_nudge(id)` | 防 80 秒踢出（PM）：切到該實例送一個無害輸入（滑鼠微動） | **主**：前景回讀成功、沒有 `Leave` pkt | 10s |
+| `console_cmd_on(id, text)` | `focus_client(id)` → F24 開主控台 → 打字 → Enter → ESC | **主（PM 修訂）**：主控台開啟／關閉的像素判定（現成的 `(>` 白色像素計數）＋打字後截圖存檔；**輔**：無。**log 的驗證全部延到第 9 步關閉客戶端之後**（見 L4） | 30s |
 | `leave_battle(id)` | 離開戰場回房 | **主**：`conn` 過濾後的離開 pkt；**輔**：畫面 == `room` | 60s |
 
 **指令白名單**：`console_cmd_on` 沿用既有白名單機制，這一輪只加 `netspeed <n>`、
@@ -86,6 +93,16 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
   既有 `start_battle()` 依賴的訊號，在雙開時無法歸屬。**改用同一時刻的 `pkt` 記錄
   （有 `conn`）當主訊號，marker 只當輔助。** 例外：聊天 marker 有手動帶 `conn`
   （`packetlog.js:194`）。
+- **L4：客戶端 log 每 4 KB 才 flush（PM）。** 所以**任何「等 log 出現某一行」的即時完成條件
+  都會必然逾時 → halt**。log 只能在**關閉客戶端之後**讀。即時訊號一律用 session log 的
+  `pkt`、行程／視窗狀態、或像素判定。
+- **L5：房間內閒置約 80 秒會被客戶端自己踢出（PM）。** 這是原版防掛機設計，不是伺服器造成的
+  （`ZGUIController.uc:945-948`，每次有輸入才 `Room_Time_Reset()`；
+  `journal/2026-09-19-0330-d1-step4-room-join.md:482` 起的補查）。**房主建房後輸入全在加入者
+  那邊**，`join_room` 45s ＋ `set_ready` 20s ＋兩次切焦點已經貼近 80 秒 → 房主會自己送
+  `Leave_CQ`、房間消失。對策見第 7 節的順序調整與 `idle_nudge`。
+- **L6：加入者開戰後會先進機體選擇頁**（`ZSlotSelectPage`，`state.md` 第 4 節 PvE 選機那列），
+  現有劇本只處理過房主。沒定義就會在「非預期畫面就停」這一關卡住。
 - **L2：`MetalRage2` 的截圖可能抓到啟動畫面。** I2 沒做好就會重現 2026-09-19 那個舊問題。
   所以 `launch_client` 的主訊號用 log 檔頭而不是畫面。
 - **L3：副本的 `MetalRage\` 是 junction，指回主安裝。** 兩個實例的 `data\Log\` 有可能
@@ -93,7 +110,11 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
 
 ## 6. 實作前要先釐清的事實（P，唯讀，先做）
 
-- **P1（擋路）：兩份 log 到底誰寫哪一個檔。** 因為 L3，需要先確認：
+- **P1（擋路，PM 擴大）：副本與主安裝共用了哪些路徑，不只 log。** junction 若涵蓋
+  `User.ini`／`MetalRage.ini`／`OptionAll`，兩個實例就**共用設定**——UE2 的 `netspeed`
+  指令會 `SaveConfig` 寫回 `User.ini`，帳號欄位的記憶也在裡面，這會影響劇本與之後的量測。
+  同時要說清楚「副本的 `IpDrv.dll` 已修補、主安裝原廠」在 junction 結構下**為什麼成立**
+  （哪一層是實體複本），寫進 `docs/reference/`。log 的部分需要確認：
   (a) `WeaponLog` 的 `HitLoc===` 行寫到哪個檔；
   (b) 房主的 `Client netspeed is N` 寫到哪個檔（引擎 log `data\System\<exe>.log`
       或 `Play Second Client.bat` 的 `-log=run-<時間>.log`，還是 `data\Log\MetalRage.log`）；
@@ -101,6 +122,14 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
   判斷依據一律是檔頭 `Init: Base directory:` 與時間戳。
 - **P2：第二個測試帳號。** 屬丙類（DB 變更），操作者已同意，但要**寫成 commit 進去的
   腳本、冪等、執行前先 dump DB**，帳號要加白名單並標 `isTest`。
+  **必須連 `hostAddress` 一起加（PM）**：`HOST_ADDRESS_REQUIRE` 會擋掉「房內有非房主成員
+  但房主沒有 hostAddress」的開戰（`config/whitelist.js`、`backlog.md:592`）。新帳號要當房主，
+  值用**本機**的區網 IP（不是筆電的；`mrotest` 綁的 `192.168.0.10` 要確認是不是這台）。
+  ⚠️ `config/allowed-users.json` 不進 repo、裡面是真實 IP：**腳本不可以把真實 IP 寫進 repo**，
+  文件一律用佔位值。
+  ⚠️ 改 `config/` 要**完整重啟**伺服器（不是 `/reload`）。重啟前先 `/conns` 確認沒人在線。
+- **P4：機體選擇頁上主控台開不開得起來（PM）。** netspeed 只需要連線已建立，不一定要出場；
+  但如果機體選擇頁按不出主控台，劇本就要先選機出場再下指令。這一項要先確認。
 - **P3：`MetalRage2` 截圖驗證。** I2 改完後，對 `MetalRage2` 截一張圖確認抓到的是遊戲
   視窗不是啟動畫面。
 
@@ -108,11 +137,14 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
 
 前置：伺服器在跑、兩個帳號都在白名單、STOP 檔不存在、P1–P3 都過。
 
+**順序經 PM 修訂，為的是壓縮房主的閒置時間（L5）。** 先讓加入者站在大廳、房間清單已開，
+房主才建房；房主閒置超過 **50 秒**就插一個 `idle_nudge(host)`。
+
 1. `launch_client(host)` → `login_as(host, <帳號2>)`
-2. `launch_client(joiner)` → `login_as(joiner, mrotest)`
+2. `launch_client(joiner)` → `login_as(joiner, mrotest)` → **停在大廳、房間清單已開**
 3. host 建房（沿用既有 `create_pve_room`，房名帶時間戳以利辨識）
-4. `join_room(joiner, <房名>)` → `set_ready(joiner)`
-5. `host_start_battle()` → 等雙方進戰場
+4. `join_room(joiner, <房名>)` → `set_ready(joiner)`（超過 50 秒就先 `idle_nudge(host)`）
+5. `host_start_battle()` → `enter_battle(joiner)`（載入 → 機體選擇 → 戰場，見 L6）
 6. `console_cmd_on(joiner, "netspeed 100000")`
 7. 等 5 秒 → `console_cmd_on(joiner, "stat net")`（拿得到就截圖，拿不到不擋）
 8. `leave_battle(joiner)`、`leave_battle(host)`
@@ -123,6 +155,9 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
 - `N = 15000` → 只有房主那台要改（`MaxClientRate` clamp 生效）
 - `N = 10000` → 客戶端永遠送 10000，改房主沒用
 - `N = 100000` → 房主的修補讓整條路都放開
+- **房主 log 完全沒有新的 `Client netspeed` 行（PM 新增第四種）** → 代表指令沒有送出
+  NETSPEED token，記為第四種結果（不是「沒效果」，是「沒送到」）——
+  `2026-09-20-2153-server-netspeed.md` 已證實那行只在收到的文字含 `"NETSPEED"` token 時才印
 
 ## 8. 停止條件（全部 fail-closed）
 
@@ -141,7 +176,9 @@ game_log / account / conn_id`（`conn_id` 登入後才填，見第 4 節）。
 2. `tools/pico/experiments/dual-netspeed.json`（第 7 節的劇本）。
 3. `docs/reference/` 補一節「同機雙開自動化」（實例表、log 歸屬、前景閘門怎麼運作、
    怎麼手動中止）。
-4. 跑完後一份文字報告放 `docs/HANDOFF.md` 最上面。
+4. 跑完後一份文字報告放 `docs/HANDOFF.md` 最上面。**報告必須註明（PM）**：兩個實例各自的
+   `IpDrv.dll` sha256、各自用的帳號、誰是房主。
+5. 第一次雙開跑完，拿真 log 核對「`port` 欄位分辨不出客戶端」這條 🟡（第 4 節）。
 
 ## 10. 明確不做
 
