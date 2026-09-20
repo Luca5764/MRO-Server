@@ -130,3 +130,52 @@ Engine.dll  UNetDriver::StaticConstructor (export VA 0x104a00f0)
 - 丟呼叫的是 authority 端（房主）的廣播迴圈，所以**理論上只有當房主那台需要改**；但我們的玩法裡每個人都可能開房。
 - y0da 監控的是 `MetalRage.exe` 的 `.text`；[TEST] 2026-09-19 對 `ZNetwork.dll` 做 1-byte patch 客戶端正常運作，所以**改 companion DLL 不觸發 y0da** 在這個客戶端上是實測成立的。但 `Engine.dll` 本身的保護狀況 ⬜ 沒查過。
 - 效果強度仍只有 n=35 的證據（32.4%→22.9%，未達顯著）。改二進位檔之前值得先把樣本補足，或直接用 10000 vs 100000 的大對比一次定案。
+
+## 7. 修補 IpDrv.dll：客戶端速率上去了，缺口沒有（21:45）
+
+操作者授權後（先只授權副本，看到副本能正常啟動進戰場後再授權主安裝），今晚實際改了二進位檔。
+
+**第一次改錯模組。** `Engine.dll` 的 `UNetDriver::StaticConstructor` 兩個值改成 100000 之後**完全沒有變化**：房主仍印 `Client netspeed is 10000`、`netspeed 100000` 仍夾在 15000。原因是**子類別在基底類別之後執行並覆蓋**：
+
+```
+IpDrv.dll  UTcpNetDriver::StaticConstructor
+  0x10714693  mov [esi+0x1168], 0x3a98   ; 15000 MaxClientRate      (file 0x14699)
+  0x1071469d  mov [esi+0x116c], 0x2710   ; 10000 MaxInternetClientRate (file 0x146a3)
+```
+
+這也解釋了為什麼 UT2004 的慣例是寫 `[IpDrv.TcpNetDriver]` 那個 section。`Engine.dll` 的修補已還原。
+
+**改 `IpDrv.dll` 之後**（兩份安裝，`0x14699`／`0x146a3` → 100000，sha256 `e384991e...`）：
+
+| | 結果 |
+|---|---|
+| 加入者 `stat net` 的 `Speed` | **100000** ✅（客戶端自己的速率確實上去了） |
+| 房主 log | **仍是 `Client netspeed is 10000`** ❌ |
+| 投射物缺口 | **30.9%**（68 扣扳機缺 21），對照未修補的 32.4%（34 缺 11）→ **沒有改善** |
+
+[LOG] `run-213726.73.log`。失敗串 `1,1,2,2,1,1,1,1,4,1,2,1,1,1,1`。
+
+**客戶端啟動、登入、開房、進戰場全部正常** —— 順帶確認 **修補 `Engine.dll`／`IpDrv.dll` 不觸發任何保護機制**（`Engine.dll` 是未加殼的標準 MSVC 二進位檔：section 名稱正常、import 表完整、`.text` 熵值 6.56、無 Themida／y0da／VMProtect 特徵）。
+
+## 8. 問題其實在客戶端送出的 `NETSPEED` token（22:00）
+
+子 agent 追出那行 log 的位置，我核對過組語（`Engine.dll` `ULevel::NotifyReceivedText`，函式起點 export VA `0x1047ec80`）：
+
+```
+0x1047f9a4  mov ecx, [ebx+0x14]        ; NetDriver
+0x1047f9a7  mov ecx, [ecx+0x1168]      ; MaxClientRate（上限）
+0x1047f9b0  cmp eax, 0x708             ; 1800（下限）
+0x1047f9be  cmp eax, ecx
+0x1047f9c8  mov [edx+0x50], eax        ; connection->CurrentNetSpeed
+0x1047f9cb  push 0x106c5444            ; "Client netspeed is %i"
+```
+
+`Clamp(parsed, 1800, MaxClientRate)` → 存進 connection `+0x50` → 印 log。**這條路只在收到的文字含 `NETSPEED` token 時才會走**（Parse 在 `0x1047f988-0x1047f998`）；沒有 token 就完全不碰 `CurrentNetSpeed`、也不印。
+
+→ 房主既然印了 10000，**客戶端就是有送 `NETSPEED`、而且送的值是 10000**。而當時上限已被改成 100000，clamp 只會往下壓，**壓不出 10000**。
+
+→ **問題自始至終在客戶端組那個 token 時讀的值**，不在房主端，也不在我們今晚改的四個常數。這一併解釋了為什麼 ini 全部無效、兩個模組的 StaticConstructor 全部無效。
+
+🟡 下一步（子 agent 進行中）：`Engine.dll` 有兩個 UTF-16 `NETSPEED` 字串（file `0x3a7f94`、`0x3a7fb4`），我們追的是 server 側被 Parse 的那個；另一個很可能是 client 側組字串用的。要分辨它讀的是 `ConfiguredInternetSpeed`、`ConfiguredLanSpeed`、`CurrentNetSpeed`（connection+0x50），還是 `MaxInternetClientRate`。
+
+**客戶端要還原成原廠**：`~/mro-netspeed-off.sh`（`IpDrv.dll` 目前仍是修補狀態，`Engine.dll` 已還原）。
