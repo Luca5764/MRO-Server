@@ -163,7 +163,11 @@ account / conn_id / launch_time`（`conn_id` 登入後才填，見第 4 節；`l
   腳本、冪等、執行前先 dump DB**，帳號要加白名單並標 `isTest`。
   **必須連 `hostAddress` 一起加（PM）**：`HOST_ADDRESS_REQUIRE` 會擋掉「房內有非房主成員
   但房主沒有 hostAddress」的開戰（`config/whitelist.js`、`backlog.md:592`）。新帳號要當房主，
-  值用**本機**的區網 IP（不是筆電的；`mrotest` 綁的 `192.168.0.10` 要確認是不是這台）。
+  值**不要寫死**，執行期沿用 `mrotest` 那一筆的 `hostAddress`。
+  ⚠️ **更正（2026-09-20 23:3x）**：設計稿原本寫「`mrotest` 綁的 `192.168.0.10`」已經過時——
+  `2026-09-20-1530-m3r-vpn-rehearsal.md` 那次把整份白名單的 `hostAddress` 換成了 VPN 位址。
+  同機雙開走 VPN 位址是可行的（今晚的 DUAL-CLIENT 實驗就是這樣跑起來的），
+  但**任何地方都不要抄寫死值**，一律動態沿用。
   ⚠️ `config/allowed-users.json` 不進 repo、裡面是真實 IP：**腳本不可以把真實 IP 寫進 repo**，
   文件一律用佔位值。
   ⚠️ 改 `config/` 要**完整重啟**伺服器（不是 `/reload`）。重啟前先 `/conns` 確認沒人在線。
