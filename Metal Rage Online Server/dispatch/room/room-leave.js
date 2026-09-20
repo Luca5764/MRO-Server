@@ -17,7 +17,7 @@
 // changed and why.)
 const rooms = require('../../rooms.js');
 const { sendRoomUserPackets, buildMemberUserCtx } = require('./room-user.sender');
-const { broadcastRoomListChange } = require('./room-list.sender');
+const { broadcastRoomListChange, sendFullRoomList } = require('./room-list.sender');
 // P3 step 2 (docs/design/p3-step1-writeback.md §2.2/§6, MATCH_STATS_MODE):
 // a match that never reached EndGame_SN (host leaves / room empties) gets
 // one MATCH-ABORTED log line instead of a summary -- see leaveRoomAndNotify
@@ -91,6 +91,10 @@ function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
     // not 'playing' or the switches are off, and it never touches room
     // membership itself, so it cannot change wasHost/remainingMembers below.
     handleBattleLeave(accountId, room);
+    // LEAVE-LIST: grab the leaver's own connection before removeMember() drops
+    // the membership (that is the only place it is reachable from here).
+    const leaverMember = room.members.get(accountId);
+    const leaverClient = leaverMember ? leaverMember.client : null;
     const wasHost = room.hostAccountId === accountId;
     const remainingMembers = Array.from(room.members.values()).filter((m) => m.accountId !== accountId);
 
@@ -138,6 +142,16 @@ function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
     if (rooms.isLobbyRoomListEnabled()) {
         const updateType = remainingMembers.length > 0 ? 2 : 3;
         broadcastRoomListChange(rooms.getLobbyClients(), room, updateType, getExactMessageBuffer);
+
+        // LEAVE-LIST (2026-09-20): the leaver lands back in the lobby but only
+        // ever got the incremental update about the room it just left, so any
+        // room created by someone else while it was inside stayed invisible --
+        // the client does not send the lobby request (0x00230141) again on its
+        // own after Leave_CQ ([LOG] session-20260920-140707.jsonl: Leave_SA ->
+        // one delete entry -> nothing, reproduced in session-20260919-184235
+        // too; research/2026-09-20-roomlist-empty/notes.md). Send the leaver a
+        // full list so the lobby it returns to is current.
+        if (leaverClient) sendFullRoomList(leaverClient, rooms.listRooms(), getExactMessageBuffer);
     }
 }
 
