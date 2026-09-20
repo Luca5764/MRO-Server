@@ -112,6 +112,17 @@ const POINT_PER_KILL = 10;
 function startMatch(room, { hostAccountId, mapId, roundTarget })
 {
     if (!isMatchStatsEnabled() || !room) return;
+    // Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "需修改
+    // -- Step 2/participant 生命週期"): snapshot every current room member's
+    // metadata (team/mech/is_test) right here, at match start, instead of
+    // re-reading room.members at summary time -- see ensureParticipantMeta
+    // below for the mid-match-joiner half of this and emitMatchSummary for
+    // why this map, not room.members, is what the summary/writeback payload
+    // is built from.
+    const participantsMeta = new Map();
+    for (const member of (room.members ? room.members.values() : [])) {
+        participantsMeta.set(member.accountId, buildParticipantMeta(member, true));
+    }
     room.matchStats = {
         hostAccountId,
         mapId,
@@ -120,8 +131,47 @@ function startMatch(room, { hostAccountId, mapId, roundTarget })
         rounds: [],
         currentRound: null,
         participants: new Map(), // accountId -> { kills, deaths }
+        participantsMeta, // accountId -> { team, mechType, isTest, presentAtStart }
         finalized: false,
     };
+}
+
+// Sol batch6 review point 1: same fields emitMatchSummary used to read
+// straight off room.members at summary time -- factored out so
+// startMatch()'s initial snapshot and ensureParticipantMeta()'s mid-match
+// snapshot use identical logic.
+function buildParticipantMeta(member, presentAtStart)
+{
+    return {
+        team: member.team || 0,
+        // mechType: client.currentHangarSlot_ (1..8) -- undefined (not a
+        // guessed 0/1) when the client never went through a handler that
+        // sets it, so applyMatchAccumulation() knows to skip the
+        // mech_levels update rather than crediting the wrong mech.
+        mechType: member.client && Number(member.client.currentHangarSlot_) > 0
+            ? Number(member.client.currentHangarSlot_)
+            : undefined,
+        isTest: !!(member.client && member.client.isTestAccount_),
+        presentAtStart,
+    };
+}
+
+// Sol batch6 review point 1 ("Members who join mid-match"): a Death_CN
+// attacker/victim who is not in matchStats.participantsMeta yet (i.e. it
+// joined the room after startMatch() took its snapshot) gets its metadata
+// captured here, the first time it is attributed a kill or death --
+// `presentAtStart: false` records it was not there at the start. A member
+// who joins mid-match and never appears in any Death_CN (no kill, no
+// death) is never added and does not appear in the eventual summary/
+// writeback -- same "only what we can attribute" precedent Death_CN's own
+// index-0-is-AI skip already uses. No-op if `accountId` is already known
+// or is not a current room member (nothing to snapshot from).
+function ensureParticipantMeta(room, matchStats, accountId)
+{
+    if (!accountId || matchStats.participantsMeta.has(accountId)) return;
+    const member = room && room.members ? room.members.get(accountId) : null;
+    if (!member) return;
+    matchStats.participantsMeta.set(accountId, buildParticipantMeta(member, false));
 }
 
 function participantStats(matchStats, accountId)
@@ -181,12 +231,17 @@ function beginRound(room)
 function recordDeathCn(room, attackerIndex, victimIndex)
 {
     if (!isMatchStatsEnabled() || !room || !room.matchStats) return;
-    if (room.matchStats.currentRound)
-        room.matchStats.currentRound.deathCnCount++;
-    if (attackerIndex && attackerIndex !== victimIndex)
-        participantStats(room.matchStats, attackerIndex).kills++;
-    if (victimIndex)
-        participantStats(room.matchStats, victimIndex).deaths++;
+    const ms = room.matchStats;
+    if (ms.currentRound)
+        ms.currentRound.deathCnCount++;
+    if (attackerIndex && attackerIndex !== victimIndex) {
+        ensureParticipantMeta(room, ms, attackerIndex);
+        participantStats(ms, attackerIndex).kills++;
+    }
+    if (victimIndex) {
+        ensureParticipantMeta(room, ms, victimIndex);
+        participantStats(ms, victimIndex).deaths++;
+    }
 }
 
 /**
@@ -235,6 +290,13 @@ function emitMatchSummary(room, { result })
     const ms = room.matchStats;
     ms.finalized = true;
 
+    // Sol batch6 review point 1: both loops below are built from the
+    // match-start snapshot (+ any mid-match joiners ensureParticipantMeta()
+    // added), NOT from room.members -- a participant who left before
+    // EndGame_SN must still appear here with their real kills/deaths/
+    // is_test/team/mechType, not be silently dropped (and, for is_test,
+    // possibly flip the whole match's is_test flag) just because they are
+    // no longer a current room member.
     const participants = [];
     // P3 step 3 (docs/design/p3-step3-writeback-impl.md): DB-only payload,
     // built in the same loop but deliberately kept out of `participants`/
@@ -243,45 +305,27 @@ function emitMatchSummary(room, { result })
     // that greps it. Team/mech/economy fields are new to this step and are
     // only ever read by scheduleMatchWriteback() below.
     const participantsForDb = [];
-    for (const member of (room.members ? room.members.values() : [])) {
-        const st = ms.participants.get(member.accountId) || { kills: 0, deaths: 0 };
-        // is_test: ISTEST-WIRE (docs/backlog.md; design doc §5 step 3) --
-        // config/allowed-users.json entries may carry an `isTest` field,
-        // read into client.isTestAccount_ at login
-        // (account.dispatch.js's CQ_LOGIN_WASABII and
-        // gamelogin.dispatch.js's Login_Again_CQ, both via
-        // config/whitelist.js's isTestAccount()). Still read defensively
-        // (`member.client &&`) since not every member.client is guaranteed
-        // to have gone through either of those handlers in every test/edge
-        // case.
-        const isTest = !!(member.client && member.client.isTestAccount_);
+    for (const [accountId, meta] of ms.participantsMeta) {
+        const st = ms.participants.get(accountId) || { kills: 0, deaths: 0 };
         participants.push({
-            account_id: member.accountId,
+            account_id: accountId,
             kills: st.kills,
             deaths: st.deaths,
-            is_test: isTest,
+            is_test: meta.isTest,
         });
-        // mechType: client.currentHangarSlot_ (1..8), the same field
-        // gate.game.dispatch.js already reads as "selectedMech" -- undefined
-        // (not 0/1-guessed) when the client never went through a handler
-        // that sets it, so applyMatchAccumulation() knows to skip the
-        // mech_levels update rather than crediting the wrong mech.
-        const mechType = member.client && Number(member.client.currentHangarSlot_) > 0
-            ? Number(member.client.currentHangarSlot_)
-            : undefined;
         // result: PvE is co-op, so every participant shares the room's
         // result (win/fail) -- there is no opposing-team concept yet for
         // "result" to disagree with `result` on a per-participant basis.
         const participantResult = result === 1 ? 1 : (result === 2 ? 2 : 0);
         participantsForDb.push({
-            accountId: member.accountId,
-            team: member.team || 0,
+            accountId,
+            team: meta.team,
             kills: st.kills,
             deaths: st.deaths,
             expGained: st.kills * EXP_PER_KILL,
             pointGained: st.kills * POINT_PER_KILL,
             result: participantResult,
-            mechType,
+            mechType: meta.mechType,
         });
     }
     const isTest = participants.some((p) => p.is_test);

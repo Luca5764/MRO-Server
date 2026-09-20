@@ -70,6 +70,7 @@ const CAMPAIGN_CN = 0x00230139;
 const DEATH_CN = 0x00230123;
 const BEGIN_ROUND_CN = 0x00230151;
 const LEAVE_CQ = 0x00220234;
+const LEAVE_CQ_BATTLE = 0x00222131;
 
 function makeCreateBody(name, mapId, playRound)
 {
@@ -314,6 +315,78 @@ async function testTwoRoundMatchSummary()
     }
 }
 
+// Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "需修改 --
+// Step 2/participant 生命週期"): a non-host who leaves the room mid-match
+// (Leave_CQ 0x00220234, the room does NOT empty -- the host is still
+// there) must still appear in the eventual MATCH-SUMMARY with their real
+// kills/deaths/is_test, taken from the match-start snapshot, not from
+// room.members (which no longer has them by the time EndGame_SN fires).
+async function testMidMatchLeaverStillAppearsInSummary()
+{
+    rooms._resetForTests();
+    rooms._setRoomJoinModeForTests('enabled');
+    LobbyDispatch._setPveRoundAdvanceModeForTest('enabled');
+    matchStats._setMatchStatsModeForTest('enabled');
+    GateGameDispatch._setHostAddressRequireModeForTest('disabled');
+
+    const gate = new GateGameDispatch();
+    const lobby = new LobbyDispatch();
+    const clientA = makeFakeClient(1, 30907);
+    const clientB = makeFakeClient(2, 30907);
+    clientA.accountId_ = 1; clientB.accountId_ = 2;
+    clientA.nickname_ = 'Alice'; clientB.nickname_ = 'Bob';
+    clientA.pilot_ = 101; clientB.pilot_ = 102;
+    clientA.currentHangarSlot_ = 1; clientB.currentHangarSlot_ = 2;
+
+    const fakeTimers = installFakeTimers();
+    const markers = captureMarkers((t) => t.startsWith('MATCH-'));
+    try {
+        const room = await setUpTwoMemberRoom(clientA, clientB, gate, fakeTimers, 9005, 1);
+
+        gate.dispatch(clientA, GAME_START_CN, Buffer.alloc(0));
+        while (fakeTimers.fireNext()) { /* drain */ }
+        await flushMicrotasks();
+
+        lobby.dispatch(clientA, BEGIN_ROUND_CN, Buffer.alloc(0));
+        // A (accountId 1) kills B (accountId 2) before B leaves.
+        lobby.dispatch(clientA, DEATH_CN, makeDeathCnBody(1, 2, 1));
+        assert.ok(room.matchStats.participantsMeta.has(2), 'sanity: B is in the match-start snapshot');
+
+        // Bob (non-host) leaves the room mid-match. The host is still
+        // present, so this must NOT abort the match (remainingMembers.length
+        // > 0, wasHost === false -- see leaveRoomAndNotify's own gate).
+        const bobLeaveHandled = gate.dispatch(clientB, LEAVE_CQ, Buffer.from([0x02]));
+        assert.strictEqual(bobLeaveHandled, true, 'Leave_CQ 0x00220234 must be handled');
+        assert.strictEqual(room.members.has(2), false, 'Bob must be removed from room.members by the room-leave path');
+        assert.strictEqual(room.matchStats.finalized, false, 'a non-empty room losing a non-host must not abort the match');
+        assert.ok(room.matchStats.participantsMeta.has(2), 'the snapshot must still remember Bob after he leaves the room');
+
+        // Host finishes the (single-round) match; falls through to
+        // EndGame_SN -> emitMatchSummary.
+        lobby.dispatch(clientA, CAMPAIGN_CN, makeCampaignCnBody(1));
+
+        assert.strictEqual(room.matchStats.finalized, true);
+        const summaryMarkers = markers.captured.filter((t) => t.startsWith('MATCH-SUMMARY '));
+        assert.strictEqual(summaryMarkers.length, 1, 'exactly one MATCH-SUMMARY marker must be emitted');
+        const summary = JSON.parse(summaryMarkers[0].slice('MATCH-SUMMARY '.length));
+
+        const pBob = summary.participants.find((p) => p.account_id === 2);
+        assert.ok(pBob, 'Bob must still appear in the summary even though he left the room before EndGame_SN');
+        assert.strictEqual(pBob.deaths, 1, "Bob's death (from before he left) must be preserved");
+        assert.strictEqual(pBob.kills, 0);
+        assert.strictEqual(pBob.is_test, false);
+
+        const abortedMarkers = markers.captured.filter((t) => t.startsWith('MATCH-ABORTED '));
+        assert.strictEqual(abortedMarkers.length, 0, 'a non-host mid-match leave (room not emptied) must never emit MATCH-ABORTED');
+
+        console.log('[match-stats test] PASS: a non-host who leaves mid-match still appears in the MATCH-SUMMARY with their real kills/deaths');
+    } finally {
+        markers.restore();
+        fakeTimers.restore();
+        rooms._resetForTests();
+    }
+}
+
 async function testHostLeaveBeforeEndGameEmitsAborted()
 {
     rooms._resetForTests();
@@ -359,6 +432,74 @@ async function testHostLeaveBeforeEndGameEmitsAborted()
         const summaryMarkers = markers.captured.filter((t) => t.startsWith('MATCH-SUMMARY '));
         assert.strictEqual(summaryMarkers.length, 0, 'an aborted match must never also emit MATCH-SUMMARY');
         console.log('[match-stats test] PASS: host leaving mid-match emits one MATCH-ABORTED, no MATCH-SUMMARY, matchStats.finalized guards against a second marker');
+    } finally {
+        markers.restore();
+        fakeTimers.restore();
+        rooms._resetForTests();
+    }
+}
+
+// Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "需修改 --
+// Step 2/中斷 marker"): the host pressing ESC and leaving mid-battle
+// (Leave_CQ 0x00222131, gate.game.dispatch.js's own case) never routes
+// through room-leave.js's leaveRoomAndNotify() -- it does not remove the
+// sender's room membership -- so that function's own emitMatchAborted()
+// call used to never fire for this path, even though handleBattleLeave()
+// already sends EndGame_SN to the rest of the room and flips room.state
+// back to 'lobby' (the match IS cut short). Requires BATTLE_LEAVE_MODE +
+// ROOM_PLAYING_STATE_MODE on (handleBattleLeave's own gates), in addition
+// to MATCH_STATS_MODE.
+async function testHostBattleLeaveEmitsAborted()
+{
+    rooms._resetForTests();
+    rooms._setRoomJoinModeForTests('enabled');
+    rooms._setRoomPlayingStateModeForTests('enabled');
+    rooms._setBattleLeaveModeForTests('enabled');
+    LobbyDispatch._setPveRoundAdvanceModeForTest('enabled');
+    matchStats._setMatchStatsModeForTest('enabled');
+    GateGameDispatch._setHostAddressRequireModeForTest('disabled');
+
+    const gate = new GateGameDispatch();
+    const lobby = new LobbyDispatch();
+    const clientA = makeFakeClient(1, 30907);
+    const clientB = makeFakeClient(2, 30907);
+    clientA.accountId_ = 1; clientB.accountId_ = 2;
+    clientA.nickname_ = 'Alice'; clientB.nickname_ = 'Bob';
+    clientA.pilot_ = 101; clientB.pilot_ = 102;
+    clientA.currentHangarSlot_ = 1; clientB.currentHangarSlot_ = 2;
+
+    const fakeTimers = installFakeTimers();
+    const markers = captureMarkers((t) => t.startsWith('MATCH-'));
+    try {
+        const room = await setUpTwoMemberRoom(clientA, clientB, gate, fakeTimers, 9006, 5);
+
+        gate.dispatch(clientA, GAME_START_CN, Buffer.alloc(0));
+        while (fakeTimers.hasPending()) {
+            fakeTimers.fireNext();
+            await flushMicrotasks();
+        }
+        assert.strictEqual(room.state, 'playing', 'sanity: room must be playing before the battle-leave');
+        lobby.dispatch(clientA, BEGIN_ROUND_CN, Buffer.alloc(0));
+        lobby.dispatch(clientA, DEATH_CN, makeDeathCnBody(1, 2, 1));
+        assert.ok(room.matchStats && !room.matchStats.finalized, 'sanity: a match is in progress, not finalized');
+
+        // Host (A) presses ESC -> leave while still in battle (scene 6).
+        const leaveHandled = gate.dispatch(clientA, LEAVE_CQ_BATTLE, Buffer.alloc(0));
+        assert.strictEqual(leaveHandled, true, 'Leave_CQ 0x00222131 must be handled');
+        assert.strictEqual(room.state, 'lobby', 'sanity: handleBattleLeave must have run (host battle-leave cuts the match short)');
+        assert.ok(room.members.has(1), 'battle-leave (unlike room-leave) must not remove the host from room membership');
+
+        assert.strictEqual(room.matchStats.finalized, true, 'matchStats must be finalized once the host leaves mid-battle');
+        const abortedMarkers = markers.captured.filter((t) => t.startsWith('MATCH-ABORTED '));
+        assert.strictEqual(abortedMarkers.length, 1, 'exactly one MATCH-ABORTED marker must be emitted for a host battle-leave');
+        const aborted = JSON.parse(abortedMarkers[0].slice('MATCH-ABORTED '.length));
+        assert.strictEqual(aborted.host_account_id, 1);
+        assert.strictEqual(aborted.map_id, 9006);
+        assert.strictEqual(aborted.reason, 'host-left-battle');
+
+        const summaryMarkers = markers.captured.filter((t) => t.startsWith('MATCH-SUMMARY '));
+        assert.strictEqual(summaryMarkers.length, 0, 'an aborted match must never also emit MATCH-SUMMARY');
+        console.log('[match-stats test] PASS: host battle-leave (0x00222131) emits one MATCH-ABORTED, matching the room-leave path\'s behaviour');
     } finally {
         markers.restore();
         fakeTimers.restore();
@@ -439,7 +580,9 @@ async function main()
 {
     await testSwitchOffIsNoOp();
     await testTwoRoundMatchSummary();
+    await testMidMatchLeaverStillAppearsInSummary();
     await testHostLeaveBeforeEndGameEmitsAborted();
+    await testHostBattleLeaveEmitsAborted();
     await testIsTestPropagatesFromAnyParticipant();
     console.log('[match-stats test] ALL CHECKS PASS');
     process.exit(0);
