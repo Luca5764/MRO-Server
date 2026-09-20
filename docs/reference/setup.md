@@ -229,14 +229,37 @@ VPN 工具怎麼選（ZeroTier／Radmin VPN／Tailscale／Hamachi 的免費額�
    伺服器。
 3. 防火牆／portproxy：`tools/win/lan-open.ps1` 和 `tools/win/p2p-open.ps1` 都有 `-VirtualSubnet` 參數
    （`p2p-open.ps1` 沿用既有的 `-RemoteSubnet` 覆寫機制不變，`-VirtualSubnet` 是另外**新增、獨立**的一
-   組規則，不會動到原本區網 `192.168.0.0/24` 那組）：
+   組規則，不會動到原本區網 `192.168.0.0/24` 那組），另外還有一個更窄的 `-FromWhitelist`（FW-NARROW，
+   `docs/backlog.md`）：
+
+   **`-FromWhitelist`（建議用這個）：** 不指定整個 VPN 網段，而是直接讀
+   `config/allowed-users.json`（跟登入白名單、`hostAddress` 房主位址是同一份檔案），把每個帳號的
+   `hostAddress` 逐一列進防火牆規則的 `-RemoteAddress`（已經在區網網段內的位址會被跳過，因為區網那組
+   規則已經涵蓋）。這樣防火牆、白名單、VPN 成員三層永遠是同一份名單（`AGENTS.md` 硬性約束 2），不會
+   像 `-VirtualSubnet 26.0.0.0/8`（Radmin VPN 全體使用者共用的位址空間）那樣，把整個 VPN 供應商的位址
+   空間都放進 Windows 防火牆——那遠比「白名單允許的人」寬。跑法：
+   ```powershell
+   .\lan-open.ps1 -FromWhitelist
+   .\p2p-open.ps1 -FromWhitelist
+   ```
+   腳本會把用了哪些位址、跳過了哪些帳號（沒填 `hostAddress`／位址在區網網段內／格式不對）都印出來。
+   **白名單裡沒有可用的 `hostAddress` 時（檔案不存在、讀不到、或篩選完一個位址都沒有），腳本會直接不
+   建任何規則並回傳非 0（fail closed），不會退回到開放整個網段。** 新增一個 VPN 成員時，把他的
+   `hostAddress` 填進 `config/allowed-users.json` 之後，重新跑一次這兩支 `-FromWhitelist` 就會生效
+   （腳本本身沒有記憶，每次都是整組重建）。
+
+   **`-VirtualSubnet <VPN網段>`（沒有白名單位址時的備用）：**
    ```powershell
    .\lan-open.ps1 -VirtualSubnet <VPN網段，例如 10.147.0.0/16>
    .\p2p-open.ps1 -VirtualSubnet <VPN網段>
    ```
-   不帶這個參數時，兩支腳本行為跟改動前完全一樣。要收回 VPN 那組規則，`lan-close.ps1` 要加
-   `-Virtual`；`p2p-close.ps1` 不用額外參數，它本來就會把兩組規則一次收掉（腳本內的註解有寫原因）。
-   規則只套用在 Private 設定檔（不是 Domain），理由同上面「前提」那條。
+   帶了 `-VirtualSubnet` 時腳本會印出警告，提醒這比 `-FromWhitelist` 寬（整個網段都能進，不是只有白
+   名單裡的人）。
+
+   兩者互斥時 `-FromWhitelist` 優先；都不帶時兩支腳本行為跟這兩個參數出現前完全一樣。要收回 VPN 那組
+   規則（不論當初是用哪個參數建的，規則名稱都一樣），`lan-close.ps1` 要加 `-Virtual`；`p2p-close.ps1`
+   不用額外參數，它本來就會把兩組規則一次收掉（腳本內的註解有寫原因）。規則只套用在 Private 設定檔
+   （不是 Domain），理由同上面「前提」那條。
 
 ### 🟡 待驗證：主機連自己的虛擬 IP
 
