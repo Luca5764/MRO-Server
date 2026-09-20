@@ -150,6 +150,17 @@ account / conn_id / launch_time`（`conn_id` 登入後才填，見第 4 節；`l
   ⚠️ `config/allowed-users.json` 不進 repo、裡面是真實 IP：**腳本不可以把真實 IP 寫進 repo**，
   文件一律用佔位值。
   ⚠️ 改 `config/` 要**完整重啟**伺服器（不是 `/reload`）。重啟前先 `/conns` 確認沒人在線。
+- **P5（新，擋路，2026-09-20 23:20 發現）：主安裝的遊戲解析度與 atlas 不符，Pico 全線被擋。**
+  `data\System\OptionAll.ini` 的 `op_Display=(ScreenSize="1152x864",...)`，但 atlas
+  （`tools/pico/atlas/manifest.json`）的 `shot_size` 是 `1616x1239`（client 1600x1200）。
+  `pico_serial.ps1` 的 `Get-MetalRageWindow` 有一道尺寸閘門：client area 小於 1600x1200
+  就判定成 splash／未 ready → **BLOCKED**。這道閘門是**所有** gated Pico 指令共用的前置檢查，
+  不只 CLOSE_WINDOW——**現在對主安裝的任何 Pico 操作都會被擋，不是雙開才有的問題**。
+  [TEST] 2026-09-20 23:1x：`client_ctl.close_client()` 回
+  `largest visible 'MetalRage' window is too small (client 1152x864, need >=1600x1200)`。
+  **待裁決**（已送 PM）：改回 atlas 對應的解析度（改主安裝設定檔，kickoff 說主安裝不動）
+  ／重拍 1152x864 的 atlas（工作量大）／請操作者在遊戲裡改。**在這一項解決之前，
+  任何需要 Pico 輸入的無人劇本都跑不起來。**
 - **P4：機體選擇頁上主控台開不開得起來（PM）。** netspeed 只需要連線已建立，不一定要出場；
   但如果機體選擇頁按不出主控台，劇本就要先選機出場再下指令。這一項要先確認。
 - **P3：`MetalRage2` 截圖驗證。** I2 改完後，對 `MetalRage2` 截一張圖確認抓到的是遊戲
