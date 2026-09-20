@@ -539,6 +539,180 @@ async function updateLastLogin(accountId)
     );
 }
 
+/**
+ * P3 step 3 (docs/design/p3-step1-writeback.md §2.2/§3, docs/design/
+ * p3-step3-writeback-impl.md): insert one finished match + its rounds +
+ * participants in a single transaction. Requires the `matches`/
+ * `match_rounds`/`match_participants` tables from
+ * tools/migrate-p3-match-tables.js to already exist.
+ *
+ * Only ever called for a match that reached EndGame_SN -- never for an
+ * aborted match (dispatch/room/match-stats.js's
+ * ABORTED_MATCHES_ARE_NOT_PERSISTED; the caller there simply never calls
+ * this for that case, this function does not itself special-case anything).
+ *
+ * @param {object} match
+ * @param {number|null} match.roomId
+ * @param {number} match.mapId
+ * @param {number} match.difficulty
+ * @param {number} match.roundTarget
+ * @param {number|null} match.hostAccountId
+ * @param {number} match.startedAtMs - Date.now()-style ms epoch
+ * @param {number|null} match.endedAtMs
+ * @param {number} match.result - Campaign_CN action byte: 1 win, 2 fail
+ * @param {number} [match.winTeamRank]
+ * @param {boolean} [match.isTest]
+ * @param {boolean} [match.suspicious]
+ * @param {Array<{roundNumber: number, startedAtMs: number, durationSeconds: number, deathCnCount: number, suspicious?: boolean}>} rounds
+ * @param {Array<{accountId: number, team?: number, kills?: number, deaths?: number, expGained?: number, pointGained?: number, result?: number}>} participants
+ * @returns {Promise<number>} the new matches.id
+ */
+async function recordMatch(match, rounds, participants)
+{
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const [result] = await conn.execute(
+            `INSERT INTO matches
+                (room_id, map_id, difficulty, round_target, host_account_id,
+                 started_at, ended_at, result, win_team_rank, is_test, suspicious)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                match.roomId ?? null,
+                match.mapId,
+                match.difficulty || 0,
+                match.roundTarget,
+                match.hostAccountId ?? null,
+                new Date(match.startedAtMs),
+                match.endedAtMs != null ? new Date(match.endedAtMs) : null,
+                match.result || 0,
+                match.winTeamRank || 0,
+                match.isTest ? 1 : 0,
+                match.suspicious ? 1 : 0,
+            ]
+        );
+        const matchId = result.insertId;
+
+        for (const round of rounds) {
+            await conn.execute(
+                `INSERT INTO match_rounds
+                    (match_id, round_number, started_at, duration_seconds, death_cn_count, suspicious)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [
+                    matchId,
+                    round.roundNumber,
+                    new Date(round.startedAtMs),
+                    Math.max(0, Math.round(round.durationSeconds || 0)),
+                    round.deathCnCount || 0,
+                    round.suspicious ? 1 : 0,
+                ]
+            );
+        }
+
+        for (const participant of participants) {
+            await conn.execute(
+                `INSERT INTO match_participants
+                    (match_id, account_id, team, kills, deaths, exp_gained, point_gained, result)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    matchId,
+                    participant.accountId,
+                    participant.team || 0,
+                    participant.kills || 0,
+                    participant.deaths || 0,
+                    participant.expGained || 0,
+                    participant.pointGained || 0,
+                    participant.result || 0,
+                ]
+            );
+        }
+
+        await conn.commit();
+        return matchId;
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
+/**
+ * P3 step 3 (docs/design/p3-step1-writeback.md §2.2 point 3): accumulate
+ * (never overwrite) one participant's match result into records/
+ * mech_levels -- every column is `col = col + ?`, matching the "account
+ * totals across every match ever played" semantics those two tables
+ * already have (contrast with Death_SN's own per-connection battle totals,
+ * which really do get replaced every round -- see
+ * docs/journal/2026-09-17-21-battle-score-totals.md; that is a different,
+ * short-lived structure and this function has nothing to do with it).
+ *
+ * `records` is always updated. `mech_levels` is only touched when
+ * `delta.mechType` (1..8) is given -- omit it when the mech the account
+ * played this match is not known, rather than guessing a mech_type.
+ *
+ * @param {number} accountId
+ * @param {object} delta
+ * @param {number} [delta.exp]
+ * @param {number} [delta.wins]
+ * @param {number} [delta.losses]
+ * @param {number} [delta.draws]
+ * @param {number} [delta.kills]
+ * @param {number} [delta.deaths]
+ * @param {number} [delta.mechType] - 1..8; omit to skip the mech_levels update
+ * @param {number} [delta.mechExp]
+ * @param {number} [delta.mechKills]
+ * @param {number} [delta.mechDeaths]
+ * @param {number} [delta.mechSorties]
+ */
+async function applyMatchAccumulation(accountId, delta)
+{
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        await conn.execute(
+            `UPDATE records
+                SET exp = exp + ?, wins = wins + ?, losses = losses + ?, draws = draws + ?,
+                    kills = kills + ?, deaths = deaths + ?
+              WHERE account_id = ?`,
+            [
+                delta.exp || 0,
+                delta.wins || 0,
+                delta.losses || 0,
+                delta.draws || 0,
+                delta.kills || 0,
+                delta.deaths || 0,
+                accountId,
+            ]
+        );
+
+        if (delta.mechType) {
+            await conn.execute(
+                `UPDATE mech_levels
+                    SET exp = exp + ?, kills = kills + ?, deaths = deaths + ?, sorties = sorties + ?
+                  WHERE account_id = ? AND mech_type = ?`,
+                [
+                    delta.mechExp || 0,
+                    delta.mechKills || 0,
+                    delta.mechDeaths || 0,
+                    delta.mechSorties || 0,
+                    accountId,
+                    delta.mechType,
+                ]
+            );
+        }
+
+        await conn.commit();
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
 async function getItemCatalog()
 {
     const [rows] = await pool.execute(
@@ -577,6 +751,8 @@ module.exports = {
     saveEquippedLoadout,
     completeTutorial,
     updateLastLogin,
+    recordMatch,
+    applyMatchAccumulation,
     _setItemEquipsModeForTests,
     _setP1bNoDefaultItemsForTests,
 };
