@@ -156,3 +156,17 @@ ledger 裡有一條方法學紀錄,是因為曾經一輪改兩處,症狀變了�
 - Windows PowerShell 5.1（不是 pwsh）讀**沒有 BOM 的 UTF-8** `.ps1` 時，會用系統字碼頁（cp950）解碼。中文註解被解錯後，可能冒出假的引號或大括號，造成語法錯誤，甚至改變邏輯。**含中文的 `.ps1` 一律存成 UTF-8 with BOM**（例如 `printf '\xEF\xBB\xBF'` 加在檔頭）。
 - `[void]... | Out-Null` 不能連用：`[void]` 之後接管線，PS 5.1 會報「引數類型不能是 System.Void」（2026-09-20 pico 視窗挑選的 bug）。
 - 靜態語法檢查：把檔案複製到 `%USERPROFILE%\...`，再用 `[System.Management.Automation.Language.Parser]::ParseFile` 檢查。
+
+## 客戶端的設定檔是 UTF-16LE
+
+[TEST] 2026-09-20：`data\System\OptionAll.ini`（兩份安裝都一樣）是 **UTF-16LE 帶 BOM**
+（`\xff\xfe`），不是 UTF-8。用 `utf-8` 讀**不會報錯**，會靜默拿到亂碼，regex 配不到卻看不出
+原因。任何要讀客戶端 `.ini` 的程式一律先看 BOM 再選編碼
+（`tools/pico/runner.py` 的 `_read_option_all_screen_size()` 是現成範例）。
+
+遊戲目前的解析度在這個檔的 `op_Display=(ScreenSize="WxH",...)`，
+**不是** `MetalRage.ini` 的 `WindowedViewportX/Y`（那組是 1024x768，跟實際不符）。
+Pico 的 atlas 座標綁死在特定解析度（`tools/pico/atlas/manifest.json` 的 `shot_size`），
+兩者不一致時 `Get-MetalRageWindow` 的尺寸閘門會擋掉**所有** gated Pico 指令——
+不只截圖，連 `CLOSE_WINDOW` 都送不出去。啟動客戶端前先跑
+`python3 tools/pico/runner.py preflight <劇本>` 檢查。
