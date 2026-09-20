@@ -79,6 +79,26 @@ Exit codes for restart/relaunch: 0 = done (or dry-run says it would proceed), 3 
 refused by a gate (session/STOP/limit/same-step for restart only), 1 = a step
 failed during execution, or the client was present and could not be closed
 (operator needed).
+
+  ./client_ctl.py launch --id ID --proc NAME --bat PATH [--install DIR] [--dry-run]
+      Dual-client primitive (docs/research/2026-09-20-dual-pico/design.md
+      section 3's launch_client(id)): requires an open, non-halted Pico
+      session and no STOP file, same as restart/relaunch. Refuses (BLOCKED,
+      session halted, exit 1) if `--proc NAME` already has a process --
+      unlike restart/relaunch, this never closes an existing instance
+      first. Otherwise: launch via the .bat -> wait up to WAIT_READY_MS for
+      the real game window (client area >= 1600x1200). Does NOT log in.
+
+  ./client_ctl.py close --id ID --proc NAME --bat PATH [--dry-run]
+      Dual-client primitive (design.md section 9b's close_client(id)):
+      same session/STOP gates. Already-not-running is OK (nothing to do).
+      Present and responding: CLOSE_WINDOW (real Pico click on the title-bar
+      close X) -> wait up to CLOSE_WAIT_EXIT_MS; not responding: halts
+      immediately, no CLOSE_WINDOW attempt. The caller (actions.py's
+      close_client() action) must already have focus_client()'d this
+      instance's window before calling this -- see close_client() helper's
+      own docstring for why (the click's coordinates are relative to
+      whichever window is currently in the foreground).
 """
 
 import glob
@@ -629,6 +649,160 @@ def cmd_relaunch(reason, dry_run):
     sys.exit(0)
 
 
+# ---------------------------------------------------------------------------
+# launch / close: dual-client primitives (docs/research/2026-09-20-dual-pico/
+# design.md section 3's launch_client(id)/close_client(id) actions). Unlike
+# restart/relaunch above, neither of these owns a crash-recovery budget or a
+# same-step dedup -- they are one-shot process operations for a SPECIFIC
+# instance, called from actions.py's launch_client()/close_client() (which
+# always focus_client()s first for close_client, see its docstring). Both
+# still gate on session/STOP exactly like restart/relaunch (fail closed).
+# ---------------------------------------------------------------------------
+def cmd_launch(instance, dry_run):
+    """launch_client(id) (design.md section 3, PM revision): does NOT close
+    an existing process first -- unlike restart/relaunch, which are built
+    around a client that might already be present (crash recovery / planned
+    relaunch), a fresh dual-client launch is only ever supposed to run
+    against an instance the runner's own preflight already confirmed has no
+    residual process (check_no_residual_process(), runner.py). If one turns
+    up anyway at launch time, this refuses rather than silently closing it
+    (that decision belongs to a human or to preflight, not to a launch
+    step) -- BLOCKED, session halted, exit 1."""
+    state = pico._load_session()
+    if state is None:
+        _refuse("no session open (run: pico_ctl.py session start \"<purpose>\")", f"launch-{instance.id}", halt=False)
+    if state.get("halted"):
+        _refuse(f"session halted: {state.get('halt_reason')}", f"launch-{instance.id}", halt=False)
+    stop_file = stop_file_wsl()
+    if os.path.exists(stop_file):
+        _refuse(f"STOP file present ({stop_file})", f"launch-{instance.id}", halt=True)
+
+    if dry_run:
+        print(f"[DRY-RUN] launch would proceed: instance={instance.id!r} proc={instance.proc_name!r} "
+              f"bat={instance.bat_path_win!r}")
+        print("  1. check no process for this instance is already present (BLOCKED + halt if one is -- "
+              "launch_client does not close an existing instance, see design.md)")
+        print(f"  2. launch via the .bat, wait up to {WAIT_READY_MS}ms for the real game window "
+              f"(client area >= 1600x1200, client_ctl.ps1's existing wait_ready)")
+        sys.exit(0)
+
+    st = get_status(instance)
+    if st["state"] != "not_running":
+        halt_reason = (f"instance {instance.id!r} already has a {instance.proc_name} process "
+                        f"(state={st['state']} pid={st.get('pid')}) -- launch_client does not close "
+                        f"an existing instance, run preflight/close_client first")
+        pico.log_action(f"launch {instance.id}", f"BLOCKED: {halt_reason}")
+        pico.halt_session(halt_reason)
+        print(f"[BLOCKED] {halt_reason}")
+        sys.exit(1)
+
+    out, rc = run_ps1("launch", instance=instance, timeout=15)
+    if out != "LAUNCH_SENT":
+        _fail(f"launch: unexpected reply {out!r}", f"launch-{instance.id}")
+
+    out, rc = run_ps1("wait_ready", WAIT_READY_MS, instance=instance, timeout=(WAIT_READY_MS / 1000.0) + 10)
+    if not (out or "").startswith("READY"):
+        _fail(f"wait_ready: {out!r}", f"launch-{instance.id}")
+
+    result = f"OK instance={instance.id} {out}"
+    pico.log_action(f"launch {instance.id}", result)
+    print(f"[OK] {result}")
+    sys.exit(0)
+
+
+def cmd_close(instance, dry_run):
+    """close_client(id) (design.md section 9b): the ONLY supported way to
+    close this elevated client is a real Pico click on its title-bar close X
+    (close_client() helper above -- taskkill/Stop-Process are denied, see
+    module docstring). The caller (actions.py's close_client() action) is
+    responsible for having already focus_client()'d this instance's window
+    before calling this -- the click itself still goes through
+    pico_serial.ps1's foreground gate regardless.
+
+    Already-not-running is treated as success (ok=True, nothing to do) --
+    calling this on an instance that already exited is not an error."""
+    state = pico._load_session()
+    if state is None:
+        _refuse("no session open (run: pico_ctl.py session start \"<purpose>\")", f"close-{instance.id}", halt=False)
+    if state.get("halted"):
+        _refuse(f"session halted: {state.get('halt_reason')}", f"close-{instance.id}", halt=False)
+    stop_file = stop_file_wsl()
+    if os.path.exists(stop_file):
+        _refuse(f"STOP file present ({stop_file})", f"close-{instance.id}", halt=True)
+
+    if dry_run:
+        print(f"[DRY-RUN] close would proceed: instance={instance.id!r} proc={instance.proc_name!r}")
+        print("  1. if already not running: OK, nothing to do")
+        print("  2. if present and responding: close_client() -- CLOSE_WINDOW (real Pico click on the "
+              f"close X) -> wait up to {CLOSE_WAIT_EXIT_MS}ms for exit; if still present, taskkill "
+              "fallback (expected denied, only to log it) -> HALT, exit 1, operator needed")
+        print("  3. if present but NOT responding: HALT immediately, operator needed (no CLOSE_WINDOW "
+              "attempt on an already-hung window)")
+        sys.exit(0)
+
+    st = get_status(instance)
+    if st["state"] == "not_running":
+        result = f"OK instance={instance.id} already not running"
+        pico.log_action(f"close {instance.id}", result)
+        print(f"[OK] {result}")
+        sys.exit(0)
+
+    if st["state"] == "ok":
+        ok, detail = close_client(f"close-{instance.id}", instance=instance)
+        if not ok:
+            halt_reason = f"could not close client {instance.id!r}: {detail} — operator needed"
+            pico.log_action(f"close {instance.id}", f"BLOCKED: {halt_reason}")
+            pico.halt_session(halt_reason)
+            print(f"[BLOCKED] {halt_reason}")
+            sys.exit(1)
+        result = f"OK instance={instance.id} {detail}"
+        pico.log_action(f"close {instance.id}", result)
+        print(f"[OK] {result}")
+        sys.exit(0)
+
+    halt_reason = (f"instance {instance.id!r} present but NOT responding; not attempting CLOSE_WINDOW "
+                   f"on a hung window; cannot terminate (protected) — operator needed "
+                   f"(status={st['state']} pid={st.get('pid')})")
+    pico.log_action(f"close {instance.id}", f"BLOCKED: {halt_reason}")
+    pico.halt_session(halt_reason)
+    print(f"[BLOCKED] {halt_reason}")
+    sys.exit(1)
+
+
+def _parse_instance_args(args, need_bat=True):
+    """Shared --id/--proc/--bat/--install/--dry-run parser for `launch`/
+    `close` below. Returns (ClientInstance, dry_run)."""
+    id_ = "default"
+    proc_name = None
+    bat_path_win = None
+    install_dir_win = None
+    dry_run = False
+    i = 0
+    while i < len(args):
+        if args[i] == "--id" and i + 1 < len(args):
+            id_ = args[i + 1]; i += 2
+        elif args[i] == "--proc" and i + 1 < len(args):
+            proc_name = args[i + 1]; i += 2
+        elif args[i] == "--bat" and i + 1 < len(args):
+            bat_path_win = args[i + 1]; i += 2
+        elif args[i] == "--install" and i + 1 < len(args):
+            install_dir_win = args[i + 1]; i += 2
+        elif args[i] == "--dry-run":
+            dry_run = True; i += 1
+        else:
+            print(f"[ERR] unknown arg: {args[i]}")
+            sys.exit(1)
+    if not proc_name or (need_bat and not bat_path_win):
+        print("Usage: --id ID --proc NAME --bat PATH [--install DIR] [--dry-run]")
+        sys.exit(1)
+    instance = ClientInstance(
+        id=id_, proc_name=proc_name,
+        install_dir_win=install_dir_win or DEFAULT_INSTANCE.install_dir_win,
+        bat_path_win=bat_path_win or DEFAULT_INSTANCE.bat_path_win,
+    )
+    return instance, dry_run
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -699,6 +873,16 @@ def main():
             print("Usage: ./client_ctl.py relaunch --reason <text> [--dry-run]")
             sys.exit(1)
         cmd_relaunch(reason, dry_run)
+        return
+
+    if action == "launch":
+        instance, dry_run = _parse_instance_args(sys.argv[2:])
+        cmd_launch(instance, dry_run)
+        return
+
+    if action == "close":
+        instance, dry_run = _parse_instance_args(sys.argv[2:])
+        cmd_close(instance, dry_run)
         return
 
     print(f"[ERR] Unknown action '{action}'. See --help.")
