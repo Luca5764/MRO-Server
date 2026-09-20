@@ -262,6 +262,15 @@ account / conn_id / launch_time`（`conn_id` 登入後才填，見第 4 節；`l
 **對雙開的影響**：`close_client(id)` 必須先 `focus_client(id)`，而且關閉 X 的座標是**相對
 該實例的視窗**——I1／I2 的 `--proc` 參數化沒做好，這一步會點到另一個實例的視窗上。
 
+## 9c. 已實作的偏離，經高階確認（2026-09-20）
+
+**`client_ctl.py` 的 `evidence()` 沒有改用 `resolve_run_log()`，是刻意的。**
+設計稿 I5 字面上要求「把 `CLIENT_LOG_WSL` 換成執行期解析」，但單客戶端的
+restart／relaunch 流程用的 launcher **沒有帶 `-log=`**，根本不會產生 `run-*.log`——
+把預設換掉會直接讓現有的當機證據蒐集失效。所以 `resolve_run_log()` 做成 opt-in
+（傳非預設 `instance` 才會用）。**高階確認這個取捨正確。**
+要把預設換掉，得先決定單客戶端的 launcher 是否也改用 `-log=`，那是另一個題目。
+
 ## 10. 明確不做
 
 - 不自動重開客戶端。
