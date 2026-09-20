@@ -726,3 +726,10 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - 之後：`docs/PROTOCOL-SUMMARY.en.md`（Moon 這週會讀我們的 docs），排在 (c) 之後。
 
 > **更正（2026-09-20，來源：上游作者 Moon，我方 verifier 已核對）：** 本文把 `0x107343e0` 標成 Game_User 的 upsert 是**錯的**。`disasm.py exports` 顯示 `0x10703850 Game_User_Add → jmp 0x10734140`（清單在 `[ebp+0x1034]`、count `[ebp+0x1038]`、stride `0x80`），而 `0x107029ff Game_Item_Add → jmp 0x107343e0`（清單 `[esi+0x1040]`、count `[esi+0x1044]`、stride `0xEC`），後者是 GAME_ITEM_INFO，不是使用者清單。**結論（每人一包 Game_User_SN、依 UserIndex upsert）不變**，只是引用的位址標錯。詳見 `research/2026-09-20-moon-verify/notes.md`。
+
+### NET 出廠值盤點（2026-09-20，[OBS]＋檔案）
+- 主力客戶端 `Default.ini` **沒有 `[IpDrv.TcpNetDriver]` 區段**，出廠狀態用引擎內建預設。看到的 `MaxClientRate=25000`、`NetServerMaxTickRate=30`、`LanServerMaxTickRate=30` 都在 `[Engine.DemoRecDriver]`（錄影驅動），跟對戰連線無關。
+- `MetalRage.ini` 最上方的 `[IpDrv.TcpNetDriver] MaxClientRate=100000 / MaxInternetClientRate=100000` 是操作者 2026-09-19 手動加的。
+- `User.ini`：`ConfiguredInternetSpeed=100000`、`ConfiguredLanSpeed=100000`。
+- [OBS] dusk 那台也已經調成 100000。
+- → 兩端都是 10 萬，所以「速率上限太低」不足以單獨解釋投射物消失，除非引擎實際採用的不是這組值（加入者走哪一組速率、URL 有沒有 ?LAN 正在查，`research/2026-09-20-projectile-replication/`）。實驗仍照 PM 的三段式，但基準要用「目前值」而不是「出廠值」，並註明出廠值其實是引擎內建。
