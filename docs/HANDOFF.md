@@ -64,7 +64,7 @@ PM 對影響面的判斷：這 13%（修正後 9–21%）**不擋 M3**，若根�
 
 ### 等操作者的
 
-1. **區網基準＋慢速射擊對照**（做法全寫在 `docs/next-test.md`，已整份改寫）——最有價值，一場就能跑完兩項。
+1. **明天那一場**：`stat fps` 驗證（一分鐘）→ 區網基準（連按 vs 慢速各 100 次扣扳機）→ DUAL-CLIENT（`docs/backlog.md`，15–20 分鐘上限）。順序與判讀全寫在 `docs/next-test.md`（已整份改寫）。
 2. VPN 上打完整一場（含結算回房），M3 就少一項。
 3. 重跑防火牆腳本收斂：`lan-open.ps1 -FromWhitelist`、`p2p-open.ps1 -FromWhitelist`（已複製到 `%USERPROFILE%\mro-fw`），跑完確認舊的整段規則消失而不是並存。
 4. Moon 的連線（英文說明已備好：`reference/join-guide.en.md`）。`WeaponLog` 這個量法對他特別有用：他同機兩視窗，一個人就能量出自己的缺口率，還能比較房主視窗有焦點／失焦兩種情況。
