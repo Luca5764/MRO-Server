@@ -17,7 +17,12 @@
 1. 遊戲裡按 **ScrollLock**（Pico 會送出真實 F24）→ 主控台出現 `(> _`
 2. 打 `WeaponLog` → Enter → ESC　　（toggle，**開過就不要再打第二次**）
 3. 用**主武器是砲類**的機體（不是機槍，hitscan 不受影響），**射手必須是加入者**
-4. 打完離開戰場；要完整資料就**關掉遊戲**（log 每 4 KB 才寫檔）
+4. 打完離開戰場；要完整資料就**關掉遊戲**（log 每 4 KB 才寫檔）。
+   ⚠️ **2026-09-20 [TEST] 補充**：用 `-log=` 啟動時（`Play With Log.bat`／`Play Second Client.bat`，
+   log 在 `data\System\run-*.log`），**客戶端執行期間那個檔是鎖住的，從 WSL 連讀都讀不到**
+   （`cat` 回 `Permission denied`）。所以那條路的 log 一律等關掉客戶端之後再讀。
+   （不帶 `-log=` 的 `data\Log\MetalRage.log` 是否同樣鎖住 ⬜ 未測——筆電那邊靠 `MROLog`
+   共享在執行中讀得到，兩者可能不同，不要互相類推。）
 
 AI 從 `MetalRage/data/Log/MetalRage.log` 數兩個數字：
 - `HitLoc=== >` ＝ 扣扳機次數（本機無條件寫，只有主武器有）

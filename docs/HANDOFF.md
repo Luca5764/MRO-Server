@@ -53,7 +53,9 @@
 1. 遊戲裡按 **ScrollLock**（Pico 韌體送出真實 F24）開主控台
 2. `WeaponLog` → Enter → ESC。**每次重開客戶端都要重開一次**，而且它是 toggle
 3. 射手必須是**加入者**，武器必須是**主武器砲類**
-4. 打完**關掉客戶端**才會完整 flush（4KB 緩衝，離開戰場不保證）
+4. 打完**關掉客戶端**才會完整 flush（4KB 緩衝，離開戰場不保證）。**而且 `-log=` 產生的
+   `data\System\run-*.log` 在客戶端執行期間是鎖住的，從 WSL 連讀都讀不到**（[TEST] 2026-09-20 23:00，
+   `cat` 回 `Permission denied`）——不是慢，是根本讀不到
 5. 分母 `HitLoc===` 的行數（只有主武器寫），分子開火動畫。**絕對不要用 HUD 彈藥數當分母**——雙臂武器一次扣兩發
 
 ### 同機雙開（DUAL-CLIENT，已完成）
@@ -105,7 +107,7 @@
 - 主目錄固定停在 `reverse-work`。執行者各自開 `~/mro-wt/<名稱>`，新開的 worktree 要 symlink `MetalRage` 和 `node_modules`。子 agent 絕對不可以動主目錄的工作區。
 - 伺服器：tmux `server`，跑在 `~/mro-wt/test`。設定檔都在主目錄，用 symlink 指過去（`config/server.json`、`config/allowed-users.json`、`database/config.json`；這些檔不進 repo，裡面是真實 IP）。
 - 動 `dispatch/` 以內的檔案 → `/reload`；動 `rooms.js`、`database/db.js`、`config/`、`server.js`、`packetlog.js` → **要完整重啟**，操作者要重登。重啟前先 `/conns` 確認沒人在線。2026-09-20 踩過兩次。
-- 機器：主機 Lucas（Win11，有線）、第二台 dusk（Win10，要用原廠 exe）、筆電 test（Win11）。筆電的客戶端 log 可以從它的 `MROLog` 共享讀（主機已存帳密）。**客戶端 log 每 4 KB 才寫檔**：出事時先別關遊戲，請操作者進出機庫把緩衝擠出來；要完整資料就關掉遊戲。
+- 機器：主機 Lucas（Win11，有線）、第二台 dusk（Win10，要用原廠 exe）、筆電 test（Win11）。筆電的客戶端 log 可以從它的 `MROLog` 共享讀（主機已存帳密）。**客戶端 log 每 4 KB 才寫檔**：出事時先別關遊戲，請操作者進出機庫把緩衝擠出來；要完整資料就關掉遊戲。注意這條講的是筆電經 `MROLog` 共享讀 `data\Log\MetalRage.log` 的情況；**主機本地用 `-log=` 產生的 `data\System\run-*.log` 在執行期間是鎖住的，讀都讀不到**（[TEST] 2026-09-20）。
 - 戰鬥是 P2P，房主監聽 UDP 30907。每台可能當房主的機器都要跑 `tools/win/p2p-open.ps1`，網路要設成 Private。
 - 資料庫備份：`~/mro-backups/mro-before-e1-20260919-170807.sql`。
 - push：`reverse-work` 領先 origin 很多，請操作者執行 `! git -C /home/lucas/mro-reverse -c credential.helper= -c credential.helper="/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe" push origin reverse-work`。

@@ -71,7 +71,7 @@ account / conn_id / launch_time`（`conn_id` 登入後才填，見第 4 節；`l
 |---|---|---|---|
 | `focus_client(id)` | `shot.sh --proc <proc>` 把該實例叫到前景，寫進 `ctx.active_client`，同步更新 I3 的允許前景行程名 | **主**：回讀前景行程名 == 目標；**輔**：截圖能分類成已知畫面 | 10s |
 | `launch_client(id)` | 用該實例的 launcher 啟動 | **主（PM 修訂）**：該行程存在 **且** 找得到它的遊戲視窗；**輔**：畫面分類 == `login`、log 檔頭 `Init: Base directory:`。**不要等 log**（見 L4） | 120s |
-| `close_client(id)` | 關掉該實例（讓客戶端 log 完整 flush） | **主**：行程消失 | 30s |
+| `close_client(id)` | 關掉該實例（讓客戶端 log 完整 flush 並解鎖） | **主**：行程消失 | 30s |
 | `login_as(id, account)` | `focus_client` → 既有 `login()` 流程 | **主**：session log 出現該帳號的登入 pkt（`0x00110151` recv），並由它**取得並記下 `conn_id`**；**輔**：畫面 == `lobby` | 90s |
 | `join_room(id, room_name)` | 大廳房間清單點選 → 加入 | **主**：`conn` 過濾後該實例收到房間相關 pkt；**輔**：畫面 == `room` | 45s |
 | `set_ready(id)` | 房內按準備 | **主**：`User_State_SN 0x00220401` 對應 pkt；**輔**：截圖 READY | 20s |
@@ -101,9 +101,16 @@ account / conn_id / launch_time`（`conn_id` 登入後才填，見第 4 節；`l
   既有 `start_battle()` 依賴的訊號，在雙開時無法歸屬。**改用同一時刻的 `pkt` 記錄
   （有 `conn`）當主訊號，marker 只當輔助。** 例外：聊天 marker 有手動帶 `conn`
   （`packetlog.js:194`）。
-- **L4：客戶端 log 每 4 KB 才 flush（PM）。** 所以**任何「等 log 出現某一行」的即時完成條件
-  都會必然逾時 → halt**。log 只能在**關閉客戶端之後**讀。即時訊號一律用 session log 的
-  `pkt`、行程／視窗狀態、或像素判定。
+- **L4（v3 強化，實測）：客戶端執行期間，它的 log 檔是鎖住的——連讀都讀不到。**
+  [TEST] 2026-09-20 23:00：客戶端開著時對 `data/System/run-*.log` 下 `cat`／`head`／`xxd`
+  一律 `Permission denied`（檔案權限顯示 0777，只有 `stat` 拿得到 size／mtime）。
+  這比原本的「4 KB 緩衝」更強：**無論引擎怎麼 flush，自動化都不可能在客戶端還開著時讀它。**
+  所以任何「等 log 出現某一行」的即時完成條件**都不可能成立**，不是會逾時而已。
+  即時訊號一律用伺服器 session log 的 `pkt`、行程／視窗狀態、或像素判定；
+  客戶端 log 的驗證全部延到關閉客戶端之後。
+  （附帶：`-log=` 宣稱會開一個即時 log **視窗**，但 [TEST] 同一次啟動**沒有看到**那個視窗出現，
+  🟡 可能要有新內容才建立，未再追。閒置在登入畫面 4 分鐘期間檔案大小完全沒變過，所以
+  「即時 vs 批次」這題**沒有量到**，也不需要量——L4 已經由檔案鎖定這條更強的事實決定。）
 - **L5：房間內閒置約 80 秒會被客戶端自己踢出（PM）。** 這是原版防掛機設計，不是伺服器造成的
   （`ZGUIController.uc:945-948`，每次有輸入才 `Room_Time_Reset()`；
   `journal/2026-09-19-0330-d1-step4-room-join.md:482` 起的補查）。**房主建房後輸入全在加入者
@@ -211,6 +218,17 @@ account / conn_id / launch_time`（`conn_id` 登入後才填，見第 4 節；`l
 4. 跑完後一份文字報告放 `docs/HANDOFF.md` 最上面。**報告必須註明（PM）**：兩個實例各自的
    `IpDrv.dll` sha256、各自用的帳號、誰是房主。
 5. 第一次雙開跑完，拿真 log 核對「`port` 欄位分辨不出客戶端」這條 🟡（第 4 節）。
+
+## 9b. 關閉客戶端只有一條路（v3 補，實測踩過）
+
+**`taskkill`／`Stop-Process`／`CloseMainWindow()` 在這個客戶端上一律被拒**（access denied；
+它透過 manifest 以提升權限執行）。專案唯一支援的關閉方式是
+`tools/pico/client_ctl.py` 的 `close_client()`／`close_window()`——**用 Pico 送一個真實的
+滑鼠點擊去按視窗標題列的關閉 X**（`pico_ctl.py raw CLOSE_WINDOW`），一樣走前景閘門。
+這件事 `client_ctl.py` 的模組 docstring 與 `client_ctl.ps1:17` 的 2026-09-19 [TEST] 早就寫了。
+
+**對雙開的影響**：`close_client(id)` 必須先 `focus_client(id)`，而且關閉 X 的座標是**相對
+該實例的視窗**——I1／I2 的 `--proc` 參數化沒做好，這一步會點到另一個實例的視窗上。
 
 ## 10. 明確不做
 
