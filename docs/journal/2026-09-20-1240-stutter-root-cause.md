@@ -17,3 +17,12 @@
 - 若有效：朋友的機器也要做同樣設定，寫進 K1 安裝說明。
 - 若無效：再看凍結是否還在、是否改由別的行程造成。
 - 例外本身（0xc0000005 @ +2）的來源沒有查，也不需要查：不碰 y0da 是既有約束。
+
+## 第二次量測（加了 WER 排除清單之後）
+- 操作者在 `HKLM\...\Windows Error Reporting\ExcludedApplications` 加了 `MetalRage.exe=1`，重開遊戲後**還是卡**，而且在選單就卡。
+- [TEST] 用記憶體模式錄 102 秒（`wpr -start CPU` → `-stop stutter2.etl`，1.6 GB）：
+  - 主執行緒（tid 71428）仍有 6 次 Suspended 凍結：3.765s 258.7ms、4.024s 178.5ms、73.060s 227.9ms、73.288s 140.6ms、73.587s 229.9ms、73.817s 159.7ms。成群出現，跟第一次一樣。
+  - 凍結期間沒有任何 MetalRage 執行緒在跑。
+  - ReadyThread：凍結前後喚醒 MetalRage 執行緒的來源，**WerFault.exe 佔 186 次**，主執行緒在 4.024s 正是被 `WerFault.exe (71944)` 喚醒的。
+- → 排除清單只抑制回報，**不會阻止 WerFault 附加**。下一步請操作者停用 WerSvc 服務（`Stop-Service WerSvc -Force`、`Set-Service WerSvc -StartupType Disabled`），再量一次。
+- [OBS] 操作者觀察：用**道具很多的 Lucas** 帳號很快就復現，**什麼都沒有的 mrotest** 觸發少很多。🟡 可能是道具多的帳號會讓客戶端多跑會出例外的那段程式碼（例如道具清單處理）。伺服器在這 102 秒內送過兩批各約 80 個 `0x00240241`／`0x00240242`（每個 903 bytes）給 Lucas，但時間點（51.6–51.8 秒）跟凍結（3.7／73 秒）沒有重疊，所以不是封包直接觸發。
