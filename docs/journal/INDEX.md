@@ -166,3 +166,4 @@
 | 2026-09-20 | `2026-09-20-1820-projectile-loss-counted.md` | — | — | 用客戶端 WeaponLog 自動計數：70 發扣扳機只生成 63 發，缺口 10%；排除 H-SPAWN-FAIL。 |
 | 2026-09-20 | `2026-09-20-1945-toall-send-path.md` | — | — | Engine.dll 反組譯：`ProcessRemoteFunction` 的 broadcast（ToAll/ToTheOthers）迴圈對每個 connection 用 `IsNetReady` 當送出門檻、沒有可靠短路，單一 connection 沒 ready 就整個跳過那次 RPC，🟡 能解釋孤立單發遺失。 |
 | 2026-09-20 | `2026-09-20-2030-same-machine-and-netspeed.md` | — | — | 同機雙開成功（卡點是行程名稱）；同機缺口 33%，比跨網路更糟；機制是 ToAll 廣播迴圈卡 IsNetReady，而 CurrentNetSpeed 只有 10000。 |
+| 2026-09-20 | `2026-09-20-2130-netspeed-clamp.md` | — | — | netspeed 夾在 15000 的來源：`Engine.dll` `UViewport::Exec` 與 `ULevel::NotifyReceivedText` 都對 `UNetDriver->MaxClientRate` 做 clamp，該值編譯寫死在 `UNetDriver::StaticConstructor`（VA 0x104a0540），不是讀 ini。 |
