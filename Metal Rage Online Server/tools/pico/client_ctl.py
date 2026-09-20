@@ -24,6 +24,14 @@ Usage:
       Exit codes: 0 = running+responding, 1 = running but not responding /
       no window, 2 = not running, 3 = the check itself failed.
 
+  ./client_ctl.py foreground
+      Report the process name currently owning the foreground window
+      (system-wide, not tied to any one instance) -- pure Win32 query, sends
+      no input. Used by actions.py's focus_client() (docs/research/
+      2026-09-20-dual-pico/design.md I6) to confirm a SetForegroundWindow
+      call actually landed before any input is sent. Exit 0 with the name
+      printed, or 1 with "(none)" if it could not be determined.
+
   ./client_ctl.py evidence <label>
       Save a full-desktop screenshot + the last 200 lines of MetalRage.log into
       tools/pico/logs/crash-<timestamp>-<label>/. Always safe to run for real;
@@ -73,12 +81,14 @@ failed during execution, or the client was present and could not be closed
 (operator needed).
 """
 
+import glob
 import os
 import re
 import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -92,6 +102,94 @@ SHOTS_DIR = os.path.join(REPO_ROOT, "shots")
 CLIENT_CTL_PS1 = os.path.join(SCRIPT_DIR, "client_ctl.ps1")
 
 CLIENT_LOG_WSL = "/mnt/c/Games/MetalRage Online/data/Log/MetalRage.log"
+
+
+# ---------------------------------------------------------------------------
+# ClientInstance: dual-client instance config (docs/research/2026-09-20-
+# dual-pico/design.md section 1's per-client static fields: id/proc_name/
+# install_dir/launcher). DEFAULT_INSTANCE's values are exactly the
+# hardcoded defaults client_ctl.ps1's Resolve-ClientCtlArgs falls back to on
+# its own, so passing DEFAULT_INSTANCE (every call site here does, unless
+# given a different one explicitly) resolves to byte-identical
+# $ProcName/$ExeName/$BatPath on the PowerShell side -- see
+# Resolve-ClientCtlArgs.tests.ps1's "explicit defaults == no flags" cases.
+# This module never imports actions.py's own Context.clients (I6) -- kept
+# separate on purpose, matching this module's existing habit of being
+# shelled out to rather than imported (see actions.py's module docstring).
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class ClientInstance:
+    id: str = "default"
+    proc_name: str = "MetalRage"
+    install_dir_win: str = r"C:\Games\MetalRage Online"
+    bat_path_win: str = r"C:\Games\MetalRage Online\Play Metal Rage Online.bat"
+
+
+DEFAULT_INSTANCE = ClientInstance()
+
+
+def win_dir_to_wsl(win_dir):
+    """Converts a Windows path (e.g. 'C:\\Games\\MetalRage Online 2') to its
+    /mnt/c/... WSL path via `wslpath -u` -- the same primitive pico_ctl.py's
+    win_user_profile_wsl() uses (see there), not a hand-rolled 'C:\\' ->
+    '/mnt/c/' string replace, so spaces and any drive letter are handled
+    correctly. Direct path only (docs/research/2026-09-20-dual-pico/
+    design.md L3/9): every install_dir_win this module is given must NOT
+    pass through the install's 'MetalRage\\' reparse-point directory (that
+    junction resolves back to the MAIN install on both instances, see L3),
+    which is why CLIENTS-style tables must always use e.g. 'C:\\Games\\
+    MetalRage Online 2' directly, never '...\\MetalRage Online 2\\
+    MetalRage\\...'."""
+    res = subprocess.run(["wslpath", "-u", win_dir], capture_output=True, text=True, check=True)
+    return res.stdout.strip()
+
+
+def resolve_run_log(instance, since_epoch_s=0.0):
+    """Finds `instance`'s newest data/System/run-*.log with mtime >=
+    since_epoch_s (0.0 = "any"), and verifies its 'Init: Base directory:'
+    header line names THIS instance's install dir -- see docs/research/
+    2026-09-20-dual-pico/design.md section 6 P1 result table ("怎麼認定一份
+    log 屬於誰"; sample header confirmed in docs/research/2026-09-19-second-
+    client-win10/MetalRage.log:8, 'Init: Base directory: C:\\Games\\
+    MetalRage Online\\data\\System\\').
+
+    Fail-closed: returns (None, reason) on no candidate file, an unreadable
+    file, or a header mismatch -- NEVER guesses. In particular, reading the
+    header is EXPECTED to fail with a PermissionError while the client
+    process is still running: L4 (same design doc) found data/System/
+    run-*.log locked for reading, not just writing, the entire time the
+    client is open, regardless of `-log=` "live tail" claims -- so this can
+    only succeed once close_client()/close_window() has actually closed the
+    process (design section 9b). Listing the directory and reading mtimes
+    (glob/os.path.getmtime below) is NOT part of that lock -- L4's own [TEST]
+    confirmed `stat` still works live -- only opening the file for read is.
+
+    Returns (log_path_wsl, detail_str) on success, (None, reason_str) on
+    failure. Never raises for an expected/ordinary failure (missing dir,
+    locked file, no match); only a genuinely unexpected OSError while
+    listing the directory propagates."""
+    install_wsl = win_dir_to_wsl(instance.install_dir_win)
+    pattern = os.path.join(install_wsl, "data", "System", "run-*.log")
+    candidates = [p for p in glob.glob(pattern) if os.path.getmtime(p) >= since_epoch_s]
+    if not candidates:
+        return None, f"no run-*.log with mtime >= {since_epoch_s} matching {pattern}"
+    candidates.sort(key=os.path.getmtime)
+    newest = candidates[-1]
+    expected_base = (instance.install_dir_win.rstrip("\\") + r"\data\System").lower()
+    try:
+        with open(newest, "r", encoding="utf-8", errors="replace") as f:
+            head = f.read(4096)
+    except OSError as ex:
+        return None, (f"could not read header of {newest} -- if the client is still "
+                       f"running this is EXPECTED (data/System/run-*.log is locked for "
+                       f"reading the whole time it is open, see design.md L4): {ex}")
+    m = re.search(r"Init:\s*Base directory:\s*(.+)", head)
+    if not m:
+        return None, f"{newest}: no 'Init: Base directory:' line in first 4KB"
+    found_base = m.group(1).strip().rstrip("\\").lower()
+    if found_base != expected_base:
+        return None, f"{newest}: base dir mismatch: found {found_base!r}, expected {expected_base!r}"
+    return newest, f"{newest}: header matches {found_base!r}"
 
 
 def stop_file_wsl():
@@ -109,10 +207,18 @@ PICO_CTL_PY = os.path.join(SCRIPT_DIR, "pico_ctl.py")
 # Windows-side process control via client_ctl.ps1 (mirrors pico_ctl.run_serial_commands's
 # copy-to-Windows-path dance, since powershell.exe can't reliably run a \\wsl path).
 # ---------------------------------------------------------------------------
-def run_ps1(action, *args, timeout=15):
+def run_ps1(action, *args, instance=None, timeout=15):
+    """instance (a ClientInstance, default None -> DEFAULT_INSTANCE) is
+    always sent as explicit '--proc'/'--bat' flags to client_ctl.ps1's
+    Resolve-ClientCtlArgs -- see that function's docstring for why sending
+    DEFAULT_INSTANCE's values there resolves identically to sending no
+    flags at all (Resolve-ClientCtlArgs.tests.ps1's "explicit defaults ==
+    no flags" cases), so every existing call site here (none of which pass
+    `instance`) is unaffected by this parameter's addition."""
     if not os.path.exists(pico.PS_PATH):
         print("[ERR] powershell.exe not found; is this running under WSL with Windows accessible?")
         sys.exit(1)
+    instance = instance or DEFAULT_INSTANCE
     win_local = os.path.join(pico.win_user_profile_wsl(), "mro-client-ctl.ps1")
     win_path = pico.win_user_profile() + "\\mro-client-ctl.ps1"
     try:
@@ -121,8 +227,9 @@ def run_ps1(action, *args, timeout=15):
         print(f"[ERR] unable to copy client_ctl.ps1 to Windows: {ex}")
         sys.exit(1)
 
-    cmd = [pico.PS_PATH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-           win_path, action] + [str(a) for a in args]
+    cmd = ([pico.PS_PATH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", win_path, action]
+           + [str(a) for a in args]
+           + ["--proc", instance.proc_name, "--bat", instance.bat_path_win])
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                               errors="replace", timeout=timeout)
@@ -136,8 +243,22 @@ def run_ps1(action, *args, timeout=15):
     return (out if out else None), res.returncode
 
 
-def get_status():
-    out, rc = run_ps1("status", timeout=15)
+def get_foreground_proc_name():
+    """Runs client_ctl.ps1's `foreground` action (a pure Win32
+    GetForegroundWindow() query, sends no input -- see that action's
+    comment) and returns the process name currently in the foreground, or
+    None if it could not be determined. Used by actions.py's focus_client()
+    (I6) to confirm a SetForegroundWindow call actually landed on the
+    intended instance before any input is sent."""
+    out, rc = run_ps1("foreground", timeout=15)
+    if not out:
+        return None
+    m = re.match(r'^FOREGROUND proc=(\S+)', out)
+    return m.group(1) if m else None
+
+
+def get_status(instance=None):
+    out, rc = run_ps1("status", instance=instance, timeout=15)
     if out is None:
         return {"state": "error", "detail": "powershell.exe timed out or gave no output"}
     if out.startswith("NOT_RUNNING"):
@@ -183,27 +304,37 @@ def cmd_status():
 SHOT_SH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "win", "shot.sh")
 
 
-def bring_game_to_front():
+def bring_game_to_front(instance=None):
     """screen.ps1 (via shot.sh) calls SetForegroundWindow on the real game window,
     which is how the runner takes focus back from whatever the operator last used
     (2026-09-20: a planned relaunch was correctly BLOCKED because Discord was in
-    the foreground). Best-effort: the gate in pico_serial.ps1 still decides."""
+    the foreground). Best-effort: the gate in pico_serial.ps1 still decides.
+
+    instance (default None -> DEFAULT_INSTANCE) selects which process's window
+    shot.sh brings forward -- explicit '--proc <name>' now rather than relying
+    on shot.sh's own default, but DEFAULT_INSTANCE.proc_name IS that same
+    default ("MetalRage"), so this is a no-op change for every existing
+    caller here (none pass `instance`). Needed for dual-client (design.md 9b:
+    "關閉客戶端...關閉 X 的座標是相對該實例的視窗" -- close_window() must bring the
+    RIGHT window forward, not whatever the previous instance's shot.sh call
+    left focused, when a caller does pass a non-default instance)."""
+    instance = instance or DEFAULT_INSTANCE
     try:
-        subprocess.run(["bash", SHOT_SH, "--name", "front-before-close"],
+        subprocess.run(["bash", SHOT_SH, "--proc", instance.proc_name, "--name", "front-before-close"],
                         capture_output=True, text=True, timeout=60)
     except Exception:
         pass
 
 
-def close_window():
-    bring_game_to_front()
+def close_window(instance=None):
+    bring_game_to_front(instance)
     proc = subprocess.run([sys.executable, PICO_CTL_PY, "raw", "CLOSE_WINDOW"],
                            capture_output=True, text=True, timeout=30)
     out = (proc.stdout or proc.stderr or "").strip()
     return out, proc.returncode
 
 
-def close_client(step):
+def close_client(step, instance=None):
     """CLOSE_WINDOW (a real Pico click on the game window's title-bar close X,
     see close_window() above) -> wait up to CLOSE_WAIT_EXIT_MS for the process to
     exit. Returns (ok: bool, detail: str). Does NOT click anything else if the
@@ -211,19 +342,30 @@ def close_client(step):
     responding" ghost window appeared instead of closing) -- only tries a
     taskkill fallback purely to log that it is denied (AGENTS.md 硬性約束 1: no
     other termination technique is attempted), then reports failure so the
-    caller halts the session for an operator."""
-    out, rc = close_window()
+    caller halts the session for an operator.
+
+    instance (default None -> DEFAULT_INSTANCE, unaffected) is threaded to
+    close_window()/get_status()/run_ps1() so this targets the right window
+    and process for dual-client callers -- see bring_game_to_front()'s
+    docstring. For dual-client, the caller (actions.py's close_client(id)
+    action, design.md 9b) is still responsible for having already
+    focus_client()'d this instance's window BEFORE calling this, since the
+    real Pico click itself still goes through pico_serial.ps1's foreground
+    gate (this function cannot change what that gate currently allows)."""
+    instance = instance or DEFAULT_INSTANCE
+    out, rc = close_window(instance)
     if "[BLOCKED]" in out or rc == 3:
         return False, f"CLOSE_WINDOW blocked: {out!r}"
     if "[ERR" in out or rc not in (0, 3):
         return False, f"CLOSE_WINDOW did not get a clean reply (rc={rc}): {out!r}"
 
-    wout, wrc = run_ps1("wait_exit", CLOSE_WAIT_EXIT_MS, timeout=(CLOSE_WAIT_EXIT_MS / 1000.0) + 10)
+    wout, wrc = run_ps1("wait_exit", CLOSE_WAIT_EXIT_MS, instance=instance,
+                         timeout=(CLOSE_WAIT_EXIT_MS / 1000.0) + 10)
     if wout == "EXITED":
         return True, f"CLOSE_WINDOW: {out!r}; process exited within {CLOSE_WAIT_EXIT_MS}ms"
 
-    st = get_status()
-    tk_out, tk_rc = run_ps1("kill", timeout=15)
+    st = get_status(instance)
+    tk_out, tk_rc = run_ps1("kill", instance=instance, timeout=15)
     detail = (
         f"CLOSE_WINDOW sent ({out!r}) but process did not exit within {CLOSE_WAIT_EXIT_MS}ms "
         f"(wait_exit={wout!r}, status={st}); taskkill fallback={tk_out!r} rc={tk_rc} "
@@ -238,7 +380,24 @@ def close_client(step):
 # so --full rather than -Proc MetalRage) + tail of the client log. Must be called
 # before any kill so the crash state is captured, not the freshly-launched one.
 # ---------------------------------------------------------------------------
-def evidence(label):
+def evidence(label, instance=None):
+    """instance (default None) does NOT switch this to the new per-instance
+    run-*.log resolution -- the default-instance path below is UNCHANGED
+    from before this task (still reads the fixed CLIENT_LOG_WSL =
+    data/Log/MetalRage.log, the single-client restart/relaunch flow's log,
+    which is produced by the non-'-log=' launcher client_ctl.ps1 defaults to
+    and is NOT known to be locked while running the way data/System/
+    run-*.log is, see L4). This is a deliberate scope decision, not an
+    oversight: switching the DEFAULT here to resolve_run_log() would regress
+    existing single-client evidence-capture, because the default launcher
+    (still "Play Metal Rage Online.bat", no '-log=') never produces a
+    data/System/run-*.log at all -- see docs/research/2026-09-20-dual-pico/
+    design.md's v3 launcher decision (only both DUAL-client launchers use
+    '-log='). Passing an explicit non-default `instance` here opts into
+    resolve_run_log(instance) instead (best-effort -- read failure while the
+    client is still running is expected per L4 and is reported as a normal
+    log_ok=False, not raised)."""
+    instance = instance or DEFAULT_INSTANCE
     ts = time.strftime("%Y%m%d-%H%M%S")
     dest = os.path.join(pico.LOG_DIR, f"crash-{ts}-{label}")
     os.makedirs(dest, exist_ok=True)
@@ -264,13 +423,26 @@ def evidence(label):
 
     log_ok = False
     tail = []
-    try:
-        with open(CLIENT_LOG_WSL, "r", encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-        tail = lines[-200:]
-        log_ok = True
-    except Exception as ex:
-        tail = [f"(failed to read {CLIENT_LOG_WSL}: {ex})\n"]
+    if instance == DEFAULT_INSTANCE:
+        try:
+            with open(CLIENT_LOG_WSL, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            tail = lines[-200:]
+            log_ok = True
+        except Exception as ex:
+            tail = [f"(failed to read {CLIENT_LOG_WSL}: {ex})\n"]
+    else:
+        log_path, detail = resolve_run_log(instance)
+        if log_path is None:
+            tail = [f"(could not resolve run-*.log for instance {instance.id!r}: {detail})\n"]
+        else:
+            try:
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                tail = lines[-200:]
+                log_ok = True
+            except Exception as ex:
+                tail = [f"(failed to read {log_path}: {ex})\n"]
     with open(os.path.join(dest, "log-tail.txt"), "w", encoding="utf-8") as f:
         f.writelines(tail)
 
@@ -467,6 +639,14 @@ def main():
     if action == "status":
         cmd_status()
         return
+
+    if action == "foreground":
+        # Pure read-only query (docs/research/2026-09-20-dual-pico/design.md
+        # I6's focus_client() readback step) -- sends no input, needs no
+        # Pico session.
+        name = get_foreground_proc_name()
+        print(name if name else "(none)")
+        sys.exit(0 if name else 1)
 
     if action == "evidence":
         if len(sys.argv) < 3:
