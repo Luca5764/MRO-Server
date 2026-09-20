@@ -34,13 +34,17 @@
 //     disappears with the account", a narrower blast radius than
 //     `matches.host_account_id`'s CASCADE would have been).
 //
-// Usage (once a high-tier has reviewed this and set both env vars below):
-//   ALLOW_REAL_DB_WRITE=1 P3_BACKUP_CONFIRMED=1 node tools/migrate-p3-match-tables.js [--dry-run]
-// --dry-run only reads information_schema.TABLES and prints what would be
-// created; it never issues CREATE TABLE. Matches
-// tools/merge-e1-shared-duplicates.js's own --dry-run precedent: the env
-// guards are still required even for --dry-run (this script still opens a
-// real connection to read information_schema), not just for a write.
+// Usage:
+//   node tools/migrate-p3-match-tables.js --dry-run
+//     -- read-only (information_schema.TABLES only, never CREATE TABLE); no
+//        env vars required (Sol batch6 review, docs/research/
+//        2026-09-20-sol-review/p3.md, "疑點 -- --dry-run": relaxed from the
+//        original tools/merge-e1-shared-duplicates.js precedent, which
+//        required the guards even for --dry-run -- a pure read does not need
+//        a backup-confirmation gate).
+//   ALLOW_REAL_DB_WRITE=1 P3_BACKUP_CONFIRMED=1 node tools/migrate-p3-match-tables.js
+//     -- once a high-tier has reviewed this and both env vars are set,
+//        issues the actual CREATE TABLE statements.
 
 const TABLE_DEFS = [
     {
@@ -173,26 +177,44 @@ async function runMigration(pool, opts = {})
     }
 }
 
+// Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "疑點 --
+// --dry-run"; §6 open question 2, "可放寬"): --dry-run only ever reads
+// information_schema.TABLES (see runMigration's own dryRun branch above) --
+// it never issues a CREATE TABLE, so requiring a real-write confirmation for
+// it was overly cautious, not a safety requirement. Pulled out as a pure
+// function (env object passed in, not read directly) so a test can exercise
+// every combination without needing a real `db.pool`/MySQL connection --
+// this never touches the network itself.
+//
+// @param {boolean} dryRun
+// @param {NodeJS.ProcessEnv} env
+// @returns {string|null} a refusal message, or null if it is OK to proceed
+function checkEnvGuards(dryRun, env)
+{
+    if (dryRun) return null; // read-only; no confirmation needed (see above)
+    if (env.ALLOW_REAL_DB_WRITE !== '1') {
+        return '[P3 match-tables migration] Refusing to run: set ALLOW_REAL_DB_WRITE=1 only after a high-tier '
+            + 'has reviewed this script and you have a fresh, full-database backup (see the comment at the '
+            + 'top of this file).';
+    }
+    if (env.P3_BACKUP_CONFIRMED !== '1') {
+        return '[P3 match-tables migration] Refusing to run: take a full-database backup yourself first, then '
+            + 'set P3_BACKUP_CONFIRMED=1 to confirm you have done so (in addition to ALLOW_REAL_DB_WRITE=1).';
+    }
+    return null;
+}
+
 async function main()
 {
-    if (process.env.ALLOW_REAL_DB_WRITE !== '1') {
-        console.error(
-            '[P3 match-tables migration] Refusing to run: set ALLOW_REAL_DB_WRITE=1 only after a high-tier '
-            + 'has reviewed this script and you have a fresh, full-database backup (see the comment at the '
-            + 'top of this file).'
-        );
-        process.exitCode = 1;
-        return;
-    }
-    if (process.env.P3_BACKUP_CONFIRMED !== '1') {
-        console.error(
-            '[P3 match-tables migration] Refusing to run: take a full-database backup yourself first, then '
-            + 'set P3_BACKUP_CONFIRMED=1 to confirm you have done so (in addition to ALLOW_REAL_DB_WRITE=1).'
-        );
-        process.exitCode = 1;
-        return;
-    }
     const dryRun = process.argv.includes('--dry-run');
+
+    const refusal = checkEnvGuards(dryRun, process.env);
+    if (refusal) {
+        console.error(refusal);
+        process.exitCode = 1;
+        return;
+    }
+
     const db = require('../database/db');
     try {
         await runMigration(db.pool, { dryRun });
@@ -208,4 +230,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { runMigration, TABLE_DEFS };
+module.exports = { runMigration, TABLE_DEFS, checkEnvGuards };

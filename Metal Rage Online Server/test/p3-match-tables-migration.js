@@ -11,13 +11,17 @@
 //   3. --dry-run: never issues CREATE TABLE (a fake connection that throws
 //      on any unmocked SQL would fail the test if it tried), before/after
 //      state identical, created=[].
+//   4. Sol batch6 review env-guard relaxation: checkEnvGuards() (pure
+//      function, no real db.pool/MySQL involved) -- --dry-run never
+//      requires ALLOW_REAL_DB_WRITE/P3_BACKUP_CONFIRMED, a real run still
+//      requires both.
 //
 // Run: node test/p3-match-tables-migration.js  (exit 0 = pass, exit 1 = fail)
 
 const assert = require('assert');
 const path = require('path');
 
-const { runMigration, TABLE_DEFS } = require(path.join(__dirname, '..', 'tools', 'migrate-p3-match-tables.js'));
+const { runMigration, TABLE_DEFS, checkEnvGuards } = require(path.join(__dirname, '..', 'tools', 'migrate-p3-match-tables.js'));
 
 const ALL_TABLE_NAMES = TABLE_DEFS.map((t) => t.name);
 
@@ -139,12 +143,34 @@ async function testDryRunMakesNoChanges()
     console.log('[p3-match-tables-migration test] PASS: --dry-run computes state without creating anything');
 }
 
+// Sol batch6 review (docs/research/2026-09-20-sol-review/p3.md, "疑點 --
+// --dry-run"; §6 open question 2, "可放寬"): --dry-run must be runnable
+// without ALLOW_REAL_DB_WRITE/P3_BACKUP_CONFIRMED (it only reads
+// information_schema.TABLES); a real run still requires both, unchanged.
+function testDryRunSkipsEnvGuards()
+{
+    assert.strictEqual(checkEnvGuards(true, {}), null, '--dry-run with no env vars set at all must be allowed to proceed');
+    assert.strictEqual(checkEnvGuards(true, { ALLOW_REAL_DB_WRITE: '0', P3_BACKUP_CONFIRMED: '0' }), null, '--dry-run must be allowed even if the env vars are explicitly set to a falsy value');
+    console.log('[p3-match-tables-migration test] PASS: --dry-run never requires ALLOW_REAL_DB_WRITE/P3_BACKUP_CONFIRMED');
+}
+
+function testRealRunStillRequiresBothEnvGuards()
+{
+    assert.ok(typeof checkEnvGuards(false, {}) === 'string', 'a real run with neither env var set must be refused');
+    assert.ok(typeof checkEnvGuards(false, { ALLOW_REAL_DB_WRITE: '1' }) === 'string', 'a real run with only ALLOW_REAL_DB_WRITE set must still be refused (P3_BACKUP_CONFIRMED missing)');
+    assert.ok(typeof checkEnvGuards(false, { P3_BACKUP_CONFIRMED: '1' }) === 'string', 'a real run with only P3_BACKUP_CONFIRMED set must still be refused (ALLOW_REAL_DB_WRITE missing)');
+    assert.strictEqual(checkEnvGuards(false, { ALLOW_REAL_DB_WRITE: '1', P3_BACKUP_CONFIRMED: '1' }), null, 'a real run with both env vars set must be allowed to proceed');
+    console.log('[p3-match-tables-migration test] PASS: a real (non-dry-run) invocation still requires both ALLOW_REAL_DB_WRITE and P3_BACKUP_CONFIRMED');
+}
+
 async function main()
 {
     await testFreshDbCreatesAllThreeInOrder();
     await testIdempotentRerunCreatesNothing();
     await testPartiallyMigratedOnlyCreatesMissing();
     await testDryRunMakesNoChanges();
+    testDryRunSkipsEnvGuards();
+    testRealRunStillRequiresBothEnvGuards();
     console.log('[p3-match-tables-migration test] ALL CHECKS PASS');
     process.exit(0);
 }
