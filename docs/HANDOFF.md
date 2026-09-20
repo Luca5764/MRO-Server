@@ -66,6 +66,17 @@
 - **陷阱**：安裝目錄下的 `MetalRage\` 是指回根目錄的 junction，robocopy 原樣重建，所以副本的 `MetalRage\...` 指向主力安裝。判斷 log 屬於誰看檔頭 `Init: Base directory:`
 - **陷阱**：引擎 log 檔名跟著執行檔走，`MetalRage2.exe` 寫 `data\System\MetalRage2.log`，而且每次啟動**截斷**同名檔
 
+### 客戶端目前的非原廠狀態（2026-09-20 晚）
+
+| 項目 | 狀態 |
+|---|---|
+| 副本 `C:\Games\MetalRage Online 2` 的 `IpDrv.dll` | **修補中**（MaxClientRate/MaxInternetClientRate → 100000），sha256 `e384991e…`，原廠 `dbc7b34c…`。**實驗沙盒，之後量測若用副本當房主一定要註明** |
+| 主安裝的 `Engine.dll`／`IpDrv.dll` | 原廠（`fc51fe12…`／`dbc7b34c…`） |
+| 兩份 `DefUser.ini` 的 `ConfiguredInternetSpeed` | 100000（無效、無害），備份 `.bak-20260920` |
+| `MetalRage2.exe`、`Play Second Client.bat`、`Play With Log.bat`、IFEO 機碼 | 雙開與即時 log 視窗要用的，保留 |
+
+還原：`~/mro-netspeed-off.sh`（全部）或 `tools/patch_netspeed.py --module ipdrv --target <安裝> --restore`。
+
 ### 等操作者的
 
 1. **明天那一場**：`stat fps` 驗證（一分鐘）→ 區網基準（連按 vs 慢速各 100 次扣扳機）→ DUAL-CLIENT（`docs/backlog.md`，15–20 分鐘上限）。順序與判讀全寫在 `docs/next-test.md`（已整份改寫）。

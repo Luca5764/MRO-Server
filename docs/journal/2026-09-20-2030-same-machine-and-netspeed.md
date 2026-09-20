@@ -179,3 +179,37 @@ IpDrv.dll  UTcpNetDriver::StaticConstructor
 🟡 下一步（子 agent 進行中）：`Engine.dll` 有兩個 UTF-16 `NETSPEED` 字串（file `0x3a7f94`、`0x3a7fb4`），我們追的是 server 側被 Parse 的那個；另一個很可能是 client 側組字串用的。要分辨它讀的是 `ConfiguredInternetSpeed`、`ConfiguredLanSpeed`、`CurrentNetSpeed`（connection+0x50），還是 `MaxInternetClientRate`。
 
 **客戶端要還原成原廠**：`~/mro-netspeed-off.sh`（`IpDrv.dll` 目前仍是修補狀態，`Engine.dll` 已還原）。
+
+## 9. 收尾（22:35）：範圍、還原狀態、下一步
+
+**授權範圍的紀錄。** PM 轉達的原始授權是「只動副本資料夾的 `Engine.dll`、主安裝不動」。實際做的比這個多，經過如下，**兩次擴大都是操作者當場同意並親自執行指令**：
+1. 副本 `Engine.dll` → 操作者回「動手」。
+2. 發現加入者那台也要改時，AI 明說「這超出你剛剛授權的範圍」，操作者**自己貼指令**修補主安裝的 `Engine.dll`。
+3. 改用 `IpDrv.dll` 時，AI 說明腳本會「還原 Engine.dll、修補 IpDrv.dll、兩份安裝都做」，操作者**自己執行** `~/mro-netspeed-on.sh`。
+
+→ 紀錄為：**操作者當場同意擴大到 `IpDrv.dll` 與主安裝**。之後若要再擴大，一樣要當場確認。
+
+**還原狀態（2026-09-20 22:35）：**
+
+| 檔案 | 狀態 | sha256 |
+|---|---|---|
+| 主安裝 `Engine.dll` | 原廠 | `fc51fe12…` |
+| 主安裝 `IpDrv.dll` | **已還原** | `dbc7b34c…` |
+| 副本 `Engine.dll` | 原廠 | `fc51fe12…` |
+| **副本 `IpDrv.dll`** | **修補中（實驗沙盒，PM 同意保留）** | `e384991e…`（原廠 `dbc7b34c…`） |
+| 兩份 `MetalRage.ini` 的 `[Engine.NetDriver]` | 已還原 | — |
+| 兩份 `DefUser.ini` 的 `ConfiguredInternetSpeed` | 仍是 100000（無效、無害） | 備份 `.bak-20260920` |
+
+還原副本：`python3 tools/patch_netspeed.py --module ipdrv --target "/mnt/c/Games/MetalRage Online 2" --restore`
+全部還原：`~/mro-netspeed-off.sh`
+
+**之後所有基準量測都要註明房主用的是哪一份安裝。**
+
+**「`netspeed` 會不會通知房主」——已有證據，判 🟡 不會。** [OBS] 稍早（上限還是 15000 時）加入者下 `netspeed 100000` 後本機變 15000，**房主 log 沒有出現新的 `Client netspeed is 15000`**。若指令會通知，當下就該印。保留的疑點只有「操作者當時是否特別盯著 log 視窗」，明天 30 秒可確認。
+
+**下一步（明天）**
+1. 30 秒確認上述疑點。
+2. **主線：查登入握手當下連線 `CurrentNetSpeed` 為何是 10000 的初始化來源**（唯讀）。PM 與我同意先追值的來源、不要改程式流程——今晚已經兩次改到錯的位置（`Engine.dll` 的常數被 `IpDrv.dll` 覆蓋；`IpDrv.dll` 的常數是上限、而 10000 從來沒碰到上限）。
+3. 區網基準（等筆電開機），預測仍為「個位數缺口」。
+
+**今晚附帶確認的事實**（對之後的決策有用）：修補 `Engine.dll`／`IpDrv.dll` 後客戶端登入、開房、進戰場全部正常，**不觸發任何保護機制**。
