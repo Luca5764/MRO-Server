@@ -230,6 +230,19 @@ account / conn_id / launch_time`（`conn_id` 登入後才填，見第 4 節；`l
   NETSPEED token，記為第四種結果（不是「沒效果」，是「沒送到」）——
   `2026-09-20-2153-server-netspeed.md` 已證實那行只在收到的文字含 `"NETSPEED"` token 時才印
 
+### 第一次實跑要拆成三段（PM 2026-09-21）
+
+**不要一口氣跑完整條。** 每一段都是一次獨立的「遠端在場」（定義見
+`reference/unattended-policy.md`），跑過一次的動作才可以由操作者加進甲類。
+
+| 段 | 跑到哪裡 | 涵蓋的新動作 |
+|---|---|---|
+| A | 兩個實例都登入並**停在大廳** | `launch_client`、`login_as`、`focus_client`（已測）、`close_client` |
+| B | 建房 → 加入 → 準備 | `join_room`、`set_ready`、`idle_nudge` |
+| C | 開戰 → 下指令 → 離開 → 關閉 | `host_start_battle`、`enter_battle`、`console_cmd_on`、`leave_battle` |
+
+A 段成功才跑 B，B 成功才跑 C。任何一段 halt 就停在那裡寫報告。
+
 ## 8. 停止條件（全部 fail-closed）
 
 - STOP 檔存在（沿用 `<WinUserProfile>\mro-pico\STOP`）→ 立即停。
