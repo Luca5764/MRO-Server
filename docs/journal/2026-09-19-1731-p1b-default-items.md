@@ -1,6 +1,6 @@
 # P1B-IMPL：起始帳號重複預設裝備清理（2026-09-19）
 
-> 🟡 假設／實作，中階完成，**未經跨公司審查**。依 `docs/backlog.md` P1b 契約執行（操作者已核准修這個問題），四項工作都在 worktree `~/mro-wt/p1b`（分支 `flash-wip-p1b`）完成，未合併、未重啟伺服器。
+> 🟡 假設／實作，中階完成。已由 Sol batch5（`research/2026-09-19-sol-review/batch5.md`，SOL-REVIEW-5）審查：預設表、Serial-0/spawn 通過；清理規則/交易有疑點；**hangar WearInfo 欄位順序是 live bug，登入 token 測試噪音需修**，裁定 **NO-GO**——account 4 cleanup 在這兩項修好前不可實跑（詳見高階處理段）。依 `docs/backlog.md` P1b 契約執行（操作者已核准修這個問題），四項工作都在 worktree `~/mro-wt/p1b`（分支 `flash-wip-p1b`）完成，未合併、未重啟伺服器。
 
 ## 背景
 

@@ -1,6 +1,6 @@
 # D1-A：多人時 Game_User_SN 怎麼送
 
-狀態：🟡（中階分析；高階抽驗了 `0x107d8baf push 0x1e5` 和 `0x10734401` 依 UserIndex 比對、stride 0xEC；未經跨公司審查）。
+狀態：🟡（中階分析；高階抽驗了 `0x107d8baf push 0x1e5` 和 `0x10734401` 依 UserIndex 比對、stride 0xEC；核心結論「每人一包 Game_User_SN、依 UserIndex upsert」經外部獨立驗證（Moon，2026-09-20）＋我方 verifier 核對（`research/2026-09-20-moon-verify/notes.md` (a)），但本文引用的 `0x10734401`/`0x107343e0` 位址標錯——見文末 2026-09-20 更正）。
 
 - handler `0x107d8ae0`（thunk `0x1070920a`）：body+0x00 旗標（讀了沒用）、body+0x01 筆數；外層迴圈每筆 `0x1E5`（485）bytes（`0x107d8baf`），跑滿筆數才結束（`0x107d8f67`）。
 - 每筆呼叫 `Game_User_Add`（`0x107029ff` → `0x107343e0`）：陣列在 `this+0x1040`，stride `0xEC`；**依 UserIndex 找，找到就先移除，再加到陣列尾端**（upsert）。跟 ItemInfo 的 `Item_Add` 是同一種模式，用的也是同一個成長 import `[0x1091b8a0]`。
