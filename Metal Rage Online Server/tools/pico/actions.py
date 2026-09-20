@@ -140,6 +140,115 @@ LOGIN_DUMMY_PASSWORD = "x"
 LOGIN_CQ_OPCODE = "0x00110151"
 DEFAULT_LOGIN_TIMEOUT_S = 20.0
 
+# ---------------------------------------------------------------------------
+# Dual-client actions (docs/research/2026-09-20-dual-pico/design.md section 3).
+# All of these take a client_id (a key of ctx.clients, see Context/ClientState
+# above) and start by focus_client()-ing it themselves (see _focus_or_fail()
+# below) -- section 0 rule 7's "才准送任何輸入" applies per-action, not just
+# once per script, since a script can interleave actions across instances in
+# any order.
+# ---------------------------------------------------------------------------
+
+# login_as()'s account-field clear (design.md section 3 row 1: "不可以假設
+# 帳號欄位是空的...明確做全選＋刪除再打字"). This module has no CTRL+A/select-all
+# primitive -- code.py's KEY/PRESS only ever holds one keycode at a time (no
+# simultaneous chord), so "select all" is not literally available. HOME
+# (cursor to the very start of the field) + this many DELETEs (forward,
+# removing whatever follows the cursor) clears the field regardless of what a
+# PREVIOUS login_as() call on the same instance left there. 🟡 [GUESS]: no
+# observed max login-field length -- comfortably above every known test
+# account ("Lucas"=5, "mrotest"=7, "mrotesthost"=11 chars).
+ACCOUNT_FIELD_CLEAR_KEYPRESSES = 24
+
+# join_room()'s room-list-row target. HIGH-RISK UNTESTED GUESS -- see
+# join_room()'s own docstring for the full derivation and why this is one of
+# this task's two flagged highest-risk coordinates (the other is
+# BATTLE_ESC_LEAVE_BUTTON below). Derived by proportion (fraction of window
+# width/height, NOT a 1:1 pixel copy) from shots/14-create-room.png, an
+# OLDER, DIFFERENT-RESOLUTION (1040x807, non-4:3) full-window screenshot of
+# the empty lobby room list -- not the current 1600x1200 client atlas. Header
+# row bottom edge measured at that shot's y=195 (of 807), first content row
+# center estimated at y=~209 within the "Channel" column (x=~600 of 1040);
+# scaled to this module's 1600x1200 client space: x=600/1040*1600=923,
+# y=209/807*1200=311. Assumes exactly one room is visible (the one just
+# created by the host) -- there is no OCR/text-matching here to find a
+# specific room by name among several, so `room_name` is logged for
+# traceability only, never used to pick a row.
+ROOM_LIST_FIRST_ROW_CLICK = (920, 310)
+
+# Enter_CQ 0x00220231 / Enter_SA 0x00220232 (dispatch/gate.game.dispatch.js,
+# confirmed by reading that handler for this task): Enter_SA's body is 6
+# bytes, +0x00 u16 LE status + +0x02 u32 LE result, 0/0 = success, 1/1 =
+# failure (room not found / wrong password / full / already playing) --
+# docs/research/2026-09-18-d1-room-formats/enter-sa.md. gate.game.dispatch.js's
+# own comment on the Enter_CQ case names the client action: "double-click a
+# room row in the lobby room list".
+ENTER_SA_OPCODE = "0x00220232"
+DEFAULT_JOIN_ROOM_TIMEOUT_S = 45.0
+
+# User_State_SN 0x00220401, broadcast (to the whole room, including the
+# presser) when a non-host presses F5 to ready up -- READY-IMPL,
+# docs/journal/2026-09-19-0330-d1-step4-room-join.md's "READY-IMPL 準備狀態
+# 廣播" section; confirmed unconditional (only needs rooms.isRoomJoinEnabled(),
+# no separate roomReadyStateMode switch) by reading
+# dispatch/gate.game.dispatch.js's own comment on this opcode for this task.
+USER_STATE_SN_OPCODE = "0x00220401"
+DEFAULT_SET_READY_TIMEOUT_S = 20.0
+
+# Game_Start_SN 0x00222104, now broadcast via rooms.sendAll to every room
+# member including the host itself (D1-6-IMPL, docs/journal/INDEX.md 2026-09-19
+# row) -- used here instead of the 'gameStarted_ false -> true'/'Game_Start_SN
+# sent' TEXT MARKERS start_battle() (single-client) uses, because markers have
+# no `conn` field (design.md L1) and cannot be attributed to one instance in a
+# dual-client run.
+GAME_START_SN_OPCODE = "0x00222104"
+DEFAULT_HOST_START_BATTLE_TIMEOUT_S = 120.0
+
+# ChangeSlot_CN 0x00230101 / Respawn_CN 0x00230103 (docs/journal/2026-09-17-22-
+# pve-mech-slot-selection.md): the client's own PlayerSelectMech state sends
+# these AUTOMATICALLY after loading, with no click -- [LOG] confirmed for
+# this task against Metal Rage Online Server/logs/session-20260920-114648.jsonl
+# (conn=2): Game_Start_SN sent at ms=166914, ChangeSlot_CN/Respawn_CN recv at
+# ms=184899/184901, an ~18s loading gap and no pico input in between. So
+# enter_battle() below sends NO click for "選機" -- see its own docstring for
+# the residual risk (only observed for the host account so far, never a
+# second/joining account).
+CHANGE_SLOT_CN_OPCODE = "0x00230101"
+RESPAWN_CN_OPCODE = "0x00230103"
+DEFAULT_ENTER_BATTLE_TIMEOUT_S = 120.0
+
+# console_cmd_on()'s whitelist (design.md section 3: "只加 netspeed <n>、
+# stat net、WeaponLog"). Separate from CONSOLE_CMD_WHITELIST above (that one
+# is console_cmd()'s own, GameCampaign-only, whitelist) -- kept as two
+# independent sets on purpose so this task cannot accidentally widen what
+# console_cmd() itself will send.
+NETSPEED_CMD_RE = re.compile(r'^netspeed \d{1,7}$')
+CONSOLE_CMD_ON_WHITELIST_EXACT = {"stat net", "WeaponLog"}
+DEFAULT_CONSOLE_CMD_ON_CLOSE_TIMEOUT_S = 10.0
+
+# Leave_CQ 0x00220234 (room-level self-leave, e.g. the client's own ~80s
+# AFK-kick, ZGUIController.uc:945-948) -- idle_nudge() below only needs to
+# confirm this did NOT fire on the nudged conn.
+LEAVE_CQ_OPCODE = "0x00220234"
+
+# Leave_CQ 0x00222131 (in-battle leave) / Leave_SA 0x00222132 (dispatch/
+# gate.game.dispatch.js's own comment: "client action -- pressing ESC and
+# choosing 'leave' while in battle"). Leave_SA is a 6-byte 0/0 ack sent ONLY
+# to the leaving conn itself -- room-leave.js's handleBattleLeave() sends
+# Leave_SN 0x00420133 (non-host left) or EndGame_SN 0x00222213 (host left)
+# to the OTHER conn(s), never to the leaver -- so Leave_SA is the only
+# battle-leave pkt this action can filter on its OWN conn.
+LEAVE_SA_OPCODE = "0x00222132"
+DEFAULT_LEAVE_BATTLE_TIMEOUT_S = 60.0
+# HIGH-RISK UNTESTED GUESS -- see leave_battle()'s own docstring. Unlike
+# ROOM_LIST_FIRST_ROW_CLICK above (derived, if weakly, from an actual old
+# lobby screenshot), this has ZERO visual reference anywhere in this repo
+# (checked shots/ and docs/research/ for this task). Chosen only by analogy
+# to this module's other centered confirm-dialog buttons (NOTICE_CONFIRM_
+# BUTTON, CREATE_CONFIRM_BUTTON), on the unverified assumption the in-battle
+# ESC menu reuses the same dialog template.
+BATTLE_ESC_LEAVE_BUTTON = (798, 675)
+
 
 class ActionError(Exception):
     """Raised for a structural problem (bad params, unknown tab, forbidden
@@ -272,6 +381,35 @@ def click_at(ctx, xy, button="left"):
         if (x, y) == fxy:
             raise ActionError(f"refusing to click forbidden target '{fname}' at {fxy}")
     return run_pico(ctx, "click_at", f"{x},{y}", button)
+
+
+def double_click_at(ctx, xy, button="left"):
+    """Fires two CLICK_AT pseudo-commands inside ONE `pico_ctl.py batch` call
+    (one powershell.exe/pico_serial.ps1 invocation) instead of two separate
+    click_at() calls -- each ordinary click_at() spins up its OWN
+    powershell.exe process (seconds apart), far longer than Windows' actual
+    double-click time window, so two of those would never register as a
+    double-click. Used only by join_room() below (docs/research/2026-09-20-
+    dual-pico/design.md section 3; the room-list "join" action is confirmed
+    to be a double-click by dispatch/gate.game.dispatch.js's own comment on
+    Enter_CQ: "client action: double-click a room row in the lobby room
+    list"). Still goes through pico_ctl.py's `batch` -> require_session() ->
+    pico_serial.ps1's per-command foreground/click-target gates, same as any
+    other input primitive here.
+
+    🟡 UNTESTED: batching the two CLICK_AT pseudo-commands into one PS1
+    invocation does not by itself guarantee they land inside Windows' real
+    double-click threshold (each CLICK_AT is its own closed-loop move-and-
+    verify against the live cursor position, see pico_serial.ps1) -- see
+    join_room()'s docstring for why this is flagged as this task's top
+    likely first-run failure."""
+    _require_focused_client(ctx)
+    x, y = xy
+    for fname, fxy in FORBIDDEN_CLICKS.items():
+        if (x, y) == fxy:
+            raise ActionError(f"refusing to click forbidden target '{fname}' at {fxy}")
+    cmd = f"CLICK_AT {x} {y} {button}"
+    return run_pico(ctx, "batch", cmd, cmd)
 
 
 def key(ctx, key_name):
@@ -1273,6 +1411,550 @@ def focus_client(ctx, client_id):
     return ActionResult("focus_client", True, False, time.monotonic() - t0, detail, shot_path, None, steps)
 
 
+def _focus_or_fail(ctx, action_name, client_id, t0):
+    """Shared first step for every per-client dual-run action below (design.md
+    section 0 rule 7): each action calls focus_client(id) itself rather than
+    trusting an earlier step in the same script to have already focused it,
+    since a script can interleave actions across two instances in any order.
+    Returns (steps, None) if focus succeeded (steps is focus_client()'s own
+    steps list, for the caller to prepend to its own), or (steps,
+    ActionResult) with a ready-to-return failure result if client_id is
+    unknown or focus_client() itself failed -- fail closed, no input sent
+    either way."""
+    if client_id not in ctx.clients:
+        detail = f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})"
+        return [], ActionResult(action_name, False, False, time.monotonic() - t0, detail, None, None, [])
+    focus_result = focus_client(ctx, client_id)
+    if not focus_result.ok:
+        detail = f"focus_client({client_id!r}) failed: {focus_result.detail}"
+        return focus_result.steps, ActionResult(
+            action_name, False, focus_result.gray, time.monotonic() - t0, detail,
+            focus_result.screenshot, focus_result.score, focus_result.steps,
+        )
+    return focus_result.steps, None
+
+
+# ---------------------------------------------------------------------------
+# Dual-client actions proper (docs/research/2026-09-20-dual-pico/design.md
+# section 3). See the constants block above focus_client() for the opcodes/
+# coordinates each of these uses and their evidence.
+# ---------------------------------------------------------------------------
+def launch_client(ctx, client_id):
+    """Triggered by nothing the player does -- starts one dual-client
+    instance's game process via its own launcher (design.md section 1's
+    CLIENTS table: host -> the copy install's "Play Second Client.bat",
+    joiner -> the main install's "Play With Log.bat"; both already use
+    '-log=' per the v3 launcher decision so their run-*.log is resolvable
+    later, see client_ctl.py's resolve_run_log()). Does NOT close an
+    existing process first -- runner.py's preflight (check_no_residual_
+    process) is what refuses the whole run before anything starts if this
+    instance already has one; client_ctl.py's `launch` subcommand also
+    independently refuses (BLOCKED, session halted) if it finds one anyway,
+    rather than silently reusing or replacing it.
+
+    Completion (design.md section 3, PM revision, 120s nominal): the
+    process exists AND its real game window was found -- client_ctl.ps1's
+    existing wait_ready action (largest visible window, CLIENT area >=
+    1600x1200, not Process.MainWindowHandle -- see that script's own
+    comment on why a freshly launched client's splash window is not
+    enough). This action does NOT wait on the run-*.log header or a screen
+    classification (design.md L4: the log is locked for reading the whole
+    time the client is open; L2: a second instance's screenshot can catch
+    the splash before the real window exists) -- those are left to
+    login_as() and to post-close log reads."""
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    inst = ctx.clients[client_id]
+    t0 = time.monotonic()
+    if ctx.dry_run:
+        detail = (f"dry-run: would client_ctl.py launch --id {client_id} --proc {inst.proc_name} "
+                  f"--bat {inst.bat_path_win}")
+        return ActionResult("launch_client", True, False, time.monotonic() - t0, detail, None, None, [])
+
+    args = [sys.executable, CLIENT_CTL, "launch", "--id", client_id, "--proc", inst.proc_name,
+            "--bat", inst.bat_path_win]
+    if inst.install_dir_win:
+        args += ["--install", inst.install_dir_win]
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=130)
+    steps = [(proc.returncode, proc.stdout.strip(), proc.stderr.strip(), 0.0)]
+    ok = proc.returncode == 0
+    if ok:
+        ctx.clients[client_id].launch_time_ms = time.time() * 1000
+    detail = (f"client_ctl.py launch --id {client_id}: rc={proc.returncode} "
+              f"{proc.stdout.strip()} {proc.stderr.strip()}")
+    return ActionResult("launch_client", ok, False, time.monotonic() - t0, detail, None, None, steps)
+
+
+def close_client(ctx, client_id):
+    """Triggered by nothing the player does -- ends a dual-client instance's
+    game process at the end of a scripted run (design.md section 9b). The
+    ONLY supported way to close this elevated client is a real Pico click
+    on its title-bar close X (taskkill/Stop-Process are denied, see
+    client_ctl.py's module docstring), and that click's coordinates are
+    relative to whichever window is currently in the foreground -- so this
+    action ALWAYS calls focus_client(id) itself first (via _focus_or_fail(),
+    same as every other per-client action here), rather than trusting a
+    caller to have focused it already, halting here (never touching the
+    mouse) if that focus switch does not land on the right window.
+
+    Completion (design.md section 3, 30s nominal): the process is gone
+    (client_ctl.py's own get_status()/wait_exit, done Windows-side by
+    client_ctl.ps1) -- not a screenshot (there may be no window left to
+    screenshot). Reading the client's own run-*.log (e.g. for the netspeed
+    value) is deliberately NOT done here -- that log is locked for reading
+    the whole time the process is open (design.md L4) and must only be read
+    after this action reports ok=True."""
+    t0 = time.monotonic()
+    steps, fail = _focus_or_fail(ctx, "close_client", client_id, t0)
+    if fail:
+        return fail
+    inst = ctx.clients[client_id]
+
+    if ctx.dry_run:
+        detail = (f"dry-run: would client_ctl.py close --id {client_id} --proc {inst.proc_name} "
+                  f"--bat {inst.bat_path_win}")
+        return ActionResult("close_client", True, False, time.monotonic() - t0, detail, None, None, steps)
+
+    args = [sys.executable, CLIENT_CTL, "close", "--id", client_id, "--proc", inst.proc_name,
+            "--bat", inst.bat_path_win]
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=45)
+    steps = steps + [(proc.returncode, proc.stdout.strip(), proc.stderr.strip(), 0.0)]
+    ok = proc.returncode == 0
+    detail = (f"client_ctl.py close --id {client_id}: rc={proc.returncode} "
+              f"{proc.stdout.strip()} {proc.stderr.strip()}")
+    return ActionResult("close_client", ok, False, time.monotonic() - t0, detail, None, None, steps)
+
+
+def login_as(ctx, client_id, account):
+    """Triggered by: the same login flow as login() above, but for one
+    instance of a dual-client run (design.md section 3): focus_client(id)
+    first, then explicitly clear whatever is already in the 帳號 field --
+    HOME (cursor to start) + ACCOUNT_FIELD_CLEAR_KEYPRESSES DELETEs, see
+    that constant's comment for why this (not a literal select-all, which
+    this module cannot send) -- before typing, because this action may run
+    more than once against the same already-launched instance across a
+    script (e.g. a relaunch), and a plain click+type on top of leftover
+    text from a PREVIOUS account would mangle both instead of overwriting
+    (design.md section 3 row 1's explicit warning).
+
+    Completion (design.md section 3, 90s nominal) requires BOTH: the server
+    receiving CQ_LOGIN_WASABII (LOGIN_CQ_OPCODE, same opcode as login())
+    AND the client showing the lobby screen afterwards -- same two-signal
+    reasoning as login()'s own docstring. On success this ALSO resolves and
+    stores this instance's conn id (resolve_conn_id(), design.md section 4)
+    into ctx.clients[client_id].conn_id/.account, which every later
+    per-client pkt-based completion condition in this module filters on."""
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    if not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
+        raise ActionError("login_as account must be non-empty printable ASCII")
+    t0 = time.monotonic()
+
+    steps, fail = _focus_or_fail(ctx, "login_as", client_id, t0)
+    if fail:
+        return fail
+
+    # A freshly launched client shows the splash first; the login screen can take
+    # ~30 s to appear (2026-09-20 relaunch run), so wait instead of a one-shot check.
+    if ctx.dry_run:
+        pre = _precondition(ctx, "login_as", "login", _screen_check("login"))
+        if pre:
+            pre.steps = steps + pre.steps
+            return pre
+    else:
+        okl, grayl, detl, scorel, shotl, _ = wait_for(ctx, "login_as-screen", 60.0, _screen_check("login"))
+        if not okl:
+            return ActionResult("login_as", False, grayl, time.monotonic() - t0,
+                                 f"login screen not shown within 60s: {detl}", shotl, scorel, steps)
+
+    # Same IME_EN + notice-popup + SHIFT retry dance as login() above.
+    ok_pkt, found, elapsed_pkt, base = False, {}, 0.0, None
+    for attempt in range(2):
+        base = None if ctx.dry_run else _newest_log_ms(ctx.logs_dir)
+        if not ctx.dry_run:
+            steps.append(run_pico(ctx, "raw", "IME_EN"))
+            steps.append(click_at(ctx, LOGIN_ACCOUNT_FIELD))
+            steps.append(key(ctx, "HOME"))
+            for _ in range(ACCOUNT_FIELD_CLEAR_KEYPRESSES):
+                steps.append(key(ctx, "DELETE"))
+            steps.append(type_text(ctx, account))
+            steps.append(key(ctx, "TAB"))
+            steps.append(type_text(ctx, LOGIN_DUMMY_PASSWORD))
+            steps.append(key(ctx, "ENTER"))
+        ok_pkt, found, elapsed_pkt = wait_for_log_pkts(
+            ctx, DEFAULT_LOGIN_TIMEOUT_S if attempt else 8.0,
+            {"login_cq": lambda e: e.get("dir") == "recv" and e.get("op") == LOGIN_CQ_OPCODE},
+            baseline_ms=base,
+        )
+        if ok_pkt or ctx.dry_run or attempt == 1:
+            break
+        present, nscore = screens.detect_marker(
+            take_screenshot(ctx, f"login_as-{client_id}-attempt{attempt}-notice"), "notice_popup")
+        if not present:
+            break
+        steps.append(click_at(ctx, NOTICE_CONFIRM_BUTTON))
+        time.sleep(1.0)
+        steps.append(key(ctx, "SHIFT"))
+
+    ok_lobby, gray, detail_lobby, score, shot, _ = wait_for(ctx, "login_as-lobby", 15.0, _screen_check("lobby"))
+    ok = ok_pkt and ok_lobby
+
+    conn_id = None
+    if ok_pkt and not ctx.dry_run:
+        conn_id = resolve_conn_id(ctx.logs_dir, account, base if base is not None else 0)
+        ctx.clients[client_id].account = account
+        ctx.clients[client_id].conn_id = conn_id
+
+    detail = (f"login_cq({LOGIN_CQ_OPCODE}) recv: {'seen' if ok_pkt else 'MISSING'} "
+              f"(waited {elapsed_pkt:.1f}s); lobby: {detail_lobby}; conn_id={conn_id}")
+    return ActionResult("login_as", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
+
+
+def join_room(ctx, client_id, room_name):
+    """Triggered by: double-clicking a room row in the lobby room list --
+    dispatch/gate.game.dispatch.js's own comment on Enter_CQ 0x00220231
+    names this exact client action. See ROOM_LIST_FIRST_ROW_CLICK's comment
+    above for the coordinate's derivation and HIGH-RISK UNTESTED status --
+    this action assumes exactly one room is visible (the one the host just
+    created); `room_name` is carried through only for logging/traceability,
+    never used to pick a specific row (no OCR/text-matching exists here).
+
+    Completion (design.md section 3, 45s nominal): Enter_SA (ENTER_SA_
+    OPCODE, send, filtered to this instance's conn_id from login_as())
+    parsed for success (body +0x00 u16 status == 0) -- NOT just "some
+    Enter_SA arrived", since a 1/1 failure body (room not found/full/wrong
+    password/already playing) means the double-click did NOT actually join
+    anything and continuing the script would be pointless. Room marker (or
+    its NOTICE popup) is the secondary signal."""
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    t0 = time.monotonic()
+    steps, fail = _focus_or_fail(ctx, "join_room", client_id, t0)
+    if fail:
+        return fail
+
+    pre = _precondition(ctx, "join_room", "lobby", _screen_check("lobby"))
+    if pre:
+        pre.steps = steps + pre.steps
+        return pre
+
+    if ctx.dry_run:
+        detail = (f"dry-run: would double-click room list row {ROOM_LIST_FIRST_ROW_CLICK} "
+                  f"to join {room_name!r} (UNTESTED coordinate, see docstring)")
+        return ActionResult("join_room", True, False, time.monotonic() - t0, detail, None, None, steps)
+
+    conn_id = ctx.clients[client_id].conn_id
+    base = _newest_log_ms(ctx.logs_dir)
+    steps.append(double_click_at(ctx, ROOM_LIST_FIRST_ROW_CLICK))
+    ok_pkt, found, elapsed = wait_for_log_pkts(
+        ctx, DEFAULT_JOIN_ROOM_TIMEOUT_S,
+        {"enter_sa": lambda e: e.get("dir") == "send" and e.get("op") == ENTER_SA_OPCODE},
+        baseline_ms=base, conn=conn_id,
+    )
+    success = None
+    entry = found.get("enter_sa")
+    if entry is not None:
+        hexs = str(entry.get("hex", ""))
+        if len(hexs) >= 4:
+            success = hexs[0:4] == "0000"
+    ok_room, gray, detail_room, score, shot, _ = wait_for(ctx, "join_room-room", 10.0, _room_or_notice_check())
+    ok = ok_pkt and bool(success)
+    detail = (f"double-clicked room list row {ROOM_LIST_FIRST_ROW_CLICK} (room_name={room_name!r}, "
+              f"UNTESTED coordinate, not verified by any on-screen text match); "
+              f"Enter_SA({ENTER_SA_OPCODE}) send (conn={conn_id}): "
+              f"{'seen success' if success else ('seen FAILURE' if success is False else 'MISSING')} "
+              f"(waited {elapsed:.1f}s); room/notice: {detail_room}")
+    return ActionResult("join_room", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
+
+
+def set_ready(ctx, client_id):
+    """Triggered by: pressing F5 while a non-host room member -- the client
+    sends this as Game_Ready_CN 0x00222101 (same physical key F5 as the
+    host's start_battle(), different serverside meaning depending on who
+    presses it; see host_start_battle()'s docstring for the host's own F5
+    path, Game_Start_CN 0x00222103, and READY-IMPL's own comment in
+    dispatch/gate.game.dispatch.js confirming a non-host's F5 maps to
+    0x00222101/"準備完畢").
+
+    Completion (design.md section 3, 20s nominal): User_State_SN
+    (USER_STATE_SN_OPCODE) send, filtered to this instance's conn_id (the
+    broadcast includes the presser, see that opcode's comment above) -- not
+    gated on the raw READY value (2) since design.md's table only asks for
+    "對應 pkt", but the raw byte is reported in `detail` for traceability."""
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    t0 = time.monotonic()
+    steps, fail = _focus_or_fail(ctx, "set_ready", client_id, t0)
+    if fail:
+        return fail
+
+    pre = _precondition(ctx, "set_ready", "room", _marker_check("room"))
+    if pre:
+        pre.steps = steps + pre.steps
+        return pre
+
+    if ctx.dry_run:
+        return ActionResult("set_ready", True, False, time.monotonic() - t0,
+                             "dry-run: would key F5 (ready)", None, None, steps)
+
+    conn_id = ctx.clients[client_id].conn_id
+    base = _newest_log_ms(ctx.logs_dir)
+    steps.append(key(ctx, "F5"))
+    ok, found, elapsed = wait_for_log_pkts(
+        ctx, DEFAULT_SET_READY_TIMEOUT_S,
+        {"user_state": lambda e: e.get("dir") == "send" and e.get("op") == USER_STATE_SN_OPCODE},
+        baseline_ms=base, conn=conn_id,
+    )
+    raw = None
+    entry = found.get("user_state")
+    if entry is not None:
+        hexs = str(entry.get("hex", ""))
+        if len(hexs) >= 2:
+            raw = hexs[0:2]
+    shot = take_screenshot(ctx, "set_ready-result")
+    detail = (f"User_State_SN({USER_STATE_SN_OPCODE}) send (conn={conn_id}): "
+              f"{'seen raw=' + raw if ok else 'MISSING'} (waited {elapsed:.1f}s)")
+    return ActionResult("set_ready", ok, False, time.monotonic() - t0, detail, shot, None, steps)
+
+
+def host_start_battle(ctx, client_id="host"):
+    """Triggered by: the host pressing F5 in the room -- Game_Start_CN
+    0x00222103 (see set_ready()'s docstring for the non-host's different F5
+    meaning). client_id defaults to "host" to match design.md section 1's
+    CLIENTS table naming convention, but is a real parameter (not hardcoded)
+    so a script can name its host instance differently.
+
+    Completion (design.md section 3, 120s nominal): Game_Start_SN
+    (GAME_START_SN_OPCODE) send, filtered to the HOST's own conn_id --
+    design.md L1 explicitly says not to rely on the single-client
+    start_battle()'s text markers ('gameStarted_ false -> true'/'Game_Start_SN
+    sent') here, since packetlog.js's marker() calls carry no `conn` and
+    cannot be attributed to one instance when two are running. D1-6-IMPL
+    broadcasts Game_Start_SN to every room member via rooms.sendAll,
+    including the host itself, so filtering on the host's own conn is valid."""
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    t0 = time.monotonic()
+    steps, fail = _focus_or_fail(ctx, "host_start_battle", client_id, t0)
+    if fail:
+        return fail
+
+    pre = _precondition(ctx, "host_start_battle", "room", _marker_check("room"))
+    if pre:
+        pre.steps = steps + pre.steps
+        return pre
+
+    if ctx.dry_run:
+        return ActionResult("host_start_battle", True, False, time.monotonic() - t0,
+                             "dry-run: would key F5 (host start)", None, None, steps)
+
+    conn_id = ctx.clients[client_id].conn_id
+    base = _newest_log_ms(ctx.logs_dir)
+    steps.append(key(ctx, "F5"))
+    ok, found, elapsed = wait_for_log_pkts(
+        ctx, DEFAULT_HOST_START_BATTLE_TIMEOUT_S,
+        {"game_start_sn": lambda e: e.get("dir") == "send" and e.get("op") == GAME_START_SN_OPCODE},
+        baseline_ms=base, conn=conn_id,
+    )
+    shot = take_screenshot(ctx, "host_start_battle-result")
+    detail = (f"Game_Start_SN({GAME_START_SN_OPCODE}) send (conn={conn_id}): "
+              f"{'seen' if ok else 'MISSING'} (waited {elapsed:.1f}s) -- conn-filtered pkt, "
+              f"not the gameStarted_/Game_Start_SN-sent text markers (design.md L1)")
+    return ActionResult("host_start_battle", ok, False, time.monotonic() - t0, detail, shot, None, steps)
+
+
+def enter_battle(ctx, client_id):
+    """Triggered by nothing the player does -- a pure wait for the joiner's
+    own load-in flow after the host starts the match: loading screen ->
+    ZSlotSelectPage (mech select) -> spawned in battle. This action sends NO
+    click for "選機" -- see CHANGE_SLOT_CN_OPCODE's comment above for the
+    [LOG] evidence that ChangeSlot_CN/Respawn_CN are sent automatically by
+    the client (an ~18s gap after Game_Start_SN, no pico input in between,
+    session-20260920-114648.jsonl). 🟡 residual risk: that evidence is only
+    for the HOST's own account in a solo PvE match, never observed yet for a
+    second/joining account -- if the joiner's account instead shows an
+    interactive ZSlotSelectPage requiring a real click, this action will
+    time out with no click sent (fail closed, matching design.md L6's "沒
+    定義就會在非預期畫面卡住" -- better an explicit timeout here than an
+    invented, unverified click).
+
+    Completion (design.md section 3, 120s nominal): ChangeSlot_CN or
+    Respawn_CN recv, filtered to this instance's conn_id. Battle HUD
+    (screens.battle_hud_state(), map-independent, see campaign_win_all's
+    docstring) is the secondary signal."""
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    t0 = time.monotonic()
+    steps, fail = _focus_or_fail(ctx, "enter_battle", client_id, t0)
+    if fail:
+        return fail
+
+    if ctx.dry_run:
+        return ActionResult("enter_battle", True, False, time.monotonic() - t0,
+                             "dry-run: would wait for loading -> auto mech-select -> battle "
+                             "(no click sent, see docstring)", None, None, steps)
+
+    conn_id = ctx.clients[client_id].conn_id
+    base = _newest_log_ms(ctx.logs_dir)
+    ok_pkt, found, elapsed = wait_for_log_pkts(
+        ctx, DEFAULT_ENTER_BATTLE_TIMEOUT_S,
+        {"spawn": lambda e: e.get("dir") == "recv" and e.get("op") in (CHANGE_SLOT_CN_OPCODE, RESPAWN_CN_OPCODE)},
+        baseline_ms=base, conn=conn_id,
+    )
+    ok_hud, gray, detail_hud, score, shot, _ = wait_for(ctx, "enter_battle-hud", 15.0, _battle_any_check())
+    detail = (f"ChangeSlot_CN/Respawn_CN recv (conn={conn_id}): {'seen' if ok_pkt else 'MISSING'} "
+              f"(waited {elapsed:.1f}s, no click sent -- see docstring); battle HUD: {detail_hud}")
+    return ActionResult("enter_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)
+
+
+def _console_cmd_on_allowed(text):
+    return text in CONSOLE_CMD_ON_WHITELIST_EXACT or bool(NETSPEED_CMD_RE.match(text))
+
+
+def console_cmd_on(ctx, client_id, text):
+    """Triggered by: focus_client(id) -> F24 (open the console, only if not
+    already open) -> type `text` -> ENTER -> ESC (close it again). `text` is
+    restricted to CONSOLE_CMD_ON_WHITELIST_EXACT ("stat net"/"WeaponLog") or
+    NETSPEED_CMD_RE ("netspeed <digits>") -- a separate whitelist from
+    console_cmd()'s own CONSOLE_CMD_WHITELIST, see that constant's comment.
+
+    Completion (design.md section 3, PM revision): the console open/closed
+    PIXEL judgement (screens.console_prompt_state via _console_check(...,
+    variant="battle"), the same white-pixel-count check campaign_win_all()/
+    campaign_fail()/deltest() already use over a battle background) -- both
+    the open transition (before typing) and the closed transition (after
+    ESC) are gated; a screenshot taken right after typing+ENTER is saved as
+    evidence but not itself gated on anything. Per design.md L4, NO log
+    read is attempted here -- verifying what the command actually did (e.g.
+    the 'Client netspeed is N' line) is deliberately left to a read of the
+    run-*.log AFTER close_client() (see dual-netspeed.json's last step)."""
+    if not _console_cmd_on_allowed(text):
+        raise ActionError(
+            f"console_cmd_on text {text!r} not in whitelist "
+            f"({sorted(CONSOLE_CMD_ON_WHITELIST_EXACT)} or 'netspeed <digits>')"
+        )
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    t0 = time.monotonic()
+    steps, fail = _focus_or_fail(ctx, "console_cmd_on", client_id, t0)
+    if fail:
+        return fail
+
+    if ctx.dry_run:
+        return ActionResult("console_cmd_on", True, False, time.monotonic() - t0,
+                             f"dry-run: would F24 (if closed) -> TYPE {text!r} -> ENTER -> ESC",
+                             None, None, steps)
+
+    state, w = screens.console_prompt_state(take_screenshot(ctx, f"console_cmd_on-{client_id}-pre"))
+    if state == "unknown":
+        return ActionResult("console_cmd_on", False, True, time.monotonic() - t0,
+                             f"console prompt state unknown before F24 (white_px={w})", None, float(w), steps)
+    if state == "closed":
+        steps.append(key(ctx, "F24"))
+    ok_open, gray_open, detail_open, score_open, shot_open, _ = wait_for(
+        ctx, f"console_cmd_on-{client_id}-open", 5.0, _console_check("open", variant="battle"))
+    if not ok_open:
+        return ActionResult("console_cmd_on", False, gray_open, time.monotonic() - t0,
+                             f"console did not open: {detail_open}", shot_open, score_open, steps)
+
+    steps.append(type_text(ctx, text))
+    steps.append(key(ctx, "ENTER"))
+    typed_shot = take_screenshot(ctx, f"console_cmd_on-{client_id}-typed")
+    steps.append(key(ctx, "ESC"))
+    ok_closed, gray_closed, detail_closed, score_closed, shot_closed, _ = wait_for(
+        ctx, f"console_cmd_on-{client_id}-closed", DEFAULT_CONSOLE_CMD_ON_CLOSE_TIMEOUT_S,
+        _console_check("closed", variant="battle"))
+
+    detail = (f"typed {text!r} (whitelisted); console open: {detail_open}; "
+              f"typed-evidence screenshot={typed_shot}; console closed: {detail_closed} "
+              f"(no log read here -- see docstring, design.md L4)")
+    ok = ok_open and ok_closed
+    return ActionResult("console_cmd_on", ok, gray_closed, time.monotonic() - t0, detail, shot_closed,
+                         score_closed, steps)
+
+
+def leave_battle(ctx, client_id):
+    """Triggered by: pressing ESC to open the in-battle menu, then clicking
+    'leave' -- dispatch/gate.game.dispatch.js's own comment on Leave_CQ
+    0x00222131 names this exact client action. See BATTLE_ESC_LEAVE_BUTTON's
+    comment above for why its coordinate is this task's single LEAST
+    confident click target (zero visual reference anywhere in this repo,
+    unlike ROOM_LIST_FIRST_ROW_CLICK which at least has an old low-res
+    screenshot to extrapolate from) -- if wrong, the ESC menu likely stays
+    open and this action times out at DEFAULT_LEAVE_BATTLE_TIMEOUT_S with
+    no further blind click attempted (fail closed, per design.md 第 8 節
+    "遇到任何非預期畫面 -> 立即 halt，不重試").
+
+    Completion (design.md section 3, 60s nominal): Leave_SA (LEAVE_SA_
+    OPCODE), filtered to THIS instance's conn_id -- the only battle-leave
+    pkt guaranteed to target the leaver itself (room-leave.js's
+    handleBattleLeave() sends Leave_SN/EndGame_SN to the OTHER conn(s), see
+    that opcode's own comment above, never to the leaver). Room screen (or
+    its NOTICE popup) is the secondary signal."""
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    t0 = time.monotonic()
+    steps, fail = _focus_or_fail(ctx, "leave_battle", client_id, t0)
+    if fail:
+        return fail
+
+    if ctx.dry_run:
+        detail = (f"dry-run: would key ESC, click {BATTLE_ESC_LEAVE_BUTTON} "
+                  f"(UNTESTED coordinate, see docstring)")
+        return ActionResult("leave_battle", True, False, time.monotonic() - t0, detail, None, None, steps)
+
+    conn_id = ctx.clients[client_id].conn_id
+    base = _newest_log_ms(ctx.logs_dir)
+    steps.append(key(ctx, "ESC"))
+    time.sleep(1.0)
+    steps.append(click_at(ctx, BATTLE_ESC_LEAVE_BUTTON))
+    ok_pkt, found, elapsed = wait_for_log_pkts(
+        ctx, DEFAULT_LEAVE_BATTLE_TIMEOUT_S,
+        {"leave_sa": lambda e: e.get("dir") == "send" and e.get("op") == LEAVE_SA_OPCODE},
+        baseline_ms=base, conn=conn_id,
+    )
+    ok_room, gray, detail_room, score, shot, _ = wait_for(ctx, "leave_battle-room", 10.0, _room_or_notice_check())
+    detail = (f"ESC + click {BATTLE_ESC_LEAVE_BUTTON} (UNTESTED coordinate); "
+              f"Leave_SA({LEAVE_SA_OPCODE}) send (conn={conn_id}): {'seen' if ok_pkt else 'MISSING'} "
+              f"(waited {elapsed:.1f}s); room/notice: {detail_room}")
+    return ActionResult("leave_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)
+
+
+def idle_nudge(ctx, client_id):
+    """Triggered by nothing the player would see -- a defensive keepalive
+    for design.md L5 (room-idle ~80s AFK self-kick, ZGUIController.uc:
+    945-948): focus_client(id) then one harmless zero-net mouse_wiggle().
+
+    Completion (design.md section 3, 10s nominal): focus_client's own
+    foreground readback succeeding (returned via _focus_or_fail() above) --
+    already fail-closed on its own -- AND no Leave_CQ (room-level self-leave,
+    LEAVE_CQ_OPCODE) recv on this conn since the nudge started, i.e. this
+    reports ok=False if the nudge appears to have arrived too late (the
+    client already kicked itself out before/while this ran)."""
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    t0 = time.monotonic()
+    steps, fail = _focus_or_fail(ctx, "idle_nudge", client_id, t0)
+    if fail:
+        return fail
+
+    if ctx.dry_run:
+        return ActionResult("idle_nudge", True, False, time.monotonic() - t0,
+                             "dry-run: would mouse_wiggle", None, None, steps)
+
+    conn_id = ctx.clients[client_id].conn_id
+    base = _newest_log_ms(ctx.logs_dir)
+    steps.extend(mouse_wiggle(ctx))
+    left = False
+    if conn_id is not None:
+        left_pkts = find_pkts_since(ctx.logs_dir, base, conn=conn_id)
+        left = any(e.get("dir") == "recv" and e.get("op") == LEAVE_CQ_OPCODE for e in left_pkts)
+    detail = (f"mouse_wiggle sent, foreground confirmed by focus_client; "
+              f"Leave_CQ({LEAVE_CQ_OPCODE}) recv since nudge (conn={conn_id}): "
+              f"{'YES -- kicked before/during nudge' if left else 'none'}")
+    return ActionResult("idle_nudge", not left, False, time.monotonic() - t0, detail, None, None, steps)
+
+
 ACTIONS = {
     "goto_shop": goto_shop,
     "shop_tab": shop_tab,
@@ -1293,6 +1975,16 @@ ACTIONS = {
     "login": login,
     "focus_client": focus_client,
     "relaunch_client": relaunch_client,
+    "launch_client": launch_client,
+    "close_client": close_client,
+    "login_as": login_as,
+    "join_room": join_room,
+    "set_ready": set_ready,
+    "host_start_battle": host_start_battle,
+    "enter_battle": enter_battle,
+    "console_cmd_on": console_cmd_on,
+    "leave_battle": leave_battle,
+    "idle_nudge": idle_nudge,
 }
 
 

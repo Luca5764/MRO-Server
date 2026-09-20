@@ -144,6 +144,39 @@ def validate_experiment(exp):
             account = params.get("account")
             if not isinstance(account, str) or not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
                 raise ExperimentError(f"step {i}: relaunch_client needs params.account as a non-empty printable-ASCII string")
+        # Dual-client actions (docs/research/2026-09-20-dual-pico/design.md
+        # section 3) -- all take a client_id, validated only as "a non-empty
+        # string" here (whether it is actually a key of the experiment's own
+        # 'clients' object is a run-time check, actions.py's own
+        # ActionError/_focus_or_fail(), same as e.g. select_map's tab-name
+        # checks are run-time in actions.py, not here).
+        if name in ("launch_client", "close_client", "login_as", "join_room", "set_ready",
+                    "enter_battle", "console_cmd_on", "leave_battle", "idle_nudge"):
+            client_id = params.get("client_id")
+            if not isinstance(client_id, str) or not client_id:
+                raise ExperimentError(f"step {i}: {name} needs params.client_id as a non-empty string")
+        if name == "host_start_battle":
+            client_id = params.get("client_id", "host")
+            if not isinstance(client_id, str) or not client_id:
+                raise ExperimentError(f"step {i}: host_start_battle params.client_id must be a non-empty string")
+        if name == "login_as":
+            account = params.get("account")
+            if not isinstance(account, str) or not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
+                raise ExperimentError(f"step {i}: login_as needs params.account as a non-empty printable-ASCII string")
+        if name == "join_room":
+            room_name = params.get("room_name")
+            if not isinstance(room_name, str) or not room_name:
+                raise ExperimentError(f"step {i}: join_room needs params.room_name as a non-empty string")
+        if name == "console_cmd_on":
+            text = params.get("text")
+            allowed = isinstance(text, str) and (
+                text in actions.CONSOLE_CMD_ON_WHITELIST_EXACT or bool(actions.NETSPEED_CMD_RE.match(text))
+            )
+            if not allowed:
+                raise ExperimentError(
+                    f"step {i}: console_cmd_on needs params.text in "
+                    f"{sorted(actions.CONSOLE_CMD_ON_WHITELIST_EXACT)} or matching 'netspeed <digits>'"
+                )
     sc = exp.get("stop_conditions", {})
     if not isinstance(sc, dict):
         raise ExperimentError("'stop_conditions' must be an object")
@@ -251,6 +284,65 @@ def describe_step(step):
                 f"Pico click on the title-bar close X if present+responding, halt if present+not responding, "
                 f"launch, wait<=90s for the real game window), then login({account!r}) (see above) -- separate "
                 f"from client_ctl.py restart's crash-recovery budget")
+    if name == "focus_client":
+        # Pre-existing action (I6, before this task); describe_step() never had a
+        # case for it, so it fell through to the generic f"{name}: {params}" below
+        # -- adding a real description here while touching this function anyway.
+        cid = params.get("client_id")
+        return f"focus_client({cid!r}): session set-proc, SetForegroundWindow, readback-confirm"
+    # Dual-client actions (docs/research/2026-09-20-dual-pico/design.md section 3).
+    if name == "launch_client":
+        cid = params.get("client_id")
+        return f"launch_client({cid!r}): `client_ctl.py launch --id {cid}` (refuses if already running), wait<=90s for the real game window"
+    if name == "close_client":
+        cid = params.get("client_id")
+        return f"close_client({cid!r}): focus_client({cid!r}) first, then `client_ctl.py close --id {cid}` (real Pico click on the title-bar close X), wait<=20s for the process to exit"
+    if name == "login_as":
+        cid = params.get("client_id")
+        account = params.get("account")
+        return (f"login_as({cid!r}, {account!r}): focus_client({cid!r}), wait<=60s for login screen, IME_EN, "
+                f"click client{actions.LOGIN_ACCOUNT_FIELD} (帳號), KEY HOME, {actions.ACCOUNT_FIELD_CLEAR_KEYPRESSES}x "
+                f"KEY DELETE (clear any leftover account text), TYPE {account!r}, KEY TAB, TYPE "
+                f"{actions.LOGIN_DUMMY_PASSWORD!r}, KEY ENTER, wait<={actions.DEFAULT_LOGIN_TIMEOUT_S}s for a "
+                f"{actions.LOGIN_CQ_OPCODE} recv pkt, wait<=15s for screen=lobby, resolve+store conn_id")
+    if name == "join_room":
+        cid = params.get("client_id")
+        room_name = params.get("room_name")
+        return (f"join_room({cid!r}, {room_name!r}): focus_client({cid!r}), precondition=lobby, "
+                f"DOUBLE-CLICK client{actions.ROOM_LIST_FIRST_ROW_CLICK} (UNTESTED coordinate, see actions.py), "
+                f"wait<={actions.DEFAULT_JOIN_ROOM_TIMEOUT_S}s for a successful {actions.ENTER_SA_OPCODE} "
+                f"send pkt (conn-filtered)")
+    if name == "set_ready":
+        cid = params.get("client_id")
+        return (f"set_ready({cid!r}): focus_client({cid!r}), precondition=room marker, KEY F5, "
+                f"wait<={actions.DEFAULT_SET_READY_TIMEOUT_S}s for a {actions.USER_STATE_SN_OPCODE} "
+                f"send pkt (conn-filtered)")
+    if name == "host_start_battle":
+        cid = params.get("client_id", "host")
+        return (f"host_start_battle(client_id={cid!r}): focus_client({cid!r}), precondition=room marker, "
+                f"KEY F5, wait<={actions.DEFAULT_HOST_START_BATTLE_TIMEOUT_S}s for a "
+                f"{actions.GAME_START_SN_OPCODE} send pkt (conn-filtered, NOT the gameStarted_ text marker)")
+    if name == "enter_battle":
+        cid = params.get("client_id")
+        return (f"enter_battle({cid!r}): focus_client({cid!r}), NO click sent (auto mech-select, see "
+                f"actions.py's CHANGE_SLOT_CN_OPCODE comment), wait<={actions.DEFAULT_ENTER_BATTLE_TIMEOUT_S}s "
+                f"for a {actions.CHANGE_SLOT_CN_OPCODE}/{actions.RESPAWN_CN_OPCODE} recv pkt (conn-filtered)")
+    if name == "console_cmd_on":
+        cid = params.get("client_id")
+        text = params.get("text")
+        return (f"console_cmd_on({cid!r}, {text!r}): focus_client({cid!r}), F24 if console closed, "
+                f"wait<=5s for console(battle) open, TYPE {text!r}, KEY ENTER, screenshot, KEY ESC, "
+                f"wait<={actions.DEFAULT_CONSOLE_CMD_ON_CLOSE_TIMEOUT_S}s for console(battle) closed "
+                f"(no log read here, see actions.py L4 note)")
+    if name == "leave_battle":
+        cid = params.get("client_id")
+        return (f"leave_battle({cid!r}): focus_client({cid!r}), KEY ESC, click "
+                f"client{actions.BATTLE_ESC_LEAVE_BUTTON} (UNTESTED coordinate, zero visual reference, "
+                f"see actions.py), wait<={actions.DEFAULT_LEAVE_BATTLE_TIMEOUT_S}s for a "
+                f"{actions.LEAVE_SA_OPCODE} send pkt (conn-filtered)")
+    if name == "idle_nudge":
+        cid = params.get("client_id")
+        return f"idle_nudge({cid!r}): focus_client({cid!r}), mouse_wiggle, check no {actions.LEAVE_CQ_OPCODE} recv since"
     return f"{name}: {params}"
 
 
@@ -512,6 +604,30 @@ def fail_closed(ctx):
         pass
 
 
+def _build_client_states(exp):
+    """Converts an experiment's optional top-level 'clients' object (docs/
+    research/2026-09-20-dual-pico/design.md section 1, same field
+    resolve_instances() above reads for preflight) into {id: actions.
+    ClientState}, for actions.Context.clients -- the dict focus_client() and
+    every per-client action (I6/section 3) reads. No existing experiment
+    file declares 'clients', so this returns {} for all of them, same as
+    before this task (ctx.clients stays empty, every per-client action is
+    simply never used, _require_focused_client() stays a no-op -- see its
+    own docstring)."""
+    clients_field = exp.get("clients")
+    if not clients_field:
+        return {}
+    out = {}
+    for cid, spec in clients_field.items():
+        out[cid] = actions.ClientState(
+            id=cid,
+            proc_name=spec.get("proc_name", client_ctl.DEFAULT_INSTANCE.proc_name),
+            install_dir_win=spec.get("install_dir_win", client_ctl.DEFAULT_INSTANCE.install_dir_win),
+            bat_path_win=spec.get("bat_path_win", client_ctl.DEFAULT_INSTANCE.bat_path_win),
+        )
+    return out
+
+
 def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
     exp = load_experiment(exp_path)
     ctx = actions.Context(
@@ -519,6 +635,7 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
         shots_dir=shots_dir or actions.DEFAULT_SHOTS_DIR,
         logs_dir=logs_dir or actions.DEFAULT_LOGS_DIR,
         run_id=exp["id"],
+        clients=_build_client_states(exp),
     )
 
     report = {
