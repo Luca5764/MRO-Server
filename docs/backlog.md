@@ -714,7 +714,7 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 - **(e) Grade 11 完整機制**：`Grade_Info_SN 0x107CF3B0` 的跳表把 11..14 對到 GM → `m_MyAccountLevel`(+0x448) → `IsMeGM_BD()` → `PlayerSelectMech.BeginState` 直接 `GotoState('Spectating')`；PvE 看不出來（面板來自 `PveRoundManager.Timer()`），PvP 會卡住；同根因也讓 F1–F5 技能 HUD 不畫、Tab 計分板沒有玩家列。確認我們沒有任何路徑會送 11..14，並把機制記進 `state.md` 的 Grade 列。
 - **(f) 給 dusk 的測試協定（2026-09-20 更新，症狀已有精確描述）**
   - [OBS] 操作者與 dusk 看了 Moon 的影片（youtu.be/OHvI8RcJKLQ，同一台電腦開兩個視窗），確認跟 dusk 當加入者時是同一現象：**加入者端彈藥有消耗但看不到投射物；房主端看得到那名加入者的投射物正常飛行**。
-  - 🟡 [GUESS]（PM）：不是大廳伺服器的封包問題，是 UE2 listen server 的複寫飢餓——投射物在房主端生成，但複寫不出去。每 tick 房主對每條連線能送的 actor 更新有限且依優先權排序，短命的投射物輸給玩家與 AI。房主 tick 變慢（Moon：視窗失焦被降速；我們：WER 傾印凍結）或頻寬吃緊（dusk：「怪多就更嚴重」）都會讓投射物先消失；hitscan 不需要複寫 actor，所以不受影響。
+  - ❌ 2026-09-20 更正：PM 原本的「複寫飢餓（NetPriority 讓短命 actor 被擠掉）」機制與實際程式路徑對不上。投射物不是複寫的 actor，而是房主用 `ClientFireProjectileCenterLoc_MH`（reliable ToAll）通知所有客戶端各自本地生成；傷害也只由開槍者自己那顆副本申報（`bMyProj`）。所以「看不到」與「沒傷害」是同一個根因。詳見 `research/2026-09-20-projectile-replication/notes.md`。新假設 H-RPC-DROP 🟡：那個 reliable RPC 沒及時送達加入者。
   - 重測（Lucas 房主＋卡頓已修＋dusk 加入），**兩端分別記**：
     - 加入者端：有沒有看到自己的投射物、彈藥有沒有扣、敵人有沒有掉血；
     - 房主端：有沒有看到加入者的投射物。
