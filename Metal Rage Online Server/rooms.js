@@ -199,6 +199,32 @@ function _setRoomOptionSourceModeForTests(mode) {
     roomOptionSourceMode = mode;
 }
 
+// ASSIST-FIX (docs/backlog.md, docs/research/2026-09-20-assist-fix/notes.md,
+// docs/research/2026-09-20-fallback-ack-audit/notes.md, 🟡 待審):
+// Assist_CN 0x00230121's reply Assist_SN 0x00230122
+// (dispatch/lobby.dispatch.js) was falling into the same 16-byte-padded
+// all-zero shape as the generic fallback ACK -- the client's success-path
+// handler (`0x107d5fa0`) reads out to body+0x18, past what a 16-byte body
+// has, an out-of-bounds read. Disabled (default) keeps the existing
+// 6-byte-requested/16-byte-padded zero reply byte-for-byte. Enabled sends
+// the documented 25-byte (0x19) body: echoing the CN's own
+// AssistUserIndex/UserIndex/AssistType/Action/HP fields back (index 0
+// lookups miss in `Game_User_Assist_Set`, so today's padding garbage is
+// discarded there; the notes explain why the index echo and the length fix
+// cannot ship as separate commits) with the two Exp/Point score-write field
+// pairs left at 0 (no known formula yet -- see notes.md §3, do not guess).
+// Same `let` + accessor + test-only setter pattern as every other switch in
+// this file.
+let assistSnFormatMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isAssistSnFormatEnabled() {
+    return assistSnFormatMode === 'enabled';
+}
+
+function _setAssistSnFormatModeForTests(mode) {
+    assistSnFormatMode = mode;
+}
+
 // D1-4: which live client objects count as "in the lobby" for the
 // Room_List_SN broadcast. There is no separate "entered lobby" flag on
 // NetworkClient (login goes straight from channel-enter to the client
@@ -447,6 +473,7 @@ function _resetForTests() {
     roomPlayingStateMode = 'disabled';
     roomOptionSourceMode = 'disabled';
     battleLeaveMode = 'disabled';
+    assistSnFormatMode = 'disabled';
     clientSource = [];
 }
 
@@ -473,6 +500,8 @@ module.exports = {
     _setRoomOptionSourceModeForTests,
     isBattleLeaveEnabled,
     _setBattleLeaveModeForTests,
+    isAssistSnFormatEnabled,
+    _setAssistSnFormatModeForTests,
     registerLobbyClientSource,
     getLobbyClients,
     _resetForTests,
