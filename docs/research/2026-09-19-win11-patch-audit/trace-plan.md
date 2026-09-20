@@ -37,16 +37,16 @@
 2. 開始錄製：`tools/win/trace/trace.sh start`（WSL，非提權）。
 3. 用 Pico 跑單機 PvE，撐 10–15 分鐘（`CoreHpMax`／`GiveMeAmmo` 主控台指令撐血量彈藥，見 `docs/reference/console-commands.md`；跑者腳本由主力另外補）。
 4. `tools/win/trace/trace.sh stop`。
-5. 輸出在 `C:\Users\su200\mro-trace\<yyyyMMdd-HHmmss>\`：`cpu.etl`、（若裝了 PresentMon）`presentmon.csv`、`start-marker.json`（含 wall-clock 起始時間與 MetalRage PID，用來跟 MetalRage.log／伺服器 session log 對時間）、`stop-marker.json`。
+5. 輸出在 `%USERPROFILE%\mro-trace\<yyyyMMdd-HHmmss>\`：`cpu.etl`、（若裝了 PresentMon）`presentmon.csv`、`start-marker.json`（含 wall-clock 起始時間與 MetalRage PID，用來跟 MetalRage.log／伺服器 session log 對時間）、`stop-marker.json`。
 6. 只把小檔（`presentmon.csv`、`start-marker.json`、`stop-marker.json`）複製回 WSL 分析；`cpu.etl` 留在 Windows 端，不進 repo（可能到幾百 MB，且含整台機器的行程資訊）。
 
 ## 離線分析
 
 ```bash
 python3 "Metal Rage Online Server/tools/win/trace/analyze_presentmon.py" \
-    /mnt/c/Users/su200/mro-trace/<ts>/presentmon.csv \
+    /mnt/c/Users/<你的 Windows 使用者名稱>/mro-trace/<ts>/presentmon.csv \
     --threshold-ms 50 \
-    --start-marker /mnt/c/Users/su200/mro-trace/<ts>/start-marker.json
+    --start-marker /mnt/c/Users/<你的 Windows 使用者名稱>/mro-trace/<ts>/start-marker.json
 ```
 
 會列出每個 ≥50ms 的幀、對應的 wall-clock 時間，以及：
@@ -77,10 +77,10 @@ python3 "Metal Rage Online Server/tools/win/trace/analyze_presentmon.py" \
 ```powershell
 # 1. 從 WSL 把 mro-trace.ps1 複製到 Windows（非提權即可）：
 #      cp "Metal Rage Online Server/tools/win/trace/mro-trace.ps1" \
-#         /mnt/c/Users/su200/mro-trace/mro-trace.ps1
+#         /mnt/c/Users/<你的 Windows 使用者名稱>/mro-trace/mro-trace.ps1
 # 2. 開一個「以系統管理員身分執行」的 PowerShell，貼上：
 
-$Target = 'C:\Users\su200\mro-trace\mro-trace.ps1'
+$Target = Join-Path $env:USERPROFILE 'mro-trace\mro-trace.ps1'
 $Run = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Target`""
 
 foreach ($n in 'Start','Stop') {

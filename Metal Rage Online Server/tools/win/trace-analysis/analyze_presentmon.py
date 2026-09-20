@@ -6,7 +6,7 @@ CPU/scheduling state at that moment.
 This is the offline half of docs/research/2026-09-19-win11-patch-audit/
 trace-plan.md. It does NOT touch the Windows machine -- read-only, runs in
 WSL (or Windows) against files already copied out of
-C:\\Users\\su200\\mro-trace\\<timestamp>\\.
+C:\\Users\\<你的 Windows 使用者名稱>\\mro-trace\\<timestamp>\\.
 
 Usage:
     python3 analyze_presentmon.py presentmon.csv --threshold-ms 50 \

@@ -7,7 +7,7 @@
 # screen, and second-hand descriptions of a screen are not observations. A
 # screenshot cropped to a title bar once cost three wrong conclusions in a row.
 param(
-    [string]$Out  = "C:\Users\su200\mro-shot.png",
+    [string]$Out  = (Join-Path $env:USERPROFILE "mro-shot.png"),
     [string]$Proc = "",
     [switch]$Full
 )

@@ -39,7 +39,7 @@
 - 伺服器、客戶端開著，停在大廳。
 - 前景：`tools/win/shot.sh`（`screen.ps1` 的 `SetForegroundWindow`）實測能把遊戲從 VS Code 切回前景（2026-09-19 [TEST]；Windows 的前景鎖定規則不保證每次都成功 🟡）。每一步先截圖，再送指令；切換失敗時護欄的前景檢查照樣會擋。不用 Pico 點擊來搶前景。遊戲視窗放主螢幕，VS Code 或終端機放第二螢幕。
 - 遊戲使用英文輸入法。
-- 緊急停止：建立 `C:\Users\su200\mro-pico\STOP` 檔案，或拔掉 USB 線。
+- 緊急停止：建立 `%USERPROFILE%\mro-pico\STOP` 檔案，或拔掉 USB 線。
 
 ## 5. 適合無人跑的候選（PM 2026-09-19 建議）
 
