@@ -35,3 +35,9 @@
 - 結論：卡頓＝保護殼丟例外 → Windows 本機傾印功能被第三方程式打開 → WerFault 附加、暫停整個行程寫 29 MB 檔案 → 140–260 ms 凍結。**跟伺服器、網路、WSL 無關**，也不是 y0da 自己在暫停執行緒（H-Y0DA 已被推翻）。
 - 建議的精準解法（比停用整個服務好）：`LocalDumps\MetalRage.exe` 加 `DumpCount=0`，其他程式的錯誤回報維持正常。待操作者實測。
 - 朋友的機器要不要處理，看各自有沒有 `LocalDumps` 機碼；這是系統設定，不是遊戲問題。
+
+## 解法確認（2026-09-20 13:50）
+- 操作者恢復 `WerSvc` 為「手動」並啟動，改成只對遊戲關閉本機傾印：`HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\MetalRage.exe` 的 `DumpCount = 0`（DWORD），並刪掉舊的 278 MB 傾印檔。
+- ✅ [TEST] 試打 90 秒期間 `%LOCALAPPDATA%\CrashDumps` **沒有產生任何新檔案**（先前是每次卡頓一個 29 MB 檔）。
+- [OBS] 操作者：「好像偶爾會有一小段卡頓，但是可接受的。」→ 主要症狀解決，剩下的殘留另外查（可能是別的原因，例如 Win11 視窗化最佳化、記憶體或載入）。
+- 這是推薦給所有玩家的設定；不是遊戲問題，是各自 Windows 上有沒有被第三方程式打開本機傾印。

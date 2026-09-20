@@ -647,7 +647,11 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
   - `roomJoinMode` 等上一項做完再收斂。
   - 部署：這批改到 rooms.js，下次必須**完整重啟**伺服器。
 
-## Y0DA-STUTTER：Win11 不定時卡頓（B 線，不擋 M3／PvP；時間上限 2 個工作天的量測，超過就回報）
+## Y0DA-STUTTER：Win11 不定時卡頓 — **已解決，2026-09-20**
+> 根因不是 y0da 暫停執行緒，而是 Windows 的本機當機傾印：保護殼丟出無害的例外（0xc0000005 @ 0x3），Windows 每次寫一個 29 MB 傾印檔，期間暫停整個遊戲行程 140–260 ms。解法：`LocalDumps\MetalRage.exe` 的 `DumpCount=0`。證據與量測見 `journal/2026-09-20-1240-stutter-root-cause.md`。**層級 1–3（讀 y0da、外部干預、改監控行為）全部取消，不需要做。** 殘留的輕微卡頓另案，優先度低。
+> 以下為原本的分層計畫，保留供參考：
+
+## Y0DA-STUTTER（原計畫，已不執行）
 - 依據：`research/2026-09-19-win11-patch-audit/notes.md`（H-Y0DA 與外部旁證）、`journal/2026-09-19-2120-m2-acceptance.md`。操作者 2026-09-20 同意下面的分層**順序**（經 PM 轉達）；約束 1 目前不變。
 - **層級 0（現在就做，不用改規則）：**
   - 用 WPR＋PresentMon 錄 trace，量以下幾件事：
