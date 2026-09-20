@@ -230,6 +230,14 @@ class ZAccountDispatch
                 client.send(msg);
             }
 
+            // ISTEST-WIRE (docs/design/p3-step1-writeback.md §5 step 3):
+            // this is the 9211 login, same CQ_LOGIN_WASABII the whitelist
+            // gate above already checked username against -- read whether
+            // this account is the dedicated test account at the same time.
+            // match-stats.js's emitMatchSummary() reads this to flag a
+            // match's MATCH-SUMMARY marker `is_test`.
+            client.isTestAccount_ = whitelist.isTestAccount(username);
+
             let account = await db.getAccountByUsername(username);
 
             if (!account) {

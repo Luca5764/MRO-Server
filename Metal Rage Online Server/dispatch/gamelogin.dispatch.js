@@ -7,6 +7,7 @@ const { clampMoney, moneyBigInt } = require('./money');
 const { writeRecordInfoBody } = require('./record-info.builder');
 const authTokens = require('../auth-tokens');
 const packetlog = require('../packetlog');
+const whitelist = require('../config/whitelist.js');
 // LOBBY-LIST-LOGIN (docs/backlog.md D1-4 follow-up): a client that logs in
 // after a room already exists never got Room_List_SN on channel enter --
 // only the Leave-back-to-lobby path (room.dispatch.js) sent it. Reuse the
@@ -161,6 +162,12 @@ class ZGameLoginDispatch
                 // D1-6: whitelist.getHostAddress() is keyed by username; only the
                 // 9211 connection set this before, so on 30907 it was undefined.
                 client.username_ = account.username;
+                // ISTEST-WIRE (docs/design/p3-step1-writeback.md §5 step 3):
+                // same reasoning as the username_ line above -- this 30907
+                // connection is the one that later drives a room/match
+                // (dispatch/room/match-stats.js's emitMatchSummary()), so it
+                // needs its own isTestAccount_, not just the 9211 one.
+                client.isTestAccount_ = whitelist.isTestAccount(account.username);
                 client.pilot_ = Number(account.pilot) || 101;
                 client.point_ = clampMoney(account.point, 100000);
                 client.cash_ = clampMoney(account.cash, 0);

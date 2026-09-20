@@ -195,13 +195,15 @@ function emitMatchSummary(room, { result })
     const participants = [];
     for (const member of (room.members ? room.members.values() : [])) {
         const st = ms.participants.get(member.accountId) || { kills: 0, deaths: 0 };
-        // is_test: design doc §5 step 3 proposes an `isTest` field on
-        // config/allowed-users.json entries, read at login into a
-        // connection-local flag. That wiring touches config/, which is out
-        // of this task's scope -- read defensively (a flag nothing
-        // currently sets, so this is always false today) so the eventual
-        // wiring has exactly one place to look, per the contract's "read
-        // it defensively, default false" instruction.
+        // is_test: ISTEST-WIRE (docs/backlog.md; design doc §5 step 3) --
+        // config/allowed-users.json entries may carry an `isTest` field,
+        // read into client.isTestAccount_ at login
+        // (account.dispatch.js's CQ_LOGIN_WASABII and
+        // gamelogin.dispatch.js's Login_Again_CQ, both via
+        // config/whitelist.js's isTestAccount()). Still read defensively
+        // (`member.client &&`) since not every member.client is guaranteed
+        // to have gone through either of those handlers in every test/edge
+        // case.
         const isTest = !!(member.client && member.client.isTestAccount_);
         participants.push({
             account_id: member.accountId,

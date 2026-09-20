@@ -20,6 +20,17 @@ const path = require('path');
 // `cached` is now a Map<lowercaseName, { hostAddress: string|null }> instead
 // of a Set, so isAllowed()'s `.has()` behaviour is unchanged either way; the
 // new getHostAddress() reads the same entry.
+//
+// ISTEST-WIRE (docs/backlog.md, docs/design/p3-step1-writeback.md §5 step
+// 3): the same object-format entry may also carry an optional boolean
+// `isTest` (default false when absent, matching plain-string entries). It
+// is read at login (account.dispatch.js's CQ_LOGIN_WASABII and
+// gamelogin.dispatch.js's Login_Again_CQ) into a connection-local
+// `client.isTestAccount_`, which dispatch/room/match-stats.js's
+// emitMatchSummary() already reads defensively (always false until this
+// wiring existed). No format/length validation needed -- unlike
+// hostAddress this never goes on the wire, it only gates whether a match
+// summary marker is flagged `is_test`.
 
 const CONFIG_PATH = path.join(__dirname, 'allowed-users.json');
 // Ready_Host_SN's ip field is "hostAddress/MapName" -- see
@@ -79,12 +90,14 @@ function load()
         for (const entry of users) {
             let name;
             let hostAddress = null;
+            let isTest = false;
             if (entry && typeof entry === 'object') {
                 name = String(entry.name || '').toLowerCase();
                 if (!name) {
                     console.warn(`[whitelist] skipping a config/allowed-users.json entry with no "name": ${JSON.stringify(entry)}`);
                     continue;
                 }
+                isTest = entry.isTest === true;
                 if (typeof entry.hostAddress === 'string' && entry.hostAddress.trim().length > 0) {
                     const trimmed = entry.hostAddress.trim();
                     if (trimmed.length > HOST_ADDRESS_MAX_CHARS) {
@@ -106,7 +119,7 @@ function load()
             } else {
                 name = String(entry).toLowerCase();
             }
-            map.set(name, { hostAddress });
+            map.set(name, { hostAddress, isTest });
         }
         cached = map;
         console.log(`[whitelist] Loaded ${cached.size} allowed user(s) from config/allowed-users.json`);
@@ -168,4 +181,24 @@ function getHostAddress(username)
     return entry ? entry.hostAddress : null;
 }
 
-module.exports = { isAllowed, status, getHostAddress };
+/**
+ * ISTEST-WIRE (docs/design/p3-step1-writeback.md §5 step 3): whether this
+ * account is the dedicated test account, per its `isTest` flag in
+ * config/allowed-users.json. Set on the client at login
+ * (account.dispatch.js / gamelogin.dispatch.js) as `client.isTestAccount_`,
+ * read by dispatch/room/match-stats.js's emitMatchSummary().
+ * @param {string} username
+ * @returns {boolean} false if the whitelist is off, the username is not in
+ *   it, or its entry has no `isTest: true` (old string-format entries and
+ *   entries that omit the field both fall in this last case).
+ */
+function isTestAccount(username)
+{
+    const map = load();
+    if (map === null)
+        return false;
+    const entry = map.get(String(username).toLowerCase());
+    return !!(entry && entry.isTest);
+}
+
+module.exports = { isAllowed, status, getHostAddress, isTestAccount };

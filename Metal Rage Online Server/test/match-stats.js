@@ -294,7 +294,7 @@ async function testTwoRoundMatchSummary()
         assert.strictEqual(summary.rounds.length, 2);
         assert.strictEqual(summary.result, 1, 'result must be Campaign_CN\'s action byte (1=win)');
         assert.strictEqual(summary.host_account_id, 1);
-        assert.strictEqual(summary.is_test, false, 'no isTest wiring exists yet -- must default false');
+        assert.strictEqual(summary.is_test, false, 'neither fake client here has isTestAccount_ set -- must default false (see testIsTestPropagatesFromAnyParticipant for the isTest:true cases)');
 
         const pA = summary.participants.find((p) => p.account_id === 1);
         const pB = summary.participants.find((p) => p.account_id === 2);
@@ -366,11 +366,81 @@ async function testHostLeaveBeforeEndGameEmitsAborted()
     }
 }
 
+// ISTEST-WIRE (docs/backlog.md, docs/design/p3-step1-writeback.md §5 step
+// 3, high-tier review point 3): "a match is is_test if the HOST or ANY
+// participant is a test account". emitMatchSummary() itself is already
+// exported and only needs a room with matchStats + members, so this calls
+// it directly instead of going through the full gate/lobby dispatch flow
+// the other cases above use -- what is under test here is is_test
+// attribution, not the Game_Start_CN/BeginRound_CN/Death_CN/Campaign_CN
+// opcode flow those already cover.
+async function testIsTestPropagatesFromAnyParticipant()
+{
+    matchStats._setMatchStatsModeForTest('enabled');
+    const markers = captureMarkers((t) => t.startsWith('MATCH-SUMMARY '));
+    try {
+        // Case 1: the host is the test account, the other member is not.
+        const roomHostTest = {
+            id: 'room-host-test',
+            members: new Map([
+                [1, { accountId: 1, client: { isTestAccount_: true } }],
+                [2, { accountId: 2, client: { isTestAccount_: false } }],
+            ]),
+        };
+        matchStats.startMatch(roomHostTest, { hostAccountId: 1, mapId: 9001, roundTarget: 1 });
+        matchStats.emitMatchSummary(roomHostTest, { result: 1 });
+
+        // Case 2: a non-host participant is the test account.
+        const roomGuestTest = {
+            id: 'room-guest-test',
+            members: new Map([
+                [1, { accountId: 1, client: { isTestAccount_: false } }],
+                [2, { accountId: 2, client: { isTestAccount_: true } }],
+            ]),
+        };
+        matchStats.startMatch(roomGuestTest, { hostAccountId: 1, mapId: 9001, roundTarget: 1 });
+        matchStats.emitMatchSummary(roomGuestTest, { result: 1 });
+
+        // Case 3: neither member is the test account (one client does not
+        // even have isTestAccount_ set, e.g. it logged in before this
+        // wiring existed) -- must stay false.
+        const roomNoTest = {
+            id: 'room-no-test',
+            members: new Map([
+                [1, { accountId: 1, client: { isTestAccount_: false } }],
+                [2, { accountId: 2, client: {} }],
+            ]),
+        };
+        matchStats.startMatch(roomNoTest, { hostAccountId: 1, mapId: 9001, roundTarget: 1 });
+        matchStats.emitMatchSummary(roomNoTest, { result: 1 });
+
+        assert.strictEqual(markers.captured.length, 3, 'expected one MATCH-SUMMARY per room');
+        const [hostTestSummary, guestTestSummary, noTestSummary] =
+            markers.captured.map((t) => JSON.parse(t.slice('MATCH-SUMMARY '.length)));
+
+        assert.strictEqual(hostTestSummary.is_test, true, 'host being the test account must flag the whole match is_test');
+        assert.strictEqual(hostTestSummary.participants.find((p) => p.account_id === 1).is_test, true);
+        assert.strictEqual(hostTestSummary.participants.find((p) => p.account_id === 2).is_test, false);
+
+        assert.strictEqual(guestTestSummary.is_test, true, 'a non-host participant being the test account must also flag the whole match is_test');
+        assert.strictEqual(guestTestSummary.participants.find((p) => p.account_id === 2).is_test, true);
+        assert.strictEqual(guestTestSummary.participants.find((p) => p.account_id === 1).is_test, false);
+
+        assert.strictEqual(noTestSummary.is_test, false, 'neither member being the test account must leave is_test false');
+
+        console.log('[match-stats test] PASS: is_test is true when the host OR any other participant is the configured test account, false otherwise');
+    } finally {
+        markers.restore();
+        matchStats._setMatchStatsModeForTest('disabled');
+    }
+}
+
 async function main()
 {
     await testSwitchOffIsNoOp();
     await testTwoRoundMatchSummary();
     await testHostLeaveBeforeEndGameEmitsAborted();
+    await testIsTestPropagatesFromAnyParticipant();
     console.log('[match-stats test] ALL CHECKS PASS');
     process.exit(0);
 }
