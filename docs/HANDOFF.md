@@ -8,7 +8,7 @@
 ## ⚡ 交接快照（2026-09-19 晚，Claude 高階組長）
 
 > 目標與里程碑看 `docs/roadmap.md`。PM 是 Fable（tmux `fable`；SendMessage 名稱會跟著 session 標題變，2026-09-20 是 `xigncode bypass script`，連不到就先 ListAgents），只在四個關卡找他（實作前核 bytes、合併前機械核對、里程碑判定、跟 ✅ 衝突），有進度時另外主動回報一則。
-> 跨公司審查：Sol（tmux `sol`，Codex gpt-5.6-sol）**目前沒額度**。沒額度期間，高階自審的項目在 `docs/research/2026-09-19-sol-review/` 的處置段落裡寫明「高階自審」，等 Sol 恢復後補審。已審過的是 batch1–5。
+> 跨公司審查：Sol（tmux `sol`，Codex gpt-5.6-sol）**2026-09-20 起恢復額度**。送審順序（PM 排）：1) P3 第 3 步（schema＋migration＋寫回，連同 p3-step12 的第 1、2 步）2) ASSIST-FIX／Special_SN 的 bytes 3) E1 遷移事後審 4) D2 PvP（等 Moon 的目標類封包表一起送）5) D1-6 之後 batch2–5 沒涵蓋的多人路徑。不用送：Pico 與無人值守工具、卡頓調查、舊客戶端盤點、純文件。待審清單見 `research/2026-09-20-review-status/pending.md`。
 > 本段每次交接**整段改寫**。
 
 ### 2026-09-20 凌晨：無人時段（操作者在睡覺，結論一律 🟡）
