@@ -30,6 +30,15 @@ function _setMatchStatsModeForTest(mode)
 }
 
 const packetlog = require('../../packetlog.js');
+// P3 step 3 (docs/design/p3-step1-writeback.md, MATCH_WRITEBACK_MODE):
+// only ever touched from scheduleMatchWriteback() below, and only when
+// that switch is enabled -- required unconditionally at module load (same
+// precedent as every other dispatch/*.js file that requires database/db.js
+// at the top) rather than lazily inside the writeback function, so
+// test/match-stats.js's existing installFakeModule(DB_PATH, ...) swap
+// (done before any dispatch module is required) is guaranteed to already
+// be in place by the time this module's own require() runs.
+const db = require('../../database/db');
 
 // docs/design/p3-step1-writeback.md §6 (high-tier review point 4): PvE map
 // ids run 9001+, grouped in 3s per difficulty tier -- [SRC] ZPanel_PVE.uc:328
@@ -52,6 +61,40 @@ function difficultyFromMapId(mapId)
 // runtime effect; it exists so that decision is recorded in one place
 // instead of being re-guessed by whichever step adds the DB write.
 const ABORTED_MATCHES_ARE_NOT_PERSISTED = true;
+
+// P3 step 3 (docs/design/p3-step1-writeback.md §2.3, high-tier review point
+// 7 step 3): gates the actual DB write. Independent of MATCH_STATS_MODE on
+// purpose -- MATCH_STATS_MODE alone (step 2) must stay memory+log only
+// forever if this switch is never turned on, so a deployment can run step 2
+// (round timing, MATCH-SUMMARY markers) without ever touching the DB.
+// isMatchWritebackEnabled() is only ever consulted from emitMatchSummary()
+// below, and only after isMatchStatsEnabled() has already been checked
+// there -- so in practice this can only have an effect while
+// MATCH_STATS_MODE is also 'enabled' (there is no room.matchStats to write
+// back otherwise).
+let MATCH_WRITEBACK_MODE = 'disabled'; // 'disabled' | 'enabled'
+
+function isMatchWritebackEnabled()
+{
+    return MATCH_WRITEBACK_MODE === 'enabled';
+}
+
+// Test-only hook, same pattern as _setMatchStatsModeForTest above.
+function _setMatchWritebackModeForTest(mode)
+{
+    MATCH_WRITEBACK_MODE = mode;
+}
+
+// P3 step 3 (docs/design/p3-step1-writeback.md §2.2 point 3, journal/
+// 2026-09-17-21-battle-score-totals.md): the same per-kill exp/point
+// placeholder Death_SN's builder has used since S1 -- moved here (lobby.
+// dispatch.js's Death_CN handler now reads matchStats.EXP_PER_KILL/
+// POINT_PER_KILL instead of declaring its own copy) so there is exactly one
+// place this number lives, instead of two copies that could silently drift
+// apart. Still an unconfirmed placeholder, not a verified original-game
+// value (docs/design/p3-step1-writeback.md §4 "沒找到台版數字").
+const EXP_PER_KILL = 10;
+const POINT_PER_KILL = 10;
 
 /**
  * Starts a fresh room.matchStats. Call on an *accepted* Room Game Start CQ
@@ -193,6 +236,13 @@ function emitMatchSummary(room, { result })
     ms.finalized = true;
 
     const participants = [];
+    // P3 step 3 (docs/design/p3-step3-writeback-impl.md): DB-only payload,
+    // built in the same loop but deliberately kept out of `participants`/
+    // `summary` above -- that JSON shape is the MATCH-SUMMARY marker's log
+    // format, already relied on by test/match-stats.js and any log tooling
+    // that greps it. Team/mech/economy fields are new to this step and are
+    // only ever read by scheduleMatchWriteback() below.
+    const participantsForDb = [];
     for (const member of (room.members ? room.members.values() : [])) {
         const st = ms.participants.get(member.accountId) || { kills: 0, deaths: 0 };
         // is_test: ISTEST-WIRE (docs/backlog.md; design doc §5 step 3) --
@@ -211,6 +261,28 @@ function emitMatchSummary(room, { result })
             deaths: st.deaths,
             is_test: isTest,
         });
+        // mechType: client.currentHangarSlot_ (1..8), the same field
+        // gate.game.dispatch.js already reads as "selectedMech" -- undefined
+        // (not 0/1-guessed) when the client never went through a handler
+        // that sets it, so applyMatchAccumulation() knows to skip the
+        // mech_levels update rather than crediting the wrong mech.
+        const mechType = member.client && Number(member.client.currentHangarSlot_) > 0
+            ? Number(member.client.currentHangarSlot_)
+            : undefined;
+        // result: PvE is co-op, so every participant shares the room's
+        // result (win/fail) -- there is no opposing-team concept yet for
+        // "result" to disagree with `result` on a per-participant basis.
+        const participantResult = result === 1 ? 1 : (result === 2 ? 2 : 0);
+        participantsForDb.push({
+            accountId: member.accountId,
+            team: member.team || 0,
+            kills: st.kills,
+            deaths: st.deaths,
+            expGained: st.kills * EXP_PER_KILL,
+            pointGained: st.kills * POINT_PER_KILL,
+            result: participantResult,
+            mechType,
+        });
     }
     const isTest = participants.some((p) => p.is_test);
 
@@ -226,6 +298,89 @@ function emitMatchSummary(room, { result })
         host_account_id: ms.hostAccountId,
     };
     packetlog.marker(`MATCH-SUMMARY ${JSON.stringify(summary)}`, 'auto');
+
+    // P3 step 3 (docs/design/p3-step1-writeback.md, MATCH_WRITEBACK_MODE):
+    // fire-and-forget, never awaited here -- see scheduleMatchWriteback's
+    // own header comment for why this cannot block or throw into the
+    // dispatch path that called emitMatchSummary(). No-op unless
+    // MATCH_WRITEBACK_MODE is enabled; ABORTED_MATCHES_ARE_NOT_PERSISTED
+    // is upheld simply by this call only existing in emitMatchSummary(),
+    // never in emitMatchAborted() below.
+    if (isMatchWritebackEnabled())
+        scheduleMatchWriteback(room, ms, result, participantsForDb, isTest);
+}
+
+/**
+ * P3 step 3 (docs/design/p3-step1-writeback.md, docs/design/
+ * p3-step3-writeback-impl.md): persists one finished match to the DB.
+ * Fire-and-forget -- returns immediately (does not return a Promise the
+ * caller could accidentally await), so it can never block the EndGame_SN
+ * packet path emitMatchSummary() is called from. Its own async IIFE catches
+ * everything: a DB failure only logs (console.error + a
+ * MATCH-WRITEBACK-FAILED marker), it never throws back into
+ * emitMatchSummary()/dispatch() because there is no synchronous call for it
+ * to throw into.
+ *
+ * Only ever called from emitMatchSummary() above, so a match reaches this
+ * function if and only if it reached EndGame_SN (ABORTED_MATCHES_ARE_NOT_PERSISTED).
+ *
+ * @param {import('../../rooms.js').Room} room
+ * @param {object} ms - room.matchStats, already finalized by the caller
+ * @param {number} result - Campaign_CN action byte, 1 win / 2 fail
+ * @param {Array<object>} participantsForDb - see emitMatchSummary's own loop
+ * @param {boolean} isTest
+ */
+function scheduleMatchWriteback(room, ms, result, participantsForDb, isTest)
+{
+    const matchPayload = {
+        roomId: room.id,
+        mapId: ms.mapId,
+        difficulty: difficultyFromMapId(ms.mapId),
+        roundTarget: ms.roundTarget,
+        hostAccountId: ms.hostAccountId,
+        startedAtMs: ms.startedAt,
+        endedAtMs: Date.now(),
+        result,
+        // win_team_rank: not yet threaded through from lobby.dispatch.js's
+        // pveFixedRank -- see docs/design/p3-step3-writeback-impl.md open
+        // questions. Always 0 (schema default) for now.
+        winTeamRank: 0,
+        isTest,
+        // suspicious: P7's threshold is not implemented yet (docs/backlog.md
+        // AUTO section "先留欄位") -- always false from this step.
+        suspicious: false,
+    };
+    const roundsPayload = ms.rounds.map((r) => ({
+        roundNumber: r.round_number,
+        startedAtMs: r.started_at,
+        durationSeconds: r.duration_seconds,
+        deathCnCount: r.death_cn_count,
+        suspicious: false,
+    }));
+
+    (async () => {
+        try {
+            const matchId = await db.recordMatch(matchPayload, roundsPayload, participantsForDb);
+            for (const participant of participantsForDb) {
+                await db.applyMatchAccumulation(participant.accountId, {
+                    exp: participant.expGained,
+                    wins: participant.result === 1 ? 1 : 0,
+                    losses: participant.result === 2 ? 1 : 0,
+                    kills: participant.kills,
+                    deaths: participant.deaths,
+                    mechType: participant.mechType,
+                    mechExp: participant.expGained,
+                    mechKills: participant.kills,
+                    mechDeaths: participant.deaths,
+                    mechSorties: 1,
+                });
+            }
+            packetlog.marker(`MATCH-WRITEBACK-OK matchId=${matchId} room=${room.id}`, 'auto');
+        } catch (err) {
+            console.error(`[match-stats] MATCH_WRITEBACK_MODE: failed to persist room #${room.id}'s match: ${err.message}`);
+            packetlog.marker(`MATCH-WRITEBACK-FAILED room=${room.id} error=${err.message}`, 'auto');
+        }
+    })();
 }
 
 /**
@@ -255,6 +410,8 @@ function emitMatchAborted(room, reason)
 module.exports = {
     isMatchStatsEnabled,
     _setMatchStatsModeForTest,
+    isMatchWritebackEnabled,
+    _setMatchWritebackModeForTest,
     startMatch,
     beginRound,
     recordDeathCn,
@@ -263,4 +420,6 @@ module.exports = {
     emitMatchAborted,
     difficultyFromMapId,
     ABORTED_MATCHES_ARE_NOT_PERSISTED,
+    EXP_PER_KILL,
+    POINT_PER_KILL,
 };
