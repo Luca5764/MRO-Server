@@ -4,6 +4,9 @@ const db = require('../database/db');
 const whitelist = require('../config/whitelist');
 const serverConfig = require('../config/server');
 const packetlog = require('../packetlog');
+// P3 step 1 (docs/design/p3-step1-writeback.md §0): shared RecordInfo_SN
+// body builder, also used by gamelogin.dispatch.js (30907).
+const { writeRecordInfoBody } = require('./record-info.builder');
 
 const CQ_LOGIN_WASABII = 0x00110151;
 const CQ_CREATE = 0x210201;
@@ -516,20 +519,26 @@ class ZAccountDispatch
         }
 
         // SN_RECORD_INFO
-        // DLL RecordInfo_SN reads: body[0x00]=Level, then various offsets up to 0x54
-        // printf: Level:%d, LevelExp:%I64d, CardExp:%I64d, Win:%d, Draw:%d, Lose:%d, Kill:%d, Death:%d, Point:%I64d, Coupon:%I64d
+        // P3 step 1 (docs/design/p3-step1-writeback.md §0): this used to be
+        // an independently-wrong field layout (wins/draws at +0x14/+0x18,
+        // overlapping Coupon; exp_max at +0x48, actually Point) -- now
+        // shares dispatch/record-info.builder.js with the 30907 version
+        // (gamelogin.dispatch.js), which already had the corrected layout
+        // from M1. See that file's header comment for the full offset
+        // table.
         if (record) {
             const [msg, body] = client.getMessageBuffer(SN_RECORD_INFO, 0x60);
-            body.writeUint32LE(record.level, 0x00);
-            // Fill each u32 slot with unique marker to map fields
-            for (let i = 0x04; i < 0x60; i += 4) body.writeUint32LE(0, i);
-            body.writeUint32LE(record.wins, 0x14);
-            body.writeUint32LE(record.draws, 0x18);
-            body.writeUint32LE(record.losses, 0x1C);
-            body.writeUint32LE(record.kills, 0x20);
-            body.writeUint32LE(record.deaths, 0x24);
-            body.writeBigUint64LE(BigInt(record.exp), 0x40);
-            body.writeBigUint64LE(BigInt(record.exp_max), 0x48);
+            writeRecordInfoBody(body, {
+                level: record.level,
+                coupon: account.coupon,
+                point: account.point,
+                wins: record.wins,
+                draws: record.draws,
+                losses: record.losses,
+                kills: record.kills,
+                deaths: record.deaths,
+                exp: record.exp,
+            });
             client.send(msg);
         }
 

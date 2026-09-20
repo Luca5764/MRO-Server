@@ -24,6 +24,9 @@ const { decodeAnsiBytes, decodeBig5ForLog, isRoomNameRawBytesEnabled, writeAnsiS
 // D1-4 correction (design §4 "斷線即離開"): Leave_CQ and server.js's socket
 // close hook now share the same remove-member/Leave_SN/host-reassign path.
 const { leaveRoomAndNotify, handleBattleLeave } = require('./room/room-leave');
+// P3 step 2 (docs/design/p3-step1-writeback.md §2.2): room-level match/
+// round stats, memory + log only, default-disabled (MATCH_STATS_MODE).
+const matchStats = require('./room/match-stats');
 // D1-6-IMPL (docs/design/d1-step6-battle-broadcast.md §5 step 5): the
 // HOST_ADDRESS_REQUIRE_MODE check at the top of case 0x00222103 below needs
 // getHostAddress() to decide whether a would-be host of a 2+ member room is
@@ -1579,6 +1582,19 @@ class ZGateGameDispatch
                     const roomForRoundReset = rooms.getRoomByAccount(accountIdForRoundReset);
                     if (roomForRoundReset && accountIdForRoundReset === roomForRoundReset.hostAccountId) {
                         roomForRoundReset.pveRoundsCleared_ = 0;
+
+                        // P3 step 2 (docs/design/p3-step1-writeback.md §2.2,
+                        // MATCH_STATS_MODE, memory+log only): this accepted,
+                        // host-gated 0x00222103 is the host's F5 battle
+                        // start, i.e. "a new match begins" -- same trigger
+                        // this block already uses to reset
+                        // pveRoundsCleared_. No-op unless MATCH_STATS_MODE
+                        // is enabled (see match-stats.js).
+                        matchStats.startMatch(roomForRoundReset, {
+                            hostAccountId: roomForRoundReset.hostAccountId,
+                            mapId: roomForRoundReset.mapId,
+                            roundTarget: roomForRoundReset.playRound || getGameInfoRound(client),
+                        });
                     }
                 }
 

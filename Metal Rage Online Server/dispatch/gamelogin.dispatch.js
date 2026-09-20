@@ -2,6 +2,9 @@ const NetworkClient = require("../client");
 const db = require('../database/db');
 const session = require('../session.js');
 const { clampMoney, moneyBigInt } = require('./money');
+// P3 step 1 (docs/design/p3-step1-writeback.md §0): shared RecordInfo_SN
+// body builder, also used by account.dispatch.js (9211).
+const { writeRecordInfoBody } = require('./record-info.builder');
 const authTokens = require('../auth-tokens');
 const packetlog = require('../packetlog');
 // LOBBY-LIST-LOGIN (docs/backlog.md D1-4 follow-up): a client that logs in
@@ -206,18 +209,21 @@ class ZGameLoginDispatch
                 }
 
                 // SN_RECORD_INFO — corrected field layout from DLL analysis
+                // (P3 step 1: shared builder, dispatch/record-info.builder.js
+                // -- see its header comment for the full offset table).
                 if (record) {
                     const [msg, respBody] = client.getMessageBuffer(SN_RECORD_INFO, 0x60);
-                    for (let i = 0; i < 0x60; i += 4) respBody.writeUint32LE(0, i);
-                    respBody.writeUint32LE(record.level, 0x00);
-                    respBody.writeBigUint64LE(moneyBigInt(account.coupon, 0), 0x14);
-                    respBody.writeUint32LE(record.wins, 0x1C);
-                    respBody.writeUint32LE(record.draws, 0x20);
-                    respBody.writeUint32LE(record.losses, 0x24);
-                    respBody.writeUint32LE(record.kills, 0x28);
-                    respBody.writeUint32LE(record.deaths, 0x2C);
-                    respBody.writeBigUint64LE(BigInt(record.exp), 0x40);
-                    respBody.writeBigUint64LE(moneyBigInt(account.point, 100000), 0x48);
+                    writeRecordInfoBody(respBody, {
+                        level: record.level,
+                        coupon: account.coupon,
+                        point: account.point,
+                        wins: record.wins,
+                        draws: record.draws,
+                        losses: record.losses,
+                        kills: record.kills,
+                        deaths: record.deaths,
+                        exp: record.exp,
+                    });
                     client.send(msg);
                 }
 
