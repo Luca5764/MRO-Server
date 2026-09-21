@@ -968,6 +968,20 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
                     name, False, False, time.monotonic() - step_t0,
                     f"ActionError: {ex}", None, None, [],
                 )
+            except Exception as ex:
+                # 2026-09-21 B-run step 9 (set_ready): focus_client's foreground
+                # readback hit subprocess.TimeoutExpired, which is not an
+                # ActionError, so it propagated past this loop and the whole
+                # run ended in a bare traceback instead of a clean fail-closed
+                # FAIL. Any exception an action raises -- not just
+                # ActionError -- is treated as a failed step here so the run
+                # always reaches fail_closed()/write_report() below.
+                # KeyboardInterrupt/SystemExit are BaseException, not Exception,
+                # so they still propagate and can interrupt the run.
+                result = actions.ActionResult(
+                    name, False, False, time.monotonic() - step_t0,
+                    f"{type(ex).__name__}: {ex}", None, None, [],
+                )
             entry = {
                 "index": i, "action": name, "params": params, "ok": result.ok,
                 "gray": result.gray, "duration_s": round(result.duration_s, 2),

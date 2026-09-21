@@ -1540,9 +1540,28 @@ def focus_client(ctx, client_id):
     readback_deadline = readback_start + FOCUS_FOREGROUND_READBACK_TIMEOUT_S
     actual = None
     fg_proc = None
+    query_timeouts = 0
     while True:
-        fg_proc = subprocess.run([sys.executable, CLIENT_CTL, "foreground"],
-                                  capture_output=True, text=True, timeout=15)
+        try:
+            fg_proc = subprocess.run([sys.executable, CLIENT_CTL, "foreground"],
+                                      capture_output=True, text=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            # 2026-09-21 B-run step 9 (set_ready): a single `foreground` query
+            # hit its own 15s timeout and that TimeoutExpired propagated out
+            # of focus_client() uncaught, ending the whole run in a bare
+            # traceback instead of a clean fail-closed FAIL. This poll loop
+            # already tolerates a single bad/racy read (see the 'dwm'
+            # transient above) by retrying until readback_deadline -- a query
+            # that times out is just another kind of "didn't read the target
+            # this round", not a reason to abort the whole switch. Still never
+            # calls SetForegroundWindow again; only re-tries the read.
+            query_timeouts += 1
+            fg_proc = None
+            actual = None
+            if time.monotonic() >= readback_deadline:
+                break
+            time.sleep(FOCUS_FOREGROUND_READBACK_POLL_INTERVAL_S)
+            continue
         steps.append((fg_proc.returncode, fg_proc.stdout.strip(), fg_proc.stderr.strip(), 0.0))
         actual = fg_proc.stdout.strip() if fg_proc.returncode == 0 else None
         if actual == inst.proc_name:
@@ -1552,16 +1571,23 @@ def focus_client(ctx, client_id):
         time.sleep(FOCUS_FOREGROUND_READBACK_POLL_INTERVAL_S)
     if actual != inst.proc_name:
         waited_s = time.monotonic() - readback_start
-        detail = (f"foreground readback mismatch after SetForegroundWindow: expected "
-                  f"{inst.proc_name!r}, last got {actual!r} after polling {waited_s:.1f}s "
-                  f"(rc={fg_proc.returncode}, raw stdout={fg_proc.stdout.strip()!r} "
-                  f"stderr={fg_proc.stderr.strip()!r})")
+        timeout_note = f", {query_timeouts} query timeout(s) during polling" if query_timeouts else ""
+        if fg_proc is not None:
+            detail = (f"foreground readback mismatch after SetForegroundWindow: expected "
+                      f"{inst.proc_name!r}, last got {actual!r} after polling {waited_s:.1f}s"
+                      f"{timeout_note} (rc={fg_proc.returncode}, raw stdout={fg_proc.stdout.strip()!r} "
+                      f"stderr={fg_proc.stderr.strip()!r})")
+        else:
+            detail = (f"foreground readback mismatch after SetForegroundWindow: expected "
+                      f"{inst.proc_name!r}, last got {actual!r} after polling {waited_s:.1f}s"
+                      f"{timeout_note} (last query itself timed out, no rc/stdout available)")
         return ActionResult("focus_client", False, False, time.monotonic() - t0, detail, shot_path, None, steps)
 
     ctx.active_client = client_id
     # 成功時也把等了多久記下來,才有真實的分佈可以調 TIMEOUT(不要再憑感覺猜)
+    timeout_note = f", {query_timeouts} query timeout(s) during polling" if query_timeouts else ""
     detail = (f"focused {client_id!r} ({inst.proc_name}), foreground confirmed "
-              f"after {time.monotonic() - readback_start:.1f}s")
+              f"after {time.monotonic() - readback_start:.1f}s{timeout_note}")
     return ActionResult("focus_client", True, False, time.monotonic() - t0, detail, shot_path, None, steps)
 
 
