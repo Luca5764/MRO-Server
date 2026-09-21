@@ -1,0 +1,44 @@
+Hi Lucas,
+
+Thanks again for the netspeed write-up. It saved us a lot of time.
+
+In return, here is where we are on the objective-mode packets (ZDispatchGame 0x2301xx). I'm attaching
+our full notes (protocol_objective.en.md). The short version:
+
+1. Opcode table. SN = CN + 1 for every pair, recovered two independent ways (a C7 05 imm32 sweep for the
+   CN buffers, and the dispatch jump table at 0x107dbf48 for the SNs):
+   Special 125/126 (SN 0x1D), Capture 131/132 (0x3B), Conquest 133/134 (0x39), Bomb 135/136 (0x3A),
+   Boss 137/138 (0x29), Campaign 139/13A (0x29), TwoBoss 13B/13C (0x29), TriggerTouch 13D/13E (0x39).
+
+2. A generic 6-byte ack crashes these. The handler takes the success path and then reads score records
+   past the end of the packet. For us, planting the bomb detached both players' cameras until Bomb_SN
+   was sized correctly.
+
+3. The 14-byte score record is team@0, score@2, round@4 (u8), alive@5 (u8), try@6, goal@8, exp@0x0A.
+   We had the order right but the offsets wrong for a while, so double-check yours.
+
+4. The two u32s at the end of the objective SNs go to Game_User_Mission_Set(user, total, point):
+   Exp = total, ScoreMission = total - Assist - Battle. They take the player's running total, not the
+   increment. That is what fills the contribution column on the scoreboard and the result page.
+
+5. Capture: the SN must echo the Action byte at +0x0E. If it arrives as 0, the handler remaps it to 4
+   and a return never scores. Live: action 1 = pick up, 3 = return.
+
+6. Occupation's next zone is the RED score record's GOAL field, not score. Game_Score_Get returns goal
+   when MapInfo.Mode is 2/3, and OccupationMission reads RedScore as the next zone index.
+
+7. The shipped client cannot end a Blow or Sudden Death round (the win checks are commented out in
+   ZModeBlow / ZModeSuddenDeath), so the server has to send EndRound_SN / EndGame_SN. Blow actions,
+   live: 1 = plant, 2 = explode (UserIndex 0), 3 = defuse. Careful: a winner that contradicts the
+   client's own mission state crashes it with a GPF in BlowMission.RoundEnd.Timer.
+
+8. P2P joiners: never send them Death_SN or the objective SNs themselves. Those handlers end in a
+   GameInfo script event, and a joiner has no Level.Game. Two packets are safe for a joiner:
+   Timeout_SN 0x230112 (only Game_Score_Set x2 + Update) for the team score, and Assist_SN 0x230122
+   (Game_User_Assist_Set, which ADDS) for per-player contribution. Send deltas only.
+
+Still unknown on our side: the meaning of Special's 8 codes, Boss/TwoBoss action 1/2, which mode uses
+TriggerTouch, which packet Rage uses, and a joiner-safe way to set a joiner's personal kill/death count.
+If you have anything on those, we'd love to hear it.
+
+Moon
