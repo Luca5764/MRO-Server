@@ -1,0 +1,73 @@
+# netspeed 實驗有答案了：指令有效，但不會跟房主重新協商（2026-09-21 22:30）
+
+C 段第三次實跑，步驟 0–15 全過（只停在 `leave_battle`，原因見末節）。
+**今天的目標達成。** 承 `2026-09-21-2120-dual-pico-bc.md`（那一篇的結論已撤回，這篇是重做的乾淨版）。
+
+## 結果
+
+**加入者端**（`mrotest`，原廠主安裝，戰鬥中打 `netspeed 100000` 後跑 `stat net`）：
+
+```
+15000 Speed        ← 從預設變了，但被夾在 15000
+```
+
+**房主端**（副本，`IpDrv.dll` 已修補成 100000；log 檔全文）：
+
+```
+166: Log: Client netspeed is 10000     ← 加入者載入地圖
+169: Log: Client netspeed is 10000     ← START MATCH
+（沒有第三行）
+```
+
+## 為什麼這次可以下結論（上一次不行）
+
+上一次撤回是因為**無法證明指令有沒有送進遊戲**。這次三個環節都有獨立證據：
+
+| 要證明的 | 證據 |
+|---|---|
+| 主控台真的開了 | 像素判定 `console_prompt=open white_px=41` ＋ 存證截圖 |
+| **指令真的被遊戲接收** | **`stat net` 的疊層出現了**（`shots/dual-netspeed-c-40-console_cmd_on-joiner-closed-1.png`） |
+| **指令真的生效** | **`Speed` 從預設變成 15000**——正好是 `UNetDriver::StaticConstructor`（`0x104a0540`）編譯寫死的 `MaxClientRate`，與 `2026-09-20-2130-netspeed-clamp.md` 的夾值分析吻合 |
+| 房主沒收到 | log 只有兩行、都是 10000，**沒有第三行**（logwatch 即時計數與關閉後讀檔兩種方式都確認） |
+
+## 結論
+
+**`netspeed` 會改客戶端自己的 `CurrentNetSpeed`（夾在 15000），但不會在對戰中
+跟房主重新協商。** 房主那條連線的預算從**加入那一刻**就定在 10000，之後改不動。
+
+**而投射物會不會被丟掉，看的是房主端對每個 connection 做的 `IsNetReady` 檢查
+（`Engine.dll AActor::ProcessRemoteFunction 0x105236a5`），用的就是房主記的那個值。**
+
+→ **在加入者端下 `netspeed` 指令，對投射物問題完全無效。**
+
+這也跟 2026-09-20 的 [TEST] 對得起來：把兩份 `IpDrv.dll` 都改成 100000 後，
+加入者 `stat net` 顯示 100000（那次沒有 clamp，因為 `MaxClientRate` 也被改了），
+**但房主仍然記錄 10000**——兩次都指向同一件事：**客戶端在加入時送出的值是 10000，
+跟它自己的設定無關。**
+
+## 對下一步的影響
+
+PM 之前壓著 backlog 的 `NETSPEED-INIT-2`（追「客戶端送出的 10000 從哪來」），
+理由是「**如果加入者中途打 netspeed 就能拉高，來源在哪就不重要**」。
+
+**現在證實拉不動，所以來源重要了。** 要提高預算只剩兩條路：
+1. 改客戶端**加入時送出**的值——來源仍未定位（`NETSPEED-INIT-2`，已開立未派）
+2. 改**房主端**——`GameInfo.uc:1504` 的 `ClientCapBandwidth()` 會用房主的值覆蓋加入者
+
+## C 段停在哪
+
+`leave_battle` 失敗：ESC ＋ 點 `離開`（`867,651`，今天剛校準）之後
+**還有第二個確認對話框**——「您要結束遊戲嗎？（結束將會有懲罰。）」，
+兩個並排按鈕 `離開`／`取消`。**我們只點了第一層。**
+[OBS][SHOT] 操作者當場看到並手動介入。已記進 `reference/client-ui.md`。
+
+⚠️ 附帶一條：**中途離開戰場「會有懲罰」**（對話框自己寫的）。
+測試帳號的戰績會被這個影響，之後分析 P3 戰績寫回時要記得。
+
+## 附帶：新機制第一次發揮作用
+
+`satisfied_by` 在這一輪第一次印出 WARN：
+`[5] create_pve_room ... WARN: primary signal 'room' did not appear -- this step only
+passed on the backup signal 'notice_popup'`——正是它該做的事。
+（`room` marker 在房主**獨自一人且彈窗未關**時本來就會被暗色濾鏡蓋掉，這是預期行為，
+不是回歸；但現在它會**明說**自己走了備援，不再靜默。）
