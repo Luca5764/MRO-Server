@@ -950,7 +950,23 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
             name = step["action"]
             params = step.get("params", {})
             fn = actions.ACTIONS[name]
-            result = fn(ctx, **params)
+            step_t0 = time.monotonic()
+            try:
+                result = fn(ctx, **params)
+            except actions.ActionError as ex:
+                # An action normally reports its own failures as a returned
+                # ActionResult(ok=False, ...) (handled below); ActionError is
+                # for a structural problem raised BEFORE that -- unknown
+                # client id, bad params, or (2026-09-21 A-run) take_screenshot()
+                # itself raising because shot.sh found no matching window.
+                # Treat it the same as any other failed step instead of
+                # letting it propagate past this loop: this is what turned an
+                # in-flight A-run into a bare traceback instead of a clean
+                # fail-closed FAIL result.
+                result = actions.ActionResult(
+                    name, False, False, time.monotonic() - step_t0,
+                    f"ActionError: {ex}", None, None, [],
+                )
             entry = {
                 "index": i, "action": name, "params": params, "ok": result.ok,
                 "gray": result.gray, "duration_s": round(result.duration_s, 2),

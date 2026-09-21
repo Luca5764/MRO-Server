@@ -351,11 +351,25 @@ def take_screenshot(ctx, label, proc=None):
     path. In dry-run mode returns None without touching anything.
 
     proc (default None) adds '--proc <name>' to the shot.sh call, capturing
-    that instance's window instead of shot.sh's own default ("MetalRage",
-    unaffected here) -- see focus_client() (docs/research/2026-09-20-
-    dual-pico/design.md I6), the only caller that passes it."""
+    that instance's window instead of shot.sh's own default ("MetalRage").
+    An explicit proc= always wins. If it is omitted AND ctx.clients is
+    populated (a dual-client run) AND ctx.active_client is already set, the
+    default becomes ctx.clients[ctx.active_client].proc_name instead of
+    shot.sh's own "MetalRage" default -- every screenshot taken through a
+    shared helper (wait_for/_precondition/_screen_check/_marker_check/etc.,
+    none of which pass proc=) must follow whichever instance was last
+    focus_client()'d, not always the joiner. This is what login_as()'s own
+    wait_for(ctx, "login_as-screen", ...) call was missing (2026-09-21 A-run:
+    focus_client('host') succeeded, active_client='host', but the immediately
+    following wait_for() still shot "MetalRage" -- the joiner, not yet
+    launched -- and shot.sh raised "no window for process 'MetalRage'").
+    When ctx.clients is empty (every existing single-client script) or
+    active_client is still None, behavior is unchanged: no '--proc' arg,
+    same as before this fix."""
     if ctx.dry_run:
         return None
+    if proc is None and ctx.clients and ctx.active_client is not None:
+        proc = ctx.clients[ctx.active_client].proc_name
     ctx.shot_seq += 1
     name = f"{ctx.run_id}-{ctx.shot_seq:02d}-{label}"
     args = ["bash", SHOT_SH]
