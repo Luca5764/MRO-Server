@@ -8,8 +8,8 @@
 
 | # | 前提 | 狀態 | 依據 |
 |---|---|---|---|
-| P1 | **回合／勝負由伺服器決定**，客戶端自己的判定被註解掉了 | 🟡 [外部] Moon 說法，**我們尚未自己核對** | Moon `protocol_objective.en.md` |
-| P2 | **勝方與客戶端的任務狀態矛盾會 GPF**（直接崩潰，不是靜默失敗） | 🟡 [外部] 同上，**尚未自己核對**。這條若成立，PvP 的結算封包一錯就是崩潰，不是畫面怪 | 同上 |
+| P1 | **回合／勝負由伺服器決定。** 但機制分兩層：(a) Blow／SuddenDeath／Occupation 連**偵測本身**都被物理註解掉；(b) Rage／plain TDM 的偵測**還活著**，但終點 `EndGame()` 被覆寫成空殼（`DefaultGameInfo.uc:395-405`，只有 `Reason=="TimeLimit"` 會動，而且做的是送 `Timeout_CN` 把決定權交回伺服器）。**兩者效果相同，但將來要恢復本地判定的成本差很多。** `ZModePve` 也沒覆寫 `EndGame()`→**PvE 與 PvP 走同一套機制** | ✅ [SRC] 自己從解密源碼核對，逐條有行號（**未經跨公司審查**） | `verify-p1p2.md` |
+| P2 | **勝方與客戶端的任務狀態矛盾會 GPF** | ⬜ **純源碼查不出來**。`BeginRound()` 裡有兩個候選的 None 存取（`DefaultGameInfo.uc:1988` 的短路 OR 會讓 None 繼續往下到 `:1995/2001/2007`；`ZSlotSelectPage.uc:46` 的串接存取），但**無法確認跟「勝方矛盾」有因果關係**。**沒有找到**任何被註解掉的矛盾校驗——更像是從來沒做過。要定案需要 Moon 那次 crash 的堆疊或傾印 | 同上 |
 | P3 | **team 欄跟隨我們送的 `Game_Info_SN`**，不是固定 1／2。我們送 0／1 是對的 | ✅ [DLL]（未經跨公司審查） | `state.md` 第 4c 節；`verify-c-items.md` 第 2 項 |
 | P4 | **`User_Score_SN` 可以在 `EndGame_SN` 之前送**：場景閘門是 `IsClient && (scene==5 \|\| scene==6)`，戰鬥中的場景 6 本來就啟用 | ✅ [DLL]（未經跨公司審查） | `verify-c-items.md` 第 5 項 |
 | P5 | **加入者可以收 `Death_SN`／`EndRound_SN`**，不會出事（兩者機制不同：前者靠 `Game_Host_Check`，後者靠 GameInfo 的 null 檢查） | ✅ [DLL]＋[LOG]（未經跨公司審查） | `state.md` 第 4c 節 |
