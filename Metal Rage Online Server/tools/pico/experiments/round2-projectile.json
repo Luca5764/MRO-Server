@@ -1,0 +1,151 @@
+{
+  "id": "round2-projectile",
+  "purpose": "round2-projectile-1round: 第 2 輪投射物遺失率 A/B 實驗（PM 已核准的計畫：docs/research/2026-09-21-netspeed-host-patch/round2-plan.md）單一輪的腳本，跟 dual-netspeed-c.json 一樣一次只做一輪 -- A/B/A/B/A/B 六輪要跑六次這支腳本，兩輪之間手動切換房主副本 C:\\Games\\MetalRage Online 2 的 Engine.dll（stock/候選 1b）跟切哪個 Engine.dll 一樣不在腳本範圍內，是操作者的手動步驟。流程沿用 dual-netspeed-c.json 的 launch->login->create_pve_room->dismiss_notice 前綴，之後改成：idle_nudge(host) -> select_map(name=infiltrate，即 Map_PC04 潛入作戰，round2-plan.md 表格「地圖 Map_PC04」；actions.py MAP_ENTRIES 只用內部代號，infiltrate=潛入作戰=9010-9012=Map_PC04，見 docs/journal/2026-09-19-1000-maplist-single-entry.md的對照表） -> idle_nudge(host) -> join_room(joiner) -> idle_nudge(host) -> set_ready(joiner) -> host_start_battle(host) -> enter_battle(joiner, mech_key=占位值，見下) -> console_cmd_on(joiner, 'WeaponLog')（toggle，這一輪只能打一次，見 round2-plan.md「每次重開客戶端都要重開一次」）-> fire_burst(joiner, shots=110, interval_s=占位值，見下) -> leave_battle(joiner) -> leave_battle(host) -> close_client(joiner) -> close_client(host)（關掉才會 flush run-*.log，4KB 緩衝，執行中檔案鎖住讀不到，next-test.md 已知）。留給高階決定、這裡先寫成明顯占位值、不要照這樣真的跑的兩項：(1) enter_battle 的 mech_key 目前寫 'F1'（RAVEN，輕量型）-- 這是round2-plan.md 明確排除的那一台（'預設是機槍，不適用'，主武器要挑砲類），刻意選這個值當占位符就是要讓人一看就知道『這一定是錯的、還沒決定』，不是隨手選的建議值；真正的答案要等 DB 查完哪一台機體（F1-F8）的主武器是 MTE_a 砲類。(2) fire_burst 的 interval_s 目前寫 99.0 -- 操作者原本估的 1.2 秒只是粗估、不是量到的（高階 2026-09-22 追加指示），同樣不是建議值，只是明顯不合理的占位數字（110 發、每發等99 秒＝3 小時，不可能是真的實驗設定）；真正的值要等 experiments/round2-probe-firerate.json 探針量出主武器的實際射速再填。AFK 自踢視窗重算（依據房間 60,022ms 實測，LEAVE_CQ_OPCODE 註解，docs/journal/2026-09-21-2120-dual-pico-bc.md 的量法）：插入 select_map 之後，房主現在有 3 個 idle_nudge、4 段房主無主動輸入的空窗，沿用 dual-netspeed-c.json purpose的算法（把每段中間所有 wait_for 的上限與 idle_nudge/focus 的估計值全部加總，不假設任何一次點擊會提前重置計時器，最保守）：窗 A（create_pve_room 的 CREATE_CONFIRM_BUTTON 點擊 -> idle_nudge#1）= create_pve_room confirm 等待上限 10s + dismiss_notice 檢查截圖 ~1s + 其等待上限 6s + idle_nudge 的 focus_client ~5s + wiggle ~1s = 23s（margin 37s，跟 dual-netspeed-c 的窗 A 相同，未變）。窗 B（新增，idle_nudge#1 -> idle_nudge#2，跨 select_map）= select_map 的單張截圖 precondition ~1s + 選圖彈窗等待上限 6s（wait_for(...,6.0,...)）+ 0x00220221 recv 等待上限 10s（DEFAULT_MAP_SELECT_TIMEOUT_S）+ idle_nudge 的 focus ~5s + wiggle ~1s = 23s（margin 37s）。select_map() 本身不呼叫 focus_client，沿用 idle_nudge#1 留下的焦點，這裡沒有額外的 focus 開銷。窗 C（idle_nudge#2 -> idle_nudge#3，跨 join_room，內容與 dual-netspeed-c.json 原本的『窗 B』完全相同，只是現在排在第三個）= join_room 的 focus ~5s + precondition ~2s + Enter_SA 等待上限 20s + join_room-room 等待上限 10s + idle_nudge 的 focus ~5s + wiggle ~1s = 43s（margin 17s）。窗 D（idle_nudge#3 -> host_start_battle 自己送出的 F5，這是房主的主動輸入，不是空窗邊界，內容與 dual-netspeed-c.json 原本的『窗 C』相同）= focus 到 joiner ~5s + set_ready precondition ~2s + User_State_SN 等待上限 20s + 結果截圖 ~1s + focus 回 host ~5s + host_start_battle precondition ~2s = 35s（margin 25s）。四段全部低於 60s 門檻，margin 分別是 37s/37s/17s/25s，跟 dual-netspeed-c.json 的 37s/17s/25s 比對，只多了一段新窗 B（37s margin），其餘三段完全沒變（select_map 插入的位置在原本窗 A 尾端與窗 B 開頭之間，把原本 23s 的窗 A 拆成了 23s+23s 兩段，而不是疊加在同一段，所以margin沒有變窄）。選地圖彈窗會讓畫面變暗、'room' marker 讀不到的陷阱（client-ui.md 已知）在這裡不是新風險：select_map() 自己的完成條件是收到 0x00220221 封包，不是靠 'room' marker；真正會被彈窗殘留影響的是之後 host_start_battle() 的 precondition（_marker_check('room')）--已有真實跑過的證據排除這個疑慮：U-pve-escort 2026-09-20 的 ✅ [TEST]（docs/journal/2026-09-20-0110-escort-smoke.md）用同一個 select_map() 選了 defense 之後直接接 host_start_battle 並且全過，代表點完地圖項目後彈窗會自己關掉、'room' marker 會恢復，不需要在 select_map 後面額外插清彈窗的步驟。WeaponLog 開了之後兩個數字怎麼從加入者的 run-*.log 讀（PM 2026-09-22 核對過的實際格式，以 C:\\Games\\MetalRage Online 2\\data\\System\\run-213726.73.log 2026-09-20 那場為證，68 HitLoc / 47 Fire）：分母 grep -c 'HitLoc=== >' run-*.log；分子 grep -c 'Now Animation Name : Map_PC04\\..*   Fire$' run-*.log -- 注意武器名前面帶地圖前綴（是 'Map_PC04.MTE_a'，不是單純 'MTE_a'），而且同一個 'Now Animation Name' 也會印 SelectIdle/DeSelectIdle 等非開火狀態，pattern 一定要收在行尾 '   Fire'（三個空格），不要用寬鬆到會連 SelectIdle 都算進去的 pattern。这两个数字都不是这支脚本自己读的（console_cmd_on 的 L4 原則：不在線上讀 log），是關閉客戶端之後的人工/離線分析步驟。成功 = 20 個步驟全部 ok（含 fire_burst 本身回報 0 次非成功 CLICK，見 actions.py 的 fire_burst 文件字串），失敗先看：select_map（MAP_ENTRIES['infiltrate'] 的座標 (622,569) 從沒有被真的點過，🟡 UNTESTED，見 actions.py 該常數的註解）、enter_battle（占位 mech_key='F1' 如果真的照這樣跑，出生的是機槍 RAVEN，整輪數據作廢，不是這支腳本的 bug，是還沒填答案）、fire_burst（如果非成功 CLICK 中止，detail 裡會寫實際送出幾發、在第幾發失敗）。審查追加（高階 2026-09-22，commit 2e590fb 審查意見）：(1) map id 對應的證據路徑 -- 'infiltrate'（select_map 的內部代號）＝潛入作戰＝Map_PC04＝id 9010/9011/9012，見 docs/gemini-gameinfo-findings.md 第 77-79 行（易/中/難三個 id，同一份表格）。(2) A/B 六輪必須是同一個 map id，收資料前先核對；不同就作廢重跑 -- 這是 A/B 對照的前提，不是細節。select_map() 的 ActionResult.detail 本來就會印出從 0x00220221 recv 封包解析出的'parsed map id=NNNN'（select_map() 自己的程式碼已經有這段，這次沒有改），每一輪跑完先看這個欄位，六輪的 id 要完全一致（同一個難度分頁），id 不同（例如某一輪落在 9011 而不是其他五輪的 9010）就整輪作廢重跑，不要混進統計。select_map() 不控制 初級/中級/高級 分頁，這支腳本目前也沒有替它加控制分頁的動作（分頁是建房對話框上的另一個 UI 元件，這次任務範圍沒有處理），所以哪個分頁生效取決於這幾輪之間分頁沒有被手動改過；如果操作者在兩輪之間動過那個分頁，上面這條核對就是抓到的機制。(3) mech_key='F1'／interval_s=99.0 佔位值的說明再寫清楚一次，避免有人以為是真的參數：兩個都是刻意選的、明知不對的值（F1=RAVEN 機槍，round2-plan.md 已排除；99.0 秒/發相當於110 發打 3 小時，不可能是真的射擊實驗），選它們的唯一目的是讓 diff／閱讀腳本的人一眼看出『這裡還沒填答案』，不是『這是目前最佳猜測，先這樣跑跑看』-- 在填真正的值之前，這支腳本不能真的執行（違反本任務的限制，也違反常識：3 小時的 fire_burst 會撞上 max_wall_clock_s=1200 直接被 dead-man 機制打斷，light-weight的驗證方式就是這個腳本本身現在跑不完，也是佐證它不是真參數）。真正的值：mech_key 待 DB 查完哪一台機體主武器是 MTE_a 砲類，或直接參考 round2-probe-firerate.json 探針的 (a) 項結果；interval_s 待同一份探針的 (b) 項（實際射速）結果。",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    },
+    "joiner": {
+      "proc_name": "MetalRage",
+      "install_dir_win": "C:\\Games\\MetalRage Online",
+      "bat_path_win": "C:\\Games\\MetalRage Online\\Play With Log.bat"
+    }
+  },
+  "steps": [
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "joiner",
+        "account": "mrotest"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "select_map",
+      "params": {
+        "name": "infiltrate"
+      }
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "join_room",
+      "params": {
+        "client_id": "joiner",
+        "room_name": "round2-projectile (auto-named, label only)"
+      }
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "set_ready",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "joiner",
+        "mech_key": "F1"
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "joiner",
+        "text": "WeaponLog"
+      }
+    },
+    {
+      "action": "fire_burst",
+      "params": {
+        "client_id": "joiner",
+        "shots": 110,
+        "interval_s": 99.0
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    }
+  ],
+  "stop_conditions": {
+    "max_consecutive_failures": 1
+  },
+  "max_wall_clock_s": 1200,
+  "max_image_reviews": 0
+}

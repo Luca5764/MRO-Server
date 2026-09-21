@@ -381,6 +381,12 @@ NETSPEED_CMD_RE = re.compile(r'^netspeed \d{1,7}$')
 CONSOLE_CMD_ON_WHITELIST_EXACT = {"stat net", "WeaponLog"}
 DEFAULT_CONSOLE_CMD_ON_CLOSE_TIMEOUT_S = 10.0
 
+# fire_burst()'s own sanity ceilings (2026-09-22, round 2 projectile-loss
+# task) -- not timing constants like the ones above (there is no server pkt
+# to wait on here, see that function's docstring), just guardrails against an
+# obviously-wrong experiment file (e.g. a typo'd shots=100000).
+FIRE_BURST_MAX_SHOTS = 1000
+
 # Leave_CQ 0x00220234 (room-level self-leave, e.g. the client's own AFK-kick,
 # ZGUIController.uc:945-948 -- design.md L5 read that source as ~80s) --
 # idle_nudge() below only needs to confirm this did NOT fire on the nudged
@@ -694,6 +700,18 @@ def clear_text_field(ctx, count):
 def key(ctx, key_name):
     _require_focused_client(ctx)
     return run_pico(ctx, "key", key_name)
+
+
+def click(ctx, button="left"):
+    """Fires pico_ctl.py's `click` CLI action (code.py's CLICK pseudo-command:
+    press+release at wherever the hardware cursor already is) WITHOUT moving
+    the mouse first -- unlike click_at()/double_click_at(), which always
+    MOVE_TO a known client-area coordinate before clicking. Added for
+    fire_burst() below, which intentionally does not relocate the cursor
+    (round2-plan.md's "加入者開火" contract: fire repeatedly wherever the
+    battle viewport already has it, not at a fixed on-screen point)."""
+    _require_focused_client(ctx)
+    return run_pico(ctx, "click", button)
 
 
 def mouse_wiggle(ctx, distance=1):
@@ -2580,6 +2598,138 @@ def console_cmd_on(ctx, client_id, text):
                          score_closed, steps)
 
 
+def fire_burst(ctx, client_id, shots, interval_s):
+    """Triggered by: the player pulling the trigger (left mouse button)
+    `shots` times in a row -- docs/research/2026-09-21-netspeed-host-patch/
+    round2-plan.md's "加入者開火" design for measuring the projectile-loss
+    rate (WeaponLog's Fire-animation-line count vs HitLoc=== line count,
+    read from the joiner's run-*.log AFTER close_client(), same as
+    console_cmd_on()'s own "no live log read" boundary -- this action does
+    not itself count anything).
+
+    code.py's firmware only implements CLICK (one HTTP/serial pseudo-command
+    = press-then-release; see pico_ctl.py's `click` CLI action / code.py's
+    "elif action == 'CLICK'" handler) -- there is no "hold the button down"
+    primitive, and this task's contract is explicit that code.py must NOT be
+    changed to add one (a firmware change needs reflashing the physical
+    Pico). A sustained-fire weapon is therefore simulated by repeating
+    discrete CLICK-left commands, `interval_s` apart, via the new click()
+    primitive above (NOT click_at() -- this deliberately does not move the
+    mouse, see click()'s own docstring: the cursor is left wherever
+    enter_battle()'s KEY-only mech-select sequence put it, over the battle
+    viewport).
+
+    Precondition: focus_client(id) (design.md section 0 rule 7, same as
+    every other per-client action here) THEN a single-shot battle-HUD check
+    (_battle_any_check(), map-independent per that function's own docstring)
+    -- fails closed, no CLICK sent, if the battle HUD is not up yet (e.g.
+    still on the mech-select page) or already gone (e.g. back in the room).
+
+    Fail-closed on the FIRST non-success CLICK (this task's contract: "任何
+    一次 CLICK 失敗就 fail-closed 中止，不要默默繼續") -- each shot's
+    click(ctx, "left") return is checked; a non-zero pico_ctl.py exit code
+    (run_pico()'s own `rc`) stops the burst immediately, mid-sequence, and
+    `detail` reports exactly how many shots were actually sent before the
+    failure plus the failing shot's own stdout/stderr.
+
+    🟡 residual gap (2026-09-22, this task): the contract asks this function
+    to count "有幾次 Pico 回非 200" -- but code.py's CLICK handler really
+    does return an HTTP-style numeric status (200 on success, see its own
+    "Returns: (status_code, response_text)" docstring), that number is
+    embedded in the wire reply as "[200] CLICK left". The problem is what
+    reaches THIS layer: run_pico() shells out to the whole `pico_ctl.py
+    click left` CLI process (see run_pico()'s own docstring -- this module
+    never calls pico_ctl.py's Python functions directly) and only its
+    process exit code survives that boundary; pico_ctl.py's own
+    send_serial_cmd() (the only transport `click` can use -- send_http_cmd()
+    BLOCKs everything except PING/RESET, see its own comment, since the
+    foreground/click safety gates live in pico_serial.ps1 which HTTP never
+    passes through) already regex-strips the leading "[200]"/"[400]"/"[500]"
+    off the reply and returns only the trailing message text, discarding the
+    numeric code before pico_ctl.py's CLI even prints it. So there is
+    currently no "200" for this function -- or anything else shelling out to
+    the CLI -- to observe; what it checks instead is rc!=0 (pico_ctl.py's own
+    process exit code: 0 normal, 3 on a firmware/gate [BLOCKED] reply, 1 on
+    [ERR-TIMEOUT] or an unhandled exception, see pico_ctl.py's `click`/
+    run_guarded()/send_serial_cmd()). Flagged here for a high-tier call on
+    whether that gap (closing it would mean changing pico_ctl.py's transport
+    layer, out of this task's scope) needs fixing before round 2 actually
+    runs -- fail-closed behavior itself does not depend on which of the two
+    numbers is checked, only how PRECISELY "non-success" is described in the
+    report.
+
+    This has no log-based completion signal of its own (see console_cmd_on()
+    's own "design.md L4" boundary -- reading WeaponLog's actual counts is a
+    deliberate post-hoc, close_client()-after step, not a live check here);
+    `ok` reports only whether every CLICK the loop sent came back
+    non-failing, NOT that the client actually fired (no HitLoc/animation log
+    line is read mid-battle).
+
+    `detail` reports TWO separate durations (2026-09-22, PM review of this
+    same task's first commit): `firing_window_s` (first click() call's start
+    to the last click() call's return -- ONLY the actual clicking, no
+    focus_client()/precondition overhead) and the pre-existing `total_s`
+    (ActionResult.duration_s, the whole action from entry, INCLUDING
+    focus_client (~2-5s) and the precondition screenshot (~1s)). The PM's own
+    reason for requiring both: dividing a post-hoc WeaponLog Fire-line count
+    by `total_s` would systematically understate the real fire rate -- for a
+    fast pass (e.g. 30 shots @ 0.25s apart, ~7s of actual clicking) a ~5s
+    focus+precondition overhead folded into the denominator is not a rounding
+    error, it is a large fraction of the number being divided by. Use
+    `firing_window_s` for that division; `total_s` is kept only for the
+    step's own bookkeeping (matches every other action's ActionResult.
+    duration_s convention)."""
+    if client_id not in ctx.clients:
+        raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    if not isinstance(shots, int) or isinstance(shots, bool) or shots < 1:
+        raise ActionError(f"fire_burst shots must be a positive int, got {shots!r}")
+    if shots > FIRE_BURST_MAX_SHOTS:
+        raise ActionError(f"fire_burst shots={shots} exceeds sanity ceiling {FIRE_BURST_MAX_SHOTS}")
+    if not isinstance(interval_s, (int, float)) or isinstance(interval_s, bool) or interval_s < 0:
+        raise ActionError(f"fire_burst interval_s must be a non-negative number, got {interval_s!r}")
+
+    t0 = time.monotonic()
+    steps, fail = _focus_or_fail(ctx, "fire_burst", client_id, t0)
+    if fail:
+        return fail
+
+    pre = _precondition(ctx, "fire_burst", "battle", _battle_any_check())
+    if pre:
+        pre.steps = steps + pre.steps
+        return pre
+
+    if ctx.dry_run:
+        detail = f"dry-run: would send {shots} CLICK left, {interval_s}s apart (~{(shots - 1) * interval_s:.1f}s total)"
+        return ActionResult("fire_burst", True, False, time.monotonic() - t0, detail, None, None, steps)
+
+    sent = 0
+    fail_detail = None
+    fire_t0 = time.monotonic()
+    fire_t1 = fire_t0  # covers the shots=1 / immediate-failure-on-shot-1 case
+    for i in range(shots):
+        rc, out, err, elapsed = click(ctx, "left")
+        fire_t1 = time.monotonic()
+        steps.append((rc, out, err, elapsed))
+        if rc != 0:
+            fail_detail = f"shot {i + 1}/{shots} non-success (rc={rc}): {out or err or '(no output)'}"
+            break
+        sent += 1
+        if i < shots - 1:
+            time.sleep(interval_s)
+
+    firing_window_s = fire_t1 - fire_t0
+    total_s = time.monotonic() - t0
+    ok = fail_detail is None and sent == shots
+    if ok:
+        detail = (f"sent {sent}/{shots} CLICK left, {interval_s}s apart, firing_window_s={firing_window_s:.2f} "
+                  f"(first click to last click return, excludes focus/precondition overhead), "
+                  f"total_s={total_s:.2f} wall-clock (includes focus+precondition), 0 non-success replies")
+    else:
+        detail = (f"ABORTED (fail-closed): sent {sent}/{shots} CLICK left before stopping -- {fail_detail}; "
+                  f"firing_window_s={firing_window_s:.2f}, total_s={total_s:.2f} wall-clock elapsed")
+    return ActionResult("fire_burst", ok, False, total_s, detail, None, None, steps)
+
+
 def leave_battle(ctx, client_id):
     """Triggered by: pressing ESC to open the in-battle menu, clicking
     'leave' there, then confirming a SECOND dialog -- dispatch/
@@ -2754,6 +2904,7 @@ ACTIONS = {
     "host_start_battle": host_start_battle,
     "enter_battle": enter_battle,
     "console_cmd_on": console_cmd_on,
+    "fire_burst": fire_burst,
     "leave_battle": leave_battle,
     "idle_nudge": idle_nudge,
 }
