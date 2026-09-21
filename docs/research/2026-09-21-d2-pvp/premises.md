@@ -20,11 +20,25 @@
 
 | # | 前提 | 狀態 | 依據 |
 |---|---|---|---|
+| P8b | **Moon 的 GM／觀察者觀察不能直接套到我們身上**：他的客戶端 `m_MyAccountLevel` 預設被改成 1（`0x107398d0`），我們的是原廠 | 🟡 [外部] Moon 2026-09-21 自述 | PM 轉述 |
 | P8 | **`Grade_Info_SN 0x00510101` 必須送 0**，否則 `IsMeGM_BD()` 為真 → `PlayerSelectMech.BeginState` 直接 `GotoState('Spectating')`，F1–F5 技能 HUD 不畫、Tab 計分板沒有玩家列。**PvE 看不出來，PvP 會整個卡住** | ✅ | `state.md` 第 4 節 |
 | P9 | 戰鬥是 P2P，房主監聽 UDP 30907；每台可能當房主的機器都要開防火牆、網路設 Private | ✅ | `AGENTS.md`、`reference/setup.md` |
 | P10 | **投射物會掉**：引擎的送出預算（`CurrentNetSpeed` 實測 10000 B/s）讓 `ToAll` 廣播在 `IsNetReady` 回 false 時**直接跳過、不排隊不重傳**。同機零掉包環境缺口反而更大（32–35%） | ✅ [DLL][LOG]（未經跨公司審查） | `state.md` 第 4c 節；`journal/2026-09-20-1945-toall-send-path.md` |
 | P11 | 房間內閒置約 80 秒會被**客戶端自己**踢出（原版防掛機，`ZGUIController.uc:945-948`） | ✅ [SRC][OBS] | `journal/2026-09-19-0330-d1-step4-room-join.md` |
 | P12 | 客戶端拒收整包超過 `0x400` bytes 的 frame，且之後的封包全部卡住、不報錯。**PvP 的計分類清單封包要算大小** | ✅ [DLL][LOG] | `state.md` 第 2 節 |
+
+## 客戶端版本比對（Moon 2026-09-21，🟡 外部來源）
+
+他比對過雙方的客戶端二進位：**`Engine.dll`／`IpDrv.dll`／`Core.dll`／exe 完全相同**，
+只有 **`ZNetwork.dll` 差 34 bytes、共 7 處**（GM 預設值、商城、信箱的場景檢查），
+**沒有碰戰鬥路徑**。
+
+→ **戰鬥相關的位址兩邊可以互相引用**，這對交流很有價值。
+→ 但 **GM／觀察者相關的觀察不能互通**（見 P8b）。
+🟡 這是他自述，我們沒有自己比對過他的檔案。
+
+另外他提到：他遇到的 `EndRound_SN` 問題其實是 **`IsPlay` 被清掉**，補送 `BeginRound_SN` 就能解。
+我們在 `lobby.dispatch.js:264-347` 本來就會廣播 `BeginRound_SN`，所以沒遇到這個問題。
 
 ## 開工前要先補的
 
