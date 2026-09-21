@@ -286,22 +286,77 @@ DEFAULT_HOST_START_BATTLE_TIMEOUT_S = 120.0
 
 # ChangeSlot_CN 0x00230101 / Respawn_CN 0x00230103 (docs/journal/2026-09-17-22-
 # pve-mech-slot-selection.md): the client's own PlayerSelectMech state sends
-# these AUTOMATICALLY after loading, with no click -- [LOG] confirmed for
-# this task against Metal Rage Online Server/logs/session-20260920-114648.jsonl
-# (conn=2): Game_Start_SN sent at ms=166914, ChangeSlot_CN/Respawn_CN recv at
-# ms=184899/184901, an ~18s loading gap and no pico input in between. So
-# enter_battle() below sends NO click for "選機" -- see its own docstring for
-# the residual risk (only observed for the host account so far, never a
-# second/joining account).
+# these WITHOUT any pico input -- [LOG] confirmed for this task against Metal
+# Rage Online Server/logs/session-20260920-114648.jsonl (conn=2): Game_Start_SN
+# sent at ms=166914, ChangeSlot_CN/Respawn_CN recv at ms=184899/184901, an
+# ~18s gap and no pico input in between.
+#
+# CORRECTED MECHANISM ([OBS] 2026-09-21, operator on the real client): that
+# ~18s gap is NOT "mech-select completes itself" -- the mech-select page
+# (shots/mech-select-page.png) shows its own RESPAWN countdown/progress bar,
+# and it is THAT countdown timing out that fires ChangeSlot_CN/Respawn_CN.
+# Sending no input "worked" only because the old 120s timeout comfortably
+# outlasted the countdown -- it was waiting out a timeout, not observing an
+# automatic selection. This page reappears on EVERY respawn, not just once
+# per match. The page is driven by F1-F8 (one mech slot each, see
+# MECH_SELECT_SLOTS below), not mouse clicks, and pressing the matching F key
+# spawns immediately instead of waiting for the countdown. Before that page,
+# an opening cinematic plays that ESC can skip ([OBS] 2026-09-21, operator:
+# "~5s" estimate, not measured). enter_battle() below now sends ESC then an
+# F-key instead of waiting on the countdown.
 CHANGE_SLOT_CN_OPCODE = "0x00230101"
 RESPAWN_CN_OPCODE = "0x00230103"
-DEFAULT_ENTER_BATTLE_TIMEOUT_S = 120.0
+
+# Mech slots on the mech-select page, keyed by the F-key that picks them.
+# [OBS] 2026-09-21 operator's real-client screenshot shots/mech-select-page.png
+# -- read directly off that screen, NOT derived from the DLL or Cache.Bin.
+# F8's type label was covered by the radio-chatter dialogue box in that
+# screenshot and is left as None rather than guessed.
+MECH_SELECT_SLOTS = {
+    "F1": ("RAVEN", "輕量型"),      # light
+    "F2": ("MASSACRE", "強襲型"),   # assault
+    "F3": ("PHANTOM", "狙擊型"),    # sniper
+    "F4": ("FENRIS", "裝備型"),     # equipment
+    "F5": ("ROXANNE", "工兵型"),    # engineer
+    "F6": ("VALKYRIE", "重裝型"),   # heavy
+    "F7": ("ZODIAC", "火力型"),     # firepower
+    "F8": ("SPECTER", None),        # type label obscured in the reference shot
+}
+
+# Time to wait after ESC (intro-skip) before sending the mech-select F-key --
+# generous margin over the operator's ~5s cinematic estimate ([OBS] above),
+# so the F-key lands after the mech-select page has actually rendered rather
+# than mid-cinematic where it would do nothing.
+ENTER_BATTLE_POST_ESC_WAIT_S = 8.0
+
+# Was 120.0 (sized to outlast the countdown this action no longer waits for,
+# see the CORRECTED MECHANISM note above). Now sized instead for an ACTIVE
+# key-press flow: the ~18s loading gap observed above (before this action's
+# own input starts) + ENTER_BATTLE_POST_ESC_WAIT_S + a normal packet round
+# trip, which this module's other single-round-trip actions treat as a few
+# seconds (see DEFAULT_JOIN_ROOM_TIMEOUT_S's comment on Enter_CQ/Enter_SA).
+# 🟡 estimate, not a joiner-side measurement -- the 18s figure above is from
+# the HOST's own account with zero input, never timed for a joiner or with
+# ESC+F-key actually sent; kept well above that 18s+8s+"a few seconds" sum
+# (~30s) for margin until a real run measures it.
+DEFAULT_ENTER_BATTLE_TIMEOUT_S = 45.0
 
 # console_cmd_on()'s whitelist (design.md section 3: "只加 netspeed <n>、
 # stat net、WeaponLog"). Separate from CONSOLE_CMD_WHITELIST above (that one
 # is console_cmd()'s own, GameCampaign-only, whitelist) -- kept as two
 # independent sets on purpose so this task cannot accidentally widen what
 # console_cmd() itself will send.
+#
+# [OBS]/[SHOT] 2026-09-21 shots/battle-statnet.png: 'stat net' overlay's own
+# field list, top to bottom -- Ping / Channels / In,Out Unorderd / In,Out
+# Packets / In,Out Bunches / In,Out Bytes / Speed / Reps / RPC / PV /
+# VoiceBunches / VoiceTime ms / ControlTime ms. Speed IS the netspeed value
+# -- meaning a joining client can read its own effective netspeed straight
+# off its own screen via this overlay, without needing the HOST's log
+# (which is the only place netspeed has been read from so far, e.g.
+# dual-netspeed*.json's design.md-section-7-step-10 "Client netspeed is N"
+# grep). Not yet wired into any action here -- console_cmd_on() only proves
+# the command typed+closed, it does not read the overlay's numbers back.
 NETSPEED_CMD_RE = re.compile(r'^netspeed \d{1,7}$')
 CONSOLE_CMD_ON_WHITELIST_EXACT = {"stat net", "WeaponLog"}
 DEFAULT_CONSOLE_CMD_ON_CLOSE_TIMEOUT_S = 10.0
@@ -327,14 +382,32 @@ LEAVE_CQ_OPCODE = "0x00220234"
 # battle-leave pkt this action can filter on its OWN conn.
 LEAVE_SA_OPCODE = "0x00222132"
 DEFAULT_LEAVE_BATTLE_TIMEOUT_S = 60.0
-# HIGH-RISK UNTESTED GUESS -- see leave_battle()'s own docstring. Unlike
-# ROOM_LIST_FIRST_ROW_CLICK above (derived, if weakly, from an actual old
-# lobby screenshot), this has ZERO visual reference anywhere in this repo
-# (checked shots/ and docs/research/ for this task). Chosen only by analogy
-# to this module's other centered confirm-dialog buttons (NOTICE_CONFIRM_
-# BUTTON, CREATE_CONFIRM_BUTTON), on the unverified assumption the in-battle
-# ESC menu reuses the same dialog template.
-BATTLE_ESC_LEAVE_BUTTON = (798, 675)
+# Measured (not click-tested yet) from shots/battle-esc-menu-std.png
+# ([SHOT] 1616x1239, shot.sh standard geometry, CLIENT_OFFSET (8,31)) --
+# replaces the old (798, 675) HIGH-RISK GUESS (copy-pasted from
+# NOTICE_CONFIRM_BUTTON/CREATE_CONFIRM_BUTTON with zero visual reference).
+# The GAME MENU dialog has 4 stacked rows, top to bottom: 選項 / 封鎖聊天 /
+# 離開 / 取消. Measured each row's vertical center as the brightness-
+# weighted centroid (background-percentile-subtracted) of its icon glyph
+# AND its label-text glyphs independently, in the screenshot's own pixel
+# space (both agreed within ~2px per row, see docs/journal for this task's
+# raw scan):
+#   選項      shot y ~555   (client y ~524)
+#   封鎖聊天  shot y ~617   (client y ~586)  <- one row ABOVE 離開
+#   離開      shot y ~682   (client y ~651)  <- this button
+#   取消      shot y ~743   (client y ~712)  <- one row BELOW 離開
+# x was measured the same way on 離開's own label glyphs: shot x ~875
+# (client x ~867); the other three rows' label centers land within +/-20px
+# of that (874/875/890/870), so x is not the tight axis here.
+# Row-to-row spacing is only ~60-65px (matches this task's own estimate) --
+# a y error of about +/-30px lands on the WRONG button with NO recoverable
+# failure mode: one row up is 封鎖聊天 (silently CHANGES client state --
+# blocks chat), one row down is 取消 (silently does nothing, action times
+# out). [TEST] 2026-09-21 operator confirmed on the real client that arrow
+# keys + Enter do NOT move a selection on this menu -- there is no visible
+# keyboard focus highlight either -- so mouse click is the ONLY way to hit
+# 離開, and there is no keyboard fallback if this coordinate is off.
+BATTLE_ESC_LEAVE_BUTTON = (867, 651)
 
 
 class ActionError(Exception):
@@ -2018,52 +2091,67 @@ def host_start_battle(ctx, client_id="host"):
     return ActionResult("host_start_battle", ok, False, time.monotonic() - t0, detail, shot, None, steps)
 
 
-def enter_battle(ctx, client_id):
-    """Triggered by nothing the player does -- a pure wait for the joiner's
-    own load-in flow after the host starts the match: loading screen ->
-    ZSlotSelectPage (mech select) -> spawned in battle. This action sends NO
-    click for "選機" -- see CHANGE_SLOT_CN_OPCODE's comment above for the
-    [LOG] evidence that ChangeSlot_CN/Respawn_CN are sent automatically by
-    the client (an ~18s gap after Game_Start_SN, no pico input in between,
-    session-20260920-114648.jsonl). 🟡 residual risk: that evidence is only
-    for the HOST's own account in a solo PvE match, never observed yet for a
-    second/joining account -- if the joiner's account instead shows an
-    interactive ZSlotSelectPage requiring a real click, this action will
-    time out with no click sent (fail closed, matching design.md L6's "沒
-    定義就會在非預期畫面卡住" -- better an explicit timeout here than an
-    invented, unverified click).
+def enter_battle(ctx, client_id, mech_key="F1"):
+    """Triggered by: the match starting (or a respawn) dropping this client
+    into the load-in flow: loading screen -> opening cinematic -> mech-select
+    page (shots/mech-select-page.png) -> spawned in battle. This action now
+    actively presses keys instead of waiting -- see CHANGE_SLOT_CN_OPCODE's
+    "CORRECTED MECHANISM" comment above for why the old no-input version was
+    right for the wrong reason: it was outlasting the mech-select page's own
+    RESPAWN countdown with a 120s timeout, not observing an automatic
+    selection. That page reappears on every respawn, not just once.
 
-    Completion (design.md section 3, 120s nominal): ChangeSlot_CN or
-    Respawn_CN recv, filtered to this instance's game_conn_id -- these are
-    0x0023xxxx room/battle pkts, landing on the 30907 game conn, not the
-    9211 dispatch conn (see resolve_game_conn_id()'s docstring, 2026-09-21
-    "每個客戶端有兩條連線" fix). Battle HUD (screens.battle_hud_state(),
-    map-independent, see campaign_win_all's docstring) is the secondary
-    signal."""
+    Sequence: KEY ESC (skips the opening cinematic, [OBS] 2026-09-21 operator
+    on the real client, ~5s estimate) -> sleep ENTER_BATTLE_POST_ESC_WAIT_S
+    -> KEY <mech_key> (picks a mech slot immediately instead of waiting out
+    the countdown; MECH_SELECT_SLOTS above maps F1-F8 to mech name/type,
+    [OBS] read off shots/mech-select-page.png). mech_key must be one of
+    MECH_SELECT_SLOTS' keys (F1-F8); default F1 (RAVEN, 輕量型) since that is
+    the only slot this task has a reference screenshot for.
+
+    🟡 residual risk: ESC's effect if the cinematic has ALREADY ended by the
+    time this action sends it (e.g. if the real cinematic is much shorter
+    than the operator's ~5s estimate) is unconfirmed -- it may be a harmless
+    no-op, or it may do something else on whatever screen is showing at that
+    instant. Not click-tested end-to-end yet.
+
+    Completion (design.md section 3): ChangeSlot_CN or Respawn_CN recv,
+    filtered to this instance's game_conn_id -- these are 0x0023xxxx
+    room/battle pkts, landing on the 30907 game conn, not the 9211 dispatch
+    conn (see resolve_game_conn_id()'s docstring, 2026-09-21 "每個客戶端有
+    兩條連線" fix). Battle HUD (screens.battle_hud_state(), map-independent,
+    see campaign_win_all's docstring) is the secondary signal."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
+    if mech_key not in MECH_SELECT_SLOTS:
+        raise ActionError(f"enter_battle mech_key must be one of {sorted(MECH_SELECT_SLOTS)}, got {mech_key!r}")
     t0 = time.monotonic()
     steps, fail = _focus_or_fail(ctx, "enter_battle", client_id, t0)
     if fail:
         return fail
 
+    mech_name, mech_type = MECH_SELECT_SLOTS[mech_key]
     if ctx.dry_run:
-        return ActionResult("enter_battle", True, False, time.monotonic() - t0,
-                             "dry-run: would wait for loading -> auto mech-select -> battle "
-                             "(no click sent, see docstring)", None, None, steps)
+        detail = (f"dry-run: would key ESC (skip cinematic), sleep {ENTER_BATTLE_POST_ESC_WAIT_S}s, "
+                  f"key {mech_key} ({mech_name}/{mech_type}) to spawn (see docstring)")
+        return ActionResult("enter_battle", True, False, time.monotonic() - t0, detail, None, None, steps)
 
     conn_id, fail = _require_game_conn(ctx, "enter_battle", client_id, t0, steps)
     if fail:
         return fail
     base = _newest_log_ms(ctx.logs_dir)
+    steps.append(key(ctx, "ESC"))
+    time.sleep(ENTER_BATTLE_POST_ESC_WAIT_S)
+    steps.append(key(ctx, mech_key))
     ok_pkt, found, elapsed = wait_for_log_pkts(
         ctx, DEFAULT_ENTER_BATTLE_TIMEOUT_S,
         {"spawn": lambda e: e.get("dir") == "recv" and e.get("op") in (CHANGE_SLOT_CN_OPCODE, RESPAWN_CN_OPCODE)},
         baseline_ms=base, conn=conn_id,
     )
     ok_hud, gray, detail_hud, score, shot, _ = wait_for(ctx, "enter_battle-hud", 15.0, _battle_any_check())
-    detail = (f"ChangeSlot_CN/Respawn_CN recv (conn={conn_id}): {'seen' if ok_pkt else 'MISSING'} "
-              f"(waited {elapsed:.1f}s, no click sent -- see docstring); battle HUD: {detail_hud}")
+    detail = (f"ESC + key {mech_key} ({mech_name}/{mech_type}); "
+              f"ChangeSlot_CN/Respawn_CN recv (conn={conn_id}): {'seen' if ok_pkt else 'MISSING'} "
+              f"(waited {elapsed:.1f}s); battle HUD: {detail_hud}")
     return ActionResult("enter_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
@@ -2137,13 +2225,15 @@ def leave_battle(ctx, client_id):
     """Triggered by: pressing ESC to open the in-battle menu, then clicking
     'leave' -- dispatch/gate.game.dispatch.js's own comment on Leave_CQ
     0x00222131 names this exact client action. See BATTLE_ESC_LEAVE_BUTTON's
-    comment above for why its coordinate is this task's single LEAST
-    confident click target (zero visual reference anywhere in this repo,
-    unlike ROOM_LIST_FIRST_ROW_CLICK which at least has an old low-res
-    screenshot to extrapolate from) -- if wrong, the ESC menu likely stays
-    open and this action times out at DEFAULT_LEAVE_BATTLE_TIMEOUT_S with
-    no further blind click attempted (fail closed, per design.md 第 8 節
-    "遇到任何非預期畫面 -> 立即 halt，不重試").
+    comment above: the coordinate is now measured (pixel-scanned) from a
+    real screenshot, not the old zero-reference guess, but it is still NOT
+    click-tested in a live client, and there is no keyboard fallback
+    ([TEST] 2026-09-21: arrow keys + Enter do nothing on this menu) -- if
+    the measurement is off by one ~60px row, the click either silently
+    blocks chat (one row up) or silently does nothing (one row down), and
+    this action times out at DEFAULT_LEAVE_BATTLE_TIMEOUT_S with no further
+    blind click attempted (fail closed, per design.md 第 8 節 "遇到任何非
+    預期畫面 -> 立即 halt，不重試").
 
     Completion (design.md section 3, 60s nominal): Leave_SA (LEAVE_SA_
     OPCODE), filtered to THIS instance's game_conn_id -- a 0x0022xxxx room
@@ -2163,7 +2253,7 @@ def leave_battle(ctx, client_id):
 
     if ctx.dry_run:
         detail = (f"dry-run: would key ESC, click {BATTLE_ESC_LEAVE_BUTTON} "
-                  f"(UNTESTED coordinate, see docstring)")
+                  f"(measured-not-click-tested coordinate, see docstring)")
         return ActionResult("leave_battle", True, False, time.monotonic() - t0, detail, None, None, steps)
 
     conn_id, fail = _require_game_conn(ctx, "leave_battle", client_id, t0, steps)
@@ -2179,7 +2269,7 @@ def leave_battle(ctx, client_id):
         baseline_ms=base, conn=conn_id,
     )
     ok_room, gray, detail_room, score, shot, _ = wait_for(ctx, "leave_battle-room", 10.0, _room_or_notice_check())
-    detail = (f"ESC + click {BATTLE_ESC_LEAVE_BUTTON} (UNTESTED coordinate); "
+    detail = (f"ESC + click {BATTLE_ESC_LEAVE_BUTTON} (measured-not-click-tested coordinate); "
               f"Leave_SA({LEAVE_SA_OPCODE}) send (conn={conn_id}): {'seen' if ok_pkt else 'MISSING'} "
               f"(waited {elapsed:.1f}s); room/notice: {detail_room}")
     return ActionResult("leave_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)
