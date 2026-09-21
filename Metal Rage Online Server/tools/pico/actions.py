@@ -140,6 +140,18 @@ LOGIN_DUMMY_PASSWORD = "x"
 LOGIN_CQ_OPCODE = "0x00110151"
 DEFAULT_LOGIN_TIMEOUT_S = 20.0
 
+# Login_Again_CQ, docs/state.md 4c "30907 登入的身分": every real client
+# instance opens TWO server connections, not one -- 9211 (dispatch/login,
+# LOGIN_CQ_OPCODE above) AND 30907 (game, room/battle traffic). This is the
+# 30907 socket's OWN login pkt, sent moments after LOGIN_CQ_OPCODE succeeds
+# on the 9211 socket (2026-09-21 B段第二次實跑's own session log: conn=9
+# LOGIN_CQ_OPCODE recv at ms=40697427, conn=10 LOGIN_AGAIN_CQ_OPCODE recv at
+# ms=40697531, ~100ms later -- a NEW, DIFFERENT `conn`). resolve_conn_id()
+# below only ever resolves the 9211 conn; resolve_game_conn_id() uses this
+# opcode to positively identify the 30907 conn, which is where every room/
+# battle pkt (0x0022xxxx/0x0023xxxx) this module filters on actually lands.
+LOGIN_AGAIN_CQ_OPCODE = "0x00110124"
+
 # ---------------------------------------------------------------------------
 # Dual-client actions (docs/research/2026-09-20-dual-pico/design.md section 3).
 # All of these take a client_id (a key of ctx.clients, see Context/ClientState
@@ -356,6 +368,17 @@ class ClientState:
     account/conn_id/launch_time_ms are filled in as a run progresses (by
     login_as()/launch_client(), neither implemented this task).
 
+    conn_id was split into TWO fields (2026-09-21, "每個客戶端有兩條連線"
+    fix): every real client instance opens both a 9211 (dispatch/login) and
+    a 30907 (game) connection, and login_as()'s original single `conn_id`
+    only ever resolved the 9211 one (see resolve_conn_id()'s docstring) --
+    every room/battle completion condition that filtered on it was silently
+    waiting on the wrong connection and would never see its pkt.
+    dispatch_conn_id keeps that original 9211 resolution (login()/login_as()
+    completion signals only); game_conn_id is the NEW 30907 resolution
+    (resolve_game_conn_id()) that every room/battle action (0x0022xxxx/
+    0x0023xxxx pkts) below must filter on instead.
+
     This module never imports client_ctl.ClientInstance -- kept as a
     separate, smaller struct on purpose, matching this module's existing
     habit of shelling out to client_ctl.py/pico_ctl.py rather than
@@ -365,7 +388,8 @@ class ClientState:
     install_dir_win: str = None
     bat_path_win: str = None
     account: str = None
-    conn_id: int = None
+    dispatch_conn_id: int = None
+    game_conn_id: int = None
     launch_time_ms: float = None
 
 
@@ -1564,6 +1588,31 @@ def _focus_or_fail(ctx, action_name, client_id, t0):
     return focus_result.steps, None
 
 
+def _require_game_conn(ctx, action_name, client_id, t0, steps):
+    """Shared fail-closed guard (2026-09-21 "每個客戶端有兩條連線" fix,
+    contract point 4: "game_conn_id 解不到時要 fail-closed") for every
+    per-client action below that filters a room/battle pkt (0x0022xxxx/
+    0x0023xxxx) on this instance's GAME (30907) conn -- see
+    resolve_game_conn_id()'s docstring for why that is a DIFFERENT conn than
+    the one login_as() itself waits on (dispatch/9211).
+
+    Returns (conn_id, None) if ctx.clients[client_id].game_conn_id is
+    already a real int, or (None, ActionResult) with a ready-to-return
+    failure if it is still None. Callers must NOT fall back to conn=None on
+    that failure -- find_pkts_since()/wait_for_log_pkts() treat conn=None as
+    "no filtering, every connection matches" (see those functions' own
+    docstrings), which would let the OTHER dual-pico instance's pkts satisfy
+    THIS instance's completion condition."""
+    conn_id = ctx.clients[client_id].game_conn_id
+    if conn_id is None:
+        detail = (f"game_conn_id not resolved for {client_id!r} "
+                   f"(account={ctx.clients[client_id].account!r}) -- login_as() "
+                   f"must run first and succeed; refusing to filter on conn=None "
+                   f"(would match every connection, see resolve_game_conn_id())")
+        return None, ActionResult(action_name, False, False, time.monotonic() - t0, detail, None, None, steps)
+    return conn_id, None
+
+
 # ---------------------------------------------------------------------------
 # Dual-client actions proper (docs/research/2026-09-20-dual-pico/design.md
 # section 3). See the constants block above focus_client() for the opcodes/
@@ -1683,9 +1732,14 @@ def login_as(ctx, client_id, account):
     receiving CQ_LOGIN_WASABII (LOGIN_CQ_OPCODE, same opcode as login())
     AND the client showing the lobby screen afterwards -- same two-signal
     reasoning as login()'s own docstring. On success this ALSO resolves and
-    stores this instance's conn id (resolve_conn_id(), design.md section 4)
-    into ctx.clients[client_id].conn_id/.account, which every later
-    per-client pkt-based completion condition in this module filters on."""
+    stores this instance's TWO conn ids into ctx.clients[client_id]/.account
+    (2026-09-21 "每個客戶端有兩條連線" fix, see resolve_game_conn_id()'s
+    docstring): .dispatch_conn_id (resolve_conn_id(), the 9211 conn) and
+    .game_conn_id (resolve_game_conn_id(), the 30907 conn) -- every later
+    per-client pkt-based completion condition in this module filters on
+    whichever of the two actually carries that opcode (room/battle pkts,
+    0x0022xxxx/0x0023xxxx, use game_conn_id; nothing else in this module
+    currently needs dispatch_conn_id after login_as() itself)."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     if not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
@@ -1754,14 +1808,18 @@ def login_as(ctx, client_id, account):
     ok_lobby, gray, detail_lobby, score, shot, _ = wait_for(ctx, "login_as-lobby", 15.0, _screen_check("lobby"))
     ok = ok_pkt and ok_lobby
 
-    conn_id = None
+    conn_id, game_conn_id = None, None
     if ok_pkt and not ctx.dry_run:
-        conn_id = resolve_conn_id(ctx.logs_dir, account, base if base is not None else 0)
+        since = base if base is not None else 0
+        conn_id = resolve_conn_id(ctx.logs_dir, account, since)
+        game_conn_id = resolve_game_conn_id(ctx.logs_dir, account, since)
         ctx.clients[client_id].account = account
-        ctx.clients[client_id].conn_id = conn_id
+        ctx.clients[client_id].dispatch_conn_id = conn_id
+        ctx.clients[client_id].game_conn_id = game_conn_id
 
     detail = (f"login_cq({LOGIN_CQ_OPCODE}) recv: {'seen' if ok_pkt else 'MISSING'} "
-              f"(waited {elapsed_pkt:.1f}s); lobby: {detail_lobby}; conn_id={conn_id}; "
+              f"(waited {elapsed_pkt:.1f}s); lobby: {detail_lobby}; "
+              f"dispatch_conn_id={conn_id}; game_conn_id={game_conn_id}; "
               f"account_field_state={field_state}(stddev={field_stddev})")
     return ActionResult("login_as", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
 
@@ -1776,8 +1834,11 @@ def join_room(ctx, client_id, room_name):
     never used to pick a specific row (no OCR/text-matching exists here).
 
     Completion (design.md section 3, 45s nominal): Enter_SA (ENTER_SA_
-    OPCODE, send, filtered to this instance's conn_id from login_as())
-    parsed for success (body +0x00 u16 status == 0) -- NOT just "some
+    OPCODE, send, filtered to this instance's game_conn_id from login_as()
+    -- Enter_SA is a 0x0022xxxx room pkt and lands on the 30907 game conn,
+    NOT the 9211 dispatch conn login_as()'s OTHER conn id resolves; see
+    resolve_game_conn_id()'s docstring, 2026-09-21 "每個客戶端有兩條連線"
+    fix) parsed for success (body +0x00 u16 status == 0) -- NOT just "some
     Enter_SA arrived", since a 1/1 failure body (room not found/full/wrong
     password/already playing) means the double-click did NOT actually join
     anything and continuing the script would be pointless. Room marker (or
@@ -1799,7 +1860,9 @@ def join_room(ctx, client_id, room_name):
                   f"to join {room_name!r} (UNTESTED coordinate, see docstring)")
         return ActionResult("join_room", True, False, time.monotonic() - t0, detail, None, None, steps)
 
-    conn_id = ctx.clients[client_id].conn_id
+    conn_id, fail = _require_game_conn(ctx, "join_room", client_id, t0, steps)
+    if fail:
+        return fail
     base = _newest_log_ms(ctx.logs_dir)
     steps.append(double_click_at(ctx, ROOM_LIST_FIRST_ROW_CLICK))
     ok_pkt, found, elapsed = wait_for_log_pkts(
@@ -1833,10 +1896,13 @@ def set_ready(ctx, client_id):
     0x00222101/"準備完畢").
 
     Completion (design.md section 3, 20s nominal): User_State_SN
-    (USER_STATE_SN_OPCODE) send, filtered to this instance's conn_id (the
-    broadcast includes the presser, see that opcode's comment above) -- not
-    gated on the raw READY value (2) since design.md's table only asks for
-    "對應 pkt", but the raw byte is reported in `detail` for traceability."""
+    (USER_STATE_SN_OPCODE) send, filtered to this instance's game_conn_id
+    (a 0x0022xxxx room pkt -- lands on the 30907 game conn, not the 9211
+    dispatch conn, see resolve_game_conn_id()'s docstring, 2026-09-21
+    "每個客戶端有兩條連線" fix; the broadcast includes the presser, see that
+    opcode's comment above) -- not gated on the raw READY value (2) since
+    design.md's table only asks for "對應 pkt", but the raw byte is reported
+    in `detail` for traceability."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     t0 = time.monotonic()
@@ -1853,7 +1919,9 @@ def set_ready(ctx, client_id):
         return ActionResult("set_ready", True, False, time.monotonic() - t0,
                              "dry-run: would key F5 (ready)", None, None, steps)
 
-    conn_id = ctx.clients[client_id].conn_id
+    conn_id, fail = _require_game_conn(ctx, "set_ready", client_id, t0, steps)
+    if fail:
+        return fail
     base = _newest_log_ms(ctx.logs_dir)
     steps.append(key(ctx, "F5"))
     ok, found, elapsed = wait_for_log_pkts(
@@ -1881,13 +1949,16 @@ def host_start_battle(ctx, client_id="host"):
     so a script can name its host instance differently.
 
     Completion (design.md section 3, 120s nominal): Game_Start_SN
-    (GAME_START_SN_OPCODE) send, filtered to the HOST's own conn_id --
-    design.md L1 explicitly says not to rely on the single-client
-    start_battle()'s text markers ('gameStarted_ false -> true'/'Game_Start_SN
-    sent') here, since packetlog.js's marker() calls carry no `conn` and
-    cannot be attributed to one instance when two are running. D1-6-IMPL
-    broadcasts Game_Start_SN to every room member via rooms.sendAll,
-    including the host itself, so filtering on the host's own conn is valid."""
+    (GAME_START_SN_OPCODE) send, filtered to the HOST's own game_conn_id --
+    a 0x0022xxxx room pkt, lands on the 30907 game conn, not the 9211
+    dispatch conn (see resolve_game_conn_id()'s docstring, 2026-09-21
+    "每個客戶端有兩條連線" fix). design.md L1 explicitly says not to rely on
+    the single-client start_battle()'s text markers ('gameStarted_ false ->
+    true'/'Game_Start_SN sent') here, since packetlog.js's marker() calls
+    carry no `conn` and cannot be attributed to one instance when two are
+    running. D1-6-IMPL broadcasts Game_Start_SN to every room member via
+    rooms.sendAll, including the host itself, so filtering on the host's own
+    conn is valid."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     t0 = time.monotonic()
@@ -1904,7 +1975,9 @@ def host_start_battle(ctx, client_id="host"):
         return ActionResult("host_start_battle", True, False, time.monotonic() - t0,
                              "dry-run: would key F5 (host start)", None, None, steps)
 
-    conn_id = ctx.clients[client_id].conn_id
+    conn_id, fail = _require_game_conn(ctx, "host_start_battle", client_id, t0, steps)
+    if fail:
+        return fail
     base = _newest_log_ms(ctx.logs_dir)
     steps.append(key(ctx, "F5"))
     ok, found, elapsed = wait_for_log_pkts(
@@ -1935,9 +2008,12 @@ def enter_battle(ctx, client_id):
     invented, unverified click).
 
     Completion (design.md section 3, 120s nominal): ChangeSlot_CN or
-    Respawn_CN recv, filtered to this instance's conn_id. Battle HUD
-    (screens.battle_hud_state(), map-independent, see campaign_win_all's
-    docstring) is the secondary signal."""
+    Respawn_CN recv, filtered to this instance's game_conn_id -- these are
+    0x0023xxxx room/battle pkts, landing on the 30907 game conn, not the
+    9211 dispatch conn (see resolve_game_conn_id()'s docstring, 2026-09-21
+    "每個客戶端有兩條連線" fix). Battle HUD (screens.battle_hud_state(),
+    map-independent, see campaign_win_all's docstring) is the secondary
+    signal."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     t0 = time.monotonic()
@@ -1950,7 +2026,9 @@ def enter_battle(ctx, client_id):
                              "dry-run: would wait for loading -> auto mech-select -> battle "
                              "(no click sent, see docstring)", None, None, steps)
 
-    conn_id = ctx.clients[client_id].conn_id
+    conn_id, fail = _require_game_conn(ctx, "enter_battle", client_id, t0, steps)
+    if fail:
+        return fail
     base = _newest_log_ms(ctx.logs_dir)
     ok_pkt, found, elapsed = wait_for_log_pkts(
         ctx, DEFAULT_ENTER_BATTLE_TIMEOUT_S,
@@ -2042,8 +2120,11 @@ def leave_battle(ctx, client_id):
     "遇到任何非預期畫面 -> 立即 halt，不重試").
 
     Completion (design.md section 3, 60s nominal): Leave_SA (LEAVE_SA_
-    OPCODE), filtered to THIS instance's conn_id -- the only battle-leave
-    pkt guaranteed to target the leaver itself (room-leave.js's
+    OPCODE), filtered to THIS instance's game_conn_id -- a 0x0022xxxx room
+    pkt, lands on the 30907 game conn, not the 9211 dispatch conn (see
+    resolve_game_conn_id()'s docstring, 2026-09-21 "每個客戶端有兩條連線"
+    fix) -- the only battle-leave pkt guaranteed to target the leaver itself
+    (room-leave.js's
     handleBattleLeave() sends Leave_SN/EndGame_SN to the OTHER conn(s), see
     that opcode's own comment above, never to the leaver). Room screen (or
     its NOTICE popup) is the secondary signal."""
@@ -2059,7 +2140,9 @@ def leave_battle(ctx, client_id):
                   f"(UNTESTED coordinate, see docstring)")
         return ActionResult("leave_battle", True, False, time.monotonic() - t0, detail, None, None, steps)
 
-    conn_id = ctx.clients[client_id].conn_id
+    conn_id, fail = _require_game_conn(ctx, "leave_battle", client_id, t0, steps)
+    if fail:
+        return fail
     base = _newest_log_ms(ctx.logs_dir)
     steps.append(key(ctx, "ESC"))
     time.sleep(1.0)
@@ -2087,9 +2170,15 @@ def idle_nudge(ctx, client_id):
     Completion (design.md section 3, 10s nominal): focus_client's own
     foreground readback succeeding (returned via _focus_or_fail() above) --
     already fail-closed on its own -- AND no Leave_CQ (room-level self-leave,
-    LEAVE_CQ_OPCODE) recv on this conn since the nudge started, i.e. this
-    reports ok=False if the nudge appears to have arrived too late (the
-    client already kicked itself out before/while this ran)."""
+    LEAVE_CQ_OPCODE) recv on this instance's game_conn_id since the nudge
+    started (LEAVE_CQ_OPCODE is a 0x0022xxxx room pkt, lands on the 30907
+    game conn, not the 9211 dispatch conn -- see resolve_game_conn_id()'s
+    docstring, 2026-09-21 "每個客戶端有兩條連線" fix), i.e. this reports
+    ok=False if the nudge appears to have arrived too late (the client
+    already kicked itself out before/while this ran) OR if game_conn_id is
+    unresolved (fail closed -- see _require_game_conn()'s docstring; the old
+    behavior of skipping the filter and assuming "not left" on an
+    unresolved conn was NOT fail-closed and is no longer used)."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     t0 = time.monotonic()
@@ -2101,7 +2190,9 @@ def idle_nudge(ctx, client_id):
         return ActionResult("idle_nudge", True, False, time.monotonic() - t0,
                              "dry-run: would mouse_wiggle", None, None, steps)
 
-    conn_id = ctx.clients[client_id].conn_id
+    conn_id, fail = _require_game_conn(ctx, "idle_nudge", client_id, t0, steps)
+    if fail:
+        return fail
     base = _newest_log_ms(ctx.logs_dir)
     steps.extend(mouse_wiggle(ctx))
     left = False
@@ -2283,6 +2374,53 @@ def find_pkts_since(logs_dir, since_ms, limit=200, conn=None):
     return out[-limit:]
 
 
+def _iter_pkts_forward(logs_dir, since_ms):
+    """Generator over EVERY {ev:'pkt', ...} record with ms > since_ms from
+    the newest session log, oldest first, with NO limit truncation --
+    UNLIKE find_pkts_since() above (used by every other pkt-based completion
+    condition in this module), which deliberately keeps only the last
+    `limit` (default 200) matching entries, because those callers want
+    RECENT pkts near 'now' (a live wait loop polling for something that just
+    happened).
+
+    resolve_conn_id()/resolve_game_conn_id() below need the OPPOSITE: the
+    FIRST matching entry after since_ms, however far that entry is from the
+    end of a log file that keeps growing for the rest of the session. Using
+    find_pkts_since() there was a real bug, not just an inefficiency (PM
+    2026-09-21, full untruncated `session-20260921-070017.jsonl`, 1215
+    lines): once >200 pkt entries had accumulated between since_ms and the
+    end of the file, find_pkts_since()'s own out[-limit:] silently dropped
+    the dispatch conn's own early ctx.nickname-tagged pkt, and
+    resolve_conn_id() returned the NEXT matching entry instead -- which was
+    mrotesthost's GAME conn (10, tagged later via its own Create_CQ), not
+    its dispatch conn (9). That is a WRONG answer that still looks valid (an
+    int, not None), so no fail-closed check downstream can catch it -- worse
+    than "not resolved yet". Not fixed by raising find_pkts_since()'s own
+    default `limit` (out of scope: every other caller in this module would
+    pay that cost/behavior change for a problem only these two resolvers
+    have) -- these two read the file directly instead, via this generator."""
+    path = newest_session_log(logs_dir)
+    if path is None:
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("ev") != "pkt":
+                    continue
+                if entry.get("ms", 0) <= since_ms:
+                    continue
+                yield entry
+    except OSError:
+        return
+
+
 def resolve_conn_id(logs_dir, account, since_ms):
     """Finds `account`'s conn id from pkt records written after since_ms in
     the newest session log (docs/research/2026-09-20-dual-pico/design.md
@@ -2292,18 +2430,74 @@ def resolve_conn_id(logs_dir, account, since_ms):
     login succeeds (confirmed against a real session log 2026-09-20: the
     very next send pkts on that conn, e.g. 0x00210101, already carry
     {"accountId":1,"nickname":"Lucas"}) -- so this scans forward from
-    since_ms for the first entry whose ctx.nickname exactly equals `account`
-    and returns its 'conn' field.
+    since_ms (via _iter_pkts_forward(), NOT find_pkts_since() -- see that
+    generator's own docstring for why, 2026-09-21 PM-caught bug) for the
+    first entry whose ctx.nickname exactly equals `account` and returns its
+    'conn' field.
 
     Exact string match only (no case-folding/partial match) -- account names
     are validated printable-ASCII elsewhere (see login()'s check) and two
     different accounts should never share a nickname on the same server.
+    This is only ever called with ok_pkt already True (login_as() gates on
+    it), so the match this is looking for has already actually happened by
+    the time this runs -- the forward scan below will not run past it into
+    unrelated later log history.
 
     Returns the conn id (int) or None if no matching entry exists yet
     (caller should treat None as "not resolved yet", not as an error --
     there's a small window between login_cq itself and the first pkt
-    carrying ctx.nickname)."""
-    for entry in find_pkts_since(logs_dir, since_ms):
+    carrying ctx.nickname).
+
+    NOTE (2026-09-21, "每個客戶端有兩條連線" fix): this ONLY ever resolves the
+    9211 dispatch conn, never the 30907 game conn -- room/battle pkts
+    (0x0022xxxx/0x0023xxxx) never land on this conn. See
+    resolve_game_conn_id() below for the 30907 resolution every room/battle
+    action must use instead, and LOGIN_AGAIN_CQ_OPCODE's own comment above
+    for the real-log evidence that these are two distinct `conn` values."""
+    for entry in _iter_pkts_forward(logs_dir, since_ms):
+        c = entry.get("ctx") or {}
+        if c.get("nickname") == account:
+            return entry.get("conn")
+    return None
+
+
+def resolve_game_conn_id(logs_dir, account, since_ms):
+    """Finds `account`'s GAME (30907) conn id -- the connection every room/
+    battle pkt (0x0022xxxx/0x0023xxxx) this module filters on actually uses,
+    as opposed to resolve_conn_id()'s DISPATCH (9211) conn id (see that
+    function's NOTE and LOGIN_AGAIN_CQ_OPCODE's own comment above for the
+    real-log evidence that these are two separate `conn` values on the same
+    client instance).
+
+    Both connections' own login pkt carries an empty ctx, and ctx.nickname
+    only shows up on LATER pkts sent/received on each conn -- and, per this
+    task's own 2026-09-21 measurement, those first-tagged pkts on the two
+    conns can be less than 100ms apart. So unlike resolve_conn_id() (which
+    can safely assume the dispatch conn's tagged pkt always comes first,
+    since it is a direct causal RESPONSE to the 9211 login that triggers the
+    client to open the 30907 socket in the first place), this function does
+    NOT rely on chronological order: it first finds every `conn` that
+    received a LOGIN_AGAIN_CQ_OPCODE pkt after since_ms (the 30907 login
+    signature, docs/state.md 4c "30907 登入的身分") -- that positively marks
+    which conn IDs are game conns in this window -- then returns the first
+    entry AMONG THOSE conns whose ctx.nickname exactly equals `account`.
+    Both passes use _iter_pkts_forward(), NOT find_pkts_since() -- see that
+    generator's own docstring for the 2026-09-21 PM-caught bug this avoids
+    (find_pkts_since()'s default limit=200 silently dropped early matches on
+    a long-enough log and returned a wrong, not just missing, conn id).
+
+    Exact string match only, same reasoning as resolve_conn_id(). Returns
+    the conn id (int) or None if not resolved yet (same "not an error"
+    contract as resolve_conn_id()) -- callers must fail closed on None, NOT
+    fall back to conn=None/no filtering (see wait_for_log_pkts()'s conn
+    param docstring: omitting it means "every connection matches")."""
+    game_conns = set()
+    for entry in _iter_pkts_forward(logs_dir, since_ms):
+        if entry.get("dir") == "recv" and entry.get("op") == LOGIN_AGAIN_CQ_OPCODE:
+            game_conns.add(entry.get("conn"))
+    for entry in _iter_pkts_forward(logs_dir, since_ms):
+        if entry.get("conn") not in game_conns:
+            continue
         c = entry.get("ctx") or {}
         if c.get("nickname") == account:
             return entry.get("conn")
