@@ -49,6 +49,19 @@ MANIFEST_PATH = os.path.join(ATLAS_DIR, "manifest.json")
 SHOT_SIZE = (1616, 1239)
 CLIENT_OFFSET = (8, 31)
 
+# Size gate, added 2026-09-21. Incident: the operator hand-captured a couple
+# of real-gameplay screenshots (1602x1232) to use for classifier calibration,
+# a different size than shot.sh's SHOT_SIZE above (1616x1239). Every region
+# box in this module (PROMPT_BOX, BATTLE_SP_BOX, ACCOUNT_FIELD_BOX, every
+# BUILD_SPEC box) is hardcoded in shot.sh's pixel coordinates; feeding those
+# boxes a 1602x1232 image reads the wrong pixels instead of erroring. Before
+# this gate existed, that produced console_prompt_state()=="unknown", which a
+# worker correctly did NOT chase into recalibrating PROMPT_BOX -- but nothing
+# stopped a future run from doing exactly that (silent "unknown" looks like
+# "this box needs retuning", not "this image is the wrong shape"). PM
+# decision: make the size mismatch itself loud instead of relying on every
+# caller noticing an "unknown" is suspicious. See _load_image() below.
+
 # ---------------------------------------------------------------------------
 # Atlas build table: every marker this module knows about, where its
 # reference crop comes from (a file in shots_dir) and what box (in shot-space
@@ -208,11 +221,37 @@ class ScreenResult:
     scores: dict = field(default_factory=dict)
 
 
+class ScreenSizeError(ValueError):
+    """Raised by _load_image() when an image is not SHOT_SIZE. Every region
+    box in this module is measured in shot.sh's pixel coordinates -- see the
+    2026-09-21 comment above SHOT_SIZE for why this must fail loudly instead
+    of degrading to console_prompt_state()/classify_screen()-style "unknown"."""
+
+
 def _load_image(img):
-    """Accept either a path or an already-opened PIL Image."""
-    if isinstance(img, Image.Image):
-        return img
-    return Image.open(img)
+    """Accept either a path or an already-opened PIL Image.
+
+    Hard size gate (2026-09-21, see comment above SHOT_SIZE): every region-
+    judgment entry point in this module (classify_screen, console_state,
+    is_tab_active, detect_marker via _region_array below, plus
+    console_prompt_state/battle_hud_state/account_field_state which call this
+    directly) reads fixed pixel boxes measured in shot.sh's window geometry.
+    An image of any other size still decodes, but every box in it lands on
+    the wrong pixels -- refuse it here, once, instead of letting each caller
+    silently degrade to "unknown" or a wrong statistic.
+    """
+    im = img if isinstance(img, Image.Image) else Image.open(img)
+    if im.size != SHOT_SIZE:
+        source = img if isinstance(img, str) else (getattr(im, "filename", None) or "<in-memory PIL.Image>")
+        raise ScreenSizeError(
+            f"screens.py: image size {im.size} != expected SHOT_SIZE {SHOT_SIZE} (source: {source}). "
+            "Region boxes here (PROMPT_BOX/BATTLE_SP_BOX/ACCOUNT_FIELD_BOX/BUILD_SPEC boxes) are "
+            "hardcoded in tools/win/shot.sh's window-frame pixel coordinates. Likely cause: this "
+            "image was not captured by shot.sh (e.g. a manual/hand-cropped screenshot) or the game "
+            "window/display resolution changed. Do not recalibrate any box against this image, and "
+            "do not treat this as an 'unknown' classification result."
+        )
+    return im
 
 
 def _region_array(img, box):
@@ -610,6 +649,18 @@ def main():
 
     args = ap.parse_args()
 
+    try:
+        _cli_dispatch(args)
+    except ScreenSizeError as e:
+        # Loud, deliberate failure (2026-09-21, see comment above SHOT_SIZE /
+        # _load_image): every CLI subcommand below that takes an <image>
+        # argument judges a fixed shot-space region, so a wrong-sized image
+        # must not print a normal-looking "unknown" result.
+        print(f"[ERROR] {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _cli_dispatch(args):
     if args.cmd == "build-atlas":
         build_atlas(args.shots_dir, args.out_dir)
         return
