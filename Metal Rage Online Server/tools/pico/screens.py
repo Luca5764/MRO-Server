@@ -49,6 +49,19 @@ MANIFEST_PATH = os.path.join(ATLAS_DIR, "manifest.json")
 SHOT_SIZE = (1616, 1239)
 CLIENT_OFFSET = (8, 31)
 
+# Size gate, added 2026-09-21. Incident: the operator hand-captured a couple
+# of real-gameplay screenshots (1602x1232) to use for classifier calibration,
+# a different size than shot.sh's SHOT_SIZE above (1616x1239). Every region
+# box in this module (PROMPT_BOX, BATTLE_SP_BOX, ACCOUNT_FIELD_BOX, every
+# BUILD_SPEC box) is hardcoded in shot.sh's pixel coordinates; feeding those
+# boxes a 1602x1232 image reads the wrong pixels instead of erroring. Before
+# this gate existed, that produced console_prompt_state()=="unknown", which a
+# worker correctly did NOT chase into recalibrating PROMPT_BOX -- but nothing
+# stopped a future run from doing exactly that (silent "unknown" looks like
+# "this box needs retuning", not "this image is the wrong shape"). PM
+# decision: make the size mismatch itself loud instead of relying on every
+# caller noticing an "unknown" is suspicious. See _load_image() below.
+
 # ---------------------------------------------------------------------------
 # Atlas build table: every marker this module knows about, where its
 # reference crop comes from (a file in shots_dir) and what box (in shot-space
@@ -128,16 +141,43 @@ BUILD_SPEC = {
     # clean-battle reference at this box, vs >=35 for every non-battle
     # reference shot in the atlas).
     "markers": {
-        # "遊戲開始(F5)" banner, top-center of the room screen. Confirmed
-        # pixel-identical (MAD 0.00) across three room screenshots taken
-        # minutes apart (ref-04-room-clean.png, ref-06-end-6/7/8.png) -- no
-        # independent animation in this box. It DOES read as a big diff
-        # (MAD ~42) when a NOTICE popup dims the whole room behind it
-        # (ref-03-room.png), same dimming mechanic as the lobby's AFK-kick
-        # popup -- that is expected, not a flaw: see notice_popup below and
-        # dismiss_notice()/actions.py, which exists precisely to clear that
-        # popup before this marker is checked.
-        "room": {"source": "ref-04-room-clean.png", "box": [630, 190, 980, 255]},
+        # RECALIBRATED 2026-09-21 (dual-netspeed B段 4th run): the box below
+        # used to be [630, 190, 980, 255], the "遊戲開始(F5)"/"準備(F5)"
+        # hexagon banner text -- that text is NOT stable, it reads
+        # "遊戲開始(F5)" for the host with nobody else in the room but
+        # "準備(F5)" once a second player has joined (host is no longer the
+        # only one who can start), so the box's MAD against the
+        # single-player reference crop is high for any real 2-player room.
+        # Caught because a real B段 run had the joiner plainly standing in
+        # the room screen (shots/dual-netspeed-b-22-set_ready-precondition.png)
+        # while detect_marker(...,"room") reported present=False, and the
+        # SAME run's create_pve_room only passed via the notice_popup
+        # fallback, not the room marker itself -- see _room_or_notice_check()
+        # below and create_pve_room()'s docstring. This box very likely never
+        # matched a real 2-player room in any prior run either; it was only
+        # ever checked against its own single-player source screenshot (see
+        # the "not yet validated against a live, freshly-captured screenshot"
+        # note on THRESHOLDS above).
+        #
+        # New box: the RED TEAM panel's skull/wing crest graphic, top-left of
+        # the room screen, well left of any player name/slot/ready-state text
+        # (box stops at x=200, the RED TEAM lettering itself starts further
+        # right). Chosen because it is decorative background art for the
+        # room's team panel -- not host/ready-state/player-count text -- so it
+        # should not vary with who is host, how many players are in, or
+        # whether they are ready. Checked (this task) against every
+        # 1616x1239 image in shots/ (321 images): all ~41 images that are
+        # genuinely a room screen (host alone, host with 2+ players, joiner's
+        # own view, various ready states, across many different past
+        # experiments' room screenshots including this run's own
+        # dual-netspeed-b-17/18/19/21/22) score exactly MAD 0.00 here; every
+        # other image (battle, lobby, shop, login, console, results, notice
+        # popups, etc.) scores >=41.85 -- a clean gap, no image anywhere in
+        # the gray zone between 0 and marker_accept=12.0. Still dims like the
+        # old box when a NOTICE popup is up (same whole-screen dim mechanic,
+        # see notice_popup below), so _room_or_notice_check()'s fallback is
+        # unaffected/still needed for that case.
+        "room": {"source": "ref-04-room-clean.png", "box": [30, 240, 200, 270]},
         # F1-F4 skill-point cost panel, top-right of the battle HUD. Static
         # labels/costs, not the live SP/kill counters next to it. accept=22
         # (vs default 12) so it still reads "battle" with the console open on
@@ -208,11 +248,37 @@ class ScreenResult:
     scores: dict = field(default_factory=dict)
 
 
+class ScreenSizeError(ValueError):
+    """Raised by _load_image() when an image is not SHOT_SIZE. Every region
+    box in this module is measured in shot.sh's pixel coordinates -- see the
+    2026-09-21 comment above SHOT_SIZE for why this must fail loudly instead
+    of degrading to console_prompt_state()/classify_screen()-style "unknown"."""
+
+
 def _load_image(img):
-    """Accept either a path or an already-opened PIL Image."""
-    if isinstance(img, Image.Image):
-        return img
-    return Image.open(img)
+    """Accept either a path or an already-opened PIL Image.
+
+    Hard size gate (2026-09-21, see comment above SHOT_SIZE): every region-
+    judgment entry point in this module (classify_screen, console_state,
+    is_tab_active, detect_marker via _region_array below, plus
+    console_prompt_state/battle_hud_state/account_field_state which call this
+    directly) reads fixed pixel boxes measured in shot.sh's window geometry.
+    An image of any other size still decodes, but every box in it lands on
+    the wrong pixels -- refuse it here, once, instead of letting each caller
+    silently degrade to "unknown" or a wrong statistic.
+    """
+    im = img if isinstance(img, Image.Image) else Image.open(img)
+    if im.size != SHOT_SIZE:
+        source = img if isinstance(img, str) else (getattr(im, "filename", None) or "<in-memory PIL.Image>")
+        raise ScreenSizeError(
+            f"screens.py: image size {im.size} != expected SHOT_SIZE {SHOT_SIZE} (source: {source}). "
+            "Region boxes here (PROMPT_BOX/BATTLE_SP_BOX/ACCOUNT_FIELD_BOX/BUILD_SPEC boxes) are "
+            "hardcoded in tools/win/shot.sh's window-frame pixel coordinates. Likely cause: this "
+            "image was not captured by shot.sh (e.g. a manual/hand-cropped screenshot) or the game "
+            "window/display resolution changed. Do not recalibrate any box against this image, and "
+            "do not treat this as an 'unknown' classification result."
+        )
+    return im
 
 
 def _region_array(img, box):
@@ -610,6 +676,18 @@ def main():
 
     args = ap.parse_args()
 
+    try:
+        _cli_dispatch(args)
+    except ScreenSizeError as e:
+        # Loud, deliberate failure (2026-09-21, see comment above SHOT_SIZE /
+        # _load_image): every CLI subcommand below that takes an <image>
+        # argument judges a fixed shot-space region, so a wrong-sized image
+        # must not print a normal-looking "unknown" result.
+        print(f"[ERROR] {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _cli_dispatch(args):
     if args.cmd == "build-atlas":
         build_atlas(args.shots_dir, args.out_dir)
         return
