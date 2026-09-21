@@ -174,6 +174,11 @@ def validate_experiment(exp):
             client_id = params.get("client_id")
             if not isinstance(client_id, str) or not client_id:
                 raise ExperimentError(f"step {i}: {name} needs params.client_id as a non-empty string")
+        if name == "enter_battle":
+            mech_key = params.get("mech_key", "F1")
+            if mech_key not in actions.MECH_SELECT_SLOTS:
+                raise ExperimentError(f"step {i}: enter_battle params.mech_key must be one of "
+                                       f"{sorted(actions.MECH_SELECT_SLOTS)}")
         if name == "host_start_battle":
             client_id = params.get("client_id", "host")
             if not isinstance(client_id, str) or not client_id:
@@ -344,8 +349,11 @@ def describe_step(step):
                 f"{actions.GAME_START_SN_OPCODE} send pkt (conn-filtered, NOT the gameStarted_ text marker)")
     if name == "enter_battle":
         cid = params.get("client_id")
-        return (f"enter_battle({cid!r}): focus_client({cid!r}), NO click sent (auto mech-select, see "
-                f"actions.py's CHANGE_SLOT_CN_OPCODE comment), wait<={actions.DEFAULT_ENTER_BATTLE_TIMEOUT_S}s "
+        mech_key = params.get("mech_key", "F1")
+        mech_name, mech_type = actions.MECH_SELECT_SLOTS.get(mech_key, (mech_key, None))
+        return (f"enter_battle({cid!r}, mech_key={mech_key!r}): focus_client({cid!r}), KEY ESC (skip cinematic), "
+                f"sleep {actions.ENTER_BATTLE_POST_ESC_WAIT_S}s, KEY {mech_key} ({mech_name}/{mech_type}, see "
+                f"actions.py's MECH_SELECT_SLOTS), wait<={actions.DEFAULT_ENTER_BATTLE_TIMEOUT_S}s "
                 f"for a {actions.CHANGE_SLOT_CN_OPCODE}/{actions.RESPAWN_CN_OPCODE} recv pkt (conn-filtered)")
     if name == "console_cmd_on":
         cid = params.get("client_id")
@@ -357,7 +365,7 @@ def describe_step(step):
     if name == "leave_battle":
         cid = params.get("client_id")
         return (f"leave_battle({cid!r}): focus_client({cid!r}), KEY ESC, click "
-                f"client{actions.BATTLE_ESC_LEAVE_BUTTON} (UNTESTED coordinate, zero visual reference, "
+                f"client{actions.BATTLE_ESC_LEAVE_BUTTON} (measured-not-click-tested coordinate, "
                 f"see actions.py), wait<={actions.DEFAULT_LEAVE_BATTLE_TIMEOUT_S}s for a "
                 f"{actions.LEAVE_SA_OPCODE} send pkt (conn-filtered)")
     if name == "idle_nudge":
