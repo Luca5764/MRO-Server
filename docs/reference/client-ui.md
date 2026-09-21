@@ -47,8 +47,12 @@
 | 現象 | 證據 | 由誰處理 |
 |---|---|---|
 | ESC 叫出的 `GAME MENU` **只能用滑鼠點，方向鍵＋Enter 無效**——沒有鍵盤 fallback | **[TEST] 操作者 2026-09-21 實機驗證** | `leave_battle()`（滑鼠點擊，座標 client `(867, 651)`） |
+| ⚠️ **按下 `離開` 之後還有第二個確認對話框**：「您要結束遊戲嗎？（結束將會有懲罰。）」，兩個並排的按鈕 `離開`（左）／`取消`（右）。**不處理它就離不開戰場** | **[OBS][SHOT] 操作者 2026-09-21**，C 段第三次實跑當場抓到並手動介入 | ⚠️ **尚無動作處理**——`leave_battle()` 只點了第一層，第二層沒點，所以等不到 `Leave_SA` |
+| **中途離開戰場「會有懲罰」**（對話框自己寫的） | [OBS] 同上 | 尚無處理。**測試帳號的戰績會被這個影響**，之後分析 P3 戰績寫回時要記得 |
 | `GAME MENU` 四項列距僅 60–65 px：`選項`／`封鎖聊天`(client y≈586)／**`離開`(651)**／`取消`(712)。**點偏一列往上會改變客戶端狀態、往下靜默逾時** | [TEST] 2026-09-21 像素掃描 `shots/battle-esc-menu-std.png` | 同上 |
 | 主控台用 **ScrollLock**（Pico 韌體轉成真實 F24）開啟 | [TEST] 2026-09-20 | `console_cmd_on()` |
+| **主控台指令確實會被遊戲接收**：`stat net` 打完疊層就出現，`netspeed 100000` 打完 `Speed` 從預設變成 **15000**（被 `MaxClientRate` 夾住）| **[TEST][SHOT] 2026-09-21 C 段第三次** | `console_cmd_on()`（打字後會存一張證據截圖） |
+| ⚠️ **但 `netspeed` 不會在對戰中跟房主重新協商**：加入者改成 15000 之後，房主 log 仍然只有加入時那兩行 `Client netspeed is 10000`，**沒有第三行** | **[TEST][LOG] 2026-09-21 C 段第三次**（三個環節都有獨立驗證） | — |
 | `stat net` **可用**，欄位含 `Ping`／`Channels`／`In,Out`／**`Speed`**／`Reps`／`RPC`／`PV`／`VoiceBandwidth`／`VoiceTime`／`ControlTime`。**`Speed` 就是 netspeed 的值** | [SHOT] 2026-09-21 `shots/battle-statnet.png` | 尚無動作會讀這個數字（netspeed 實驗要用） |
 
 ## 結算
