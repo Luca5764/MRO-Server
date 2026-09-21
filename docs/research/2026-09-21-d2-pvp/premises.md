@@ -40,10 +40,23 @@
 另外他提到：他遇到的 `EndRound_SN` 問題其實是 **`IsPlay` 被清掉**，補送 `BeginRound_SN` 就能解。
 我們在 `lobby.dispatch.js:264-347` 本來就會廣播 `BeginRound_SN`，所以沒遇到這個問題。
 
+## PvP 模式的上線順序（PM 2026-09-21 裁決）
+
+**第一個做 plain TDM／Rage**，理由兩條：
+1. 偵測鏈**還活著**（`ZTeamDM.uc:935-960` → `ZDeathMatch.uc:285` → `ZTeamDM.uc:880-895`），
+   房主會自己算分、時間到送 `Timeout_CN`——我們只要負責送 `EndRound_SN`／`EndGame_SN`。
+2. **沒有「任務狀態」可以跟伺服器判的勝方互相矛盾**——也就是說 P2（GPF）那個風險
+   在這兩個模式上**結構上不存在**。
+
+**Blow／SuddenDeath／Occupation 排後面**，等拿到 Moon 的崩潰堆疊再做：
+它們有任務狀態（炸彈、佔領區），正是 P2 描述的矛盾條件成立的地方，
+而 P2 目前是 ⬜、純源碼查不出來。
+
 ## 開工前要先補的
 
-1. **P1／P2 自己核對**——這兩條是 Moon 的說法，我們還沒驗。P2 尤其重要：
-   「矛盾會 GPF」意味著結算封包一錯就是崩潰，錯誤成本比 PvE 高一個量級。
+1. ~~**P1／P2 自己核對**~~ **→ P1 已完成（`verify-p1p2.md`，PM 機械核對通過）。
+   P2 維持 ⬜，PM 裁決不再花源碼工**——改用「第一個模式選沒有任務狀態的 TDM／Rage」
+   從設計上繞開，見上一節。
 2. **P6 補完**——`Dedi_End`／`Community_Chat_Clear`／`Event_Call`／`Scene_Change` 四個 callee。
 3. **P10 的影響評估**——PvE 靠 AI 不在乎掉幾發，PvP 直接影響公平性。要先決定
    「接受並寫進已知限制」還是「改客戶端二進位提高預算」（後者是另一個層級的決定）。
