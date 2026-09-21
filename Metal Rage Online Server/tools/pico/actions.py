@@ -2663,7 +2663,22 @@ def fire_burst(ctx, client_id, shots, interval_s):
     deliberate post-hoc, close_client()-after step, not a live check here);
     `ok` reports only whether every CLICK the loop sent came back
     non-failing, NOT that the client actually fired (no HitLoc/animation log
-    line is read mid-battle)."""
+    line is read mid-battle).
+
+    `detail` reports TWO separate durations (2026-09-22, PM review of this
+    same task's first commit): `firing_window_s` (first click() call's start
+    to the last click() call's return -- ONLY the actual clicking, no
+    focus_client()/precondition overhead) and the pre-existing `total_s`
+    (ActionResult.duration_s, the whole action from entry, INCLUDING
+    focus_client (~2-5s) and the precondition screenshot (~1s)). The PM's own
+    reason for requiring both: dividing a post-hoc WeaponLog Fire-line count
+    by `total_s` would systematically understate the real fire rate -- for a
+    fast pass (e.g. 30 shots @ 0.25s apart, ~7s of actual clicking) a ~5s
+    focus+precondition overhead folded into the denominator is not a rounding
+    error, it is a large fraction of the number being divided by. Use
+    `firing_window_s` for that division; `total_s` is kept only for the
+    step's own bookkeeping (matches every other action's ActionResult.
+    duration_s convention)."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     if not isinstance(shots, int) or isinstance(shots, bool) or shots < 1:
@@ -2689,8 +2704,11 @@ def fire_burst(ctx, client_id, shots, interval_s):
 
     sent = 0
     fail_detail = None
+    fire_t0 = time.monotonic()
+    fire_t1 = fire_t0  # covers the shots=1 / immediate-failure-on-shot-1 case
     for i in range(shots):
         rc, out, err, elapsed = click(ctx, "left")
+        fire_t1 = time.monotonic()
         steps.append((rc, out, err, elapsed))
         if rc != 0:
             fail_detail = f"shot {i + 1}/{shots} non-success (rc={rc}): {out or err or '(no output)'}"
@@ -2699,14 +2717,16 @@ def fire_burst(ctx, client_id, shots, interval_s):
         if i < shots - 1:
             time.sleep(interval_s)
 
+    firing_window_s = fire_t1 - fire_t0
     total_s = time.monotonic() - t0
     ok = fail_detail is None and sent == shots
     if ok:
-        detail = (f"sent {sent}/{shots} CLICK left, {interval_s}s apart, {total_s:.1f}s wall-clock total, "
-                  f"0 non-success replies")
+        detail = (f"sent {sent}/{shots} CLICK left, {interval_s}s apart, firing_window_s={firing_window_s:.2f} "
+                  f"(first click to last click return, excludes focus/precondition overhead), "
+                  f"total_s={total_s:.2f} wall-clock (includes focus+precondition), 0 non-success replies")
     else:
         detail = (f"ABORTED (fail-closed): sent {sent}/{shots} CLICK left before stopping -- {fail_detail}; "
-                  f"{total_s:.1f}s wall-clock elapsed")
+                  f"firing_window_s={firing_window_s:.2f}, total_s={total_s:.2f} wall-clock elapsed")
     return ActionResult("fire_burst", ok, False, total_s, detail, None, None, steps)
 
 

@@ -23,6 +23,7 @@ Run: python3 test_fire_burst.py
 """
 
 import os
+import re
 import sys
 import unittest
 from unittest import mock
@@ -118,6 +119,60 @@ class FireBurstTest(unittest.TestCase):
             with self.assertRaises(actions.ActionError):
                 actions.fire_burst(ctx, "joiner", 10, -1.0)
             fake_click.assert_not_called()
+
+    def test_firing_window_excludes_focus_and_precondition_overhead(self):
+        """PM review (2026-09-22, this same task's first commit): total_s
+        (ActionResult.duration_s) includes focus_client()/the precondition
+        screenshot -- folding that into a Fire-count/T fire-rate calculation
+        would understate the real rate, especially for a fast/short burst.
+        firing_window_s must cover ONLY first-click-start to last-click-
+        return. Uses a fully fake monotonic clock (no real sleeping) so the
+        two overhead-injecting steps (focus_client, the precondition's
+        take_screenshot) are the ONLY things that advance time; the click()
+        calls and the loop's own (mocked) time.sleep advance nothing."""
+        ctx = _make_ctx()
+        clock = {"t": 0.0}
+
+        def fake_monotonic():
+            return clock["t"]
+
+        def fake_click(ctx_, button="left"):
+            return (0, "CLICK left", "", 1.0)
+
+        def fake_focus_client(ctx_, client_id):
+            clock["t"] += 0.05  # simulate focus_client()'s own real overhead
+            return actions.ActionResult("focus_client", True, False, 0.05, "ok", None, None, [])
+
+        def fake_take_screenshot(ctx_, label, proc=None):
+            clock["t"] += 0.05  # simulate the precondition screenshot's overhead
+            return "/fake/shots/x.png"
+
+        def fake_battle_hud_state(shot_path):
+            return "battle", 6400
+
+        with mock.patch.object(actions, "click", side_effect=fake_click), \
+             mock.patch.object(actions, "focus_client", side_effect=fake_focus_client), \
+             mock.patch.object(actions, "take_screenshot", side_effect=fake_take_screenshot), \
+             mock.patch.object(actions.time, "monotonic", side_effect=fake_monotonic), \
+             mock.patch.object(actions.time, "sleep", return_value=None), \
+             mock.patch.object(screens, "battle_hud_state", side_effect=fake_battle_hud_state):
+            result = actions.fire_burst(ctx, "joiner", 3, 0.0)
+
+        self.assertTrue(result.ok, result.detail)
+        m_fw = re.search(r"firing_window_s=([\d.]+)", result.detail)
+        m_total = re.search(r"total_s=([\d.]+)", result.detail)
+        self.assertIsNotNone(m_fw, result.detail)
+        self.assertIsNotNone(m_total, result.detail)
+        firing_window_s = float(m_fw.group(1))
+        total_s = float(m_total.group(1))
+        self.assertAlmostEqual(
+            firing_window_s, 0.0, places=2,
+            msg="firing_window_s must exclude focus_client/precondition overhead",
+        )
+        self.assertAlmostEqual(
+            total_s, 0.10, places=2,
+            msg="total_s must include the simulated focus+precondition overhead (0.05+0.05s)",
+        )
 
 
 class ConsoleCmdOnWhitelistTest(unittest.TestCase):
