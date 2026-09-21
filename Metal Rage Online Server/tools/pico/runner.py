@@ -170,7 +170,7 @@ def validate_experiment(exp):
         # ActionError/_focus_or_fail(), same as e.g. select_map's tab-name
         # checks are run-time in actions.py, not here).
         if name in ("launch_client", "close_client", "login_as", "join_room", "set_ready",
-                    "enter_battle", "console_cmd_on", "leave_battle", "idle_nudge"):
+                    "enter_battle", "console_cmd_on", "leave_battle", "idle_nudge", "fire_burst"):
             client_id = params.get("client_id")
             if not isinstance(client_id, str) or not client_id:
                 raise ExperimentError(f"step {i}: {name} needs params.client_id as a non-empty string")
@@ -201,6 +201,18 @@ def validate_experiment(exp):
                     f"step {i}: console_cmd_on needs params.text in "
                     f"{sorted(actions.CONSOLE_CMD_ON_WHITELIST_EXACT)} or matching 'netspeed <digits>'"
                 )
+        if name == "fire_burst":
+            shots = params.get("shots")
+            interval_s = params.get("interval_s")
+            if not isinstance(shots, int) or isinstance(shots, bool) or shots < 1:
+                raise ExperimentError(f"step {i}: fire_burst needs params.shots as a positive int")
+            if shots > actions.FIRE_BURST_MAX_SHOTS:
+                raise ExperimentError(
+                    f"step {i}: fire_burst params.shots={shots} exceeds sanity ceiling "
+                    f"{actions.FIRE_BURST_MAX_SHOTS}"
+                )
+            if not isinstance(interval_s, (int, float)) or isinstance(interval_s, bool) or interval_s < 0:
+                raise ExperimentError(f"step {i}: fire_burst needs params.interval_s as a non-negative number")
     sc = exp.get("stop_conditions", {})
     if not isinstance(sc, dict):
         raise ExperimentError("'stop_conditions' must be an object")
@@ -375,6 +387,18 @@ def describe_step(step):
     if name == "idle_nudge":
         cid = params.get("client_id")
         return f"idle_nudge({cid!r}): focus_client({cid!r}), mouse_wiggle, check no {actions.LEAVE_CQ_OPCODE} recv since"
+    if name == "fire_burst":
+        cid = params.get("client_id")
+        shots = params.get("shots")
+        interval_s = params.get("interval_s")
+        total = None
+        if isinstance(shots, int) and isinstance(interval_s, (int, float)) and shots > 0:
+            total = (shots - 1) * interval_s
+        return (f"fire_burst({cid!r}, shots={shots!r}, interval_s={interval_s!r}): focus_client({cid!r}), "
+                f"precondition=battle HUD up, then {shots!r}x CLICK left (no mouse move) "
+                f"{interval_s!r}s apart{f' (~{total:.1f}s total)' if total is not None else ''}, "
+                f"fail-closed on the first non-success CLICK (see actions.py's fire_burst docstring for "
+                f"what 'non-success' means at this layer)")
     return f"{name}: {params}"
 
 

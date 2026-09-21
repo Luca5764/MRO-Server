@@ -1,0 +1,250 @@
+{
+  "id": "round2-probe-firerate",
+  "purpose": "round2-probe-firerate: 單人探針，先於 round2-projectile.json 之前跑，一次拿三個答案（高階 2026-09-22 追加指示）：(a) F5 機體槽實際配的是哪一把主武器、(b) 那把武器的實際射速（發/秒）、(c) 單人環境（沒有房主端 IsNetReady 速率預算，因為沒有其他連線要廣播）的 HitLoc -> Fire 缺口基準值，之後要從雙人量測的缺口裡扣掉這個純本機冷卻造成的量。只用一個實例 host（副本 C:\\Games\\MetalRage Online 2，帳號 mrotesthost），不啟動 joiner。為什麼不是一個 session 裡三段 fire_burst 中間插 keepalive_wait（原本的設計）：run-*.log 一律沒有逐行時間戳（docs/journal/2026-09-20-1820-projectile-loss-counted.md「這輪的 log 沒有時間戳，看不出來」），純靠 runner 自己記的壁鐘時間事後回推切不出三段的邊界。找得到的三個候選 marker 都不能用：WeaponLog 本身是 toggle，段間再打一次會關掉（round2-plan.md 明講「每次重開客戶端都要重開一次」，不是「每段」）；`stat net` 只在畫面疊一層數字（docs/reference/client-ui.md「`stat net` 打完疊層就出現」），沒有任何日誌證據顯示它會寫進 run-*.log 的 ScriptLog；`netspeed <N>` 寫進 log 的 'Client netspeed is N' 行，經證實是房主端在對方連線建立當下記錄對方的協商值（docs/reference/client-ui.md「`netspeed` 不會在對戰中跟房主重新協商...沒有第三行」），單人場景裡自己對自己打這個指令沒有任何確認過的 log side effect。三者都不成立，所以照高階給的 fallback：「做不到就明講做不到...大不了分三次跑」——這個檔案裡面就是三次完整的launch->login->建房->進戰場->開火->離開->關閉，各自用不同的 interval_s，靠 close_client() 各自 flush 出一份獨立的 run-<時間戳>.log（Play Second Client.bat 用 -log=run-<時間>.log，每次啟動一個新檔不會截斷，docs/journal/2026-09-20-2030-same-machine-and-netspeed.md），檔案本身就是切分邊界，不需要腳本裡的 marker。代價是每段都要重新建房開戰，壁鐘時間變成 3 倍，換到的是不需要賭任何未驗證的 log 行為。三段：快 interval_s=0.25、中 interval_s=1.0、慢 interval_s=2.0，各 30 發（fire_burst 的 shots=30），mech_key 固定用 'F5'（ROXANNE，工兵型，actions.py MECH_SELECT_SLOTS）-- 這是高階指定的值，不是占位符，目的正是要用這一輪去確認 F5 實際配的主武器是不是 MTE_a 砲類（round2-plan.md 需要的那把）；如果不是，round2-projectile.json 的 mech_key 占位值就要換別的槽重新探。每段結束後 fire_burst 的 ActionResult.detail 都會帶壁鐘總耗時（actions.py 這次任務加的），配合離線讀 log 的 Fire 行數，射速 = Fire 行數 / fire_burst 回報的壁鐘秒數（不是 shots*interval_s 的理論值，因為每發實際點擊/處理都有額外開銷）。每段流程（三段完全一樣，只有帳號重登入與 interval_s 不同）：launch_client(host) -> login_as(host, mrotesthost) -> focus_client(host) -> create_pve_room -> dismiss_notice -> select_map(name=infiltrate，即 Map_PC04 潛入作戰，同 round2-projectile.json 的理由) -> idle_nudge(host) -> host_start_battle(host) -> enter_battle(host, mech_key='F5') -> console_cmd_on(host, 'WeaponLog')（每段各自的客戶端進程都是新的，toggle 狀態每次都是'關'，這裡打一次剛好是'開'，不會重蹈 2026-09-20 開開關關的覆轍）-> fire_burst(host, shots=30, interval_s=<該段的值>) -> leave_battle(host) -> close_client(host)。AFK 自踢視窗（每段都一樣，跟 round2-projectile.json 用同一套保守加總算法，細節見該檔 purpose）：這裡整段流程只有一個 idle_nudge（高階指定的順序，select_map 後、host_start_battle 前），窗 1（create_pve_room 的確認點擊 -> idle_nudge 的 wiggle）= create_pve_room confirm 等待上限 10s + dismiss_notice 檢查 ~1s + 其等待上限 6s + select_map 的 precondition 截圖 ~1s + 選圖彈窗等待上限 6s + 0x00220221 recv 等待上限 10s + idle_nudge 的 focus ~5s + wiggle ~1s = 40s（margin 20s，比 round2-projectile.json 的任何一段都窄，因為這裡沒有像那支腳本一樣在 select_map 前後各放一個 idle_nudge 分攤，是高階給的流程本來就只要求一個；40s 仍在 60s 門檻內，只是餘裕比較小，留意如果實測 focus/precondition 比 ~5s/~1s 的估計值慢很多，這段可能需要事後加一個idle_nudge）。窗 2（idle_nudge 的 wiggle -> host_start_battle 自己的 F5 送出）= host_start_battle 的 focus ~5s + precondition ~1s = 6s（margin 54s，很寬）。host_start_battle 之後直到 enter_battle 之間的等待（120s 上限）不算進 AFK 空窗，理由與 round2-projectile.json 相同：那時已經離開房間畫面，進入載入/開場動畫，L5 那條房間閒置自踢規則描述的是房間畫面，不是戰場載入畫面。WeaponLog 兩個數字怎麼讀（PM 2026-09-22 核對過的實際格式，以 C:\\Games\\MetalRage Online 2\\data\\System\\run-213726.73.log 2026-09-20 那場為證，68 HitLoc / 47 Fire）：分母 grep -c 'HitLoc=== >' run-*.log；分子 grep -c 'Now Animation Name : Map_PC04\\..*   Fire$' run-*.log（武器名帶地圖前綴，且同一個 'Now Animation Name' 也會印 SelectIdle/DeSelectIdle，pattern 要收在行尾'   Fire'，不要用寬鬆到連 SelectIdle 都算進去的版本）。武器名本身（(a) 的答案）就是這行裡 'Map_PC04.' 後面、'   Fire' 前面那一段文字，不需要另外的指令去查。都是關閉客戶端之後的離線分析，這支腳本不讀 log。成功 = 每段 13 個步驟全部 ok（3 段共 39 步），失敗先看：select_map（同round2-projectile.json，'infiltrate' 座標 UNTESTED）、enter_battle（'F5' 對應 ROXANNE，目前沒有任何實機截圖驗證這一槽會不會出生，是這次探針要驗的東西之一，如果 enter_battle 卡住表示連出生都有問題，(a)(b)(c) 三個答案都拿不到）、fire_burst（非成功 CLICK 會在第幾發中止，見 detail）。",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    }
+  },
+  "steps": [
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "select_map",
+      "params": {
+        "name": "infiltrate"
+      }
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": "F5"
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "WeaponLog"
+      }
+    },
+    {
+      "action": "fire_burst",
+      "params": {
+        "client_id": "host",
+        "shots": 30,
+        "interval_s": 0.25
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "select_map",
+      "params": {
+        "name": "infiltrate"
+      }
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": "F5"
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "WeaponLog"
+      }
+    },
+    {
+      "action": "fire_burst",
+      "params": {
+        "client_id": "host",
+        "shots": 30,
+        "interval_s": 1.0
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "select_map",
+      "params": {
+        "name": "infiltrate"
+      }
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": "F5"
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "WeaponLog"
+      }
+    },
+    {
+      "action": "fire_burst",
+      "params": {
+        "client_id": "host",
+        "shots": 30,
+        "interval_s": 2.0
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    }
+  ],
+  "stop_conditions": {
+    "max_consecutive_failures": 1
+  },
+  "max_wall_clock_s": 2400,
+  "max_image_reviews": 0
+}
