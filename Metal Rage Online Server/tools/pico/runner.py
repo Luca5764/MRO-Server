@@ -323,7 +323,8 @@ def describe_step(step):
                 f"click client{actions.LOGIN_ACCOUNT_FIELD} (帳號), KEY HOME, {actions.ACCOUNT_FIELD_CLEAR_KEYPRESSES}x "
                 f"KEY DELETE (clear any leftover account text), TYPE {account!r}, KEY TAB, TYPE "
                 f"{actions.LOGIN_DUMMY_PASSWORD!r}, KEY ENTER, wait<={actions.DEFAULT_LOGIN_TIMEOUT_S}s for a "
-                f"{actions.LOGIN_CQ_OPCODE} recv pkt, wait<=15s for screen=lobby, resolve+store conn_id")
+                f"{actions.LOGIN_CQ_OPCODE} recv pkt, wait<=15s for screen=lobby, resolve+store "
+                f"dispatch_conn_id (9211) and game_conn_id (30907)")
     if name == "join_room":
         cid = params.get("client_id")
         room_name = params.get("room_name")
