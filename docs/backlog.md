@@ -785,3 +785,47 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 
 找到寫入指令（VA ＋ 所屬函式 ＋ 值的來源），或明確證明「靜態手段已用盡」並列出
 還沒排除的最後候選集合。**上面那條 [TEST] 的矛盾一定要有交代。**
+
+## LOGIN-RACE：單客戶端的 `login()` 有跟 `login_as()` 一樣的焦點競態（未修）
+
+開立：2026-09-21 高階。
+
+### 目標
+
+把 `login_as()` 的焦點驗證（探測字元）套用到單客戶端的 `login()`，或確認它不需要。
+
+### 背景
+
+2026-09-21 C 段第二次實跑，`login_as()` 的點擊沒落在帳號欄，`mrotesthost` 打進密碼欄、
+`x` 打進帳號欄，認證失敗（[SHOT] `shots/dual-netspeed-c-06-login_as-lobby-4.png`）。
+**這是隨機競態**——同樣的程式碼在 B 段連續成功六次。
+
+`login_as()` 已修（`_confirm_account_focus()`：打一個丟棄用探測字元，比對密碼欄
+stddev 差值，不通過就重試點擊一次、再不過就失敗，絕不送真帳密）。
+
+**但單客戶端的 `login()` 是完全相同的序列**（`click_at(LOGIN_ACCOUNT_FIELD)` →
+`type_text(account)` → `TAB` → `type_text(dummy)` → `ENTER`），甚至更簡陋——
+連 `account_field_state()` 的清空判斷都沒有。**理論上有一模一樣的競態風險。**
+
+### 範圍
+
+`Metal Rage Online Server/tools/pico/actions.py` 的 `login()`。
+用到它的劇本：`U-relaunch-login.json`（以及任何呼叫 `relaunch_client` 的）。
+
+### 限制
+
+- 這條路徑**已被既有劇本驗證過**，改動要證明逐字不變（`git stash` 對照 validate 與 dry-run）。
+- 不放寬任何護欄。唯讀驗證，不啟動客戶端。
+
+### 交付
+
+commit ＋ 離線測試（比照 `test_login_as_focus_probe.py`）。
+
+### 完成條件
+
+`login()` 有焦點驗證，或明確寫出「為什麼它不需要」的依據（例如它的呼叫時機保證焦點狀態）。
+
+### 為什麼沒有現在做
+
+C 段是今天的優先；在實跑前動一條已驗證的路徑是不必要的風險。
+**但這是個潛伏 bug，會在某次單客戶端無人跑時隨機咬人，而且症狀會很莫名其妙。**
