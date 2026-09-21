@@ -429,6 +429,38 @@ DEFAULT_LEAVE_BATTLE_TIMEOUT_S = 60.0
 # 離開, and there is no keyboard fallback if this coordinate is off.
 BATTLE_ESC_LEAVE_BUTTON = (867, 651)
 
+# The first-layer GAME MENU's 離開 row above does NOT itself leave the battle
+# -- it opens a SECOND confirm dialog: "您要結束遊戲嗎？（結束將會有懲罰。）"
+# with two buttons side by side (NOT stacked like the first layer): 離開
+# (left) / 取消 (right). [OBS] 操作者 2026-09-21 C 段第三次實跑 saw this
+# second layer and had to click it manually -- the old leave_battle() only
+# clicked the first layer, so it never actually left (see LEAVE_SA_OPCODE's
+# own comment below and screens.leave_confirm_state()'s docstring for the
+# real captures of this stuck dialog).
+#
+# Measured (this task) from shots/battle-leave-confirm-std.png ([SHOT]
+# 1616x1239, shot.sh standard geometry, CLIENT_OFFSET (8,31)): same technique
+# as BATTLE_ESC_LEAVE_BUTTON above -- brightness-weighted centroid of each
+# button's own label glyphs (connected-component color mask, not raw MAD),
+# cross-checked against the label's own bounding-box center (agreed within
+# ~2px, same margin as the first-layer measurement):
+#   離開 (left, THIS button)  shot ~(755, 703)  client ~(747, 672)
+#   取消 (right, NOT this one) shot ~(860, 703)  client ~(852, 672)
+# Horizontal spacing between the two buttons is ~105px (client) -- UNLIKE the
+# first layer's ~60px VERTICAL row spacing, a miss here is left/right, not
+# up/down. There is no recoverable failure mode either way: clicking too far
+# right silently lands on 取消 (dialog just closes, no Leave_SA, action times
+# out with no visible error) same as the first layer's overshoot. NOT
+# click-tested in a live client yet, same caveat as BATTLE_ESC_LEAVE_BUTTON.
+#
+# LEAVE_CONFIRM_CANCEL_BUTTON is recorded here (not used by any action yet)
+# because it is the only place this coordinate has been measured -- a future
+# "abort a leave" action, if one is ever added, should reuse it rather than
+# re-measuring.
+LEAVE_CONFIRM_LEAVE_BUTTON = (747, 672)    # 離開 (confirm) in the second-layer dialog
+LEAVE_CONFIRM_CANCEL_BUTTON = (852, 672)   # 取消 (abort) in the second-layer dialog -- NOT wired to any action
+DEFAULT_LEAVE_CONFIRM_TIMEOUT_S = 10.0     # wait for the second dialog to appear after the first click
+
 
 class ActionError(Exception):
     """Raised for a structural problem (bad params, unknown tab, forbidden
@@ -841,6 +873,20 @@ def _console_check(expect_state, variant="lobby"):
         detail = f"console_state({variant})={state} open={so:.2f} closed={sc:.2f} margin={margin:.2f}"
         score = so if expect_state == "open" else sc
         return ok, gray, detail, score
+    return check
+
+
+def _leave_confirm_check(expect_state):
+    """leave_battle()'s check for the second-layer "您要結束遊戲嗎？" dialog
+    (screens.leave_confirm_state, LEAVE_CONFIRM_LEAVE_BUTTON's own comment
+    above). No "unknown" gray zone -- see that function's own docstring
+    (0/417 false positives across every shots/ reference checked for this
+    task, at either state)."""
+    def check(shot_path):
+        state, (left_n, gap_n, right_n) = screens.leave_confirm_state(shot_path)
+        ok = state == expect_state
+        detail = f"leave_confirm={state} left_n={left_n} gap_n={gap_n} right_n={right_n}"
+        return ok, False, detail, float(left_n)
     return check
 
 
@@ -2535,18 +2581,35 @@ def console_cmd_on(ctx, client_id, text):
 
 
 def leave_battle(ctx, client_id):
-    """Triggered by: pressing ESC to open the in-battle menu, then clicking
-    'leave' -- dispatch/gate.game.dispatch.js's own comment on Leave_CQ
-    0x00222131 names this exact client action. See BATTLE_ESC_LEAVE_BUTTON's
-    comment above: the coordinate is now measured (pixel-scanned) from a
-    real screenshot, not the old zero-reference guess, but it is still NOT
-    click-tested in a live client, and there is no keyboard fallback
-    ([TEST] 2026-09-21: arrow keys + Enter do nothing on this menu) -- if
-    the measurement is off by one ~60px row, the click either silently
-    blocks chat (one row up) or silently does nothing (one row down), and
-    this action times out at DEFAULT_LEAVE_BATTLE_TIMEOUT_S with no further
-    blind click attempted (fail closed, per design.md 第 8 節 "遇到任何非
-    預期畫面 -> 立即 halt，不重試").
+    """Triggered by: pressing ESC to open the in-battle menu, clicking
+    'leave' there, then confirming a SECOND dialog -- dispatch/
+    gate.game.dispatch.js's own comment on Leave_CQ 0x00222131 names this
+    exact client action. ⚠️ Leaving mid-battle HAS A PENALTY -- the second
+    dialog's own on-screen text says so verbatim ("您要結束遊戲嗎？結束將
+    會有懲罰。", [SHOT] shots/battle-leave-confirm-std.png) -- this action
+    is not a free/neutral no-op for whatever campaign/room state the leaver
+    was in.
+
+    Two-layer click sequence (2026-09-21, this task -- [OBS] 操作者 C 段第三
+    次實跑 saw the second layer and had to click it by hand; the previous
+    version of this action only clicked the first layer and therefore never
+    actually left, see LEAVE_CONFIRM_LEAVE_BUTTON's own comment above for the
+    real stuck-dialog captures this explains):
+      1. ESC opens the first GAME MENU (4 stacked rows); click
+         BATTLE_ESC_LEAVE_BUTTON (離開, one of 4 rows stacked top-to-bottom).
+      2. That opens a second dialog with 2 buttons SIDE BY SIDE (not
+         stacked): click LEAVE_CONFIRM_LEAVE_BUTTON (離開, left) --
+         LEAVE_CONFIRM_CANCEL_BUTTON (取消, right) is the wrong-direction
+         neighbor here, same "one button over = silent failure" risk as step
+         1, just left/right instead of up/down.
+    Between the two clicks this action confirms the second dialog actually
+    opened (screens.leave_confirm_state, DEFAULT_LEAVE_CONFIRM_TIMEOUT_S) --
+    if it never opens (e.g. step 1's coordinate is off), this action fails
+    closed here WITHOUT attempting the second click blindly (design.md 第 8
+    節 "遇到任何非預期畫面 -> 立即 halt，不重試"). Neither coordinate is
+    click-tested in a live client yet, and there is no keyboard fallback for
+    either dialog ([TEST] 2026-09-21: arrow keys + Enter do nothing on the
+    first menu; not separately tested on the second).
 
     Completion (design.md section 3, 60s nominal): Leave_SA (LEAVE_SA_
     OPCODE), filtered to THIS instance's game_conn_id -- a 0x0022xxxx room
@@ -2583,8 +2646,9 @@ def leave_battle(ctx, client_id):
         return fail
 
     if ctx.dry_run:
-        detail = (f"dry-run: would key ESC, click {BATTLE_ESC_LEAVE_BUTTON} "
-                  f"(measured-not-click-tested coordinate, see docstring)")
+        detail = (f"dry-run: would key ESC, click {BATTLE_ESC_LEAVE_BUTTON} (first layer), "
+                  f"then click {LEAVE_CONFIRM_LEAVE_BUTTON} (second-layer confirm) "
+                  f"(measured-not-click-tested coordinates, see docstring)")
         return ActionResult("leave_battle", True, False, time.monotonic() - t0, detail, None, None, steps)
 
     conn_id, fail = _require_game_conn(ctx, "leave_battle", client_id, t0, steps)
@@ -2594,13 +2658,23 @@ def leave_battle(ctx, client_id):
     steps.append(key(ctx, "ESC"))
     time.sleep(1.0)
     steps.append(click_at(ctx, BATTLE_ESC_LEAVE_BUTTON))
+    ok_confirm, _, detail_confirm, _, shot_confirm, elapsed_confirm = wait_for(
+        ctx, "leave_battle-confirm", DEFAULT_LEAVE_CONFIRM_TIMEOUT_S, _leave_confirm_check("open"))
+    if not ok_confirm:
+        detail = (f"ESC + click {BATTLE_ESC_LEAVE_BUTTON} (first layer); second confirm dialog "
+                  f"did NOT appear within {DEFAULT_LEAVE_CONFIRM_TIMEOUT_S}s ({detail_confirm}, "
+                  f"waited {elapsed_confirm:.1f}s) -- NOT attempting second click blind (fail closed)")
+        return ActionResult("leave_battle", False, False, time.monotonic() - t0, detail, shot_confirm, None, steps)
+    steps.append(click_at(ctx, LEAVE_CONFIRM_LEAVE_BUTTON))
     ok_pkt, found, elapsed = wait_for_log_pkts(
         ctx, DEFAULT_LEAVE_BATTLE_TIMEOUT_S,
         {"leave_sa": lambda e: e.get("dir") == "send" and e.get("op") == LEAVE_SA_OPCODE},
         baseline_ms=base, conn=conn_id,
     )
     ok_room, gray, detail_room, score, shot, _ = wait_for(ctx, "leave_battle-room", 10.0, _room_or_notice_check())
-    detail = (f"ESC + click {BATTLE_ESC_LEAVE_BUTTON} (measured-not-click-tested coordinate); "
+    detail = (f"ESC + click {BATTLE_ESC_LEAVE_BUTTON} (first layer, measured-not-click-tested); "
+              f"second dialog confirmed open ({detail_confirm}, waited {elapsed_confirm:.1f}s); "
+              f"click {LEAVE_CONFIRM_LEAVE_BUTTON} (second-layer confirm); "
               f"Leave_SA({LEAVE_SA_OPCODE}) send (conn={conn_id}): {'seen' if ok_pkt else 'MISSING'} "
               f"(waited {elapsed:.1f}s); room/notice: {detail_room}")
     return ActionResult("leave_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)

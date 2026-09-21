@@ -365,8 +365,12 @@ def describe_step(step):
     if name == "leave_battle":
         cid = params.get("client_id")
         return (f"leave_battle({cid!r}): focus_client({cid!r}), KEY ESC, click "
-                f"client{actions.BATTLE_ESC_LEAVE_BUTTON} (measured-not-click-tested coordinate, "
-                f"see actions.py), wait<={actions.DEFAULT_LEAVE_BATTLE_TIMEOUT_S}s for a "
+                f"client{actions.BATTLE_ESC_LEAVE_BUTTON} (first layer, measured-not-click-tested), "
+                f"wait<={actions.DEFAULT_LEAVE_CONFIRM_TIMEOUT_S}s for the second confirm dialog "
+                f"(screens.leave_confirm_state) to open, click "
+                f"client{actions.LEAVE_CONFIRM_LEAVE_BUTTON} (second layer, 離開/left of two -- "
+                f"has a penalty per the dialog's own text, see actions.py's leave_battle docstring), "
+                f"wait<={actions.DEFAULT_LEAVE_BATTLE_TIMEOUT_S}s for a "
                 f"{actions.LEAVE_SA_OPCODE} send pkt (conn-filtered)")
     if name == "idle_nudge":
         cid = params.get("client_id")
