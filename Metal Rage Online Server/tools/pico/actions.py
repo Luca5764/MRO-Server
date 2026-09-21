@@ -212,21 +212,29 @@ FOCUS_FOREGROUND_READBACK_POLL_INTERVAL_S = 0.25
 # 16 vs 24 mainly trims the batch's own duration, not the invocation count.
 ACCOUNT_FIELD_CLEAR_KEYPRESSES = 16
 
-# join_room()'s room-list-row target. HIGH-RISK UNTESTED GUESS -- see
-# join_room()'s own docstring for the full derivation and why this is one of
-# this task's two flagged highest-risk coordinates (the other is
-# BATTLE_ESC_LEAVE_BUTTON below). Derived by proportion (fraction of window
-# width/height, NOT a 1:1 pixel copy) from shots/14-create-room.png, an
-# OLDER, DIFFERENT-RESOLUTION (1040x807, non-4:3) full-window screenshot of
-# the empty lobby room list -- not the current 1600x1200 client atlas. Header
-# row bottom edge measured at that shot's y=195 (of 807), first content row
-# center estimated at y=~209 within the "Channel" column (x=~600 of 1040);
-# scaled to this module's 1600x1200 client space: x=600/1040*1600=923,
-# y=209/807*1200=311. Assumes exactly one room is visible (the one just
-# created by the host) -- there is no OCR/text-matching here to find a
-# specific room by name among several, so `room_name` is logged for
-# traceability only, never used to pick a row.
-ROOM_LIST_FIRST_ROW_CLICK = (920, 310)
+# join_room()'s room-list-row target. RE-MEASURED 2026-09-21 against a real
+# join_room failure (B段第一次實跑: double-click at the old (920, 310) waited
+# 45.3s with no Enter_SA -- it landed below the row, in empty list space).
+# Source: shots/dual-netspeed-b-15-join_room-precondition.png, the actual
+# precondition screenshot from that failing run -- a 1616x1239 FULL-WINDOW
+# screenshot (title bar + borders included) of the lobby with exactly one
+# room ("mrotesthost", 協力) listed. Measured with PIL by scanning
+# arr[y1:y2, x1:x2].max(axis=2) for bright (>150) pixels to find the room
+# ROW TEXT's own bounding box in screenshot space, not eyeballed:
+#   - row text vertical band: y=298..313 (brightness-weighted center
+#     y=305.7); the header row above it (編號/種類/... column labels) is a
+#     separate band at y=255..269 for comparison/sanity-check.
+#   - 房間名稱 column ("mrotesthost" text) horizontal band: x=805..921
+#     (center x=863).
+# This screenshot's client-area offset is (8, 31) (title bar + border, see
+# this task's contract) -- subtract that to get client coords:
+#   x = 863 - 8 = 855, y = 305.7 - 31 = 274.7 -> rounded (855, 275).
+# Still assumes exactly one room is visible (the one just created by the
+# host) -- there is no OCR/text-matching here to find a specific room by
+# name among several, so `room_name` is logged for traceability only, never
+# used to pick a row. This is a re-measurement, not a click-test -- the next
+# dual-netspeed run is what actually confirms it; still 🟡, not a ✅.
+ROOM_LIST_FIRST_ROW_CLICK = (855, 275)
 
 # Enter_CQ 0x00220231 / Enter_SA 0x00220232 (dispatch/gate.game.dispatch.js,
 # confirmed by reading that handler for this task): Enter_SA's body is 6
@@ -236,7 +244,15 @@ ROOM_LIST_FIRST_ROW_CLICK = (920, 310)
 # own comment on the Enter_CQ case names the client action: "double-click a
 # room row in the lobby room list".
 ENTER_SA_OPCODE = "0x00220232"
-DEFAULT_JOIN_ROOM_TIMEOUT_S = 45.0
+# Reduced 45.0 -> 20.0 (2026-09-21, B段第一次實跑): a correct double-click's
+# Enter_CQ/Enter_SA round trip is server processing + one log write, not a
+# multi-second UI wait -- either it lands within a few seconds or the click
+# missed the row and it will NEVER land, no matter how long we wait (the
+# 2026-09-21 failure ran the full 45.3s for exactly this reason). Waiting
+# the old 45s just burns down the room's own AFK-kick budget (see
+# idle_nudge()'s docstring and journal for the 60s figure now measured --
+# NOT the ~80s design.md assumed) for a signal that was never coming.
+DEFAULT_JOIN_ROOM_TIMEOUT_S = 20.0
 
 # User_State_SN 0x00220401, broadcast (to the whole room, including the
 # presser) when a non-host presses F5 to ready up -- READY-IMPL,
@@ -278,9 +294,16 @@ NETSPEED_CMD_RE = re.compile(r'^netspeed \d{1,7}$')
 CONSOLE_CMD_ON_WHITELIST_EXACT = {"stat net", "WeaponLog"}
 DEFAULT_CONSOLE_CMD_ON_CLOSE_TIMEOUT_S = 10.0
 
-# Leave_CQ 0x00220234 (room-level self-leave, e.g. the client's own ~80s
-# AFK-kick, ZGUIController.uc:945-948) -- idle_nudge() below only needs to
-# confirm this did NOT fire on the nudged conn.
+# Leave_CQ 0x00220234 (room-level self-leave, e.g. the client's own AFK-kick,
+# ZGUIController.uc:945-948 -- design.md L5 read that source as ~80s) --
+# idle_nudge() below only needs to confirm this did NOT fire on the nudged
+# conn. [TEST] 2026-09-21 B段第一次實跑's own session log measured this at
+# exactly 60,022 ms from Create_CQ (room creation) to the host's own
+# Leave_CQC on a run where the host received ZERO input in between (the old
+# join_room's 45s coordinate-miss timeout ate almost all of it) -- shorter
+# than design.md's ~80s. Not corrected in journal/design.md by this worker
+# task (中階不改 docs) -- treat 60s, not 80s, as this budget's ceiling until
+# a 高階 reconciles the two numbers.
 LEAVE_CQ_OPCODE = "0x00220234"
 
 # Leave_CQ 0x00222131 (in-battle leave) / Leave_SA 0x00222132 (dispatch/
@@ -2055,8 +2078,11 @@ def leave_battle(ctx, client_id):
 
 def idle_nudge(ctx, client_id):
     """Triggered by nothing the player would see -- a defensive keepalive
-    for design.md L5 (room-idle ~80s AFK self-kick, ZGUIController.uc:
-    945-948): focus_client(id) then one harmless zero-net mouse_wiggle().
+    for design.md L5 (room-idle AFK self-kick, ZGUIController.uc:945-948;
+    design.md read that source as ~80s, but LEAVE_CQ_OPCODE's own comment
+    above records a 2026-09-21 [TEST] measuring exactly 60,022ms in a real
+    run -- treat 60s as the live ceiling, see that comment): focus_client(id)
+    then one harmless zero-net mouse_wiggle().
 
     Completion (design.md section 3, 10s nominal): focus_client's own
     foreground readback succeeding (returned via _focus_or_fail() above) --
