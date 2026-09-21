@@ -523,6 +523,62 @@ def battle_hud_state(img):
     return ("battle" if green_px >= BATTLE_SP_MIN_PX else "not_battle"), green_px
 
 
+# login_as()'s account-field clear-skip check (actions.py, 2026-09-21 task:
+# "login_as clear-field cost reduction" -- a 2026-09-21 A-run logged 24
+# DELETEs at ~3.7s/key-invocation, a ~90s input-gap opener). Same "no stored
+# reference crop, measure a raw pixel statistic in a fixed box" technique as
+# console_prompt_state()/battle_hud_state() above (chosen BECAUSE those two
+# already establish it works without an atlas entry) -- NOT a MAD-against-
+# reference-crop marker like classify_screen()'s BUILD_SPEC, because no
+# reference screenshot of this field (empty OR filled) exists anywhere in
+# this repo to build one from (checked for this task: no shots/ dir at all in
+# this worktree, atlas/screen_login.png's box stops at x<685, short of the
+# input box itself).
+#
+# 🟡 [GUESS], UNCALIBRATED against a real screenshot: box below is estimated
+# from two already-measured constants, not a fresh measurement -- (1)
+# BUILD_SPEC["screens"]["login"]'s box [605,845,680,935], whose own comment
+# says it "stops short of the 帳號 input box itself (x<685) so the blinking
+# text-cursor there never enters this region", i.e. the field starts at
+# shot-x>=685; (2) LOGIN_ACCOUNT_FIELD's click point, actions.py's client
+# (777,829) -> shot (785,860) (client+CLIENT_OFFSET), taken as the field's
+# vertical center. Width/height are a plausible single-line-textbox guess,
+# NOT click-tested or screenshot-verified for this task (no client/shots
+# available in this worktree) -- flag for the next live run to confirm with
+# `python3 screens.py field <shot.png>` before trusting it. Deliberately
+# fails toward "has_text" (see account_field_state()'s docstring) so a wrong
+# guess here only ever costs the full clear it would have cost anyway, never
+# skips a clear that was actually needed (contract's hard rule: "不可以假設
+# 欄位是空的").
+ACCOUNT_FIELD_BOX = (686, 847, 900, 873)  # shot coords, x0,y0,x1,y1
+# Empty field = a flat UI fill (near-zero variance, same reasoning as
+# console_prompt_state's near-white-pixel-count vs battle_hud_state's
+# green-pixel-count: pick a raw statistic that is near-zero/near-uniform in
+# the "nothing here" case and clearly not in the "something here" case).
+# Text glyphs -- of ANY color, unlike battle_hud_state's fixed green -- create
+# high local contrast (glyph edges against the fill), which raw grayscale
+# std-dev picks up regardless of the field's actual theme colors, so this
+# does not need the exact fill/text colors calibrated, only the cutoff below.
+# 🟡 [GUESS]: threshold has no live measurement behind it (see box comment
+# above) -- picked only as "clearly above PNG/compression noise on a flat
+# fill, clearly below one visible glyph's edge contrast".
+ACCOUNT_FIELD_EMPTY_STDDEV_MAX = 3.0
+
+
+def account_field_state(img):
+    """Returns (state, stddev): state "empty" / "has_text" for the login
+    screen's 帳號 field (ACCOUNT_FIELD_BOX). No "unknown" state -- same
+    reasoning as battle_hud_state() above, a single statistic vs one cutoff
+    has no natural third bucket; callers that want a fail-safe default
+    should treat anything that isn't a confident "empty" as "has_text" (see
+    ACCOUNT_FIELD_BOX's comment for why "has_text" is the safe direction to
+    fail towards)."""
+    a = np.asarray(_load_image(img).convert("L"), dtype=np.float64)
+    x0, y0, x1, y1 = ACCOUNT_FIELD_BOX
+    sd = float(a[y0:y1, x0:x1].std())
+    return ("empty" if sd <= ACCOUNT_FIELD_EMPTY_STDDEV_MAX else "has_text"), sd
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -548,6 +604,9 @@ def main():
 
     p_battle = sub.add_parser("battle-hud", help="battle_hud_state() on one image, print the result")
     p_battle.add_argument("image")
+
+    p_field = sub.add_parser("field", help="account_field_state() on one image, print the result")
+    p_field.add_argument("image")
 
     args = ap.parse_args()
 
@@ -579,6 +638,11 @@ def main():
     if args.cmd == "battle-hud":
         state, green_px = battle_hud_state(args.image)
         print(f"state={state} green_px={green_px}")
+        return
+
+    if args.cmd == "field":
+        state, sd = account_field_state(args.image)
+        print(f"state={state} stddev={sd:.2f}")
         return
 
 

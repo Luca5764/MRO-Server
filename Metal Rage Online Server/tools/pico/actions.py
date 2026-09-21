@@ -170,14 +170,47 @@ FOCUS_FOREGROUND_READBACK_POLL_INTERVAL_S = 0.25
 
 # login_as()'s account-field clear (design.md section 3 row 1: "不可以假設
 # 帳號欄位是空的...明確做全選＋刪除再打字"). This module has no CTRL+A/select-all
-# primitive -- code.py's KEY/PRESS only ever holds one keycode at a time (no
-# simultaneous chord), so "select all" is not literally available. HOME
-# (cursor to the very start of the field) + this many DELETEs (forward,
-# removing whatever follows the cursor) clears the field regardless of what a
-# PREVIOUS login_as() call on the same instance left there. 🟡 [GUESS]: no
-# observed max login-field length -- comfortably above every known test
-# account ("Lucas"=5, "mrotest"=7, "mrotesthost"=11 chars).
-ACCOUNT_FIELD_CLEAR_KEYPRESSES = 24
+# primitive -- code.py's key_press() only ever presses+releases ONE keycode
+# per KEY command (kbd.press(kc); sleep; kbd.release(kc)), no simultaneous
+# chord -- [DLL-equivalent check for this task: read code.py's KEY_MAP/
+# key_press()/execute_command() "KEY"/"PRESS" branches directly, 2026-09-21;
+# KEY_MAP does list a CTRL/LCTRL/RCTRL entry, but nothing in execute_command()
+# ever presses two keycodes for one command, so "KEY CTRL" alone presses only
+# Ctrl -- CTRL+A is not reachable without a firmware change, which is out of
+# this task's scope]. HOME (cursor to the very start of the field) + this
+# many DELETEs (forward, removing whatever follows the cursor) clears the
+# field regardless of what a PREVIOUS login_as() call on the same instance
+# left there.
+#
+# [TEST] 2026-09-21 A-run, logs/actions.log 16:53:09-16:55:14: 24 separate
+# key(ctx, "DELETE") calls measured ~3.7s EACH end-to-end (one
+# pico_ctl.py invocation -> one powershell.exe launch -> pico_serial.ps1
+# opens the serial port -> Test-ForegroundGate -> one KEY DELETE round-trip
+# -> port closes -> process exits), ~90s total -- almost all of that is the
+# per-INVOCATION overhead (powershell.exe startup + serial port open/close),
+# NOT the actual keypress (code.py's key_press() default hold is 50ms). This
+# task's fix (see clear_text_field() below) batches HOME + all the DELETEs
+# into ONE pico_ctl.py/powershell.exe/serial-port-open call, the same
+# technique double_click_at() above already uses for CLICK_AT and justifies
+# with the same reasoning ("each ordinary call spins up its OWN
+# powershell.exe process ... batching ... into one PS1 invocation" -- ONLY
+# the per-invocation overhead is paid once; every individual "KEY DELETE"
+# line inside the batch is still separately gated by pico_serial.ps1's
+# Test-ForegroundGate, so this does not relax the foreground gate.
+#
+# Reduced from 24 -> 16 for this task (also lowers the batch's own
+# wall-clock time and its exposure to a mid-batch foreground interruption):
+# 🟡 [GUESS], no observed max login-field length, but still comfortably above
+# every known test account ("Lucas"=5, "mrotest"=7, "mrotesthost"=11 chars) --
+# NOT derived from a pixel measurement of the actual field content (see
+# screens.account_field_state()'s docstring for why: no reference screenshot
+# of a filled field exists in this worktree to calibrate a
+# width-in-pixels -> character-count conversion against, and a wrong guess
+# there could UNDER-clear, unlike a wrong guess on this fixed worst-case
+# count, which can only ever over-clear an already-empty tail of the field).
+# The dominant fix for the 90s window is the batching above, not this count;
+# 16 vs 24 mainly trims the batch's own duration, not the invocation count.
+ACCOUNT_FIELD_CLEAR_KEYPRESSES = 16
 
 # join_room()'s room-list-row target. HIGH-RISK UNTESTED GUESS -- see
 # join_room()'s own docstring for the full derivation and why this is one of
@@ -443,6 +476,22 @@ def double_click_at(ctx, xy, button="left"):
             raise ActionError(f"refusing to click forbidden target '{fname}' at {fxy}")
     cmd = f"CLICK_AT {x} {y} {button}"
     return run_pico(ctx, "batch", cmd, cmd)
+
+
+def clear_text_field(ctx, count):
+    """HOME + `count` DELETEs inside ONE `pico_ctl.py batch` call -- same
+    batching technique double_click_at() above uses for CLICK_AT, applied
+    here for login_as()'s account-field clear (see
+    ACCOUNT_FIELD_CLEAR_KEYPRESSES's comment for the measured ~3.7s/key cost
+    of sending each DELETE as its own separate key() call/powershell.exe
+    invocation, and why batching removes almost all of it). Each individual
+    "KEY HOME"/"KEY DELETE" line inside the batch is still separately gated
+    by pico_serial.ps1's Test-ForegroundGate (see that script's main
+    foreach-command loop) -- this does NOT relax or bypass the foreground
+    gate, it only avoids `count`+1 separate powershell.exe launches for what
+    is logically one action."""
+    _require_focused_client(ctx)
+    return run_pico(ctx, "batch", "KEY HOME", *(["KEY DELETE"] * count))
 
 
 def key(ctx, key_name):
@@ -1586,14 +1635,26 @@ def close_client(ctx, client_id):
 def login_as(ctx, client_id, account):
     """Triggered by: the same login flow as login() above, but for one
     instance of a dual-client run (design.md section 3): focus_client(id)
-    first, then explicitly clear whatever is already in the 帳號 field --
-    HOME (cursor to start) + ACCOUNT_FIELD_CLEAR_KEYPRESSES DELETEs, see
-    that constant's comment for why this (not a literal select-all, which
-    this module cannot send) -- before typing, because this action may run
-    more than once against the same already-launched instance across a
-    script (e.g. a relaunch), and a plain click+type on top of leftover
-    text from a PREVIOUS account would mangle both instead of overwriting
-    (design.md section 3 row 1's explicit warning).
+    first, then -- on the FIRST attempt only -- JUDGE whether the 帳號 field
+    already has something in it (screens.account_field_state() against the
+    login-screen screenshot already taken above, no extra shot.sh call) and
+    only clear it (HOME + ACCOUNT_FIELD_CLEAR_KEYPRESSES DELETEs, batched via
+    clear_text_field()) when that judged state is NOT a confident "empty" --
+    see account_field_state()'s docstring for why it fails toward "has_text"
+    on any uncertainty. This is a JUDGMENT, not an assumption: PM rule
+    (design.md section 3 row 1) is "不可以假設帳號欄位是空的", not "跳過清空這步" --
+    a screen read that comes back "empty" is evidence, an unread field is
+    not. On a SECOND attempt (the IME/notice-popup retry below) the field is
+    always cleared regardless of that first read, because THIS SAME call
+    already typed into it during attempt 0 -- there is nothing left to
+    "judge", clearing is known-necessary. See ACCOUNT_FIELD_CLEAR_KEYPRESSES's
+    comment for why this (not a literal select-all, which this module cannot
+    send) and for the measured per-key cost this task is fixing. Clearing at
+    all (on either attempt) matters because this action may run more than
+    once against the same already-launched instance across a script (e.g. a
+    relaunch), and a plain click+type on top of leftover text from a
+    PREVIOUS account would mangle both instead of overwriting (design.md
+    section 3 row 1's explicit warning).
 
     Completion (design.md section 3, 90s nominal) requires BOTH: the server
     receiving CQ_LOGIN_WASABII (LOGIN_CQ_OPCODE, same opcode as login())
@@ -1625,6 +1686,15 @@ def login_as(ctx, client_id, account):
             return ActionResult("login_as", False, grayl, time.monotonic() - t0,
                                  f"login screen not shown within 60s: {detl}", shotl, scorel, steps)
 
+    # Judge the field's current content from the login-screen screenshot
+    # `wait_for()` just took (shotl, non-dry-run only) -- reuses that shot
+    # instead of taking a new one. See login_as()'s docstring and
+    # screens.account_field_state()'s docstring for the fail-safe direction
+    # ("has_text" wins any ambiguity, never "empty").
+    field_state, field_stddev = None, None
+    if not ctx.dry_run:
+        field_state, field_stddev = screens.account_field_state(shotl)
+
     # Same IME_EN + notice-popup + SHIFT retry dance as login() above.
     ok_pkt, found, elapsed_pkt, base = False, {}, 0.0, None
     for attempt in range(2):
@@ -1632,9 +1702,13 @@ def login_as(ctx, client_id, account):
         if not ctx.dry_run:
             steps.append(run_pico(ctx, "raw", "IME_EN"))
             steps.append(click_at(ctx, LOGIN_ACCOUNT_FIELD))
-            steps.append(key(ctx, "HOME"))
-            for _ in range(ACCOUNT_FIELD_CLEAR_KEYPRESSES):
-                steps.append(key(ctx, "DELETE"))
+            # attempt==0: skip the clear only when the screen read a
+            # confident "empty" (see field_state above). attempt==1 (retry):
+            # always clear -- this same call already typed `account` into
+            # the field during attempt 0, so it is known non-empty, not
+            # merely judged so.
+            if not (attempt == 0 and field_state == "empty"):
+                steps.append(clear_text_field(ctx, ACCOUNT_FIELD_CLEAR_KEYPRESSES))
             steps.append(type_text(ctx, account))
             steps.append(key(ctx, "TAB"))
             steps.append(type_text(ctx, LOGIN_DUMMY_PASSWORD))
@@ -1664,7 +1738,8 @@ def login_as(ctx, client_id, account):
         ctx.clients[client_id].conn_id = conn_id
 
     detail = (f"login_cq({LOGIN_CQ_OPCODE}) recv: {'seen' if ok_pkt else 'MISSING'} "
-              f"(waited {elapsed_pkt:.1f}s); lobby: {detail_lobby}; conn_id={conn_id}")
+              f"(waited {elapsed_pkt:.1f}s); lobby: {detail_lobby}; conn_id={conn_id}; "
+              f"account_field_state={field_state}(stddev={field_stddev})")
     return ActionResult("login_as", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
