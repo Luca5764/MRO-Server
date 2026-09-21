@@ -466,3 +466,16 @@
 - Win11 的 `DisableExceptionChainValidation` 按 exe 檔名註冊，新檔名要自己加一筆 IFEO。
 - 四個觀察：(1) 起得來；(2) 同房開戰正常（房主 Lucas 的 hostAddress 指向本機，`test` 綁的是筆電 IP 所以不能當房主）；(3) 兩個視窗更新率**都是 1000 FPS**，沒有失焦降速，與 [OBS] Moon 影片一致；(4) log 互不干擾，但檔名跟著執行檔走且每次啟動截斷，已改用 `-log=run-<時間>.log`。
 - 同機投射物計數已跑：缺口 32–35%。見 `journal/2026-09-20-2030-same-machine-and-netspeed.md`。
+
+## RANK：結算評等永遠是 F（不擋 M2）
+
+> **2026-09-19 分析完成**（`research/2026-09-19-rank/notes.md`）：評等由伺服器送的 `User_Score_SN 0x00222221` 的 WinTeamRank 決定（1＝F … 11＝SS），我們從沒送過 → F。下一步：操作者決定評等公式；實驗先送固定值（例如 11），body 尾端的逐人資料先送 count=0（⬜ 是否安全）。
+
+> **狀態：2026-09-19 開立，分析已派出。**
+
+- [OBS] 完整打通初級 5 回合，結算 Rank F（`journal/2026-09-19-0900-r-round-impl.md` 實機驗證 2）。
+- [LOG] EndGame_SN 0x00222213 的分數欄位全 0；EndRound_SN 也全 0；Death_SN 的計分是暫定值（exp／point 每殺 10）。
+- 要查：客戶端結算頁的 Rank 由哪個欄位、依什麼公式算出（腳本 ~/mro-decrypted/src 的結算頁、EndGame_SN／Game_Score_SN／Reward_Record_User_SN 0x00220412 的 handler），伺服器該送什麼才合理。
+
+> 結案（中階 verifier，2026-09-21）：commit `e5f176f`（2026-09-19）加了 `config/server.json` 的 `pveFixedRank`（int 1-11，未設定則維持原行為＝不送 `User_Score_SN`＝Rank F），把固定值塞進 `Campaign_CN` 成功分支的 `User_Score_SN 0x00222221` WinTeamRank 欄位。實機 `pveFixedRank: 10` 時，[SHOT] `shots/campaign-result-screen.png`（檔案時間 2026-09-21 20:10）結算頁 RANK 顯示金色「S」，不再是 F。當時伺服器的 build 事件（`Metal Rage Online Server/logs/session-20260921-070017.jsonl` 第 2 行，`"ev":"build","reason":"start"`，時間戳 `2026-09-20T23:00:17.961Z` UTC＝本地 2026-09-21 07:00:17）帶 `"pveFixedRank":10`，branch `test-server` commit `26be66c`；`git merge-base --is-ancestor e5f176f 26be66c` 為真，確認該次啟動的版本含這個開關。**這只是「用固定值開關讓評等不再是 F」，不是「RANK 算對了」**：真正依擊殺／任務分數等表現算評等的公式還沒有做，追蹤見 `docs/backlog.md` 的「RANK-FORMULA」項目。
+

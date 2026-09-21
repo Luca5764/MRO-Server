@@ -168,15 +168,17 @@ H1、H3、H6、P1、P1b、Legend 機體授權、exp 公式、房間頭像（R14�
 
 **待審（中階，2026-09-20，worktree `~/mro-wt/conv-c` 分支 `conv-c`）：** `readyHostSplitMode`／`roomBattleStartBroadcastMode`／`battleEndBroadcastMode`／`roomReadyStateMode` 四個已收斂（各一個 commit，`node test/*.js` 與 `node test/replay-golden.js` 全綠）。`lobbyRoomListMode` 卡住：拔掉開關後 `test/replay-golden.js` 三個樣本在 send #15 出現 byte diff（多送一筆 `Room_List_SN 0x00220204`，來源是 `gamelogin.dispatch.js` 的 channel-enter 送出點）——原因是 golden 樣本用 `rooms._resetForTests()` 強制把這個開關重設回 `disabled`，跟「拿掉 default 值」不同，這次是拿掉開關本身，讓 golden 樣本永遠測不到 `disabled` 那條路。正式伺服器的預設值本來就已經是 `enabled`（更早一輪收斂已經翻過 default），所以懷疑是 golden 樣本沒跟著重錄，不代表拔掉開關會動到「已驗證的 enabled 路徑」。契約要求「golden 有 byte diff 就停下回報」，所以沒有重錄，留給主力判斷要不要重錄 golden 或改用別的收斂方式。`roomJoinMode` 完全還沒動——它是其餘所有開關共用的基礎判斷，call site 比 `lobbyRoomListMode` 更多，很可能踩到同一類問題（甚至更大），這次沒有嘗試。
 
-## RANK：結算評等永遠是 F（不擋 M2）
+## RANK-FORMULA：結算評等的真正計算公式（`pveFixedRank` 只是固定值，不是公式）
 
-> **2026-09-19 分析完成**（`research/2026-09-19-rank/notes.md`）：評等由伺服器送的 `User_Score_SN 0x00222221` 的 WinTeamRank 決定（1＝F … 11＝SS），我們從沒送過 → F。下一步：操作者決定評等公式；實驗先送固定值（例如 11），body 尾端的逐人資料先送 count=0（⬜ 是否安全）。
+> **狀態：2026-09-21 中階 verifier 開立，未指派。**
 
-> **狀態：2026-09-19 開立，分析已派出。**
-
-- [OBS] 完整打通初級 5 回合，結算 Rank F（`journal/2026-09-19-0900-r-round-impl.md` 實機驗證 2）。
-- [LOG] EndGame_SN 0x00222213 的分數欄位全 0；EndRound_SN 也全 0；Death_SN 的計分是暫定值（exp／point 每殺 10）。
-- 要查：客戶端結算頁的 Rank 由哪個欄位、依什麼公式算出（腳本 ~/mro-decrypted/src 的結算頁、EndGame_SN／Game_Score_SN／Reward_Record_User_SN 0x00220412 的 handler），伺服器該送什麼才合理。
+- 背景：RANK 開關（`pveFixedRank`，commit `e5f176f`）已驗證能讓結算頁顯示非 F 的評等（[SHOT] `shots/campaign-result-screen.png` 顯示 S；正式設定 `pveFixedRank: 10`；結案見 `docs/backlog-done.md`），但那是寫死的常數，不是依表現算出來的。
+- 目標：訂出一套依擊殺、任務分數、通關時間、難度等實際表現算 WinTeamRank（1=F…11=SS，`ZPage_PveResult.uc:113-165`）的公式，取代固定值。
+- 依據：`docs/research/2026-09-19-rank/notes.md` 已查過原版公式無法從網路資料還原（找不到官方門檻），所以公式必須是自訂的，文件裡要標明不是原版公式。
+- 前提：算公式需要真的分數資料（擊殺、任務進度等），這批資料目前歸「P3 戰績寫回」（`docs/design/p3-step1-writeback.md`／`p3-step3-writeback-impl.md`）在處理；寫回落地前，公式只能先用 in-memory 的分數（例如 Death_SN 累計的 exp/point）當輸入。
+- 限制：先設計、不落地成新開關前要有人審；不得動到已收斂的 `pveFixedRank` 分支或 `Campaign_CN` 既有行為。
+- 交付：一份設計稿（多少分對應哪個 Rank、輸入從哪個資料結構來），加上跟 P3 寫回時序的相依說明。
+- 完成條件：公式有明確輸入輸出對照表，且指出它依賴 P3 哪一步資料就緒；若 P3 資料還沒可用，列出可以先用哪些替代資料源做初版。
 
 ## D1：多人房間模型設計稿（C 線，高階自己做）
 
