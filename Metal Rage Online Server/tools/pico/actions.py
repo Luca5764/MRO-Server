@@ -455,7 +455,22 @@ class ClientState:
     This module never imports client_ctl.ClientInstance -- kept as a
     separate, smaller struct on purpose, matching this module's existing
     habit of shelling out to client_ctl.py/pico_ctl.py rather than
-    importing them (see module docstring)."""
+    importing them (see module docstring).
+
+    user_index added (2026-09-21, "戰鬥中 CN 全部走房主連線" fix,
+    docs/journal/2026-09-21-2120-dual-pico-bc.md, docs/state.md 第 4c 節):
+    resolve_user_index()'s reading of this client's own accountId, needed
+    because EVERY in-battle C->S CN (0x0022xxxx/0x0023xxxx recv) arrives on
+    the HOST's game_conn_id regardless of which player sent it -- filtering
+    by conn alone can no longer tell two players' actions apart once battle
+    is live, only ChangeSlot_CN/Respawn_CN's own body `user u16` field can
+    (see CHANGE_SLOT_CN_OPCODE's comment). 🟡 待審: this stores the DB
+    accountId as a stand-in for that body field, on the empirical basis that
+    the one real capture we have shows an exact match (joiner accountId 5 ->
+    body user=5, host accountId 6 -> body user=6) -- not yet confirmed
+    against the DLL that the wire field IS accountId (vs. some other
+    ServerIndex_BD value that merely equals it in a 2-account test DB, see
+    docs/journal/2026-09-17-22-pve-mech-slot-selection.md)."""
     id: str
     proc_name: str
     install_dir_win: str = None
@@ -463,6 +478,7 @@ class ClientState:
     account: str = None
     dispatch_conn_id: int = None
     game_conn_id: int = None
+    user_index: int = None
     launch_time_ms: float = None
 
 
@@ -1712,6 +1728,78 @@ def _require_game_conn(ctx, action_name, client_id, t0, steps):
     return conn_id, None
 
 
+def _pkt_user_index(entry):
+    """Reads the LE u16 at body offset 0 out of a {ev:'pkt'} record's own
+    'hex' string -- the wire layout ChangeSlot_CN/Respawn_CN both use for
+    their `user` field (CHANGE_SLOT_CN_OPCODE's comment; body len 3 and 2
+    respectively, user always first). Returns None (not an error) if `hex`
+    is missing/too short to hold a u16, so callers can use this directly as
+    part of a wait_for_log_pkts() predicate without a separate guard."""
+    hexs = str(entry.get("hex", ""))
+    if len(hexs) < 4:
+        return None
+    try:
+        lo = int(hexs[0:2], 16)
+        hi = int(hexs[2:4], 16)
+    except ValueError:
+        return None
+    return lo | (hi << 8)
+
+
+def _require_user_index(ctx, action_name, client_id, t0, steps):
+    """Shared fail-closed guard, sibling to _require_game_conn() above
+    (2026-09-21 "戰鬥中 CN 全部走房主連線" fix -- see ClientState.user_index's
+    own docstring for the full contract): every in-battle CN completion
+    condition that must tell THIS client's action apart from the OTHER
+    dual-pico instance's (both now sharing one conn, see
+    _require_host_game_conn() below) needs this client's own accountId to
+    match against ChangeSlot_CN/Respawn_CN's body `user` field
+    (_pkt_user_index()).
+
+    Returns (user_index, None) if ctx.clients[client_id].user_index is
+    already a real int, or (None, ActionResult) with a ready-to-return
+    failure if it is still None. Callers must NOT fall back to "match any
+    user" on that failure -- same reasoning as _require_game_conn()'s own
+    conn=None warning, just for the user-index filter instead of the conn
+    filter."""
+    user_index = ctx.clients[client_id].user_index
+    if user_index is None:
+        detail = (f"user_index not resolved for {client_id!r} "
+                   f"(account={ctx.clients[client_id].account!r}) -- login_as() "
+                   f"must run first and succeed; refusing to match any user's CN "
+                   f"(see ClientState.user_index's docstring)")
+        return None, ActionResult(action_name, False, False, time.monotonic() - t0, detail, None, None, steps)
+    return user_index, None
+
+
+def _require_host_game_conn(ctx, action_name, t0, steps):
+    """Shared fail-closed guard, sibling to _require_game_conn() above
+    (2026-09-21 "戰鬥中 CN 全部走房主連線" fix): every in-battle C->S CN
+    (0x0022xxxx/0x0023xxxx recv) arrives on the HOST's own game_conn_id, not
+    the sender's own -- see docs/journal/2026-09-21-2120-dual-pico-bc.md's
+    real-log capture and docs/state.md 第 4c 節. This looks up
+    ctx.clients["host"] BY THE FIXED KEY "host" (design.md section 1's
+    CLIENTS table naming convention -- every experiments/*.json in this repo
+    keys its dual-client dict {"host": ..., "joiner": ...}, same convention
+    host_start_battle()'s own client_id default already relies on).
+
+    Returns (host_game_conn_id, None) if ctx.clients["host"].game_conn_id is
+    already a real int, or (None, ActionResult) with a ready-to-return
+    failure otherwise (host client_id missing from this run's ctx.clients,
+    or its own login_as()/host_start_battle() has not resolved/run yet).
+    Fail-closed for the same reason as _require_game_conn(): a conn=None
+    fallback would match every connection, silently mixing the OTHER
+    instance's pkts into this completion condition."""
+    host = ctx.clients.get("host")
+    if host is None or host.game_conn_id is None:
+        detail = (f"host game_conn_id not resolved (ctx.clients[\"host\"]="
+                   f"{host!r}) -- login_as('host', ...) must run first and "
+                   f"succeed; refusing to filter on conn=None "
+                   f"(would match every connection, see resolve_game_conn_id())")
+        return None, ActionResult(action_name, False, False, time.monotonic() - t0, detail, None, None, steps)
+    return host.game_conn_id, None
+
+
 # ---------------------------------------------------------------------------
 # Dual-client actions proper (docs/research/2026-09-20-dual-pico/design.md
 # section 3). See the constants block above focus_client() for the opcodes/
@@ -1838,7 +1926,11 @@ def login_as(ctx, client_id, account):
     per-client pkt-based completion condition in this module filters on
     whichever of the two actually carries that opcode (room/battle pkts,
     0x0022xxxx/0x0023xxxx, use game_conn_id; nothing else in this module
-    currently needs dispatch_conn_id after login_as() itself)."""
+    currently needs dispatch_conn_id after login_as() itself). Also resolves
+    and stores .user_index (resolve_user_index(), 2026-09-21 "戰鬥中 CN 全部
+    走房主連線" fix, see ClientState.user_index's own docstring) -- needed by
+    enter_battle() once an in-battle CN's own conn can no longer tell two
+    players' actions apart."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     if not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
@@ -1907,18 +1999,26 @@ def login_as(ctx, client_id, account):
     ok_lobby, gray, detail_lobby, score, shot, _ = wait_for(ctx, "login_as-lobby", 15.0, _screen_check("lobby"))
     ok = ok_pkt and ok_lobby
 
-    conn_id, game_conn_id = None, None
+    conn_id, game_conn_id, user_index = None, None, None
     if ok_pkt and not ctx.dry_run:
         since = base if base is not None else 0
         conn_id = resolve_conn_id(ctx.logs_dir, account, since)
         game_conn_id = resolve_game_conn_id(ctx.logs_dir, account, since)
+        # resolve_user_index() (2026-09-21 "戰鬥中 CN 全部走房主連線" fix,
+        # see ClientState.user_index's own docstring): stored alongside the
+        # two conn ids so every later in-battle CN completion condition
+        # (enter_battle()) can tell this client's own action apart from the
+        # OTHER dual-pico instance's, once both funnel through one conn.
+        user_index = resolve_user_index(ctx.logs_dir, account, since)
         ctx.clients[client_id].account = account
         ctx.clients[client_id].dispatch_conn_id = conn_id
         ctx.clients[client_id].game_conn_id = game_conn_id
+        ctx.clients[client_id].user_index = user_index
 
     detail = (f"login_cq({LOGIN_CQ_OPCODE}) recv: {'seen' if ok_pkt else 'MISSING'} "
               f"(waited {elapsed_pkt:.1f}s); lobby: {detail_lobby}; "
               f"dispatch_conn_id={conn_id}; game_conn_id={game_conn_id}; "
+              f"user_index={user_index}; "
               f"account_field_state={field_state}(stddev={field_stddev})")
     return ActionResult("login_as", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
 
@@ -2115,12 +2215,23 @@ def enter_battle(ctx, client_id, mech_key="F1"):
     no-op, or it may do something else on whatever screen is showing at that
     instant. Not click-tested end-to-end yet.
 
-    Completion (design.md section 3): ChangeSlot_CN or Respawn_CN recv,
-    filtered to this instance's game_conn_id -- these are 0x0023xxxx
-    room/battle pkts, landing on the 30907 game conn, not the 9211 dispatch
-    conn (see resolve_game_conn_id()'s docstring, 2026-09-21 "每個客戶端有
-    兩條連線" fix). Battle HUD (screens.battle_hud_state(), map-independent,
-    see campaign_win_all's docstring) is the secondary signal."""
+    Completion (design.md section 3; REVISED 2026-09-21 "戰鬥中 CN 全部走房主
+    連線" fix, docs/journal/2026-09-21-2120-dual-pico-bc.md, docs/state.md 第
+    4c 節): ChangeSlot_CN or Respawn_CN recv, filtered to the HOST's
+    game_conn_id (NOT this instance's own -- a real dual-client capture
+    showed BOTH players' ChangeSlot_CN/Respawn_CN landing on conn=28(host),
+    the joiner's own conn=30 saw zero CN that whole battle, only broadcast
+    SN/keepalive) AND to this instance's own user_index matching the pkt
+    body's `user u16` field (_pkt_user_index(), CHANGE_SLOT_CN_OPCODE's
+    comment) -- without that second filter, the joiner's enter_battle()
+    would happily complete on the HOST's own ChangeSlot_CN instead of its
+    own (see _require_host_game_conn()/_require_user_index()'s own
+    docstrings for the fail-closed contract this uses instead of falling
+    back to "any pkt on that conn"/"any user"). 🟡 the user_index==accountId
+    correspondence is empirical (see ClientState.user_index's docstring),
+    not DLL-confirmed. Battle HUD (screens.battle_hud_state(),
+    map-independent, see campaign_win_all's docstring) is the secondary
+    signal."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     if mech_key not in MECH_SELECT_SLOTS:
@@ -2136,7 +2247,10 @@ def enter_battle(ctx, client_id, mech_key="F1"):
                   f"key {mech_key} ({mech_name}/{mech_type}) to spawn (see docstring)")
         return ActionResult("enter_battle", True, False, time.monotonic() - t0, detail, None, None, steps)
 
-    conn_id, fail = _require_game_conn(ctx, "enter_battle", client_id, t0, steps)
+    user_index, fail = _require_user_index(ctx, "enter_battle", client_id, t0, steps)
+    if fail:
+        return fail
+    host_conn_id, fail = _require_host_game_conn(ctx, "enter_battle", t0, steps)
     if fail:
         return fail
     base = _newest_log_ms(ctx.logs_dir)
@@ -2145,13 +2259,14 @@ def enter_battle(ctx, client_id, mech_key="F1"):
     steps.append(key(ctx, mech_key))
     ok_pkt, found, elapsed = wait_for_log_pkts(
         ctx, DEFAULT_ENTER_BATTLE_TIMEOUT_S,
-        {"spawn": lambda e: e.get("dir") == "recv" and e.get("op") in (CHANGE_SLOT_CN_OPCODE, RESPAWN_CN_OPCODE)},
-        baseline_ms=base, conn=conn_id,
+        {"spawn": lambda e: e.get("dir") == "recv" and e.get("op") in (CHANGE_SLOT_CN_OPCODE, RESPAWN_CN_OPCODE)
+                  and _pkt_user_index(e) == user_index},
+        baseline_ms=base, conn=host_conn_id,
     )
     ok_hud, gray, detail_hud, score, shot, _ = wait_for(ctx, "enter_battle-hud", 15.0, _battle_any_check())
     detail = (f"ESC + key {mech_key} ({mech_name}/{mech_type}); "
-              f"ChangeSlot_CN/Respawn_CN recv (conn={conn_id}): {'seen' if ok_pkt else 'MISSING'} "
-              f"(waited {elapsed:.1f}s); battle HUD: {detail_hud}")
+              f"ChangeSlot_CN/Respawn_CN recv (host conn={host_conn_id}, user_index={user_index}): "
+              f"{'seen' if ok_pkt else 'MISSING'} (waited {elapsed:.1f}s); battle HUD: {detail_hud}")
     return ActionResult("enter_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
@@ -2175,7 +2290,25 @@ def console_cmd_on(ctx, client_id, text):
     evidence but not itself gated on anything. Per design.md L4, NO log
     read is attempted here -- verifying what the command actually did (e.g.
     the 'Client netspeed is N' line) is deliberately left to a read of the
-    run-*.log AFTER close_client() (see dual-netspeed.json's last step)."""
+    run-*.log AFTER close_client() (see dual-netspeed.json's last step).
+
+    🟡 待審 (2026-09-21, F24-toggle timing): a manual re-implementation of
+    this same F24 -> type -> ENTER sequence (done live because the real
+    dual-pico run never reached this action -- it was blocked earlier at
+    enter_battle(), see docs/journal/2026-09-21-2120-dual-pico-bc.md)
+    inserted an extra screenshot+judgment pause between F24 and typing and
+    left the console open ~34s before typing landed -- since F24 TOGGLES
+    the console, that risks the text going into the game instead. That gap
+    was in the ad-hoc manual steps, NOT in this function: read against the
+    code below, the only thing between the F24 keypress and TYPE is the
+    ok_open wait_for() gate itself (single screenshot on its first poll
+    attempt in the common case, capped at 5s), which is required (typing
+    before confirming open would be unsafe, not merely slow) -- there is no
+    separate/extra screenshot or sleep inserted here. Evidence for a human
+    to audit the typed text landing in the console: shot_open (taken by the
+    open-gate immediately before TYPE) and typed_shot (immediately after
+    ENTER) are both now included in `detail` below -- no OCR/auto-judgment
+    of the typed text itself is done (out of scope, design.md L4 spirit)."""
     if not _console_cmd_on_allowed(text):
         raise ActionError(
             f"console_cmd_on text {text!r} not in whitelist "
@@ -2213,7 +2346,8 @@ def console_cmd_on(ctx, client_id, text):
         ctx, f"console_cmd_on-{client_id}-closed", DEFAULT_CONSOLE_CMD_ON_CLOSE_TIMEOUT_S,
         _console_check("closed", variant="battle"))
 
-    detail = (f"typed {text!r} (whitelisted); console open: {detail_open}; "
+    detail = (f"typed {text!r} (whitelisted); console open: {detail_open} "
+              f"(pre-type evidence screenshot={shot_open}); "
               f"typed-evidence screenshot={typed_shot}; console closed: {detail_closed} "
               f"(no log read here -- see docstring, design.md L4)")
     ok = ok_open and ok_closed
@@ -2243,7 +2377,25 @@ def leave_battle(ctx, client_id):
     (room-leave.js's
     handleBattleLeave() sends Leave_SN/EndGame_SN to the OTHER conn(s), see
     that opcode's own comment above, never to the leaver). Room screen (or
-    its NOTICE popup) is the secondary signal."""
+    its NOTICE popup) is the secondary signal.
+
+    ⚠️ 待審 (2026-09-21, "戰鬥中 CN 全部走房主連線" fix, not yet applied
+    here): the ABOVE "guaranteed to target the leaver itself" claim predates
+    that discovery and is now suspect for a NON-host leaver. Leave_CQ
+    0x00222131 fires "while in battle" (gate.game.dispatch.js's own comment)
+    -- the same condition under which a real capture showed EVERY C->S CN
+    from a non-host player arriving on the HOST's conn, not the sender's own
+    (see enter_battle()'s docstring). If that pattern extends to Leave_CQ,
+    a non-host's leave_battle() would filter on its OWN (wrong) conn and
+    time out, exactly like enter_battle() did before its fix. NOT changed
+    here because, unlike ChangeSlot_CN/Respawn_CN, Leave_CQ/Leave_SA carry
+    NO body at all (both comments above: "No body" / fixed 0/0 ack) -- there
+    is no per-pkt field to disambiguate which player's leave a reply on the
+    host's conn belongs to, so _require_host_game_conn()'s fix cannot be
+    ported over without an actual architecture decision (e.g. ordering
+    assumptions, or capturing a real non-host in-battle leave to check
+    whether this conn-sharing even applies to Leave_CQ at all -- unconfirmed
+    either way, no such capture exists yet)."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     t0 = time.monotonic()
@@ -2617,6 +2769,32 @@ def resolve_game_conn_id(logs_dir, account, since_ms):
         c = entry.get("ctx") or {}
         if c.get("nickname") == account:
             return entry.get("conn")
+    return None
+
+
+def resolve_user_index(logs_dir, account, since_ms):
+    """Finds `account`'s ctx.accountId, the value ClientState.user_index
+    stores (2026-09-21 "戰鬥中 CN 全部走房主連線" fix, see that field's
+    docstring on ClientState above for the full contract and the 🟡 caveat).
+    Same two-pass GAME-conn scan as resolve_game_conn_id() right above
+    (first collect every `conn` that received a LOGIN_AGAIN_CQ_OPCODE pkt,
+    then take the first entry among those conns whose ctx.nickname matches
+    `account`) -- kept as its own full scan rather than sharing state with
+    resolve_game_conn_id(), matching this module's existing pattern of small
+    self-contained resolvers (see resolve_conn_id()/resolve_game_conn_id()
+    themselves). Returns ctx.get('accountId') from that same matching entry
+    (int) or None if not resolved yet -- same "not an error, not yet"
+    contract as its sibling resolvers; callers must fail closed on None."""
+    game_conns = set()
+    for entry in _iter_pkts_forward(logs_dir, since_ms):
+        if entry.get("dir") == "recv" and entry.get("op") == LOGIN_AGAIN_CQ_OPCODE:
+            game_conns.add(entry.get("conn"))
+    for entry in _iter_pkts_forward(logs_dir, since_ms):
+        if entry.get("conn") not in game_conns:
+            continue
+        c = entry.get("ctx") or {}
+        if c.get("nickname") == account:
+            return c.get("accountId")
     return None
 
 
