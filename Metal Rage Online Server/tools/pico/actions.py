@@ -428,6 +428,15 @@ class ActionResult:
     # Per-round timings/markers for campaign_win_all (empty for every other
     # action) -- see runner.py write_report for how this reaches the report.
     rounds: list = field(default_factory=list)
+    # 2026-09-21 (this task): which signal actually satisfied THIS step's
+    # completion check, for actions where more than one signal can do it
+    # (currently only create_pve_room/wait_result_then_room's room-or-
+    # notice_popup OR, see _room_or_notice_satisfied_by()'s docstring above).
+    # None for every action that has exactly one completion signal (no
+    # primary/backup ambiguity to report) or that has not been audited/
+    # wired up yet -- added last, as a keyword-defaulted field, so every
+    # existing positional ActionResult(...) call in this file is unaffected.
+    satisfied_by: str = None
 
 
 @dataclass
@@ -857,6 +866,49 @@ def _room_or_notice_check():
     return check
 
 
+# 2026-09-21 (this task, PM contract re: the create_pve_room incident where
+# "room" -- the marker every caller of _room_or_notice_check() above treats
+# as the PRIMARY signal, per that function's own docstring: room is the
+# actual destination screen, notice_popup is a transient overlay ON it --
+# was silently broken and the step only passed because notice_popup covered
+# for it): parses that check's own `detail` string (never re-screenshots,
+# never re-classifies -- text only, so this can only ever fail open to
+# (None, None), never invert a real pass/fail) to report which of the two
+# signals actually satisfied an OR completion, for the two callers below
+# where this OR gates `ok` directly (create_pve_room, wait_result_then_room).
+# NOT applied to join_room()/leave_battle()'s own calls to
+# _room_or_notice_check() -- for those two, `ok` is gated on a different pkt
+# signal entirely (Enter_SA / Leave_SA) and this room/notice check is only a
+# secondary, non-gating log line (see each docstring's own "secondary
+# signal" wording), so attributing pass/fail to "room" or "notice_popup"
+# there would misreport what actually made the step pass.
+_ROOM_OR_NOTICE_DETAIL_RE = re.compile(
+    r"room=(True|False)\([^)]*\)\s+notice_popup=(True|False)\([^)]*\)"
+)
+
+
+def _room_or_notice_satisfied_by(detail):
+    """Returns (satisfied_by, warn): satisfied_by is "room" (primary),
+    "notice_popup" (backup) or None (neither present / detail not in the
+    expected shape, e.g. a dry-run's "dry-run: skipped"). warn is a
+    human-readable string naming the backup-covered-for-broken-primary case
+    (primary absent, backup present) for the caller to fold into its own
+    `detail`; None otherwise. Purely descriptive -- never changes any ok/gray
+    value, per this task's contract."""
+    m = _ROOM_OR_NOTICE_DETAIL_RE.search(detail or "")
+    if not m:
+        return None, None
+    room_present = m.group(1) == "True"
+    notice_present = m.group(2) == "True"
+    if room_present:
+        return "room", None
+    if notice_present:
+        return ("notice_popup",
+                "WARN: primary signal 'room' did not appear -- this step only "
+                "passed on the backup signal 'notice_popup'")
+    return None, None
+
+
 def _dialog_tab_check(tab_key):
     """Like _tab_check, but against the create-room dialog's marker instead
     of classify_screen (the dialog is not one of classify_screen's known
@@ -1086,7 +1138,15 @@ def create_pve_room(ctx):
     if not ctx.dry_run:
         steps.append(click_at(ctx, CREATE_CONFIRM_BUTTON))
     ok, gray, detail, score, shot, _ = wait_for(ctx, "create_pve_room-confirm", 10.0, _room_or_notice_check())
-    return ActionResult("create_pve_room", ok, gray, time.monotonic() - t0, detail, shot, score, steps)
+    # 2026-09-21 (this task): record which of the two OR'd signals actually
+    # passed this step -- see _room_or_notice_satisfied_by()'s docstring for
+    # why (the incident that motivated this: room=False/notice_popup=True
+    # passed silently with the broken 'room' marker never flagged anywhere).
+    satisfied_by, warn = _room_or_notice_satisfied_by(detail)
+    if warn:
+        detail = f"{detail} -- {warn}"
+    return ActionResult("create_pve_room", ok, gray, time.monotonic() - t0, detail, shot, score, steps,
+                         satisfied_by=satisfied_by)
 
 
 def select_map(ctx, name):
@@ -1421,9 +1481,15 @@ def wait_result_then_room(ctx, result_timeout_s=15.0, room_timeout_s=20.0):
     ok_room, gray_room, detail_room, score_room, shot_room, _ = wait_for(
         ctx, "wait_result_then_room-room", room_timeout_s, _room_or_notice_check()
     )
+    # 2026-09-21 (this task): same room-or-notice_popup OR gates `ok_room`
+    # here as in create_pve_room() -- see _room_or_notice_satisfied_by()'s
+    # docstring.
+    satisfied_by, warn = _room_or_notice_satisfied_by(detail_room)
     detail = f"result_seen={ok_result} ({detail_r}); room: {detail_room}"
+    if warn:
+        detail = f"{detail} -- {warn}"
     return ActionResult("wait_result_then_room", ok_room, gray_room, time.monotonic() - t0,
-                         detail, shot_room, score_room, [])
+                         detail, shot_room, score_room, [], satisfied_by=satisfied_by)
 
 
 def leave_room(ctx):

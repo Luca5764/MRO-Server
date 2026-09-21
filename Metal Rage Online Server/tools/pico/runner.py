@@ -953,6 +953,7 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
                         "ok": None, "gray": None, "duration_s": 0.0,
                         "detail": "skipped (dead-man wall-clock timeout)",
                         "screenshot": None, "score": None, "rounds": [],
+                        "satisfied_by": None,
                     })
                 write_report(report)
                 return report, 1
@@ -995,6 +996,19 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
                 "gray": result.gray, "duration_s": round(result.duration_s, 2),
                 "detail": result.detail, "screenshot": result.screenshot, "score": result.score,
                 "rounds": result.rounds,  # per-round R-ROUND timings, only non-empty for campaign_win_all
+                # 2026-09-21 (this task): which signal satisfied this step's
+                # completion check -- None for every action with exactly one
+                # signal (no primary/backup ambiguity), a value (e.g. "room"
+                # vs "notice_popup") only for the actions actions.py has
+                # wired this up for so far (see actions.ActionResult.
+                # satisfied_by's own docstring). A "WARN: ..." fold-in inside
+                # result.detail (same string this entry's "detail" already
+                # holds) is how a backup-covered-for-broken-primary pass
+                # shows up in this step's summary, both here and in the
+                # printed line below -- no separate warn flag added, per
+                # this task's "only add recording, don't change pass/fail"
+                # constraint.
+                "satisfied_by": getattr(result, "satisfied_by", None),
             }
             report["steps"].append(entry)
             print(f"  [{i}] {name}({params}) -> ok={result.ok} gray={result.gray} {result.detail}")
@@ -1020,6 +1034,7 @@ def run_experiment(exp_path, dry_run=False, shots_dir=None, logs_dir=None):
                             "ok": None, "gray": None, "duration_s": 0.0,
                             "detail": "skipped (runner stopped fail-closed)",
                             "screenshot": None, "score": None, "rounds": [],
+                            "satisfied_by": None,
                         })
                     write_report(report)
                     return report, 1
@@ -1076,8 +1091,10 @@ def write_report(report):
             f.write(f"precondition: expected={pre['expected']} got={pre['got']} ok={pre['ok']}\n")
         f.write("steps:\n")
         for s in report["steps"]:
+            sat = s.get("satisfied_by")
+            sat_suffix = f" satisfied_by={sat}" if sat else ""
             f.write(f"  [{s['index']}] {s['action']}({s['params']}) ok={s['ok']} gray={s['gray']} "
-                    f"{s['duration_s']}s :: {s['detail']}\n")
+                    f"{s['duration_s']}s{sat_suffix} :: {s['detail']}\n")
             for r in s.get("rounds") or []:
                 f.write(f"        round {r['iteration']}: cleared={r['cleared']} playRound={r['playRound']} "
                         f"wait_s={r['wait_s']} ms={r['ms']} :: {r['tail']}\n")
