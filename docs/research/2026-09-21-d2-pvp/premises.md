@@ -9,7 +9,8 @@
 | # | 前提 | 狀態 | 依據 |
 |---|---|---|---|
 | P1 | **回合／勝負由伺服器決定。** 但機制分兩層：(a) Blow／SuddenDeath／Occupation 連**偵測本身**都被物理註解掉；(b) Rage／plain TDM 的偵測**還活著**，但終點 `EndGame()` 被覆寫成空殼（`DefaultGameInfo.uc:395-405`，只有 `Reason=="TimeLimit"` 會動，而且做的是送 `Timeout_CN` 把決定權交回伺服器）。**兩者效果相同，但將來要恢復本地判定的成本差很多。** `ZModePve` 也沒覆寫 `EndGame()`→**PvE 與 PvP 走同一套機制** | ✅ [SRC] 自己從解密源碼核對，逐條有行號（**未經跨公司審查**） | `verify-p1p2.md` |
-| P2 | **勝方與客戶端的任務狀態矛盾會 GPF** | ⬜ **純源碼查不出來**。`BeginRound()` 裡有兩個候選的 None 存取（`DefaultGameInfo.uc:1988` 的短路 OR 會讓 None 繼續往下到 `:1995/2001/2007`；`ZSlotSelectPage.uc:46` 的串接存取），但**無法確認跟「勝方矛盾」有因果關係**。**沒有找到**任何被註解掉的矛盾校驗——更像是從來沒做過。要定案需要 Moon 那次 crash 的堆疊或傾印 | 同上 |
+| P2 | ~~勝方與客戶端的任務狀態矛盾會 GPF~~ **→ Moon 2026-09-21 自己收回這個說法**（原依據只是兩次實跑、兩次只差 winner byte，是相關性不是因果）。**改寫成**：`BlowMission` 回合重啟時的**垃圾回收**，在某種選機頁狀態下會 GPF | ⬜ **觸發條件未知**。他手記的堆疊（原始 log 已被覆蓋）：`BlowMission.RoundEnd.Timer ← AActor::execConsoleCommand ← UGameEngine::Exec ← UObject::CollectGarbage ← ...(Class ZGameMidMenu.ZSlotSelectPage Info[0])... GPF`——**崩潰在垃圾回收裡，不在任何勝負校驗**。與我們先前找到的候選 `ZSlotSelectPage.uc:46` 同方向 | `verify-p1p2.md`；PM 轉述 |
+| P2b | **推測的路徑（🟡 中段未驗）**：`BeginRound()` → 重置所有 actor → `LevelInfo.Reset()` → 垃圾回收 → 撞上選機頁物件。`Engine/LevelInfo.uc:469-476` 的 `Reset()` 裡有 `ConsoleCommand("OBJ GARBAGE")`，而**全部源碼裡由腳本主動觸發 GC 的只有這一處**（另一處在 GameSpy 查詢）。`BlowMission.uc:217-223` 的 `RoundEnd.Timer()`（`BeginState` 用 `SetTimer(10,false)` 設的）呼叫 `Global.Timer()` 然後 `BeginRound()` | 🟡 `BeginRound` 到 `LevelInfo.Reset()` 這一段**沒有追過** | 同上 |
 | P3 | **team 欄跟隨我們送的 `Game_Info_SN`**，不是固定 1／2。我們送 0／1 是對的 | ✅ [DLL]（未經跨公司審查） | `state.md` 第 4c 節；`verify-c-items.md` 第 2 項 |
 | P4 | **`User_Score_SN` 可以在 `EndGame_SN` 之前送**：場景閘門是 `IsClient && (scene==5 \|\| scene==6)`，戰鬥中的場景 6 本來就啟用 | ✅ [DLL]（未經跨公司審查） | `verify-c-items.md` 第 5 項 |
 | P5 | **加入者可以收 `Death_SN`／`EndRound_SN`**，不會出事（兩者機制不同：前者靠 `Game_Host_Check`，後者靠 GameInfo 的 null 檢查） | ✅ [DLL]＋[LOG]（未經跨公司審查） | `state.md` 第 4c 節 |
@@ -51,6 +52,17 @@
 **Blow／SuddenDeath／Occupation 排後面**，等拿到 Moon 的崩潰堆疊再做：
 它們有任務狀態（炸彈、佔領區），正是 P2 描述的矛盾條件成立的地方，
 而 P2 目前是 ⬜、純源碼查不出來。
+
+## 第一個 PvP 模式動工前要派的核對（PM 2026-09-21）
+
+**P2 的那條 GC 路徑是任何回合制模式都可能走到的，包括多回合的 TDM。** 所以即使先做 TDM，
+也不能當它不存在。動工前開一個 explorer 任務，回答兩個問題：
+
+1. **哪些模式的回合重啟會走到 `LevelInfo.Reset()`？**
+2. **我們 PvE 的回合推進有沒有走到？**
+
+如果 PvE 有走到而且**從沒崩潰過**，它就是一個對照組——差別會落在**選機頁當時的狀態**
+（是否開著、是否正在倒數）。唯讀任務，只要列出路徑與檔名行號，**不要猜機制**。
 
 ## 開工前要先補的
 
