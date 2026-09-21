@@ -163,6 +163,9 @@
 | `EndGame_SN 0x00222213` 對加入者**安全（我方實際走到的分支內）** | ✅ [DLL] `0x107d806a` 用 `GIsClient` 分兩支；**我方 host 與 joiner 都是 `GIsClient!=0`**，只走 `Game_End_Battle`→`Community_Chat_Clear`（純自身陣列）→`Event_Call`（純自身佇列，有 null 檢查）→`Scene_Change`（自身欄位＋有 null 檢查的監聽者廣播）。唯一會碰 `Level` vtable 的 `Dedi_End`（`0x10716e90`）開頭就是 `if (GIsClient!=0) return`，**我方永遠不可達**（**未經跨公司審查**） | 同上 |
 | 上一列**還沒封頂的斷點** | ⬜ `Event_Call` 佇列（`this+0x3cc`）的**消費者沒找到**——那是唯一一個理論上可能摸到 GameInfo、但完全沒查過的路徑。另有兩個因不可達／無界 fan-out 而刻意沒展開的 ⬜ | 同上 |
 
+| **戰鬥中所有 C→S 的 CN 都走房主的那條 30907 連線**；加入者的連線在對戰中只收廣播的 SN 與心跳，**一個 CN 都沒有**。要分辨是誰的動作，看 body 裡的 UserIndex（`ChangeSlot_CN` body len=3：user u16 ＋ slot u8） | ✅ [LOG] 2026-09-21 同機雙開實測：`0x00230151`／`0x00230101`／`0x00230103` recv **全部在 conn=28（房主）**，加入者 conn=30 只有 `0x00222104`／`0x00230152` 等 send（**未經跨公司審查**）。起因是 Moon `protocol_objective.en.md` §1 的說法，這次用我們自己的資料驗證成立 | `journal/2026-09-21-2120-dual-pico-bc.md` |
+| ⚠️ **後果**：任何「在加入者連線上等戰鬥 CN」的完成條件都永遠等不到 | — | 同上 |
+
 ### Moon 筆記裡已核對成立的項目（2026-09-21）
 
 來源是 Moon 的 `protocol_objective.en.md`，**經我們自己反組譯核對**後才列在這裡。
