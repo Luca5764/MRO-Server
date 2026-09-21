@@ -159,7 +159,9 @@
 |---|---|---|
 | `Death_SN 0x00230124` 廣播給加入者**安全**。兩道保護：呼叫 GameInfo 事件那段被 `Game_Host_Check()`（`0x1071a560`：`return *(this+0xfac) & 1`）包住，加入者旗標 false 整段不執行（`0x1072e208`）；另一段由 `GIsClient` 把關、對加入者會執行的是 `eventTreatKillMSG_UJ`（`0x1072e1d6`），逐層指標都有 null 檢查、遇 null 就跳過 | ✅ [DLL]（`0x107db912`→`Game_Action_Death` 真身 `0x1072e120`）[LOG] 同機雙開 9 份加入者 `run-*.log` grep `ScriptWarning`／`Accessed None` 零命中（**未經跨公司審查**） | `research/2026-09-21-moon-objective-protocol/verify-b-death-sn.md` |
 | `EndRound_SN 0x00222211` 廣播給加入者**安全**，但機制**不同**：`Game_End_Round`（`0x1072e310`）沒有 host 閘門，呼叫 `[Level vtable]+0xb4` ＝ `ULevel::EndRound_BD`（`Engine.dll 0x1047ab70`）；該函式讀 `LevelInfo+0x630`（GameInfo）後有顯式 `test esi,esi / je` null 檢查，加入者 null 就整段跳過 | ✅ [DLL] 虛表 `??_7ULevel@@6BUObject@@@ 0x10691af8`；同表 `+0xa0` ＝ `ULevel::Listen 0x1047a5e0`，與 netspeed 調查獨立對上（**未經跨公司審查**） | `research/2026-09-21-moon-objective-protocol/verify-b2-endround-vtable.md` |
-| `User_Score_SN 0x00222221`／`EndGame_SN 0x00222213` 對加入者安不安全 | ⬜ **未窮盡**。兩者走的路徑不同（`User_Score_SN` 屬 `ZDispatchRoom`、真身 `0x107ece60`，完全沒碰 Level vtable；`EndGame_SN` 真身 `0x107d7ed0`）；目前**沒找到危險路徑**，但 `Dedi_End`／`Community_Chat_Clear`／`Event_Call`／`Scene_Change` 四個 callee 沒展開 | 同上 |
+| `User_Score_SN 0x00222221` 對加入者**安全** | ✅ [DLL] 完整反組譯 `0x107ece60`–`0x107ed15f`，只寫 `UZNetwork_DJ` 自己的欄位／陣列，**全函式沒有 `0x108e550c`、沒有 Level、沒有物件 vtable 呼叫**（**未經跨公司審查**） | `verify-d-endgame.md` |
+| `EndGame_SN 0x00222213` 對加入者**安全（我方實際走到的分支內）** | ✅ [DLL] `0x107d806a` 用 `GIsClient` 分兩支；**我方 host 與 joiner 都是 `GIsClient!=0`**，只走 `Game_End_Battle`→`Community_Chat_Clear`（純自身陣列）→`Event_Call`（純自身佇列，有 null 檢查）→`Scene_Change`（自身欄位＋有 null 檢查的監聽者廣播）。唯一會碰 `Level` vtable 的 `Dedi_End`（`0x10716e90`）開頭就是 `if (GIsClient!=0) return`，**我方永遠不可達**（**未經跨公司審查**） | 同上 |
+| 上一列**還沒封頂的斷點** | ⬜ `Event_Call` 佇列（`this+0x3cc`）的**消費者沒找到**——那是唯一一個理論上可能摸到 GameInfo、但完全沒查過的路徑。另有兩個因不可達／無界 fan-out 而刻意沒展開的 ⬜ | 同上 |
 
 ### Moon 筆記裡已核對成立的項目（2026-09-21）
 
