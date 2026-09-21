@@ -57,3 +57,44 @@ import thunk，本身沒有任何 `call` 指向它）。
 停在登入畫面、不登入、不送其他輸入 → `client_ctl.py close`），只用副本實例，
 主安裝沒動。客戶端已關閉、行程確認消失。**沒有注入程式碼、沒有 hook API、
 沒有碰 `MetalRage.exe` 本體。**
+
+---
+
+## 追加（2026-09-21 19:10）：`WM_GETTEXT` 這條路**證實可行**
+
+第一階段探針成功，**8/8 次獨立執行都拿到真實的客戶端 log 文字**，沒有任何被擋的跡象。
+
+- 視窗結構（實測，不是推測）：頂層視窗 class 是 **`MetalRage2UnrealWLog`**，
+  子控制項 class 是 **`MetalRage2UnrealWEditTerminal`**。
+  ⚠️ **class name 帶行程名前綴**，所以主安裝那邊會是 `MetalRageUnrealWLog`／
+  `MetalRageUnrealWEditTerminal`——**不要寫死字串**，要從行程名組出來。
+- 實際擷取到的內容（樣本）：
+  ```
+  Log: Log file open, 09/21/26 19:03:57
+  Init: Name subsystem initialized
+  Init: Detected: Microsoft Windows NT 6.2 (Build: 9200)
+  ...
+  Log: Finished precaching textures in 0.032 seconds
+  ScriptLog: START MATCH
+  ```
+- PM 的三個技術判斷**全部成立**：(1) 是普通 Win32 EDIT 控制項，不是 D3D 視埠；
+  (2) 客戶端以提升權限執行、呼叫端一般權限，`WM_GETTEXT` 確實在 UIPI 允許清單裡，沒被擋；
+  (3) **XIGNCODE 沒有干擾**——唯讀查詢不是注入，實測沒被攔。
+
+**這推翻了 L4 的實務影響**：客戶端 log 檔雖然被獨佔鎖住（上面探針 B 已確認），
+但**同樣的內容可以即時從視窗拿到**。`Client netspeed is N`、`HitLoc===`、
+`ScriptWarning`、`START MATCH` 這些訊號都不必再等關掉客戶端。
+
+### 第二階段卡住（未解，留給下一位）
+
+把同樣的呼叫放進功能較完整的 `tools/win/logwatch.ps1`（WIP，**已標 `STATUS: NOT WORKING YET`**）
+之後，`powershell.exe` 會**可靠地崩潰**在 `WM_GETTEXT` 那一步（無 .NET 例外、性質像原生
+access violation）。最小探針腳本反覆跑 15 次以上完全沒事，只有放進那支腳本才炸。
+
+已排除：delegate 被 GC 回收（強制 `[GC]::Collect()` 後探針仍正常）、連續兩次呼叫同一訊息
+（探針連呼兩次都成功）、`EnumChildWindows` 的巢狀 vs 事後呼叫寫法（兩種都炸）。
+移除主迴圈前的 `Write-JsonLine` 會改變行為（第一次呼叫變成合法逾時）但第二次仍炸。
+
+**下一步建議**：不要繼續在 PowerShell 裡查。改寫成**用 in-box `csc.exe` 編譯的獨立
+C# 小程式**，完全繞開 PowerShell 的 script-block／delegate marshaling 這一層——
+第一階段已經證明 Win32 這邊沒問題，問題在宿主。
