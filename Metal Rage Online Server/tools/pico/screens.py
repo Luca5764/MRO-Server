@@ -589,6 +589,67 @@ def battle_hud_state(img):
     return ("battle" if green_px >= BATTLE_SP_MIN_PX else "not_battle"), green_px
 
 
+# leave_battle()'s missing SECOND confirmation layer (actions.py, 2026-09-21
+# task, [OBS] 操作者 C 段第三次實跑 -- the first ESC menu's own 離開 row only
+# opens a second "您要結束遊戲嗎？（結束將會有懲罰。）" dialog with two
+# LEFT/RIGHT buttons, 離開/取消; the old code never clicked the second one, so
+# every real leave_battle() call was stuck here waiting for a Leave_SA that
+# was never sent -- see shots/dual-netspeed-c-42/43/44-leave_battle-room-*.png,
+# three real captures of this exact stuck dialog from that run).
+#
+# Same "raw pixel statistic in a fixed box, no atlas reference crop" technique
+# as console_prompt_state()/battle_hud_state() above. [SHOT]
+# shots/battle-leave-confirm-std.png (1616x1239, shot.sh standard geometry)
+# gives the reference measurement; the three stuck-run captures above are
+# independent real-gameplay confirmations of the same numbers.
+#
+# A single "count bright glyph pixels in one box" statistic (battle_hud_state's
+# approach) does NOT work here: this box's location, on OTHER screens (battle
+# result popups, room screens, sandy terrain), can also contain a lot of
+# bright pixels (up to 690 in one battle-result shot) -- there is no clean gap
+# vs the ~486+291=777 target count the way BATTLE_SP_BOX's "0 vs >=6343" is.
+# What IS specific to this dialog is its SHAPE: two isolated glyph clusters
+# (離開's 2 characters, then 取消's 2 characters) with a near-EMPTY gap between
+# them (the two buttons are not touching) -- other screens that have bright
+# text in this box do not reproduce that exact empty-middle pattern. Checked
+# (this task) against every 1616x1239 .png in shots/ (417 images): requiring
+# left_n>=LEAVE_CONFIRM_LEFT_MIN AND right_n>=LEAVE_CONFIRM_RIGHT_MIN AND
+# gap_n<=LEAVE_CONFIRM_GAP_MAX gives 4/4 true positives (the reference shot +
+# the 3 stuck-run captures, all within left=485-486/gap=0/right=288-291) and
+# 0/413 false positives (closest false-positive left_n was 682, but always
+# paired with gap_n>=80, and the closest false-positive gap_n<=20 case had
+# left_n<300) -- see this task's report for the raw table, not reproduced here.
+LEAVE_CONFIRM_BOX = (725, 688, 890, 718)  # shot coords, x0,y0,x1,y1 -- spans both button labels
+LEAVE_CONFIRM_GAP = (790, 830)  # shot-x band between the two buttons, expected near-empty
+LEAVE_CONFIRM_LEFT_MIN = 300  # true positives: 485-486; closest false positive with low gap: <300
+LEAVE_CONFIRM_RIGHT_MIN = 150  # true positives: 288-291
+LEAVE_CONFIRM_GAP_MAX = 20  # true positives: 0; closest false positive with both sides bright: >=80
+
+
+def leave_confirm_state(img):
+    """Returns (state, (left_n, gap_n, right_n)): state "open" / "closed" for
+    the in-battle leave second-layer confirm dialog (see LEAVE_CONFIRM_BOX's
+    comment above). No "unknown" state -- same reasoning as battle_hud_state()
+    above, this is a shape check with a 0-false-positive/0-false-negative
+    result across every shots/ reference checked for this task, not a
+    two-sided score with an ambiguous middle."""
+    a = np.asarray(_load_image(img).convert("RGB"), dtype=np.int16)
+    x0, y0, x1, y1 = LEAVE_CONFIRM_BOX
+    gx0, gx1 = LEAVE_CONFIRM_GAP
+    region = a[y0:y1, x0:x1]
+    r, g, b = region[..., 0], region[..., 1], region[..., 2]
+    bright = (r > 140) & (g > 140) & (b > 100) & (np.abs(r.astype(int) - g.astype(int)) < 40)
+    left_n = int(bright[:, : gx0 - x0].sum())
+    gap_n = int(bright[:, gx0 - x0 : gx1 - x0].sum())
+    right_n = int(bright[:, gx1 - x0 :].sum())
+    is_open = (
+        left_n >= LEAVE_CONFIRM_LEFT_MIN
+        and right_n >= LEAVE_CONFIRM_RIGHT_MIN
+        and gap_n <= LEAVE_CONFIRM_GAP_MAX
+    )
+    return ("open" if is_open else "closed"), (left_n, gap_n, right_n)
+
+
 # login_as()'s account-field clear-skip check (actions.py, 2026-09-21 task:
 # "login_as clear-field cost reduction" -- a 2026-09-21 A-run logged 24
 # DELETEs at ~3.7s/key-invocation, a ~90s input-gap opener). Same "no stored
@@ -734,6 +795,9 @@ def main():
     p_pwfield = sub.add_parser("pwfield", help="password_field_state() on one image, print the result")
     p_pwfield.add_argument("image")
 
+    p_leaveconfirm = sub.add_parser("leave-confirm", help="leave_confirm_state() on one image, print the result")
+    p_leaveconfirm.add_argument("image")
+
     args = ap.parse_args()
 
     try:
@@ -786,6 +850,11 @@ def _cli_dispatch(args):
     if args.cmd == "pwfield":
         state, sd = password_field_state(args.image)
         print(f"state={state} stddev={sd:.2f}")
+        return
+
+    if args.cmd == "leave-confirm":
+        state, (left_n, gap_n, right_n) = leave_confirm_state(args.image)
+        print(f"state={state} left_n={left_n} gap_n={gap_n} right_n={right_n}")
         return
 
 
