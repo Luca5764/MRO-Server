@@ -98,3 +98,44 @@ access violation）。最小探針腳本反覆跑 15 次以上完全沒事，只
 **下一步建議**：不要繼續在 PowerShell 裡查。改寫成**用 in-box `csc.exe` 編譯的獨立
 C# 小程式**，完全繞開 PowerShell 的 script-block／delegate marshaling 這一層——
 第一階段已經證明 Win32 這邊沒問題，問題在宿主。
+
+---
+
+## 追加（2026-09-21 19:45）：工具做好了，並記兩個環境事實
+
+`tools/win/logwatch.cs` ＋ `logwatch.sh`（用 in-box `csc.exe`
+`/mnt/c/Windows/Microsoft.NET/Framework/v4.0.30319/csc.exe` 編成 `-target:winexe`，
+編譯產物不進 repo）。PowerShell 版已刪除（git history 保得住）。
+
+**實測**：對真實客戶端跑 65 秒拿到 **108 行**真實 log，未觸發 rebaseline。
+**干擾驗證通過**：logwatch 在背景跑的同時 `client_ctl.py close` 仍正常關閉客戶端——
+證明它不影響 Pico 的前景閘門與點擊。XIGNCODE 無任何反應。
+
+### 環境事實 1：這台機器的 `.bat` 關聯是「用記事本開啟」，不是「執行」
+
+操作者看到螢幕突然跳出記事本。查證後分兩件事：
+- 當下那一個**是子 agent 自己開的**（它拿 `notepad.exe` 當離線測試的替身目標，
+  因為記事本有原生 Edit 控制項）。它已承認並改掉做法。
+- 但機器上另外兩個 `Notepad.exe` 是**昨天**留下的，命令列是
+  `Notepad.exe "C:\Games\MetalRage Online\Play Metal Rage Online.bat"`
+  ——代表 **`.bat` 目前被關聯到記事本**。
+
+⚠️ **任何工具若把 `.bat` 路徑當「開啟」而非「執行」丟給系統，就會跳出記事本搶前景。**
+而我們的 Pico 前景閘門以「前景必須是遊戲視窗」為條件——這會在實驗中途打斷整輪。
+（今天已經被 Chrome 遠端桌面搶前景害掉一整輪實跑，同一類問題。）
+`client_ctl.py` 的 launch 走的是明確的執行路徑，不受影響。
+
+**規則**：任何 AI 在這台機器上都不要用會觸發預設檔案關聯的方式碰檔案。
+看內容用 `cat`／`type`，編譯明確呼叫 `csc.exe`。
+
+### 環境事實 2：`SMTO_ABORTIFHUNG` 對「已標記無回應」的視窗會**秒退**
+
+實測兩次 exit 4，都不是等滿 2000ms：客戶端剛啟動（訊息佇列瞬間被判定無回應）、
+以及客戶端正在關閉、視窗即將銷毀的那一瞬間，兩者都在 300ms 內返回失敗。
+**這是正常行為不是 bug**——但代表「剛 READY 就起 logwatch」會撞到，等幾十秒再起就正常。
+
+### 未實測
+
+`exit 3`（有視窗但找不到 Edit 子控制項）與 `exit 5`（文字長度 300 秒不變）
+**只有程式碼路徑分析，沒有實測**。前者因為新限制不便再開 GUI 程式去湊情境，
+後者要真的空等五分鐘。
