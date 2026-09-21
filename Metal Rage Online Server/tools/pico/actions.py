@@ -149,6 +149,20 @@ DEFAULT_LOGIN_TIMEOUT_S = 20.0
 # any order.
 # ---------------------------------------------------------------------------
 
+# focus_client()'s foreground readback poll -- [TEST] 2026-09-21 A-段 step 1
+# (login_as('host', ...)): the FIRST readback after SetForegroundWindow came
+# back 'dwm' (Desktop Window Manager) instead of the target proc name, and
+# focus_client() failed outright. The foreground switch itself had not
+# failed -- Windows briefly reports 'dwm' as foreground during the
+# switch/animation transition, so a single immediate readback is racy. Poll
+# instead: keep re-reading (client_ctl.py's `foreground`, which sends no
+# input) until it matches or this timeout elapses, WITHOUT calling
+# SetForegroundWindow/shot.sh again inside the loop (see focus_client()'s
+# docstring for why -- pico_serial.ps1:261's foreground gate only ever
+# verifies, never re-steals, focus).
+FOCUS_FOREGROUND_READBACK_TIMEOUT_S = 5.0
+FOCUS_FOREGROUND_READBACK_POLL_INTERVAL_S = 0.25
+
 # login_as()'s account-field clear (design.md section 3 row 1: "不可以假設
 # 帳號欄位是空的...明確做全選＋刪除再打字"). This module has no CTRL+A/select-all
 # primitive -- code.py's KEY/PRESS only ever holds one keycode at a time (no
@@ -1358,11 +1372,16 @@ def focus_client(ctx, client_id):
          param).
       3. Read back the ACTUAL foreground process via client_ctl.py's
          `foreground` subcommand -- a plain Win32 GetForegroundWindow()
-         query that sends no input and is not itself gated. Only if this
-         equals the target proc_name does ctx.active_client get updated,
-         which is what _require_focused_client() (the guard every
-         click_at/key/type_text/mouse_wiggle call makes) checks before
-         allowing any input through.
+         query that sends no input and is not itself gated. Polled up to
+         FOCUS_FOREGROUND_READBACK_TIMEOUT_S (re-reading, never re-calling
+         SetForegroundWindow -- see that constant's comment for the
+         2026-09-21 'dwm' transient that made a single immediate read
+         racy). Only if a read equals the target proc_name does
+         ctx.active_client get updated, which is what
+         _require_focused_client() (the guard every click_at/key/type_text/
+         mouse_wiggle call makes) checks before allowing any input through.
+         If the timeout elapses without a match, this fails outright (no
+         retry of the whole switch, no re-focus attempt).
 
     client_id must be a key in ctx.clients (a dict of id -> ClientState,
     populated by the caller -- not by this function). Every existing
@@ -1396,14 +1415,32 @@ def focus_client(ctx, client_id):
         detail = f"shot.sh --proc {inst.proc_name} failed: {ex}"
         return ActionResult("focus_client", False, False, time.monotonic() - t0, detail, None, None, steps)
 
-    fg_proc = subprocess.run([sys.executable, CLIENT_CTL, "foreground"],
-                              capture_output=True, text=True, timeout=15)
-    steps.append((fg_proc.returncode, fg_proc.stdout.strip(), fg_proc.stderr.strip(), 0.0))
-    actual = fg_proc.stdout.strip() if fg_proc.returncode == 0 else None
+    # Poll the readback -- see FOCUS_FOREGROUND_READBACK_TIMEOUT_S's comment
+    # above for why a single immediate read is racy. SetForegroundWindow was
+    # already called exactly once, above (as a side effect of the
+    # take_screenshot() call); nothing in this loop calls it again -- it
+    # only re-reads via client_ctl.py's `foreground`, which sends no input
+    # and does not touch the OS foreground window.
+    readback_start = time.monotonic()
+    readback_deadline = readback_start + FOCUS_FOREGROUND_READBACK_TIMEOUT_S
+    actual = None
+    fg_proc = None
+    while True:
+        fg_proc = subprocess.run([sys.executable, CLIENT_CTL, "foreground"],
+                                  capture_output=True, text=True, timeout=15)
+        steps.append((fg_proc.returncode, fg_proc.stdout.strip(), fg_proc.stderr.strip(), 0.0))
+        actual = fg_proc.stdout.strip() if fg_proc.returncode == 0 else None
+        if actual == inst.proc_name:
+            break
+        if time.monotonic() >= readback_deadline:
+            break
+        time.sleep(FOCUS_FOREGROUND_READBACK_POLL_INTERVAL_S)
     if actual != inst.proc_name:
+        waited_s = time.monotonic() - readback_start
         detail = (f"foreground readback mismatch after SetForegroundWindow: expected "
-                  f"{inst.proc_name!r}, got {actual!r} (rc={fg_proc.returncode}, "
-                  f"raw stdout={fg_proc.stdout.strip()!r} stderr={fg_proc.stderr.strip()!r})")
+                  f"{inst.proc_name!r}, last got {actual!r} after polling {waited_s:.1f}s "
+                  f"(rc={fg_proc.returncode}, raw stdout={fg_proc.stdout.strip()!r} "
+                  f"stderr={fg_proc.stderr.strip()!r})")
         return ActionResult("focus_client", False, False, time.monotonic() - t0, detail, shot_path, None, steps)
 
     ctx.active_client = client_id
