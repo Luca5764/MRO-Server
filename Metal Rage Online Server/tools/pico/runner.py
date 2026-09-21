@@ -37,9 +37,10 @@ docs/reference/unattended.md 第 2 節.
 
 Preflight (docs/research/2026-09-20-dual-pico/design.md 2b, PM 2026-09-20
 decision): before `run` opens a real pico session or starts any client, it
-runs run_preflight() -- a read-only check (resolution vs atlas, pico
-foreground gate reachable, STOP file absent, no residual process per
-instance) for every instance the experiment will use. Any failure there
+runs run_preflight() -- a read-only check (resolution vs atlas via the exe's
+own ini's ViewportX/Y, OptionAll.ini's op_Display consistent with that same
+ViewportX/Y, pico foreground gate reachable, STOP file absent, no residual
+process per instance) for every instance the experiment will use. Any failure there
 stops the run before anything is touched (see docs/reference/
 unattended-policy.md 丁類第一條: a read-only measurement task once started a
 client, then could not close it because of exactly this resolution
@@ -390,6 +391,21 @@ ATLAS_KNOWN_CLIENT_SIZE = (1600, 1200)
 
 _OPTION_ALL_SCREEN_SIZE_RE = re.compile(r'op_Display=\(ScreenSize="(\d+)x(\d+)"')
 
+# 2026-09-21 [TEST] (dual-pico A 段第一次實跑, see check_resolution()'s
+# docstring below): the value that actually determines the client window's
+# size is NOT OptionAll.ini's op_Display -- that is only what the options
+# SCREEN shows. The value actually applied is [WinDrv.WindowsClient]
+# ViewportX/ViewportY in the running exe's OWN ini (MetalRage.ini for
+# proc_name 'MetalRage', MetalRage2.ini for 'MetalRage2' -- confirmed by
+# reading both installs' data/System/*.ini directly). Anchored on the
+# section header so 'WindowedViewportX='/'FullscreenViewportX='/
+# 'MenuViewportX=' in the same section (and 'ViewportX=' possibly repeated
+# in a LATER section such as [SDLDrv.SDLClient]) are never matched --
+# ^ViewportX requires the line to START with exactly that key.
+_WINDRV_SECTION_RE = re.compile(r'\[WinDrv\.WindowsClient\](.*?)(?=\r?\n\[|\Z)', re.DOTALL | re.IGNORECASE)
+_VIEWPORT_X_RE = re.compile(r'^\s*ViewportX\s*=\s*(\d+)', re.MULTILINE | re.IGNORECASE)
+_VIEWPORT_Y_RE = re.compile(r'^\s*ViewportY\s*=\s*(\d+)', re.MULTILINE | re.IGNORECASE)
+
 
 def _atlas_expected_client_size():
     """Returns ((w, h), None) or (None, reason). Reads tools/pico/atlas/
@@ -445,24 +461,124 @@ def _read_option_all_screen_size(instance):
     return (int(m.group(1)), int(m.group(2))), ini_wsl, None
 
 
+def _exe_ini_win_path(instance):
+    """<instance install dir>\\data\\System\\<proc_name>.ini -- follows the
+    running exe's own basename, same rule the session/run-log naming already
+    uses (client_ctl.ClientInstance.proc_name IS that basename: 'MetalRage'
+    -> MetalRage.ini, 'MetalRage2' -> MetalRage2.ini, see experiments/dual-
+    netspeed-*.json's 'clients' table and client_ctl.DEFAULT_INSTANCE).
+    Derived from instance.proc_name rather than hardcoded so this works for
+    any future third instance without editing this function."""
+    return instance.install_dir_win.rstrip("\\") + f"\\data\\System\\{instance.proc_name}.ini"
+
+
+def _read_exe_ini_viewport(instance):
+    """Reads (never writes) <instance install dir>\\data\\System\\
+    <proc_name>.ini's [WinDrv.WindowsClient] ViewportX/ViewportY -- the
+    value that actually determines the client window's size (2026-09-21
+    [TEST], dual-pico A 段第一次實跑: OptionAll.ini's op_Display already said
+    1600x1200 while the real client area was still 1152x864 -- see
+    check_resolution()'s docstring). Returns ((w, h), ini_path_wsl, None) on
+    success, or (None, ini_path, reason) on failure -- ini_path is the WSL
+    path if resolvable, else the Windows path, so a failure message always
+    names a real path."""
+    ini_win = _exe_ini_win_path(instance)
+    try:
+        ini_wsl = client_ctl.win_dir_to_wsl(ini_win)
+    except Exception as ex:
+        return None, ini_win, f"could not resolve WSL path for {ini_win}: {ex}"
+    try:
+        with open(ini_wsl, "rb") as f:
+            raw = f.read()
+    except OSError as ex:
+        return None, ini_wsl, f"could not read {ini_wsl}: {ex}"
+    # [TEST] 2026-09-21 (this task): unlike OptionAll.ini (UTF-16LE with a
+    # BOM), both installs' MetalRage.ini/MetalRage2.ini are plain
+    # single-byte (latin-1) with no BOM. Checked here rather than assumed,
+    # same "look at the BOM, don't hardcode either encoding" rule as
+    # _read_option_all_screen_size() above -- latin-1 never raises a decode
+    # error (every byte value is valid), so an unexpected encoding shows up
+    # as a failed regex match below, not a silent mojibake pass.
+    if raw.startswith(b"\xff\xfe"):
+        content = raw.decode("utf-16-le", errors="replace")
+    elif raw.startswith(b"\xfe\xff"):
+        content = raw.decode("utf-16-be", errors="replace")
+    else:
+        content = raw.decode("latin-1")
+    sec = _WINDRV_SECTION_RE.search(content)
+    if not sec:
+        return None, ini_wsl, f"no [WinDrv.WindowsClient] section found in {ini_wsl}"
+    section_text = sec.group(1)
+    mx = _VIEWPORT_X_RE.search(section_text)
+    my = _VIEWPORT_Y_RE.search(section_text)
+    if not mx or not my:
+        return None, ini_wsl, (f"[WinDrv.WindowsClient] section in {ini_wsl} is missing "
+                                f"ViewportX and/or ViewportY")
+    return (int(mx.group(1)), int(my.group(1))), ini_wsl, None
+
+
 def check_resolution(instance):
-    """design.md 2b row 1: instance's in-game resolution vs what the atlas
-    needs. Returns (ok, detail); detail always names the current value, the
-    expected value, and which file/key, per this task's contract -- does
-    NOT change OptionAll.ini (PM 2026-09-20: resolution fixes wait for the
+    """design.md 2b row 1, corrected 2026-09-21 (dual-pico A 段第一次實跑
+    [TEST]: launch_client('host') timed out waiting for the ready window --
+    the client area was still 1152x864 even though OptionAll.ini's
+    op_Display already said 1600x1200; op_Display is only what the OPTIONS
+    SCREEN shows, it is not what is actually applied to the window). The
+    check that decides pass/fail here now reads [WinDrv.WindowsClient]
+    ViewportX/ViewportY from the instance's OWN exe ini (MetalRage.ini /
+    MetalRage2.ini, see _read_exe_ini_viewport()'s docstring) against the
+    atlas's required client size. OptionAll.ini's op_Display is still
+    checked -- as a separate consistency check, check_resolution_optionall()
+    below, not deleted. Returns (ok, detail); detail always names the file,
+    section, key(s), current value, and the atlas's required value. Does
+    NOT change either ini (PM 2026-09-20: resolution fixes wait for the
     operator to decide, see design.md 2b's closing paragraph)."""
     expected, size_err = _atlas_expected_client_size()
     if size_err:
         return False, size_err
-    found, ini_path, read_err = _read_option_all_screen_size(instance)
+    found, ini_path, read_err = _read_exe_ini_viewport(instance)
     if read_err:
         return False, f"{instance.id}: {read_err}"
     if found != expected:
-        return False, (f"{instance.id}: {ini_path} op_Display ScreenSize={found[0]}x{found[1]}, "
-                        f"atlas needs client {expected[0]}x{expected[1]} (manifest.json shot_size "
-                        f"{ATLAS_KNOWN_SHOT_SIZE}) -- change the in-game resolution or rebuild the "
-                        f"atlas for {found[0]}x{found[1]}, see design.md P5; not done automatically")
-    return True, f"{instance.id}: {ini_path} ScreenSize={found[0]}x{found[1]} matches atlas"
+        return False, (f"{instance.id}: {ini_path} [WinDrv.WindowsClient] ViewportX={found[0]} "
+                        f"ViewportY={found[1]}, atlas needs client {expected[0]}x{expected[1]} "
+                        f"(manifest.json shot_size {ATLAS_KNOWN_SHOT_SIZE}) -- change the in-game "
+                        f"resolution or rebuild the atlas for {found[0]}x{found[1]}, see design.md "
+                        f"P5; not done automatically")
+    return True, (f"{instance.id}: {ini_path} [WinDrv.WindowsClient] ViewportX={found[0]} "
+                   f"ViewportY={found[1]} matches atlas")
+
+
+def check_resolution_optionall(instance):
+    """design.md 2b row 1's ORIGINAL check (op_Display), kept per this
+    task's contract as a second, separate consistency check rather than
+    deleted: compares OptionAll.ini's op_Display=(ScreenSize="WxH",...) --
+    the value the options SCREEN shows -- against the exe ini's
+    [WinDrv.WindowsClient] ViewportX/ViewportY that check_resolution() above
+    actually gates on. These two are written by different code paths inside
+    the client and can drift apart (2026-09-21 [TEST]: exactly this drift --
+    op_Display already 1600x1200, ViewportX/Y still 1152x864 -- is what
+    caused check_resolution()'s predecessor to pass while the real window
+    was still the wrong size). A mismatch here means the game's own options
+    screen is lying about what is actually applied, AND the next time the
+    client itself writes back its settings it may overwrite ViewportX/Y
+    with op_Display's (wrong) value. Returns (ok, detail); detail always
+    names both files, the key(s), and both current values."""
+    viewport, viewport_path, viewport_err = _read_exe_ini_viewport(instance)
+    if viewport_err:
+        return False, f"{instance.id}: {viewport_err}"
+    op_display, op_path, op_err = _read_option_all_screen_size(instance)
+    if op_err:
+        return False, f"{instance.id}: {op_err}"
+    if op_display != viewport:
+        return False, (
+            f"{instance.id}: {op_path} op_Display ScreenSize={op_display[0]}x{op_display[1]} != "
+            f"{viewport_path} [WinDrv.WindowsClient] ViewportX={viewport[0]} ViewportY={viewport[1]} "
+            f"-- op_Display is only what the OPTIONS SCREEN shows, ViewportX/Y is what is actually "
+            f"applied to the window; a mismatch means the setting is out of sync, and the next time "
+            f"the game writes back its settings it may overwrite ViewportX/Y with op_Display's value"
+        )
+    return True, (f"{instance.id}: {op_path} op_Display ScreenSize={op_display[0]}x{op_display[1]} "
+                   f"matches {viewport_path} ViewportX/Y")
 
 
 _DESKTOP_RESOLUTION_RE = re.compile(r"^(\d+)x(\d+)$")
@@ -650,6 +766,11 @@ def run_preflight(exp):
     for cid, inst in instances:
         ok, detail = check_resolution(inst)
         report["checks"].append({"check": "resolution", "instance": cid, "ok": ok, "detail": detail})
+        all_ok = all_ok and ok
+
+    for cid, inst in instances:
+        ok, detail = check_resolution_optionall(inst)
+        report["checks"].append({"check": "resolution_optionall", "instance": cid, "ok": ok, "detail": detail})
         all_ok = all_ok and ok
 
     for cid, inst in instances:
