@@ -645,6 +645,63 @@ def account_field_state(img):
     return ("empty" if sd <= ACCOUNT_FIELD_EMPTY_STDDEV_MAX else "has_text"), sd
 
 
+# login_as()'s 2026-09-21 "click landed in the wrong field" fix (actions.py
+# _confirm_account_focus()): a real dual-netspeed-c run had CLICK_AT
+# (LOGIN_ACCOUNT_FIELD) actually leave focus on 密碼 instead -- the account
+# name got typed into 密碼 (masked) and the dummy password ended up in 帳號
+# after a TAB wraparound, and the server correctly rejected the resulting
+# login ("無法接受認證"). [SHOT] this task:
+# shots/dual-netspeed-c-06-login_as-lobby-4.png. login_cq(0x00110151) had
+# still been SENT in that run -- wait_for_log_pkts() alone cannot tell a
+# correct login from a swapped one, only the screen can.
+#
+# account_field_state()/ACCOUNT_FIELD_BOX above cannot double as this check:
+# [TEST] this task, measured against 8 real login_as-screen-N shots (taken
+# BEFORE any input, across the dual-netspeed-a/b/c runs) -- ACCOUNT_FIELD_BOX's
+# own "untouched" stddev ranged 4.89-20.14 (it commonly carries leftover text
+# from a PREVIOUS login_as() attempt on the same instance, account_field_
+# state()'s entire reason for existing), so a wrong reading there cannot be
+# told apart from "the click actually worked, there's just old text".
+#
+# PASSWORD_FIELD_BOX has no such problem: the SAME 8 shots all read EXACTLY
+# 3.98 (bit-identical, not just "close" -- these are raw PNG framebuffer
+# captures, not lossy video, so unchanged content reads pixel-identical), and
+# 24.03 on the one real failure shot where the account name landed there
+# instead (masked as 11 '#' glyphs). Box mirrors ACCOUNT_FIELD_BOX, shifted
+# down by the measured 54px row gap (column-profiled dark bands at x=750:
+# 帳號 y=846..878, 密碼 y=900..933, both x=686..900 -- same x range as
+# ACCOUNT_FIELD_BOX, which was itself derived from LOGIN_ACCOUNT_FIELD's
+# click point per that box's own comment).
+PASSWORD_FIELD_BOX = (686, 901, 900, 927)  # shot coords, x0,y0,x1,y1
+# 🟡 threshold: comfortable margin above the measured-constant 3.98 baseline,
+# comfortably below the measured 24.03 contaminated reading -- picked the
+# same way ACCOUNT_FIELD_EMPTY_STDDEV_MAX was ("clearly above noise, clearly
+# below one visible glyph's contrast"), not a calibration sweep.
+PASSWORD_FIELD_FLAT_STDDEV_MAX = 8.0
+
+
+def password_field_state(img):
+    """Returns (state, stddev): state "flat" / "has_text" for the login
+    screen's 密碼 field (PASSWORD_FIELD_BOX) -- see that box's comment above
+    for why this, not account_field_state()/ACCOUNT_FIELD_BOX, is the signal
+    login_as()'s _confirm_account_focus() (actions.py) uses. This function
+    alone only proves "as of THIS ONE screenshot, 密碼 looks untouched" --
+    on an attempt==1 retry within the SAME login_as() call, 密碼 already
+    holds attempt 0's dummy password by design (LOGIN_DUMMY_PASSWORD is
+    typed into it every attempt), so it will legitimately read "has_text"
+    there even when nothing is wrong. _confirm_account_focus() compares this
+    function's stddev BEFORE vs AFTER its own probe keystroke (a delta, not
+    this function's absolute state) for exactly that reason -- this function
+    itself is provided mainly for the "does a fresh/untouched login screen
+    read flat here" case (verified directly against a real failure shot and
+    real untouched shots, see the box's comment) and for `screens.py field`
+    CLI-style spot checks, matching account_field_state()'s own shape."""
+    a = np.asarray(_load_image(img).convert("L"), dtype=np.float64)
+    x0, y0, x1, y1 = PASSWORD_FIELD_BOX
+    sd = float(a[y0:y1, x0:x1].std())
+    return ("flat" if sd <= PASSWORD_FIELD_FLAT_STDDEV_MAX else "has_text"), sd
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -673,6 +730,9 @@ def main():
 
     p_field = sub.add_parser("field", help="account_field_state() on one image, print the result")
     p_field.add_argument("image")
+
+    p_pwfield = sub.add_parser("pwfield", help="password_field_state() on one image, print the result")
+    p_pwfield.add_argument("image")
 
     args = ap.parse_args()
 
@@ -720,6 +780,11 @@ def _cli_dispatch(args):
 
     if args.cmd == "field":
         state, sd = account_field_state(args.image)
+        print(f"state={state} stddev={sd:.2f}")
+        return
+
+    if args.cmd == "pwfield":
+        state, sd = password_field_state(args.image)
         print(f"state={state} stddev={sd:.2f}")
         return
 

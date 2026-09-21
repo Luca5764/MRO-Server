@@ -224,6 +224,26 @@ FOCUS_FOREGROUND_READBACK_POLL_INTERVAL_S = 0.25
 # 16 vs 24 mainly trims the batch's own duration, not the invocation count.
 ACCOUNT_FIELD_CLEAR_KEYPRESSES = 16
 
+# login_as()'s 2026-09-21 "click landed in the wrong field" fix
+# (_confirm_account_focus() below) -- see screens.PASSWORD_FIELD_BOX's own
+# comment for the full incident ([SHOT] shots/dual-netspeed-c-06-login_as-
+# lobby-4.png) and why 密碼, not 帳號, is the reliable side of this check.
+# Arbitrary ASCII probe char -- anything in type_text()'s allowed range
+# works, this one has no special meaning and is always removed again with a
+# single clear_text_field(ctx, 1) before any real credential is typed.
+FOCUS_PROBE_CHAR = "0"
+# Contract wording ("可以重試點擊最多一次，仍然不過就讓這一步失敗"): one
+# click + probe, one retry click + probe, then fail closed -- login_as()
+# must not send the real account/password/ENTER if neither try confirms.
+ACCOUNT_FOCUS_VERIFY_MAX_TRIES = 2
+# 🟡 [GUESS]: margin chosen only as "comfortably above the ~0 stddev delta a
+# correct click should produce against screens.PASSWORD_FIELD_BOX (unchanged
+# content reads bit-identical, see that box's comment), comfortably below the
+# ~20 stddev jump measured on the one real leak" -- not a calibration sweep
+# against a live single-probe-character measurement. Flag for the next live
+# run to confirm with a real single-character probe shot.
+PASSWORD_PROBE_DELTA_MAX = 3.0
+
 # join_room()'s room-list-row target. RE-MEASURED 2026-09-21 against a real
 # join_room failure (B段第一次實跑: double-click at the old (920, 310) waited
 # 45.3s with no Enter_SA -- it landed below the row, in empty list space).
@@ -1957,6 +1977,76 @@ def close_client(ctx, client_id):
     return ActionResult("close_client", ok, False, time.monotonic() - t0, detail, None, None, steps)
 
 
+def _confirm_account_focus(ctx, client_id, skip_account_clear):
+    """Called by login_as() right after click_at(LOGIN_ACCOUNT_FIELD), BEFORE
+    typing the real account name -- fixes the 2026-09-21 dual-netspeed-c race:
+    a real run had that click actually leave focus on 密碼 instead of 帳號;
+    the account name got typed into 密碼 (masked) and the dummy password
+    ended up in 帳號 after the TAB wrapped back around, and the server
+    correctly rejected the resulting login ("無法接受認證"). [SHOT] this
+    task: shots/dual-netspeed-c-06-login_as-lobby-4.png. Critically,
+    login_cq(LOGIN_CQ_OPCODE) had still been SENT in that run -- the client
+    did make a login attempt, just with the wrong credentials -- so
+    wait_for_log_pkts() alone proves an action happened, never that it was
+    the RIGHT one; only reading the screen can catch a swap like this. Do
+    NOT fold this into wait_for_log_pkts()'s own completion condition for
+    that reason: a packet is evidence of activity, not of correctness.
+
+    CLICK_AT is provably closed-loop at the Win32 level (pico_serial.ps1's
+    Invoke-ClickAt re-reads GetCursorPos in a loop and re-runs the
+    foreground gate immediately before firing the click) -- this function
+    does not assume or claim to know WHY the click still landed wrong
+    (client-side hit-testing/focus timing is outside this module's
+    visibility); it only catches it before any real credential is typed.
+
+    Method: type ONE throwaway probe character (FOCUS_PROBE_CHAR) into
+    whatever the click just focused, then compare screens.PASSWORD_FIELD_BOX's
+    stddev from BEFORE this try to AFTER it (a DELTA, not
+    screens.password_field_state()'s own absolute "flat"/"has_text" -- 密碼
+    is not reliably flat on an attempt==1 retry either, since it already
+    holds attempt 0's dummy password by then; only a MOVEMENT relative to
+    its own prior state means something leaked into it just now). See
+    screens.PASSWORD_FIELD_BOX's own comment for why 密碼, not 帳號, is the
+    reliable side of this check (帳號's own resting noise is not flat -- it
+    commonly carries leftover text from a PREVIOUS login_as() attempt on the
+    same instance).
+
+    skip_account_clear mirrors login_as()'s original attempt==0-and-
+    "empty" clear-skip judgment, applied only on this function's OWN first
+    try (try_n==0) -- a second try here (the retry-once below) is reached
+    only after a failed probe, which already dirtied the field, so it always
+    clears, same reasoning login_as() already used for its own attempt==1.
+
+    Removes the probe with ONE HOME+DELETE (clear_text_field(ctx, 1)) after
+    every try, whatever the verdict -- wherever it landed, it must not linger
+    into the next step. Retries the click ONCE (contract: "可以重試點擊最多
+    一次") before giving up -- a caller that gets ok=False back MUST NOT type
+    the real account/password/ENTER (fail-closed, see login_as()'s own
+    handling of this return).
+
+    Returns (ok, detail, steps, last_shot)."""
+    steps = []
+    detail = ""
+    shot = None
+    for try_n in range(ACCOUNT_FOCUS_VERIFY_MAX_TRIES):
+        if try_n > 0:
+            steps.append(click_at(ctx, LOGIN_ACCOUNT_FIELD))
+        pre_shot = take_screenshot(ctx, f"login_as-{client_id}-focusprobe{try_n}-pre")
+        _, pass_before = screens.password_field_state(pre_shot)
+        if not (try_n == 0 and skip_account_clear):
+            steps.append(clear_text_field(ctx, ACCOUNT_FIELD_CLEAR_KEYPRESSES))
+        steps.append(type_text(ctx, FOCUS_PROBE_CHAR))
+        shot = take_screenshot(ctx, f"login_as-{client_id}-focusprobe{try_n}-after")
+        _, pass_after = screens.password_field_state(shot)
+        steps.append(clear_text_field(ctx, 1))  # remove the probe regardless of verdict
+        delta = pass_after - pass_before
+        detail = (f"try{try_n}: password_field stddev {pass_before:.2f}->{pass_after:.2f} "
+                  f"(delta={delta:.2f}, max={PASSWORD_PROBE_DELTA_MAX})")
+        if delta <= PASSWORD_PROBE_DELTA_MAX:
+            return True, detail, steps, shot
+    return False, detail, steps, shot
+
+
 def login_as(ctx, client_id, account):
     """Triggered by: the same login flow as login() above, but for one
     instance of a dual-client run (design.md section 3): focus_client(id)
@@ -1996,7 +2086,19 @@ def login_as(ctx, client_id, account):
     and stores .user_index (resolve_user_index(), 2026-09-21 "戰鬥中 CN 全部
     走房主連線" fix, see ClientState.user_index's own docstring) -- needed by
     enter_battle() once an in-battle CN's own conn can no longer tell two
-    players' actions apart."""
+    players' actions apart.
+
+    2026-09-21 "帳號欄焦點" fix: right after click_at(LOGIN_ACCOUNT_FIELD),
+    calls _confirm_account_focus() (see its own docstring for the full
+    incident and method) BEFORE typing the real account name -- a real run
+    had that click land on 密碼 instead, and the resulting login_cq SEND
+    still counted as "an attempt happened" even though the server correctly
+    rejected the swapped credentials. THE LESSON THIS ENCODES: a packet seen
+    on the wire (wait_for_log_pkts() below) only proves the client acted, not
+    that it acted CORRECTLY -- ok_pkt staying required in addition to
+    ok_lobby (screen-based) is deliberate and load-bearing; a future change
+    must not treat "login_cq seen" alone as login_as() succeeding, or this
+    exact swap-and-reject failure mode would silently read as a pass again."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     if not account or not all(0x20 <= ord(c) <= 0x7E for c in account):
@@ -2036,13 +2138,24 @@ def login_as(ctx, client_id, account):
         if not ctx.dry_run:
             steps.append(run_pico(ctx, "raw", "IME_EN"))
             steps.append(click_at(ctx, LOGIN_ACCOUNT_FIELD))
-            # attempt==0: skip the clear only when the screen read a
-            # confident "empty" (see field_state above). attempt==1 (retry):
-            # always clear -- this same call already typed `account` into
-            # the field during attempt 0, so it is known non-empty, not
-            # merely judged so.
-            if not (attempt == 0 and field_state == "empty"):
-                steps.append(clear_text_field(ctx, ACCOUNT_FIELD_CLEAR_KEYPRESSES))
+            # attempt==0: skip the (real, ACCOUNT_FIELD_CLEAR_KEYPRESSES-
+            # sized) clear only when the screen read a confident "empty"
+            # (see field_state above). attempt==1 (retry): always clear --
+            # this same call already typed `account` into the field during
+            # attempt 0, so it is known non-empty, not merely judged so.
+            # This decision is now made INSIDE _confirm_account_focus()
+            # (2026-09-21 fix, see its docstring) rather than here, since
+            # that call's own probe-and-clean-up cycle needs to run before
+            # the real account text goes in either way.
+            focus_ok, focus_detail, focus_steps, focus_shot = _confirm_account_focus(
+                ctx, client_id, skip_account_clear=(attempt == 0 and field_state == "empty"))
+            steps.extend(focus_steps)
+            if not focus_ok:
+                return ActionResult(
+                    "login_as", False, False, time.monotonic() - t0,
+                    f"account field focus not confirmed after click+retry, "
+                    f"refusing to type credentials ({focus_detail})",
+                    focus_shot, None, steps)
             steps.append(type_text(ctx, account))
             steps.append(key(ctx, "TAB"))
             steps.append(type_text(ctx, LOGIN_DUMMY_PASSWORD))
