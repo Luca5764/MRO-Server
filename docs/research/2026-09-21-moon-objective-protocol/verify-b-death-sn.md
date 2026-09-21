@@ -57,3 +57,76 @@ verifier（中階），2026-09-21。唯讀核對，不改程式、不改 state.m
 **1. 無害，可維持現狀（Death_SN 部分）**——`Game_Action_Death` native 端有 `Game_Host_Check()` 前置檢查，加入者呼叫時整段 GameInfo 相關程式碼直接跳過，不會產生 Accessed None；9 份真實加入者戰鬥 log 也零命中。
 
 **EndRound_SN／User_Score_SN／EndGame_SN 這三個 ⬜ 未完全比照驗證**：`Game_End_Round` native 端沒有看到跟 Death_SN 同等的 host-check（只查 Level 是否存在），vtable 呼叫目標本次沒解出，**不能因為 Death_SN 安全就類推它們也安全**——外部說法 §7 明確把 EndRound 跟 Death_SN 並列成「不安全」名單，這部分只有實測 log 零命中撐著，靜態證據不足。建議下一批任務：解 `Game_End_Round` 那個 vtable slot 的實際目標（`Engine.dll`/`Core.dll` 的 `ULevel`/`ALevelInfo` 虛表），或者比照 Death_SN 直接去讀 `AGameInfo::eventGame_End_Round`（若存在）在腳本端的實作，確認它有沒有自己的 None 檢查。
+
+## 補充（PM 要求）：`Game_Action_Death` 裡 host 閘門之前那段在做什麼
+
+PM 機械核對 `0x1071a560`（`Game_Host_Check` 真身）與 `0x1072e208`（`Game_Action_Death` 內
+`test byte ptr [esi+0xfac], 1`，即 host 閘門所在）兩個位址都對。以下補上 host 閘門**之前**那段
+（`0x1072e189`–`0x1072e1dc`），逐行反組譯核對（`tools/disasm.py at 0x1072e120 90`）：
+
+```
+0x1072e189  mov  edx, [0x1091b884]      ; import Core.dll ?GIsClient@@3HA
+0x1072e18f  cmp  dword ptr [edx], 0
+0x1072e192  je   0x1072e208             ; GIsClient==0 -> 跳過整段，直接到 host 閘門
+0x1072e194  mov  eax, [0x108e550c]      ; DAT_108e550c
+0x1072e199  test eax, eax
+0x1072e19b  je   0x1072e1de             ; null -> 走失敗分支（internal log）
+0x1072e19d  mov  eax, [eax+0x34]
+0x1072e1a0  test eax, eax
+0x1072e1a2  je   0x1072e1de
+0x1072e1a4  mov  ecx, [eax+0x34]
+0x1072e1a7  test ecx, ecx
+0x1072e1a9  je   0x1072e1de
+0x1072e1ab  mov  eax, [eax+0x30]
+0x1072e1ae  mov  ecx, [eax]
+0x1072e1b0  mov  ecx, [ecx+0x34]
+0x1072e1b3  test ecx, ecx
+0x1072e1b5  je   0x1072e1de
+0x1072e1b7..0x1072e1d5  (組參數)
+0x1072e1d6  call dword ptr [0x1091ba80]   ; import Engine.dll
+                                          ; ?eventTreatKillMSG_UJ@APlayerController@@QAEXHEHHEEH@Z
+0x1072e1dc  jmp  0x1072e208
+0x1072e1de  (失敗分支：Log_Set/Log_Write，字串 "UZNetwork_DJ::Game_Action_Death"，
+             file offset 0x114f1c，`tools/disasm.py str "UZNetwork_DJ::Game_Action_Death"` 確認)
+0x1072e208  test byte ptr [esi+0xfac], 1   ; host 閘門，本篇原本核對過的那段
+```
+
+### 1. 最後呼叫的是什麼
+
+`0x1091ba80` 用 pefile 對 import table 逐一比對，確認是 **`Engine.dll` 匯出的
+`?eventTreatKillMSG_UJ@APlayerController@@QAEXHEHHEEH@Z`**——PM 猜對了，不是照猜，是實際核對
+import table 名字比對出來的。這段的前提只有 `GIsClient != 0`（Core.dll 的 `?GIsClient@@3HA`，
+偏移 `0x1091b884`）加上下面那條指標鏈非 null，跟 `Game_Host_Check()`（`0xfac` 位元）**完全無關**，
+跟後面 host 閘門是兩段獨立的 if。
+
+### 2. 加入者身上這條指標鏈會不會因為某一層 null 被跳過
+
+**`DAT_108e550c` 是什麼，先查清楚：** 在 `0x10728960` 附近的另一個函式裡，`esi`（一個傳入參數）
+先被 `call dword ptr [0x1091ba7c]`（import `?StaticClass@UGameEngine@@SAPAVUClass@@XZ`）檢查是否
+`IsA(UGameEngine)`（走 `[esi+0x28]` 逐層 `[+0x2c]` 的 class-chain 比對），**通過才會**
+`mov dword ptr [0x108e550c], esi`（`0x107289a8`），沒通過就存 0（`0x107289b0`）。
+→ **`DAT_108e550c` 是這個客戶端「自己」快取的 `UGameEngine`（即 `GEngine`）指標**，跟 P2P 房主/加入者
+身分完全無關——這是**每個執行中的客戶端行程各自都有一份**的東西，不是網路上交換來的、也不是只有房主
+才會建立的物件（跟 `Game_Action_Death` 後半段用 `LevelInfo->Game`／`AGameInfo` 那個「只有房主端才有
+實例」的東西是完全不同層級）。
+
+`+0x34`／`+0x34`／`+0x30`→`[0]`→`+0x34` 這條鏈，因為 `Engine.dll` 沒有 PDB/型別資訊給 Ghidra，
+**沒能解出對應到 `UEngine`/`UGameEngine` 的具體欄位名稱**（例如是不是 `GamePlayers(0)`），這點標 ⬜。
+但從「最終結果被當 `APlayerController*` 傳給 `eventTreatKillMSG_UJ`」、以及 `DAT_108e550c` 已確認是
+「自己這個行程的 GEngine」這兩點合起來看，**這條鏈在語意上是在找『這個行程自己的本機玩家 PlayerController』**
+（等同 UE2 常見的 `GEngine->GamePlayers(0)->Actor` 存取模式），不是什麼房主專屬的資源。
+
+**結論：沒有找到「加入者身上這一層一定是 null」的結構性理由。** 這條鏈檢查的是「這個客戶端自己的本機
+玩家是否已經有一個活著的 PlayerController」，房主和加入者各自的遊戲行程都會建立自己的本機玩家
+PlayerController（跟 `AGameInfo` 那種只在權威端／host 才會實體化的物件不同），理論上兩邊在正常對戰中
+都應該非 null。唯一合理會讓它暫時 null 的情境是**載入/尚未 spawn 的空窗期**（跟本篇稍早找到的
+`Warning: ... DefaultPlayerController.Spectating.BeginState ... Accessed None 'PlayerReplicationInfo'`
+出現在地圖預載完成、正式開打**之前**是同一類「還沒 spawn 完」的空窗），這種空窗房主和加入者都可能遇到，
+不是加入者專屬。
+
+**實測佐證**：這條鏈的失敗分支跟後面 `Game_Host_Check` 那段的失敗分支**共用同一個字串**
+`"UZNetwork_DJ::Game_Action_Death"`（file offset `0x114f1c`）。本篇稍早已經對 9 份真實加入者戰鬥
+log（`MetalRage Online 2/data/System/run-*.log`）、房主/副安裝/筆電現存 log 全部 grep 過這個字串，
+**零命中**——代表就我們手上這批紀錄而言，**這條鏈也從沒被觀察到走到失敗分支過**，跟「加入者看不到擊殺
+提示」這個猜測沒有找到支持的證據。**沒有證據不等於證明不會發生**——如果操作者之後實際回報「加入者沒看到
+擊殺訊息」，這條鏈仍然是第一個該回頭查的地方，但目前的靜態＋實測證據都指向「跟房主/加入者身分無關」。
