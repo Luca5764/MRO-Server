@@ -1252,7 +1252,28 @@ def select_map(ctx, name):
     every name but never gated on, since only that one (name, id-range)
     pair is actually justified by a live observation -- per this task's
     contract, "only assert the one you can justify, else just assert a
-    0x00220221 recv happened"."""
+    0x00220221 recv happened".
+
+    ⚠️ KNOWN LIMITATION (2026-09-22 [TEST], round2-probe-firerate.json's
+    first real run): if `name`'s map is ALREADY the room's current selection
+    (e.g. create_pve_room()'s own default), clicking it a second time sends
+    NOTHING -- the popup opens (shots/round2-probe-firerate-18-select_map-
+    infiltrate-popup-1.png: 潛入作戰 already shown with a checkmark and
+    highlighted, the other three entries' checkboxes empty) and the client
+    does not consider this a change, so no 0x00220221 is ever sent and this
+    action fails closed on its own completion wait every time. This function
+    CANNOT tell "clicked the wrong pixel" apart from "clicked the right
+    pixel on an already-selected entry" -- both look identical from here (a
+    completion timeout with the popup marker present). Callers MUST confirm
+    the target map is not already the room's current selection before
+    calling this (e.g. read the room panel's own 選擇地圖 field, see
+    shots/round2-probe-firerate-17-select_map:infiltrate-precondition.png --
+    taken by this action's OWN precondition screenshot, before the click --
+    which already showed 潛入作戰 selected there); if it already matches,
+    skip calling this action entirely rather than treating a timeout as a
+    real failure. Not fixed here -- doing so would need a way to read the
+    room panel's current map field, which this module does not have (out of
+    this task's scope, see docs/reference/client-ui.md's trap table)."""
     if name not in MAP_ENTRIES:
         raise ActionError(f"unknown select_map name '{name}', known: {sorted(MAP_ENTRIES)}")
     entry = MAP_ENTRIES[name]

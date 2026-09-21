@@ -32,6 +32,7 @@
 | 房間內閒置約 **60 秒**，客戶端會**自己**送 `Leave_CQ` 離開（原版防掛機） | [TEST] 2026-09-21 伺服器 log 量到 **60,022 ms**（建房 ms 39285630 → Leave ms 39345652）。既有 journal 記的是「約 80 秒」 | `idle_nudge()`（建房後與加入後各一次） |
 | 房主與加入者的房間畫面**不同**（按鈕文字會變），畫面判定不能挑會變的區域 | [TEST] 2026-09-21 `room` marker 對兩者都失效 | `room` marker 已改用 RED TEAM 隊徽 |
 | ⚠️ **彈窗會把整個房間畫面調暗，`room` marker 因此失效。** 已知會這樣的有兩個：**建房後的委任彈窗**、**選地圖的下拉彈窗** | [TEST] 2026-09-21 `screen_matrix`：選地圖彈窗開著時 `room` 分數 46.84，跟委任彈窗調暗時**同分**。**選地圖那個從沒人記錄過** | `_room_or_notice_check()` 的 `notice_popup` 備援涵蓋委任彈窗；**選地圖彈窗沒有對應備援** |
+| **PvE 建房預設就是潛入作戰（`Map_PC04`）／初級**，不用另外選圖。點選單裡**已經選中**的地圖，客戶端不會送 `0x00220221`（沒有變化可送） | [TEST] 2026-09-22 `shots/round2-probe-firerate-17-select_map:infiltrate-precondition.png`（點擊前房間面板已是「選擇地圖　潛入作戰」「初級」反白）＋`shots/round2-probe-firerate-18-select_map-infiltrate-popup-1.png`（彈窗內潛入作戰打勾反白，其餘三項空白） | `select_map()` docstring 的「KNOWN LIMITATION」段——它分不出「點空了」與「點對但已經是當前值」，呼叫前要先確認目標不是當前選項 |
 
 ## 開戰流程
 
