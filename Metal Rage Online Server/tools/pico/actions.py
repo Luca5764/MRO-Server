@@ -2374,6 +2374,53 @@ def find_pkts_since(logs_dir, since_ms, limit=200, conn=None):
     return out[-limit:]
 
 
+def _iter_pkts_forward(logs_dir, since_ms):
+    """Generator over EVERY {ev:'pkt', ...} record with ms > since_ms from
+    the newest session log, oldest first, with NO limit truncation --
+    UNLIKE find_pkts_since() above (used by every other pkt-based completion
+    condition in this module), which deliberately keeps only the last
+    `limit` (default 200) matching entries, because those callers want
+    RECENT pkts near 'now' (a live wait loop polling for something that just
+    happened).
+
+    resolve_conn_id()/resolve_game_conn_id() below need the OPPOSITE: the
+    FIRST matching entry after since_ms, however far that entry is from the
+    end of a log file that keeps growing for the rest of the session. Using
+    find_pkts_since() there was a real bug, not just an inefficiency (PM
+    2026-09-21, full untruncated `session-20260921-070017.jsonl`, 1215
+    lines): once >200 pkt entries had accumulated between since_ms and the
+    end of the file, find_pkts_since()'s own out[-limit:] silently dropped
+    the dispatch conn's own early ctx.nickname-tagged pkt, and
+    resolve_conn_id() returned the NEXT matching entry instead -- which was
+    mrotesthost's GAME conn (10, tagged later via its own Create_CQ), not
+    its dispatch conn (9). That is a WRONG answer that still looks valid (an
+    int, not None), so no fail-closed check downstream can catch it -- worse
+    than "not resolved yet". Not fixed by raising find_pkts_since()'s own
+    default `limit` (out of scope: every other caller in this module would
+    pay that cost/behavior change for a problem only these two resolvers
+    have) -- these two read the file directly instead, via this generator."""
+    path = newest_session_log(logs_dir)
+    if path is None:
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("ev") != "pkt":
+                    continue
+                if entry.get("ms", 0) <= since_ms:
+                    continue
+                yield entry
+    except OSError:
+        return
+
+
 def resolve_conn_id(logs_dir, account, since_ms):
     """Finds `account`'s conn id from pkt records written after since_ms in
     the newest session log (docs/research/2026-09-20-dual-pico/design.md
@@ -2383,12 +2430,18 @@ def resolve_conn_id(logs_dir, account, since_ms):
     login succeeds (confirmed against a real session log 2026-09-20: the
     very next send pkts on that conn, e.g. 0x00210101, already carry
     {"accountId":1,"nickname":"Lucas"}) -- so this scans forward from
-    since_ms for the first entry whose ctx.nickname exactly equals `account`
-    and returns its 'conn' field.
+    since_ms (via _iter_pkts_forward(), NOT find_pkts_since() -- see that
+    generator's own docstring for why, 2026-09-21 PM-caught bug) for the
+    first entry whose ctx.nickname exactly equals `account` and returns its
+    'conn' field.
 
     Exact string match only (no case-folding/partial match) -- account names
     are validated printable-ASCII elsewhere (see login()'s check) and two
     different accounts should never share a nickname on the same server.
+    This is only ever called with ok_pkt already True (login_as() gates on
+    it), so the match this is looking for has already actually happened by
+    the time this runs -- the forward scan below will not run past it into
+    unrelated later log history.
 
     Returns the conn id (int) or None if no matching entry exists yet
     (caller should treat None as "not resolved yet", not as an error --
@@ -2401,7 +2454,7 @@ def resolve_conn_id(logs_dir, account, since_ms):
     resolve_game_conn_id() below for the 30907 resolution every room/battle
     action must use instead, and LOGIN_AGAIN_CQ_OPCODE's own comment above
     for the real-log evidence that these are two distinct `conn` values."""
-    for entry in find_pkts_since(logs_dir, since_ms):
+    for entry in _iter_pkts_forward(logs_dir, since_ms):
         c = entry.get("ctx") or {}
         if c.get("nickname") == account:
             return entry.get("conn")
@@ -2428,6 +2481,10 @@ def resolve_game_conn_id(logs_dir, account, since_ms):
     signature, docs/state.md 4c "30907 登入的身分") -- that positively marks
     which conn IDs are game conns in this window -- then returns the first
     entry AMONG THOSE conns whose ctx.nickname exactly equals `account`.
+    Both passes use _iter_pkts_forward(), NOT find_pkts_since() -- see that
+    generator's own docstring for the 2026-09-21 PM-caught bug this avoids
+    (find_pkts_since()'s default limit=200 silently dropped early matches on
+    a long-enough log and returned a wrong, not just missing, conn id).
 
     Exact string match only, same reasoning as resolve_conn_id(). Returns
     the conn id (int) or None if not resolved yet (same "not an error"
@@ -2435,10 +2492,10 @@ def resolve_game_conn_id(logs_dir, account, since_ms):
     fall back to conn=None/no filtering (see wait_for_log_pkts()'s conn
     param docstring: omitting it means "every connection matches")."""
     game_conns = set()
-    for entry in find_pkts_since(logs_dir, since_ms):
+    for entry in _iter_pkts_forward(logs_dir, since_ms):
         if entry.get("dir") == "recv" and entry.get("op") == LOGIN_AGAIN_CQ_OPCODE:
             game_conns.add(entry.get("conn"))
-    for entry in find_pkts_since(logs_dir, since_ms):
+    for entry in _iter_pkts_forward(logs_dir, since_ms):
         if entry.get("conn") not in game_conns:
             continue
         c = entry.get("ctx") or {}
