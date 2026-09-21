@@ -130,11 +130,43 @@ cap 比較，結果是 `min(v, cap)`——原廠 cap 是 10000／15000，**結�
 
 **而且兩個候選都不碰這條 cap 鏈**——所以不管這題答案是哪個 DLL，都不影響候選的有效性。
 
-## 套用前必須補做的兩件事（PM 指定）
+## ✅ 把關一：加入者端走不到這個分支（2026-09-21 已驗證）
 
-1. **`xref 0x1047ec80`** 確認呼叫來源，**並確認 NETSPEED 分支前面有沒有
-   `ServerConnection` 之類的檢查**。交付只要一句話：**這個分支在加入者端走不走得到。**
-2. **修補工具照 `tools/patch_netspeed.py` 的寫法**：先驗原始檔 SHA256
+**答案：走不到。** NETSPEED clamp 那幾行只在 host 端執行。
+
+**函式開頭就有門檻**（已用組語確認）：
+```
+0x1047ecf2  mov  eax,[ebx+0x14]        ; ebx = this ULevel，+0x14 = NetDriver
+0x1047ecf5  cmp  dword ptr [eax+0x3c], esi   ; esi=0；[NetDriver+0x3c] = ServerConnection
+0x1047ecf8  je   0x1047f5d5            ; ServerConnection==0 → 跳到 host 路徑
+```
+
+`+0x3c` 是 `ServerConnection` **不是猜的**：`UNetPendingLevel::NotifyReceivedText`
+（`0x104c6960`）開頭的斷言字串從 `.rdata` 讀出來是
+**`"Connection==NetDriver->ServerConnection"`**（`.\UnPenLev.cpp`）。
+
+**誰會填 ServerConnection**（`IpDrv.dll` `UTcpNetDriver`）：
+`InitConnect`（`0x10714ff0`，client 連出去時）會建立連線物件；
+`InitListen`（`0x10715180`，host 開房時）**全程沒有任何連線物件的建立或賦值**，只做 socket bind/listen。
+→ **host 端 `ServerConnection` 維持 0**，與 UE1 標準語意一致。
+
+**控制流可達性**（對 `0x1047ec80`–`0x10480180` 實際跑 BFS，非線性反組譯）：
+- `je` 沒跳（`ServerConnection != 0` ＝ **加入者**）→ client 路徑 684 個可達位址，
+  **不包含** NETSPEED clamp 區塊
+- `je` 跳走（`ServerConnection == 0` ＝ **房主**）→ host 路徑，
+  **包含** `0x1047f988`（`"NETSPEED"` 比對）、`0x1047f9b0`／`0x1047f9b5`／`0x1047f9b7` 全部可達
+- **兩條路徑互斥**（同一個 `je`），是二選一，不是順序問題
+
+⚠️ 加入者端**會**跑到這支函式（它也有自己的 `ULevel`，其他 token 分支照樣執行），
+**但這條 NETSPEED 分支被門檻完全排除**。
+
+### 位址核對（高階親自做過 hex-level 驗證）
+
+設計稿寫的 `0x1047f9b1`／`0x1047f9b8` **是立即值運算元的位址**，不是指令起始
+（opcode 在 `0x1047f9b0`／`0x1047f9b7`）；`0x1047f9b5` 本身是指令起始。**三個都對得上。**
+
+## 套用前還要做的一件事（PM 指定）
+1. **修補工具照 `tools/patch_netspeed.py` 的寫法**：先驗原始檔 SHA256
    （stock `fc51fe12…38d24e`）→ 逐 byte 比對原始值，不符就中止 → 輸出修補後 SHA256 →
    提供 `--restore`。**只對副本操作。**
 
