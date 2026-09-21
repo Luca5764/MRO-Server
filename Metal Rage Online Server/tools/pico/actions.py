@@ -160,7 +160,12 @@ DEFAULT_LOGIN_TIMEOUT_S = 20.0
 # SetForegroundWindow/shot.sh again inside the loop (see focus_client()'s
 # docstring for why -- pico_serial.ps1:261's foreground gate only ever
 # verifies, never re-steals, focus).
-FOCUS_FOREGROUND_READBACK_TIMEOUT_S = 5.0
+# [TEST] 2026-09-21 A 段第二／三次實跑：5.0 秒不夠。第三次實跑輪詢 6.4 秒全程讀到
+# 'dwm' 而失敗，但實驗結束後手動再讀一次就是 'MetalRage2' —— 也就是切換確實成功了,
+# 只是比 5 秒慢。每次輪詢要開一個 powershell.exe（約 1–3 秒），所以 6.4 秒其實只讀了
+# 三四次。當下 Chrome 遠端桌面（remoting_host.exe）是連著的,可能讓合成器的切換更慢。
+# 放寬到 25 秒;護欄性質不變（時限到仍不符就 fail,迴圈裡一樣不碰 SetForegroundWindow）。
+FOCUS_FOREGROUND_READBACK_TIMEOUT_S = 25.0
 FOCUS_FOREGROUND_READBACK_POLL_INTERVAL_S = 0.25
 
 # login_as()'s account-field clear (design.md section 3 row 1: "不可以假設
@@ -1444,7 +1449,9 @@ def focus_client(ctx, client_id):
         return ActionResult("focus_client", False, False, time.monotonic() - t0, detail, shot_path, None, steps)
 
     ctx.active_client = client_id
-    detail = f"focused {client_id!r} ({inst.proc_name}), foreground confirmed"
+    # 成功時也把等了多久記下來,才有真實的分佈可以調 TIMEOUT(不要再憑感覺猜)
+    detail = (f"focused {client_id!r} ({inst.proc_name}), foreground confirmed "
+              f"after {time.monotonic() - readback_start:.1f}s")
     return ActionResult("focus_client", True, False, time.monotonic() - t0, detail, shot_path, None, steps)
 
 
