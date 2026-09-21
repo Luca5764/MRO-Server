@@ -141,16 +141,43 @@ BUILD_SPEC = {
     # clean-battle reference at this box, vs >=35 for every non-battle
     # reference shot in the atlas).
     "markers": {
-        # "遊戲開始(F5)" banner, top-center of the room screen. Confirmed
-        # pixel-identical (MAD 0.00) across three room screenshots taken
-        # minutes apart (ref-04-room-clean.png, ref-06-end-6/7/8.png) -- no
-        # independent animation in this box. It DOES read as a big diff
-        # (MAD ~42) when a NOTICE popup dims the whole room behind it
-        # (ref-03-room.png), same dimming mechanic as the lobby's AFK-kick
-        # popup -- that is expected, not a flaw: see notice_popup below and
-        # dismiss_notice()/actions.py, which exists precisely to clear that
-        # popup before this marker is checked.
-        "room": {"source": "ref-04-room-clean.png", "box": [630, 190, 980, 255]},
+        # RECALIBRATED 2026-09-21 (dual-netspeed B段 4th run): the box below
+        # used to be [630, 190, 980, 255], the "遊戲開始(F5)"/"準備(F5)"
+        # hexagon banner text -- that text is NOT stable, it reads
+        # "遊戲開始(F5)" for the host with nobody else in the room but
+        # "準備(F5)" once a second player has joined (host is no longer the
+        # only one who can start), so the box's MAD against the
+        # single-player reference crop is high for any real 2-player room.
+        # Caught because a real B段 run had the joiner plainly standing in
+        # the room screen (shots/dual-netspeed-b-22-set_ready-precondition.png)
+        # while detect_marker(...,"room") reported present=False, and the
+        # SAME run's create_pve_room only passed via the notice_popup
+        # fallback, not the room marker itself -- see _room_or_notice_check()
+        # below and create_pve_room()'s docstring. This box very likely never
+        # matched a real 2-player room in any prior run either; it was only
+        # ever checked against its own single-player source screenshot (see
+        # the "not yet validated against a live, freshly-captured screenshot"
+        # note on THRESHOLDS above).
+        #
+        # New box: the RED TEAM panel's skull/wing crest graphic, top-left of
+        # the room screen, well left of any player name/slot/ready-state text
+        # (box stops at x=200, the RED TEAM lettering itself starts further
+        # right). Chosen because it is decorative background art for the
+        # room's team panel -- not host/ready-state/player-count text -- so it
+        # should not vary with who is host, how many players are in, or
+        # whether they are ready. Checked (this task) against every
+        # 1616x1239 image in shots/ (321 images): all ~41 images that are
+        # genuinely a room screen (host alone, host with 2+ players, joiner's
+        # own view, various ready states, across many different past
+        # experiments' room screenshots including this run's own
+        # dual-netspeed-b-17/18/19/21/22) score exactly MAD 0.00 here; every
+        # other image (battle, lobby, shop, login, console, results, notice
+        # popups, etc.) scores >=41.85 -- a clean gap, no image anywhere in
+        # the gray zone between 0 and marker_accept=12.0. Still dims like the
+        # old box when a NOTICE popup is up (same whole-screen dim mechanic,
+        # see notice_popup below), so _room_or_notice_check()'s fallback is
+        # unaffected/still needed for that case.
+        "room": {"source": "ref-04-room-clean.png", "box": [30, 240, 200, 270]},
         # F1-F4 skill-point cost panel, top-right of the battle HUD. Static
         # labels/costs, not the live SP/kill counters next to it. accept=22
         # (vs default 12) so it still reads "battle" with the console open on

@@ -15,7 +15,7 @@
     "console_battle_accept": 8.0,
     "marker_accept": 12.0
   },
-  "built_at": "2026-09-20T01:09:00",
+  "built_at": "2026-09-21T20:42:36",
   "built_from": {
     "screen_lobby": "u-20260919-01-00-start.png",
     "screen_shop": "u-20260919-01-01-shop.png",
@@ -155,10 +155,10 @@
   "markers": {
     "room": {
       "box": [
-        630,
-        190,
-        980,
-        255
+        30,
+        240,
+        200,
+        270
       ],
       "crop": "marker_room.png"
     },
