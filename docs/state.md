@@ -148,6 +148,33 @@
 | 房主踢人：`Kickout_CQ 0x00220337` body u16 UserIndex；回房主 `Kickout_SA 0x00220338` 0/0，對被踢者送 `Leave_SN 0x00220236`（UserIndex＝自己、Kickout=1）→ 客戶端跳「被強制離開房間」並回大廳；其他人收 `Leave_SN`（Kickout 位元組不讀）。被踢者可重新加入 | ✅ [DLL] `0x107eeed0`、`0x107ebe30`、`0x107edc40`（PM 機械核對）；[LOG][OBS] `session-20260919-111258.jsonl` ms 2829050、2876878（Sol 審查 `research/2026-09-19-sol-review/batch1.md`：成立） | `journal/2026-09-19-0330-d1-step4-room-join.md` |
 | 投射物消失：加入者開火時約 10% 的發數在自己這台**完全沒有生成**——連 `FireProjectileCenterLoc_UJ` 內 (`ZBase/W_BaseProjectile_Weapon.uc:910`) 的開火動畫都沒播。❌ **排除 H-SPAWN-FAIL**（`Spawn()` 失敗會留下「有動畫、沒爆炸」的殘缺組，一組都沒有）。H-AMMO-DESYNC 🟡 **可能解釋一部分**：同場同武器開 `sup1` 後缺口 20.8%→8.9%（Fisher p≈0.06），而且成串失敗（`1,3,2,2`）全部消失、只剩孤立單發。**缺口全在回程**：角色對調後房主端收到 34/34＝100%（去程無損），所以掉的是 `ClientFireProjectileCenterLoc_MH`（`reliable ToAll`）那一段。**成因已定位**：`Engine.dll` `AActor::ProcessRemoteFunction`（`0x105234b0`）的廣播迴圈對每個 connection 呼叫 `IsNetReady`（`0x105236a5`），回 false 就**跳過該 connection、不排隊也不重傳**（`0x105236ad`）——宣告的 reliable 只在送出之後才算數。門檻吃的是 `CurrentNetSpeed`，實測只有 **10000 B/s**（÷30 tick ≈ 每 tick 333 bytes），而且加入者端改 ini 無效（`GameInfo.uc:1504` 的 `ClientCapBandwidth` 會用房主的值覆蓋）。同機零掉包環境缺口反而更大（33%），證明與網路品質無關。主控台 `netspeed <n>` **有效但夾在 15000**：同機對照 10000→15000 讓缺口 32.4%→22.9%（n=35，未達顯著，**不是已證實的修復**）；15000 這個夾值從哪來 ⬜ | ✅ [LOG] 客戶端 `MetalRage.log`：主武器 48 次扣扳機缺 10，`sup1` 後 90 次缺 8（彈藥一次扣兩發，分母用 `HitLoc===` 行數不是彈藥數）（**未經跨公司審查**） | `journal/2026-09-20-1820-projectile-loss-counted.md` |
 
+### 戰鬥封包送給加入者安不安全（2026-09-21，起因於 Moon 的提醒，核對後結論相反）
+
+起因：上游作者 Moon 來信說「**不要**把 `Death_SN` 或目標類 SN 送給加入者」，理由是那些 handler
+結尾會呼叫 GameInfo 的腳本事件，而加入者（NM_Client）沒有 `Level.Game`。我們的
+`battleEndBroadcastMode` 正是廣播給全房。**核對後兩條都不成立，行為維持現狀。**
+原始資料與核對過程：`research/2026-09-21-moon-objective-protocol/`。
+
+| 項目 | 狀態 | 依據 |
+|---|---|---|
+| `Death_SN 0x00230124` 廣播給加入者**安全**。兩道保護：呼叫 GameInfo 事件那段被 `Game_Host_Check()`（`0x1071a560`：`return *(this+0xfac) & 1`）包住，加入者旗標 false 整段不執行（`0x1072e208`）；另一段由 `GIsClient` 把關、對加入者會執行的是 `eventTreatKillMSG_UJ`（`0x1072e1d6`），逐層指標都有 null 檢查、遇 null 就跳過 | ✅ [DLL]（`0x107db912`→`Game_Action_Death` 真身 `0x1072e120`）[LOG] 同機雙開 9 份加入者 `run-*.log` grep `ScriptWarning`／`Accessed None` 零命中（**未經跨公司審查**） | `research/2026-09-21-moon-objective-protocol/verify-b-death-sn.md` |
+| `EndRound_SN 0x00222211` 廣播給加入者**安全**，但機制**不同**：`Game_End_Round`（`0x1072e310`）沒有 host 閘門，呼叫 `[Level vtable]+0xb4` ＝ `ULevel::EndRound_BD`（`Engine.dll 0x1047ab70`）；該函式讀 `LevelInfo+0x630`（GameInfo）後有顯式 `test esi,esi / je` null 檢查，加入者 null 就整段跳過 | ✅ [DLL] 虛表 `??_7ULevel@@6BUObject@@@ 0x10691af8`；同表 `+0xa0` ＝ `ULevel::Listen 0x1047a5e0`，與 netspeed 調查獨立對上（**未經跨公司審查**） | `research/2026-09-21-moon-objective-protocol/verify-b2-endround-vtable.md` |
+| `User_Score_SN 0x00222221`／`EndGame_SN 0x00222213` 對加入者安不安全 | ⬜ **未窮盡**。兩者走的路徑不同（`User_Score_SN` 屬 `ZDispatchRoom`、真身 `0x107ece60`，完全沒碰 Level vtable；`EndGame_SN` 真身 `0x107d7ed0`）；目前**沒找到危險路徑**，但 `Dedi_End`／`Community_Chat_Clear`／`Event_Call`／`Scene_Change` 四個 callee 沒展開 | 同上 |
+
+### Moon 筆記裡已核對成立的項目（2026-09-21）
+
+來源是 Moon 的 `protocol_objective.en.md`，**經我們自己反組譯核對**後才列在這裡。
+核對過程：`research/2026-09-21-moon-objective-protocol/verify-c-items.md`。全部**未經跨公司審查**。
+
+| 項目 | 狀態 | 依據 |
+|---|---|---|
+| `ZDispatchGame` 目標類 opcode 表與 SN body 長度：跳表在 `0x107dbf48`，13 個表項 xref 到 8 個 SN handler，body 長度＝最後欄位 offset＋大小，8 組全吻合 | ✅ [DLL] | `verify-c-items.md` 第 1 項 |
+| **14-byte 記錄的 team 欄跟隨我們自己送的 `Game_Info_SN`**，不是固定值：客戶端比對的是 `+0xff0`／`+0xff4`（`Game_Play_Start` 從 `+0xffc`／`+0x1000` 複製），而後者由 `Game_Info_Team_Set`（`0x1071a420`）直接從 `Game_Info_SN` body+0x04／+0x06 寫入。**我們送 0／1 是對的，不要改成 1／2** | ✅ [DLL] Moon 說的 `ClientRedIndex=1`／`ClientBlueIndex=2` 出自 `execTutorial_Open`（`0x107301f0`），那是**單機教學**路徑 ❌ 不適用連線對戰 | `verify-c-items.md` 第 2 項；與 `gate.game.dispatch.js:493-497` 既有註解獨立對上 |
+| `Game_User_Mission_Set 0x1072d970`：`Mode==9` 時 `total×5`（與 `Game_User_Assist_Set 0x1072d8a6` 一致）；`0xfcc` 是 `MapInfo.Mode`（從地圖表 `+0x18` 讀出） | ✅ [DLL]；但「Mode 是地圖編號的**首位數**」❌ **查無實據**——DLL 裡沒有任何除法／取模從 MapIndex 算出 Mode | `verify-c-items.md` 第 3 項 |
+| `Game_Score_Get 0x1072d120`：`Mode` 不是 2／3 時回 score（`record[2]`），是 2／3 時回 goal（`record[6]`） | ✅ [DLL] | `verify-c-items.md` 第 4 項 |
+| `User_Score_SN 0x00222221` 佈局：header WinTeamIndex／Rank／Score 在 `+0x00`／`+0x02`／`+0x04`，record A／B 在 `+0x08`／`+0x16`，userCount 在 `+0x24`，逐人列從 `+0x25` 起、stride `0x3A`、userIndex 在記錄 `+0x00`。**可以在 `EndGame_SN` 之前送**：`ZDispatchRoom::Check`（thunk `0x1070966a`→`0x107e9eb0`）的閘門是 `IsClient && (scene==5 \|\| scene==6)`，**戰鬥中的場景 6 本來就啟用**，handler 自己沒有額外場景檢查 | ✅ [DLL] handler thunk `0x107051b9`→`0x107ece60`（Moon 未列此位址）。exp／point 的 3 個子欄位未逐一核對 ⬜，不影響 stride 與起點 | `verify-c-items.md` 第 5 項 |
+| `Special_CN 0x00230125`：原生宣告是 **9 個 ActionType**（不是 8），而且**封包上的 byte 不是 ActionType 原始值**，是 builder 內建轉換表映射過的（9→`0x3d`、8→`0x52`、7→`0x5b`） | 🟡 [DLL] builder `0x107da093`、跳表 `@0x107da1b4`（另直接讀 DLL 原始 bytes 二次核對）；**無 live-confirmed**，沒人實際觸發驗證過 | `research/2026-09-21-moon-objective-protocol/answers-for-moon.md` |
+
 ## 5. 程式碼裡已知錯誤的名稱與無效封包（尚未修正）
 
 這些是文件已經確認、但程式碼註解或行為還沒跟上的地方。**改之前要單獨測**，不要順手一起改。
