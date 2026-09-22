@@ -404,6 +404,28 @@ DEFAULT_CONSOLE_CMD_ON_CLOSE_TIMEOUT_S = 10.0
 # obviously-wrong experiment file (e.g. a typo'd shots=100000).
 FIRE_BURST_MAX_SHOTS = 1000
 
+# fire_burst()'s battle-HUD precondition WAIT budget (2026-09-22, round 2
+# re-run after round 1's B-段 failed closed before sending any CLICK). The
+# actual failing screenshot from that run -- [SHOT]
+# shots/round2-projectile-43-fire_burst-precondition.png (2026-09-22,
+# confirmed via screens.battle_hud_state() == ("not_battle", 0)) -- is a
+# RESPAWN mech-reselect page (kill-feed line "[mrotesthost]被擊毀. 9/10",
+# RESPAWN countdown bar, F1-F8 mech grid), i.e. the joiner's mech died right
+# after entering battle, NOT the inter-round "MISSION BRIEFING / ROUND n"
+# banner this constant's task contract assumed -- [SHOT] shots/
+# r2-stuck-joiner.png, the screenshot originally cited for that assumption,
+# was checked against screens.battle_hud_state() during this same task and
+# came back ("battle", 6279): the MISSION BRIEFING banner does NOT blank the
+# SP-counter box this check reads, so that theory does not hold, at least not
+# on this evidence. The WAIT itself is unaffected by which screen caused the
+# gap (mech-reselect after death vs. an actual round transition, if the
+# latter ever independently causes this -- unconfirmed either way): both are
+# "battle HUD not up yet, will very likely come back" states this function
+# should tolerate rather than fail closed on. How long either screen stays up
+# has not been measured (⬜); 45s is a deliberately generous ceiling, not a
+# measured value.
+FIRE_BURST_BATTLE_WAIT_S = 45.0
+
 # Leave_CQ 0x00220234 (room-level self-leave, e.g. the client's own AFK-kick,
 # ZGUIController.uc:945-948 -- design.md L5 read that source as ~80s) --
 # idle_nudge() below only needs to confirm this did NOT fire on the nudged
@@ -2683,10 +2705,24 @@ def fire_burst(ctx, client_id, shots, interval_s):
     viewport).
 
     Precondition: focus_client(id) (design.md section 0 rule 7, same as
-    every other per-client action here) THEN a single-shot battle-HUD check
-    (_battle_any_check(), map-independent per that function's own docstring)
-    -- fails closed, no CLICK sent, if the battle HUD is not up yet (e.g.
-    still on the mech-select page) or already gone (e.g. back in the room).
+    every other per-client action here) THEN a POLLED battle-HUD wait
+    (_battle_any_check() via wait_for(), map-independent per that function's
+    own docstring), up to FIRE_BURST_BATTLE_WAIT_S seconds -- fails closed,
+    no CLICK sent, only if the battle HUD never appears within that budget
+    (e.g. still on the mech-select page, already back in the room, or the
+    client crashed). This was a single-shot check before 2026-09-22's round-2
+    re-run: round 1's B-段 fire_burst() failed closed on exactly this check,
+    on a RESPAWN mech-reselect page shown right after the joiner's mech died
+    (see FIRE_BURST_BATTLE_WAIT_S's own comment for the confirmed screenshot
+    and what it actually shows -- this task originally assumed an inter-round
+    "MISSION BRIEFING / ROUND n" banner covering the HUD, which turned out not
+    to be what that screenshot shows, nor to blank this check's own SP-box on
+    a separate screenshot that does have that banner; see that comment for
+    the correction). Either way, the HUD not being up yet does not mean it
+    will not come back seconds later, and the old single-shot check had no
+    way to tell the difference. The wait happens BEFORE fire_t0 is set below,
+    so `firing_window_s` (see its own paragraph further down) never includes
+    time spent waiting for the HUD -- only actual clicking.
 
     Fail-closed on the FIRST non-success CLICK (this task's contract: "任何
     一次 CLICK 失敗就 fail-closed 中止，不要默默繼續") -- each shot's
@@ -2756,10 +2792,14 @@ def fire_burst(ctx, client_id, shots, interval_s):
     if fail:
         return fail
 
-    pre = _precondition(ctx, "fire_burst", "battle", _battle_any_check())
-    if pre:
-        pre.steps = steps + pre.steps
-        return pre
+    wait_ok, wait_gray, wait_detail, wait_score, wait_shot, wait_elapsed = wait_for(
+        ctx, "fire_burst-battle-wait", FIRE_BURST_BATTLE_WAIT_S, _battle_any_check())
+    if not wait_ok:
+        detail = (f"ABORTED (fail-closed): battle HUD did not appear within "
+                  f"{FIRE_BURST_BATTLE_WAIT_S:.0f}s (waited {wait_elapsed:.2f}s) -- {wait_detail}; "
+                  f"0 CLICK sent")
+        return ActionResult("fire_burst", False, wait_gray, time.monotonic() - t0, detail,
+                             wait_shot, wait_score, steps)
 
     if ctx.dry_run:
         detail = f"dry-run: would send {shots} CLICK left, {interval_s}s apart (~{(shots - 1) * interval_s:.1f}s total)"
