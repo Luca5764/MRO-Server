@@ -131,7 +131,7 @@ v1 §3 說「不確定房主會不會送 CN 通知伺服器」——**有 12,472
 | 步 | 開關 | 做什麼 | 怎麼驗 |
 |---|---|---|---|
 | **T1** | `PVP_TEAM_ASSIGN_MODE` | `Game_User_SN` TeamIndex 依加入順序輪流填 0／1 | 2 人實跑：兩人是否被分到不同顏色、互相是敵人 |
-| **T2** | `PVP_KILL_TRACKING_MODE` | 房間層級記錄兩隊擊殺數（從 `Death_CN` 的 attacker 歸隊）。**歸隊規則照客戶端原始碼**，見下方 §7.1。**attacker 解析不到 → 記 WARN、不計分**。⚠️ **開工前提：`Death_CN` 的 attacker 欄位 offset 要先 ✅ [DLL]** | log 印每隊擊殺數；比對實際擊殺 |
+| **T2** | `PVP_KILL_TRACKING_MODE` | 房間層級記錄兩隊擊殺數（從 `Death_CN` 的 attacker 歸隊）。**歸隊規則照客戶端原始碼**，見下方 §7.1。**attacker 解析不到 → 記 WARN、不計分**。✅ **開工前提已解除（2026-09-23）**：attacker＝body `+0x00` u16 LE、victim＝`+0x02` u16 LE，DLL 與實測封包兩邊對上（`research/2026-09-23-death-cn-fields/attacker-offset.md`） | log 印每隊擊殺數；比對實際擊殺 |
 | **T2.5** | `PVP_TEAM_SCORE_SYNC_MODE` | **比賽中把隊伍分數同步給兩端**。⚠️ **開工前提：先查出客戶端是哪一包更新隊伍計分板，要 ✅ [DLL]**（PvP 首輪實測：`Death_SN` 只讓個人分數變成 `P 0010`，隊伍總分停在 `000`，見 `journal/2026-09-22-2230-pvp-2p-first.md:14-34`）。Moon 已被問，他若有答案就省一步 | 2 人實跑：擊殺後**兩邊**計分板的隊伍分數都跟著動 |
 | **T3** | `PVP_TIMEOUT_MODE` | 新開 `Timeout_CN` handler：比擊殺數決定勝方 → **先送 `User_Score_SN 0x00222221`、後送 `EndGame_SN 0x00222213`**（順序照 §3，與現行 PvE log 一致，不可對調） | 把時限設成 1 分鐘，等它時間到；log 逐筆核對送出順序 |
 | **T4** | `GAME_INFO_TDM_GOAL_MODE` | **單一資料流**（見 §7.2）：房間的 `MapKill` 是唯一真值 → `Game_Info_SN` 的 `+0x15`／`+0x16`／`+0x18` 三欄都填它 → 結束判斷也讀同一個房間欄位，**不讀封包回填值**。達標就走 T3 的同一條結束路徑 | 目標設小（例如 3），打到 3 殺 |

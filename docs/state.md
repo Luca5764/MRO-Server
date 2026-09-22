@@ -61,7 +61,7 @@
 
 | 方向 | opcode | 名稱 | 目前伺服器行為 | 狀態 |
 |---|---|---|---|---|
-| C→S | `0x00230123` | `Death_CN`：attacker u16、victim u16、type u8… | 回 `Death_SN` | ✅ [DLL][TEST] |
+| C→S | `0x00230123` | `Death_CN`（body 11 bytes，LE）：`+0x00` attacker u16、`+0x02` victim u16、`+0x04` DeathType u8（1–4，由 26 路 jump table 收斂）、`+0x05` u8 旗標（`setne`，語意 ⬜）、`+0x06` u8 ⬜、`+0x07` u32 ⬜。組包處 `0x107d9a05`／`0x107d9a1b`（body 起點＝buf+0x10） | 回 `Death_SN` | ✅ [DLL] 高階 2026-09-23 覆核逐條指令 ＋ [LOG] `session-20260922-222051.jsonl:404` hex `05000600…` 對上實測已知 attacker=5／victim=6；:469 反向擊殺 6/5、:493 環境死亡 attacker=0。後四欄仍 ⬜，見 `research/2026-09-23-death-cn-fields/attacker-offset.md` |
 | S→C | `0x00230124` | `Death_SN`：victim 在 `+0x0C` | 5 秒後補送 `Respawn_SN` | ✅ [DLL][TEST] 會重生 |
 | C→S | `0x00230103` | `Respawn_CN` | 立即回 `Respawn_SN` | ✅ [DLL] |
 | C→S | `0x00230121` | `Assist_CN`：`+2` user、`+4` type、`+6` 數值 | 回空的 `Assist_SN`，實際無效果 | ✅ [DLL] 格式；🟡 語意 |
