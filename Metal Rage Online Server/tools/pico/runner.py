@@ -275,6 +275,11 @@ def describe_step(step):
                 f"wait<=6s for create_dialog marker, click client{actions.CREATE_PVE_TAB} (協力模式), "
                 f"wait<=4s for dialog_pve tab active, click client{actions.CREATE_CONFIRM_BUTTON} (確認), "
                 f"wait<=10s for room or notice_popup marker")
+    if name == "create_pvp_room":
+        return (f"create_pvp_room: precondition=lobby, click client{actions.CREATE_ROOM_BUTTON} (建立房間), "
+                f"wait<=6s for create_dialog marker, wait<=4s VERIFYING dialog_pvp tab already active "
+                f"(no tab click -- 對戰模式 is the dialog's default, fail-closed if not active), "
+                f"click client{actions.CREATE_CONFIRM_BUTTON} (確認), wait<=10s for room or notice_popup marker")
     if name == "select_map":
         map_name = params.get("name")
         entry = actions.MAP_ENTRIES.get(map_name, {})

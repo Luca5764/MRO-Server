@@ -1,0 +1,64 @@
+{
+  "id": "pvp-start-smoke",
+  "purpose": "PVP_START_FLOW_MODE smoke test（🟡 待驗，尚未實跑）。單人房主開一場 PvP（用新加的 create_pvp_room，不切分頁），跑完整開戰流程到 enter_battle，驗證該開關打開後不會在建房/開戰這幾步炸掉。骨架抄 bridge-fps-compare.json 的單人 mech_key=None 流程，但拿掉 focus_client/idle_nudge/console_cmd_on/fire_burst，只留 8 個核心步驟。⚠️ 預期最可能卡在 enter_battle：PvP 兩位玩家的 Game_User_SN team 欄目前都固定填 0（docs/research/2026-09-22-d2-tdm/pvp-start-gap.md Q5），TDM 分隊邏輯還沒做，enter_battle 等的是 ChangeSlot_CN/Respawn_CN 這個信號，不是直接靠 team 欄，但整條開戰鏈路是否受影響未知，卡在這裡本身就是訊號，不代表腳本壞。成功＝8 步全過；失敗先看是不是卡在 enter_battle。",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage",
+      "install_dir_win": "C:\\Games\\MetalRage Online 3",
+      "bat_path_win": "C:\\Games\\MetalRage Online 3\\Play With Log.bat"
+    }
+  },
+  "steps": [
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotest"
+      }
+    },
+    {
+      "action": "create_pvp_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": null,
+        "require_cn": false
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    }
+  ],
+  "stop_conditions": {
+    "max_consecutive_failures": 1
+  },
+  "max_wall_clock_s": 700,
+  "max_image_reviews": 0
+}
