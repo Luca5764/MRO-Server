@@ -1,0 +1,19 @@
+# NETSPEED-BUDGET 前置：往下找「會出現遺失」的房主 netspeed
+# PM 2026-09-22 裁決的順序：15000 ×2 輪 → 仍 0% 就 12000 → 找到就停 → 在那個值上做 budget A/B
+# 劇本 experiments/round2-projectile.json（不改內容），加入者開火、20 次扣扳機/輪
+# 房主＝副本 C:\Games\MetalRage Online 2，加入者＝主安裝
+#
+# 既有對照（同劇本同條件）：
+#   10000 原廠 fc51fe12  16/71 ＝ 22.5%（逐輪最低 14.3%）   下限 -2D ≈ 40 bytes @497fps
+#   30000 修補 dc2f824d  0/36 ＝ 0.0%                        下限 -2D ≈ 121 bytes
+#
+# 值 15000 房主 Engine.dll sha256: b0a3d9dd5b2ab12f   下限 -2D ≈ 60 bytes @497fps
+#
+# 格式：Rn 值 sha16 HitLoc=? Fire=? 缺口=? log=?
+R1 15000 b0a3d9dd HitLoc=13 Fire=11 缺口=15.4%  log=run-163345.67.log  (房主 log 印 Client netspeed is 15000)
+R2 15000 b0a3d9dd HitLoc=14 Fire=13 缺口=7.1%   log=run-164200.58.log
+
+# 15000 合計：27 次扣扳機、缺 3 ＝ 11.1%
+# → 找到會出現遺失的值，不必再降到 12000（PM 2026-09-22 的停損條件未觸發）
+# 閾值形狀（@497fps）：40 bytes → 22.5% / 60 bytes → 11.1% / 121 bytes → 0%
+#   連續衰減，不是硬閾值
