@@ -5,63 +5,62 @@
 
 ---
 
-## ▶️ 現況快照（2026-09-22 13:45 收工）
+## ▶️ 現況快照（2026-09-22 22:45 收工）
 
-**投射物問題全線收尾：修補有效，而且 30000 就夠。** 接手第一件事看下面「下一步」。
+**主線已從投射物轉到 PvP（roadmap 2026-09-22 改：P1 PvP TDM → P2 PvP 其餘模式 → P3 朋友 VPN）。**
+今天 PvP 從「開不了戰」推進到「**兩人分隊、互打、擊殺不崩潰**」。
 
-### 2026-09-22 做完的事（全部已 commit 在 `reverse-work`）
+### 今天完成（全部已 commit 在 `reverse-work`）
 
-| | 結論 |
+| 項目 | 結果 |
 |---|---|
-| 第 0 輪 | ✅ 客戶端對 `Engine.dll` **沒有**啟動期完整性檢查 |
-| 第 1 輪 | ✅ 候選 1b 確實改變房主記的 netspeed（逐 byte 覆核過 log 印的就是寫進 `+0x50` 的值） |
-| 第 2 輪 | ✅ **投射物遺失歸零**：自動化 A 16/71＝22.5% vs B 0/49＝0%；人手 A′ 10/34＝29.4% vs B′ 0/34＝0% |
-| **NETSPEED-MIN** | ✅ **30000 就夠，不需要 100000**：三輪 36/36、缺口 0.0%，房主 log 三輪都印 `Client netspeed is 30000` |
+| 投射物發包 | ✅ **netspeed 30000 ＋ budget**（人手連按 34/34），client-kit 已帶修補與雜湊驗證 |
+| **D2-1 PvP 開戰** | ✅ PM 判定。根因只有兩個：沒送 PvP 地圖 id、地圖預設值寫死 PvE |
+| **T1 分隊** | ✅ 房主紅、加入者藍；**擊殺送給加入者不會崩潰**（premises P5 在 PvP 成立） |
+| 自動化認得 PvP 畫面 | ✅ `battle_hud_state_pvp()`，畫面與封包矛盾時會印 WARN |
+| 設計稿 | ✅ `design/d2-pvp-tdm.md` v2，PM 審查通過 |
+| Frida | 階段 1、2 過；**但掛鉤砍半 FPS、收窄無效、中段掛點會 GPF** → 不能當主要量測 |
+| PresentMon | ✅ 可用（帳號已加 Performance Log Users），認得提升權限的 `MetalRage.exe` |
 
-詳見 `docs/journal/2026-09-22-*.md`（七篇），台帳在
-`docs/research/2026-09-21-netspeed-host-patch/round2-run-tally.txt` 與
-`docs/research/2026-09-22-netspeed-min/run-tally.txt`。
+日誌：`docs/journal/2026-09-22-*.md`（今天很多篇），索引 `docs/journal/INDEX.md` 末段。
 
-`tools/patch_netspeed_host.py` 現在吃 `--value <n>`（預設仍是 100000）。**不要手改 bytes。**
+### ⚠️ 重開機後一定要做（今晚踩過）
 
-### 機器現在的狀態（**接手前先確認，或直接還原**）
+**MySQL 不會自己啟動**，而伺服器連不到資料庫時**不會報錯**，會默默用預設空帳號頂上
+（登入後變成「Player／訓練兵」並跳新手任務彈窗）。
+- 啟動：Windows 的 PowerShell 執行 `wsl -u root service mysql start`
+- **`service mysql status` 會誤報「停著」**（pid 檔名是 `Lucas.pid`），要用 `pgrep mysqld` 或測 3306
+- 啟動後要**重啟遊戲伺服器**，讓它重新連
 
-- 副本 `C:\Games\MetalRage Online 2\data\System\Engine.dll` **停在 30000 修補**（`dc2f824d…`）
-  原廠 `fc51fe12…`、100000 修補 `a007507d…`
-  還原：`python3 "Metal Rage Online Server/tools/patch_netspeed_host.py" --target "/mnt/c/Games/MetalRage Online 2" --restore`
-- 測試帳號 5、6 的 `items` 中 **`mech_type 1` 主武器仍是 `MTE_a`（`25300101`）**
-  還原：`node "Metal Rage Online Server/database/swap-test-mech1-weapon.js" --revert --apply`
-- `mech_licenses` 是原始順序
-- **主安裝完全沒有被碰過**（sha256 仍是原廠 `fc51fe12…`）
+### 機器狀態
 
-### 下一步（沒有人指定，按價值排序，接手的人自己判斷）
+- 測試伺服器：tmux `server`，跑在 `~/mro-wt/test`（分支 `test-server`，`dirty=false`）。
+  `PVP_START_FLOW_MODE`、`PVP_TEAM_ASSIGN_MODE`、`MATCH_STATS_MODE`、`roomPlayingStateMode` 四個開關
+  **commit 在 `test-server` 分支，不合回 `reverse-work`**（那邊預設都是 disabled）。
+- 副本 2（`C:\Games\MetalRage Online 2`）`Engine.dll` 是修補狀態（最後一次是 30000 系列），還原用 `patch_netspeed_host.py --restore`
+- 副本 3（`C:\Games\MetalRage Online 3`）帶 proxy `VERSION.dll`＋gadget，**gadget 目前改名停用**（`.dll.off`）。整個副本可刪。
+- 主安裝未動。
 
-1. **補一輪「30000 ＋ 人手連按到底」的對照**（PM 2026-09-22 已接受這個缺口，**由 PM 直接跟
-   操作者約時間，接手的人不用自己排**）。三輪 NETSPEED-MIN 都是自動化的 3.5 秒間隔，
-   只涵蓋**孤立單發**；第 2 輪的**成串失敗**是靠操作者人手連按才量到的，30000 下那個形態沒測過。
-   **機器維持 30000 狀態、不要還原**，人手測試會直接用它。
-2. **要發哪個值，PM 已經定好判準**（2026-09-22）：上面那輪**過了就發 30000**；
-   **沒過就發 100000，並在這份 HANDOFF 寫明原因**。不用再重新討論。
-   （背景：100000 是每條連線上限，8 人房房主上行最壞約 800 KB/s，走中繼可能撐不住。）
-3. 跨網（VPN）與 3 人以上仍 ⬜，本輪只在同機迴路、2 人、PvE 初級驗過。
-4. `grep -rl 未經跨公司審查 docs/` 等 Sol 補審（含本輪的 ✅）。
+### 下一步（照順序）
 
-### 還沒證明的事（不要當成已解決）
+1. **修 PvP 房設定欄全空** —— 根因已找到：`room/room-map.sender.js:139-141` 的 `isTrueCampaign` 閘門
+   讓 PvP 房不送 `Map_Change_One_SN`。**另開旗標**（不要改 `isTrueCampaign` 語意），
+   詳見 `journal/2026-09-22-2230-pvp-2p-first.md` 末段。
+2. **修地圖選不了** —— 伺服器把客戶端送的 MapRound 1 改成 2 回傳（🟡 高度懷疑，未實測）。
+3. **T2 隊伍擊殺計數** —— 實測確定必要：個人分數會跳，**隊伍計分板不會**。
+   開工前提：`Death_CN` 的 attacker 欄位 offset 要先 ✅ [DLL]（設計稿 §7）。
+4. `GOLDEN-ENV-GUARD`：worker 的 worktree 沒連 `MetalRage` 會產生**假的 golden 失敗**（今天發生兩次）。
+5. `KIT-PS1-SMOKE`：client-kit 的 `.ps1` 從沒用真 PowerShell 跑過，發包前要實跑。
 
-- ⬜ 30000 是「**夠用**」不是「**最小**」，15000 以下沒測
-- ⬜ 修補過的 DLL 只驗過登入與 PvE；PvP、其他地圖、長時間運行未測
-- 🟡 **雙成因假說有疑點**：同一修補同時消除孤立單發與成串失敗。
-  H-AMMO-DESYNC 仍列**待查、未標 ❌**（PM 2026-09-22 同意）
+### 今天學到、下一個人會再踩的
 
-### 跑實驗時容易踩的（照抄可以少踩一次）
-
-1. **跑實驗時不要改它依賴的 DB** —— 違反「一次只改一個變數」。
-2. **事後另拍截圖去推斷失敗原因** —— 拍到的是幾分鐘後的畫面。**一律用 runner 在失敗當下自存的那張。**
-3. `fire_burst` 的 20 次 CLICK **常常打不完**（被打死或回合轉換，它不會偵測、會把剩下的送完）：
-   本輪三輪只留下 7／15／14 行 `HitLoc`。照實記錄，不補樣本也不丟棄。
-4. 客戶端關不掉時先 ESC ＋兩層確認離開戰鬥，通常不是當掉。
-5. `round2-projectile.json` 的 `purpose` 欄極長，**不要整份 `cat` 或 `head`**，
-   讀 runner 報告用 `grep -aE "^\[(PASS|FAIL)\]|^  \[[0-9]+\]"`。
+1. **引用舊日誌的診斷前，先確認那條路現在還走不走得到。** PvP 契約整份建在一篇已過時的日誌上
+   （它說的四個閘門早就是死碼）。
+2. **查「為什麼不通」之前，先 grep 現成的東西有沒有接上。** 8 個 TDM 地圖 id 在程式裡躺了七天沒被呼叫。
+3. **畫面判定跨到沒校準過的場景就會說謊**（PvP 那次 runner 判 FAIL，實際成功）。**直接截圖看**。
+4. **FPS 一定要標「哪一台、什麼狀態」**。今天因為分母拿錯連續更正兩次（待機當實戰、加入者當房主）。
+5. **契約不要寫矛盾條款**（「唯讀」又要寫檔）；**worktree 一定要連 `MetalRage` 與 `node_modules`**。
+6. `enter_battle` 會留下開著的 GAME MENU，清理時**不要無條件再送 ESC**（會關掉選單、點擊變成開火）。
 
 ## 🌙 夜間報告（2026-09-20 23:00–23:5x，Claude 執行者）
 
