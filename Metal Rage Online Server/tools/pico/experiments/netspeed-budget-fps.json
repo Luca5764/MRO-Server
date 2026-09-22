@@ -1,0 +1,138 @@
+{
+  "id": "netspeed-budget-fps",
+  "purpose": "netspeed-budget-fps：NETSPEED-BUDGET 契約第 1 步（docs/backlog.md），量房主戰鬥中 FPS 對照 Moon 的 1000-1800。前綴同 round2-projectile.json（launch/login→create_pve_room→dismiss_notice→idle_nudge→join_room→idle_nudge→set_ready→host_start_battle），AFK 窗口分析沿用不重算。不需要 WeaponLog/fire_burst；改成 enter_battle(joiner,None)→enter_battle(host,None)→console_cmd_on(host,'stat fps')（已加入 actions.py 白名單）。截圖沿用 console_cmd_on() 自己 ESC 關閉後 wait_for 存的 shot_closed（console 關、overlay 還在），跟 stat net 同一機制，未另加 action。收尾 leave_battle×2→close_client×2，同 round2-projectile.json。max_wall_clock_s：720(baseline)-68-25+135+135+10=907，取整抓 1000。成功＝19 步全過，並確認截圖上看得到 FPS 數字。",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    },
+    "joiner": {
+      "proc_name": "MetalRage",
+      "install_dir_win": "C:\\Games\\MetalRage Online",
+      "bat_path_win": "C:\\Games\\MetalRage Online\\Play With Log.bat"
+    }
+  },
+  "steps": [
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "joiner",
+        "account": "mrotest"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "join_room",
+      "params": {
+        "client_id": "joiner",
+        "room_name": "netspeed-budget-fps (auto-named, label only)"
+      }
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "set_ready",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "joiner",
+        "mech_key": null
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": null
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "stat fps"
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    }
+  ],
+  "stop_conditions": {
+    "max_consecutive_failures": 1
+  },
+  "max_wall_clock_s": 1000,
+  "max_image_reviews": 0
+}
