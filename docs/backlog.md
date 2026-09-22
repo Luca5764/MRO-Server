@@ -839,6 +839,25 @@ C 段是今天的優先；在實跑前動一條已驗證的路徑是不必要的
 
 **排序：`NETSPEED-HOST-PATCH` 的第 0、1 輪之後。** 平日 06:30–18:30 時段內可自己跑。
 
+> ### ⚠️ 2026-09-22 修訂（操作者決定，PM 轉達）——**改用 Frida Gadget，不自己寫 C DLL**
+>
+> 契約其餘不變，以下取代對應段落：
+>
+> - **階段 1**：同名 proxy DLL（候選**仍從 import 表選**，階段 0 不變）載入
+>   `frida-gadget-*-windows-x86.dll`（**32 位元**），config 設 script 路徑，
+>   `runtime` 用 `v8` 或 `qjs` 皆可。**過關條件不變**：開到登入畫面、掛 5 分鐘不被砍。
+>   被砍就記下結束碼與 log 尾段後**停下來**，不要繞。
+>   **不要用 attach 模式** —— anti-attach 還在（`reference/client.md`）。
+> - **階段 2**：JS 每秒寫 ZNetwork 場景編號到 `bridge.log`；另外再加一支**計數腳本**
+>   掛 `ServerFire`／`ClientFire`（位址自己定位），量法照 Moon 的：**加入者端送出 vs 收到**。
+>   用它跑 `NETSPEED-BUDGET` 的 A/B，數字就能跟 Moon 直接比。
+> - **階段 3**：從 JS 呼叫主控台指令（`UObject::ScriptConsoleExec` 或 `UViewport::Exec`），
+>   **只出設計，不實作**。
+> - **與 NETSPEED-BUDGET 的順序**：BUDGET 的第 1、2 步（量 FPS、驗組語）**先做**；
+>   BUDGET 的實跑那步**等 Gadget 階段 1 的結果** —— 過了就用 Frida 計數，
+>   沒過就照原本的 log 計數。
+> - gadget 下載放 `tools/bridge/`，**版本號記進日誌**。
+
 ### 目標
 
 回答**一個問題**：我們自己寫的 DLL，能不能在客戶端行程內載入、持續把狀態寫成文字檔，
