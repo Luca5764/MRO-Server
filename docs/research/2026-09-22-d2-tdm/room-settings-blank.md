@@ -194,3 +194,86 @@ body.readUInt16LE(2)`（`docs/research/2026-09-22-d2-tdm/pvp-start-gap.md` Q4 �
 3. R4（`docs/journal/2026-09-18-11-room-default-map-entry.md`，❌ 已測試無效）測的是 `ZPopup_RoomSet`（設定變更
    彈窗），本題是 `ZPanel_RoomInfo`（房間主畫面）；兩者是否共用同一份 `RoomInfo.MapInfo[]`、R4 的「無效」結論
    能不能套用到本題，**沒有查證，需要先確認**，不要直接假設 R4 已經排除了「填 Index」這條路。
+
+---
+
+## Q6（補充，主力交辦）：地圖選不了 —— Map_Change_One_CQ 的 b5 被伺服器改掉
+
+**現象封包**（操作者 2026-09-22，`~/mro-wt/test/Metal Rage Online Server/logs/` 最新 session）：
+
+```
+0x00220221 recv  b0=00 w1=1031 w2=20  b5=01 w6=150 w8=0   ← 客戶端選的
+0x00220222 send  同一組欄位，但 b5=02
+0x00220223 send  同一組欄位，但 b5=02   ← 廣播給全房，也是 b5=02
+```
+
+**跑這段代碼的樹**：操作者的 session 來自 `test-server` 分支（`~/mro-wt/test`），該分支的
+`dispatch/map-info.sender.js` 把 `PVP_START_FLOW_MODE` 從 `reverse-work` 的預設 `'disabled'`
+改成 `'enabled'`（commit `5e2ef01`，訊息明講「這個 commit 只存在 test-server 分支，不要合回
+reverse-work」，是刻意的測試設定，不是意外的 dirty tree）。以下根因鏈**在這個 flag 開啟的狀態下才會
+如此；`reverse-work` 預設狀態下 `w1` 的回顯行為會不同（見下）**。
+
+### 根因鏈
+
+1. **`gate.game.dispatch.js` case `0x00220221`（`:2220-2255`）收到 CQ 後，只有 `w1` 落在 `9001..9012`
+   （PvE 地圖 id 範圍）才會執行更新區塊**（`:2230 if (incomingFields.w1 >= 9001 && incomingFields.w1 <= 9012)`）：
+   這個區塊才會把 `incomingFields.b5` 寫進 `client.playRound_`（`:2232`）與
+   `client.mapChangeOneRound_`（`:2236`），並鏡射進共享 Room 物件。**TDM 的 `w1=1031` 不在這個範圍，
+   整段更新被跳過**——玩家這次選的 `b5=01` 從未被存到任何地方。
+2. 緊接著 `buildMapChangeOneSaFields(body, client)`（`:972-991`）組出要回送的欄位。因為
+   `MAP_CHANGE_SA_ECHO_MODE === 'enabled'`（`:274`，跟 reverse-work 同值，已核對），走的是
+   `:975-991` 這條路：
+
+   ```js
+   const adoptedRound = Number(client.playRound_);
+   ...
+   b5: Number.isInteger(adoptedRound) && adoptedRound >= 0 && adoptedRound <= 0xFF
+       ? adoptedRound : incoming.b5,
+   ```
+
+   **`client.playRound_` 不是這次 CQ 剛存的值（因為步驟 1 被跳過），是房間建立當下 Create_CQ 存的舊值**
+   （`gate.game.dispatch.js:1283`，`client.playRound_ = body[6]`，即 Create_CQ 的 PlayRound 欄位）。
+   依 `docs/research/2026-09-22-d2-tdm/pvp-start-gap.md` Q6 的封包表，這個房型（body[0]=2）觀察到的
+   PlayRound 就是 `2`——**跟操作者這次看到的回送 `b5=02` 完全吻合**：伺服器不是「改了」b5，是**回送了
+   建房當下的舊值，蓋掉了玩家剛剛在房內重新選的值**，因為步驟 1 的更新路徑對 TDM 地圖 id 完全不通。
+3. **`w1`（地圖本身）沒有出現同樣的錯亂**，是因為 `buildMapChangeOneSaFields` 對 `w1` 的 fallback 條件
+   （`adoptedMapId >= 9001 && adoptedMapId <= 9012`）本來就會在 `client.campaignMapCacheKey_` 是 PvP 地圖 id
+   （1031，不在 9001-9012）時失敗，退回 `incoming.w1`（也就是直接回顯客戶端剛送來的 1031）——**這是巧合，
+   不是設計對了**：同一個函式用了兩種語意相反的 fallback（w1 是「不合條件就回顯 CQ 原值」，b5 是「只要是合法
+   整數就用舊 client 值」），對 PvE 地圖以外的輸入行為不一致。
+
+### 跟「房間設定欄全空」的關係
+
+**不是同一行程式碼，但是同一種模式**：兩個問題都是「只針對 PvE 地圖 id（9001-9012）寫的條件判斷，
+對 PvP 地圖 id（1011-1081）系列沒有對應分支，靜默落到某種舊值或空狀態」——
+
+- 房間設定欄全空（Q1-Q5）：`room-map.sender.js:140-142` 的 `isTrueCampaign` 閘門，擋住**房間建立當下**
+  第一次的 `Map_Change_All/One_SN`，導致 `RoomInfo.MapInfo[0]` 從未被寫入真實值。
+- 本節（地圖選不了）：`gate.game.dispatch.js:2230` 的 `w1 in [9001,9012]` 閘門，擋住**玩家事後在房內
+  重選設定**這條路的欄位更新，導致 SA/SN 回送舊值蓋掉玩家的新選擇。
+
+即使先解決了 Q1-Q5（讓房間建立時就送出正確的 `Map_Change_One_SN`），**這裡的 b5 bug 仍然會讓玩家事後
+在房內改設定時被打回舊值**——是同一個「PvP 地圖 id 沒接上」大問題底下兩個獨立的具體卡點，需要分開處理，
+不是改一個地方就能兩個都解決。
+
+### b5 語意
+
+依 `docs/journal/2026-09-18-12-map-change-one-sn-settings.md`（✅）與本檔 Q1 的 disasm 核對，
+`body+0x05`（b5）是 **MapRound**。本次觀察到的 `w6=150`（依 `pvp-start-gap.md` Q3 對照 Cache.Bin 表，
+TDM 地圖組 `GoalMin/GoalMax` 量級相符，判斷是目標擊殺/分數而非回合）與 `w2=20`（PlayTime 分鐘）看起來
+都是客戶端自己帶的正確 TDM 預設值（操作者訊息裡提到「韓版原廠 TDM 預設」），**沒有被伺服器動過**——
+只有 b5（Round）這一欄被本節查到的機制覆寫。b5=01 究竟對應 TDM 的什麼設定選項（回合數本身，還是某個
+子模式/難度）本次沒有進一步查證，只確認了「伺服器把它蓋成舊值」這個機制。
+
+### 待確認
+
+- 「客戶端收到跟自己送出不同的 b5 時會不會把選擇退回」——本次只確認了伺服器行為，**沒有客戶端 UC 或
+  截圖證據**證實這就是操作者感覺「地圖選不了」的直接原因；`ZPanel_RoomInfo.uc:1047-1051`
+  （`UpdateRoomInfo` 附近的 `if (RoomInfo.MapInfo[MapNumber].Round != MapRound ...)` 這類比對邏輯，
+  Q1 讀檔時只看到局部）有沒有「值對不上就送封包/重設 UI」的路徑，需要進一步讀 `ZPanel_RoomInfo.uc:1040-1060`
+  附近或請操作者用該房間重試並截圖確認。
+- `reverse-work` 預設 `PVP_START_FLOW_MODE='disabled'` 時，`w1` 的回顯行為會不同（`campaignMapCacheKey_`
+  在建房當下會落到 `MAP_ID_DEFAULT_CAMPAIGN=9001`，`buildMapChangeOneSaFields` 的 `w1` fallback 條件反而會
+  成立，回送 9001 而不是玩家選的 1031）——**這代表 `reverse-work` 現在的預設狀態下，PvP 房的地圖選擇問題只
+  會更嚴重（連地圖 id 都會被蓋掉），不是本節描述的「只有 b5 錯」**。這點沒有實測，只是讀程式碼推論，標記
+  待確認。
