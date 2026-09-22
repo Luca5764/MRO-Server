@@ -1214,3 +1214,23 @@ defaults」分支（`:374` 起），**對客戶端偽裝登入成功並送空帳
 **必須 golden replay 四樣本逐 byte 不變**。
 
 來源：2026-09-23 worker 在做啟動期檢查時發現並回報，範圍外沒有動。
+
+**2026-09-23 進度（🟡 待審，worker 做的）**：PM 已拍板選 (c) 的窄版——DB 錯誤只斷該請求
+的連線＋印 ERROR log，(b) 這次不做。9211 側（`dispatch/account.dispatch.js`）已分兩個
+commit 處理：先把兩份幾乎相同的空帳號分支合併成 `sendDefaultAccountData()`（純重構，
+golden 逐 byte 不變；SA_LOGIN_WASABII 那次多餘重送刻意留在呼叫端沒動，避免合併時替既有
+bug 選邊），再把兩個空帳號分支整段換成 `client.disconnect()` ＋ ERROR log（含帳號名、哪
+一步失敗、mysql2 錯誤 code），並移除已無人呼叫的 helper。已知限制：`:226-231` 的登入成功
+回應在失敗發生前就送出去了，客戶端目前看到的是「收到成功回應後立刻斷線」，不是乾淨的登入
+失敗畫面——這正是 (b) 要解決的部分，這次沒做，要先查清楚客戶端收到真正的登入失敗封包會怎麼
+顯示（`docs/reference/client-ui.md`）再考慮升級。
+
+**30907 對戰連線那條退路還在，這次沒動**：`dispatch/gamelogin.dispatch.js` 的
+`handleGameLogin()`（`CQ_GAME_LOGIN` 0x00110124，port 30907）有同一種「DB 失敗 → 送
+hardcoded 假帳號資料、偽裝成功」的 catch 分支。PM 明講這是例外——這條連線上斷線會影響同一
+場正在進行對戰的其他玩家，跟 9211 純登入階段（只影響請求者自己）不一樣，所以維持不斷線。
+這次只把 log 從一行 `>> DB Error:` 改成更明顯的 ERROR 格式（帳號名、mysql2 code、並在訊息
+裡明寫「client will NOT know this happened」），wire 格式沒動。跟本條目的關係：這是同一個
+DB-FAIL-PERREQ 問題在另一條連線上的孿生版本，選項 (a)（照樣回應但明顯記錄）在這條連線上就
+是目前的處理方式；要不要進一步處理（例如只讓那個 client 掉出房間、不斷整條連線）需要另外
+評估房間/對戰層的斷開機制，還沒有人做。

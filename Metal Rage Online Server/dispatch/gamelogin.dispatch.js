@@ -477,7 +477,18 @@ class ZGameLoginDispatch
             console.log(`[ZGameLoginDispatch] >> Sent account data + lobby enter`);
 
         } catch (err) {
-            console.error(`[ZGameLoginDispatch] >> DB Error:`, err.message);
+            // DB-FAIL-PERREQ (docs/backlog.md): PM decision 2026-09-23 --
+            // this 30907 game-server connection is the stated exception.
+            // Unlike the 9211 login (account.dispatch.js, which now
+            // disconnects on the same kind of DB failure), a participant on
+            // this connection may already be in a room with other players;
+            // disconnecting here would kick them out of an in-progress
+            // match. So this still sends hardcoded fallback data below
+            // instead of erroring out -- NOT fixed, just logged louder so
+            // whoever reads the log knows the client is about to receive
+            // fake account data and does not itself know the DB failed.
+            const username = client.username_ || 'unknown';
+            console.error(`[ZGameLoginDispatch] ERROR: DB failure for "${username}" during game login (account lookup / parallel record reads -- see try block above) code=${err.code} - falling back to hardcoded account data (client will NOT know this happened):`, err.message);
             //Send minimal hardcoded data to prevent crash
             client.point_ = 100000;
             client.cash_ = 0;
