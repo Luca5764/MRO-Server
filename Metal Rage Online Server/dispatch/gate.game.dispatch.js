@@ -2751,6 +2751,12 @@ module.exports._setHostAddressRequireModeForTest = function setHostAddressRequir
 // handler -- see the comment on the function itself.
 module.exports.getGameInfoRound = getGameInfoRound;
 
+// T2 (docs/design/d2-pvp-tdm.md §7 step T2): shared with
+// dispatch/room/pvp-kill-tracking.js, which needs the same join-order 0/1
+// assignment Game_User_SN's TeamIndex is built from -- see the comment on
+// the function itself.
+module.exports.resolvePvpTeamIndex = resolvePvpTeamIndex;
+
 // D1-6-IMPL (design doc §5 step 4): community.dispatch.js's 0x00420114
 // handler needs this to message non-host room members once the host's
 // Ready_Host_CA reports its port -- see sendReadyHostSnToRoomMember()'s own
