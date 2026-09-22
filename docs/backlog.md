@@ -1104,3 +1104,18 @@ budget 單獨在 10000（原廠 netspeed）下夠不夠？若夠，發包就只�
 1. 同一場戰鬥能同時拿到房主與加入者兩個行程的 frame-time。
 2. runner 報告裡有 FPS 統計欄位。
 3. 拿它重量一次今天的四組掛鉤對照，數字與截圖判讀的同量級。
+
+---
+
+## TDM-TIMEOUT-FIELDS（低優先，D2 TDM 用到 Timeout_SN 之前要做）
+
+`Timeout_SN 0x00230112` 的 0x26 body 有兩組 14-byte record（起點 `body+0x0A`／`body+0x18`），
+總長與 Moon 的說法逐位元組對上（`protocol_objective.en.md:199-215`）。
+**但 7 個欄位（Team/Score/Round/Alive/Try/Goal/Exp）誰對應哪個 offset，手動追暫存器沒把握。**
+
+要做：用 Ghidra 對 `0x107d7820`（`Timeout_SN` 真正函式體）出 pseudocode 釘死欄位對應，
+**不要沿用手動追的順序**。
+
+另記一個建議（尚未採納）：TDM 若要送 `Timeout_SN`，建議另開乾淨的 handler，
+不要沿用 `lobby.dispatch.js` 現有那段（那裡 `0x00230111` 與「Lobby Enter CQ」兩個身分
+共用同一段程式碼，雖然實務上分支不會撞到，但繼續共用會讓後面的人踩坑）。

@@ -189,7 +189,7 @@
 |---|---|---|---|
 | `room.dispatch.js` `sendLobbyBootstrapAfterRoomLeave()` | 送 `0x00230103`，標為「Lobby Room_List_SN」 | `0x00230103` 是 `Respawn_CN`，客戶端沒有這個 handler。真正的 `Room_List_SN` 是 `0x00220204`。✅ [DLL] | 送了等於沒送 |
 | 同一函式，以及 `gamelogin.dispatch.js` 的 `SA_LOBBY_ENTER` | 送 `0x00230112`，標為「Lobby Enter SA」 | `0x00230112` 是 `Timeout_SN`（`ZDispatchGame`），不在場景 6 時會被丟棄。`ZDispatchLobby::Enter_SA` 是 `0x00220232` ✅ [DLL]，但它進的是大廳還是房間 ⬜。 | 在大廳送等於沒送；在場景 6 送可能會觸發逾時處理 ⬜ |
-| `lobby.dispatch.js` case `0x00230111` | 大廳中當成「Lobby Enter CQ」回應 | `Timeout_CN`，只在場景 6 送出。✅ [DLL] | 大廳時的分支可能永遠不會觸發 ⬜ |
+| `lobby.dispatch.js` case `0x00230111` | 大廳中當成「Lobby Enter CQ」回應 | `Timeout_CN`，只在場景 6 送出。✅ [DLL] | **大廳分支實務上不會觸發 ✅ [LOG]**（2026-09-22）：205 份 session log 裡 `0x00230111` recv **12,472 筆，body 全為空、`gameStarted_` 全為 true**，每筆都落進 `unhandled` fallback（只記 log、無回應、無副作用），**沒有一筆走到大廳分支**。⬜ 未窮盡邊界（例如換圖瞬間 `gameStarted_` 尚未更新的窗口），依據 `research/2026-09-22-d2-tdm/timeout-opcode-conflict.md` |
 | `lobby.dispatch.js` case `0x00230101` | 註解「Possible Lobby Enter」，回空的 `0x00230102` | `ChangeSlot_CN`／`ChangeSlot_SN`。✅ [DLL] | 選機體的回應內容不對 |
 | `lobby.dispatch.js` case `0x00230121` | 註解「Lobby Leave (guessed)」 | `Assist_CN`。✅ [DLL] | 回應無效果，但無害 | **更正 2026-09-20：「無害」講得太滿。**[DLL] `Assist_SN` handler `0x107d5fa0` 的成功路徑會讀到 body+0x17/+0x18，超出我們送的 16 bytes 全零回覆（每場 500 次以上）；`Special_SN 0x107d6300` 更會把 body+0x19 當指標解參考。跟 Death_SN 當初同一類失敗，見 `research/2026-09-20-fallback-ack-audit/notes.md`。
 | `lobby.dispatch.js` 檔名與整段 `0x23xxxx` | 叫 lobby | 整段屬於 `ZDispatchGame`；檔內註解已自行承認 | 只是名稱誤導 |
