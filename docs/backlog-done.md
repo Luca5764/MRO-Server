@@ -479,3 +479,59 @@
 
 > 結案（中階 verifier，2026-09-21）：commit `e5f176f`（2026-09-19）加了 `config/server.json` 的 `pveFixedRank`（int 1-11，未設定則維持原行為＝不送 `User_Score_SN`＝Rank F），把固定值塞進 `Campaign_CN` 成功分支的 `User_Score_SN 0x00222221` WinTeamRank 欄位。實機 `pveFixedRank: 10` 時，[SHOT] `shots/campaign-result-screen.png`（檔案時間 2026-09-21 20:10）結算頁 RANK 顯示金色「S」，不再是 F。當時伺服器的 build 事件（`Metal Rage Online Server/logs/session-20260921-070017.jsonl` 第 2 行，`"ev":"build","reason":"start"`，時間戳 `2026-09-20T23:00:17.961Z` UTC＝本地 2026-09-21 07:00:17）帶 `"pveFixedRank":10`，branch `test-server` commit `26be66c`；`git merge-base --is-ancestor e5f176f 26be66c` 為真，確認該次啟動的版本含這個開關。**這只是「用固定值開關讓評等不再是 F」，不是「RANK 算對了」**：真正依擊殺／任務分數等表現算評等的公式還沒有做，追蹤見 `docs/backlog.md` 的「RANK-FORMULA」項目。
 
+---
+
+## NETSPEED-MIN — 找出夠用的最小 netspeed（PM 2026-09-22 開的任務）
+
+### 目標
+
+第 2 輪只證明「10000 不夠、100000 夠」，**沒證明 100000 是必要的**。
+找出能把投射物遺失壓到 0（或 ≤ A 組最低輪 ÷ 3）的**最小**房主 `CurrentNetSpeed`。
+
+### 範圍
+
+- 房主值依序試 **30000**、**50000**。**先跑 30000，夠就停，不用再跑 50000。**
+- 每個值**自動化 3 輪**（沿用 `experiments/round2-projectile.json`，不改劇本內容）。
+- A 組（原廠）不必重跑——2026-09-22 已有 16/71 ＝ 22.5% 的自動化基準，條件相同時直接引用。
+- **`tools/patch_netspeed_host.py` 要加一個參數**（例如 `--value <n>`）來指定寫入的立即數，
+  **不要手改 bytes、不要另外複製一份腳本**。原本無參數時的行為維持寫 100000。
+  注意有**兩處**立即數（file offset `0x17f9b1` 的 `cmp` 與 `0x17f9b8` 的 `mov`），兩處都要跟著改；
+  `0x17f9b5` 的 NOP 不變。改完要能 `--restore` 回原廠。
+
+### 背景
+
+- 機制與逐 byte 依據：`docs/journal/2026-09-22-0640-engine-dll-patch-round0.md`、
+  `2026-09-22-0703-round1-host-netspeed-100000.md`。
+- 第 2 輪結果與判準：`docs/journal/2026-09-22-1245-round2-result.md`。
+- **為什麼要做**：PM 指出 100000 是**每條連線**的上限，8 人房房主上行最壞約 800 KB/s，
+  走 Hamachi 中繼可能撐不住。在把修補發給朋友之前要先知道夠用的最小值。
+- 跑法與環境細節看 `2026-09-22-1245-round2-result.md` 的「三個已知偏離」，維持相同條件。
+
+### 限制
+
+- **一次只改一個變數**：只動房主 `Engine.dll` 的那個立即數，其他（地圖、武器、機體、帳號、
+  角色分配、DB 狀態）全部維持 2026-09-22 的設定。
+- **實驗跑之前不要改 DB、不要改劇本**；跑到一半更不要動（2026-09-22 犯過這個錯）。
+- 修補只套副本 `C:\Games\MetalRage Online 2`，**不碰主安裝**、不碰 `MetalRage.exe`。
+- 每輪開跑前獨立驗一次房主 `Engine.dll` 的 sha256 並記進台帳。
+- 中階不得標 ✅。
+
+### 交付
+
+- `tools/patch_netspeed_host.py` 加上 `--value`（含測試）。
+- 逐輪台帳（格式照 `docs/research/2026-09-21-netspeed-host-patch/round2-run-tally.txt`）：
+  每輪的值、sha256、`HitLoc`、`Fire`、缺口、log 檔名。
+- 一篇日誌，附**逐發序列**（`.`／`X`），並與 2026-09-22 的 A 組基準對照。
+
+### 完成條件
+
+1. 30000 的 3 輪跑完，逐輪缺口有數字。
+2. 明確寫出「30000 夠 / 不夠」；不夠才跑 50000，並同樣給結論。
+3. 若某個值**部分有效**（缺口降低但非 0），照第 2 輪的「部分有效」定義處理，不要當成無效。
+4. ⬜ 仍未涵蓋：跨網（VPN）與 2 人以上——本任務不處理，但結論要寫明只在同機迴路、2 人驗過。
+
+### 完成（2026-09-22 13:45）
+
+**30000 就夠，不再跑 50000。** 三輪 36/36 缺口 0.0%，對照原廠 22.5%。
+結果 `docs/journal/2026-09-22-1345-netspeed-min.md`，台帳 `docs/research/2026-09-22-netspeed-min/run-tally.txt`。
+`--value` 已合併（`flash-wip-netspeed-value`）。

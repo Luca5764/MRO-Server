@@ -1,0 +1,19 @@
+# NETSPEED-MIN 逐輪台帳（契約：docs/backlog.md「NETSPEED-MIN」）
+# 房主＝副本 C:\Games\MetalRage Online 2（被修補的那台），加入者＝主安裝（開火與量測）
+# A 組基準直接引用 2026-09-22 第 2 輪自動化：16/71 ＝ 22.5%
+# 判定：30000 的 3 輪缺口是否為 0（或 ≤ A 組最低輪 14.3% ÷ 3）
+# 工具：tools/patch_netspeed_host.py --value <n>（2026-09-22 合併，commit 見 reverse-work）
+#
+# 值 30000 房主 Engine.dll sha256: dc2f824d78435e0c
+# 原廠 sha256: fc51fe1240ee3411 / 100000 修補 sha256: a007507d23ebdabe
+#
+# 格式：Rn 值 sha16 HitLoc=? Fire=? 缺口=? log=?
+R1 30000 dc2f824d HitLoc=7 Fire=7 缺口=0.0%  log=run-131715.05.log  (20 次 CLICK 只留下 7 行 → 中途被打斷，樣本偏小，照實記)
+R2 30000 dc2f824d HitLoc=15 Fire=15 缺口=0.0%  log=run-132739.87.log  (20 次 CLICK 留下 15 行，仍中途被打斷但樣本較足)
+R3 30000 dc2f824d HitLoc=14 Fire=14 缺口=0.0%  log=run-133753.04.log  (20 次 CLICK 留下 14 行)
+
+# 合計 30000：36/36，缺口 0/36 ＝ 0.0%
+# 對照 A 組（原廠 fc51fe12，2026-09-22 自動化）：16/71 ＝ 22.5%，逐輪最低 14.3%
+# 房主端獨立佐證：副本 run-131453.57 / run-132520.91 / run-133532.96 三份
+#   都印 "Log: Client netspeed is 30000"（第 2 輪原廠時是 10000、候選 1b 時是 100000）
+# 三輪都確認開火武器是 Map_PC04.MTE_a
