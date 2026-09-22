@@ -22,7 +22,7 @@ const packetlog = require('./packetlog.js');
 // Carried across reconnects: what the player intends and where they are.
 const CARRIED = [
     'gameStarted_',
-    'campaignStarted_',
+    'battleStartSequenceArmed_',
     'isTrueCampaign_',
     'roomIndex_',
     'roomType_',
