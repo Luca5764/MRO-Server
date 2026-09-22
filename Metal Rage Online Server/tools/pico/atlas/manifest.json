@@ -15,7 +15,7 @@
     "console_battle_accept": 8.0,
     "marker_accept": 12.0
   },
-  "built_at": "2026-09-21T20:42:36",
+  "built_at": "2026-09-22T21:57:56",
   "built_from": {
     "screen_lobby": "u-20260919-01-00-start.png",
     "screen_shop": "u-20260919-01-01-shop.png",
@@ -36,7 +36,8 @@
     "marker_result": "ref-06-end-3.png",
     "marker_create_dialog": "ref-01-create.png",
     "marker_notice_popup": "lobby-now.png",
-    "marker_mapsel": "esc-01-mapsel.png"
+    "marker_mapsel": "esc-01-mapsel.png",
+    "marker_pvp_scoreboard": "shot-205104.png"
   },
   "screens": {
     "lobby": {
@@ -207,6 +208,16 @@
         535
       ],
       "crop": "marker_mapsel.png"
+    },
+    "pvp_scoreboard": {
+      "box": [
+        595,
+        118,
+        1020,
+        142
+      ],
+      "crop": "marker_pvp_scoreboard.png",
+      "accept": 25.0
     }
   }
 }

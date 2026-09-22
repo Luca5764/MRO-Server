@@ -211,6 +211,44 @@ BUILD_SPEC = {
         # nearest wrong reference (a battle screenshot) 29.45 -- comfortably
         # past marker_accept=12.0 either way.
         "mapsel": {"source": "esc-01-mapsel.png", "box": [415, 495, 650, 535]},
+        # PVP-HUD-MARKER (docs/backlog.md, this task, 2026-09-22): TDM's team
+        # scoreboard banner, top-center of the screen. Needed because
+        # screens.battle_hud_state()'s green "SP0000" counter is PvE-only --
+        # TDM draws a GOLD "P0000" counter in that same box instead
+        # (docs/journal/2026-09-22-2055-pvp-start-works.md), so a PvE-
+        # calibrated check reads every real PvP battle as not_battle.
+        # PM 2026-09-22 recommended this scoreboard over the gold counter as
+        # the PvP judge because it is more stable; confirmed here: a plain
+        # gold-pixel-count check on BATTLE_SP_BOX alone false-positives on a
+        # PvE desert-map (Escort) YOU-WIN screen (sand color reads as "gold",
+        # 4568px, close to real PvP counts of 4905-5289 -- not a safe margin)
+        # -- see battle_hud_state_pvp()'s docstring for how the two are
+        # combined instead of using the gold count alone.
+        #
+        # Box is deliberately just the "TEAM DEATHMATCH" caption text row
+        # (y=118-142), NOT the shield crests (x<595/x>1015) or the
+        # "000|000|000" kill-count digits above it (y=45-118, inside the
+        # ORIGINAL wider box this was narrowed down from) -- the digits are
+        # the one part of this banner that changes during a real match (a
+        # kill increments a team's count), and this task has no screenshot
+        # of a live nonzero score to confirm a MAD-against-fixed-crop check
+        # tolerates that. The caption text itself is a static mode-name
+        # string for the whole match, so narrowing to just that row removes
+        # the risk instead of leaving it untested. 🟡 residual risk: still
+        # unconfirmed for a nonzero-score frame because none exists in
+        # shots/ yet (this box just no longer depends on the score at all,
+        # by construction, rather than being verified against one).
+        #
+        # Measured (this task) against every 1616x1239 image in shots/ (1097
+        # images) with this narrower box: every real PvP-battle capture
+        # (host_start_battle result through leave_battle, GAME MENU open or
+        # closed, three different capture sessions, all score 000|000|000)
+        # scores MAD 0.00-17.01 here; the closest non-PvP image (a PvE
+        # campaign battle frame) scores 40.23 -- accept=25.0 sits in the
+        # middle of that gap (comfortably clear either side, though tighter
+        # than the wider box's 46.91 -- see this comment's own 🟡 above for
+        # why the trade is still worth it).
+        "pvp_scoreboard": {"source": "shot-205104.png", "box": [595, 118, 1020, 142], "accept": 25.0},
     },
 }
 
@@ -589,6 +627,56 @@ def battle_hud_state(img):
     return ("battle" if green_px >= BATTLE_SP_MIN_PX else "not_battle"), green_px
 
 
+# PVP-HUD-MARKER (docs/backlog.md, this task, 2026-09-22): PvP TDM variant of
+# battle_hud_state() above. Triggered by the same need -- confirming a client
+# actually spawned into a battle, not just that a menu/scene transition
+# happened -- but battle_hud_state() alone reads every real TDM battle as
+# not_battle (green_px=0): TDM draws the same bottom-right counter in GOLD
+# ("P0000") instead of green ("SP0000"), see journal 2026-09-22-2055.
+#
+# A gold-only version of battle_hud_state() (same BATTLE_SP_BOX, same
+# pixel-count technique, just counting gold instead of green) was tried
+# first and rejected (this task): measured against every 1616x1239 image in
+# shots/ (1097 images), real PvP battle frames score 4905-5289 gold px, but
+# a PvE (Escort desert map) YOU-WIN result screen scores 4568 -- close enough
+# to be a real false positive, not a safe margin, because desert sand is
+# itself gold-ish in RGB. PM 2026-09-22 had already flagged the scoreboard
+# marker (BUILD_SPEC["markers"]["pvp_scoreboard"]) as the more stable choice;
+# this confirms why -- that PvE result screen scores MAD 66.81 against the
+# scoreboard reference, nowhere near marker_accept=25.0, so requiring BOTH
+# signals (not gold count alone) removes the false positive.
+#
+# The AND also fixes the opposite edge case: the post-ESC mech-select page
+# (shots/pvp-start-smoke-14-host_start_battle-result.png, RESPAWN countdown
+# still running, player has not spawned/is not controllable yet) already
+# shows the scoreboard banner (MAD 10.10, well inside accept=25.0) but not yet
+# the gold counter (221px, far below any reasonable threshold) -- scoreboard
+# alone would make enter_battle() report "battle" the instant ESC opens the
+# mech-select page, before a mech is even chosen. Requiring gold_px >=
+# BATTLE_SP_MIN_PX (same constant/threshold as the PvE check; true PvP
+# positives measured 4905-5289, comfortably above 3000) keeps that case
+# not_battle, matching what battle_hud_state() already does for PvE's
+# analogous "not spawned yet" frames.
+def battle_hud_state_pvp(img):
+    """Returns (state, (scoreboard_score, gold_px)): state "battle" /
+    "not_battle" for the PvP TDM HUD. "battle" requires BOTH the
+    BUILD_SPEC["markers"]["pvp_scoreboard"] marker to match (this is a TDM
+    screen at all) AND gold_px >= BATTLE_SP_MIN_PX in BATTLE_SP_BOX (a
+    player has actually spawned, not just reached the post-ESC mech-select
+    page) -- see the comment above this function for why neither signal
+    alone is safe on its own. Does not affect/replace battle_hud_state()
+    (PvE, unchanged) -- callers that want "is this in-battle, PvE or PvP"
+    should check both, see actions.py's _battle_any_check()."""
+    present, score = detect_marker(img, "pvp_scoreboard")
+    a = np.asarray(_load_image(img).convert("RGB"), dtype=np.int16)
+    x0, y0, x1, y1 = BATTLE_SP_BOX
+    region = a[y0:y1, x0:x1]
+    r, g, b = region[..., 0], region[..., 1], region[..., 2]
+    gold_px = int(((r > 140) & (g > 110) & (b < 110) & (np.abs(r - g) < 60)).sum())
+    is_battle = present and gold_px >= BATTLE_SP_MIN_PX
+    return ("battle" if is_battle else "not_battle"), (score, gold_px)
+
+
 # leave_battle()'s missing SECOND confirmation layer (actions.py, 2026-09-21
 # task, [OBS] 操作者 C 段第三次實跑 -- the first ESC menu's own 離開 row only
 # opens a second "您要結束遊戲嗎？（結束將會有懲罰。）" dialog with two
@@ -789,6 +877,9 @@ def main():
     p_battle = sub.add_parser("battle-hud", help="battle_hud_state() on one image, print the result")
     p_battle.add_argument("image")
 
+    p_battle_pvp = sub.add_parser("battle-hud-pvp", help="battle_hud_state_pvp() on one image, print the result")
+    p_battle_pvp.add_argument("image")
+
     p_field = sub.add_parser("field", help="account_field_state() on one image, print the result")
     p_field.add_argument("image")
 
@@ -840,6 +931,11 @@ def _cli_dispatch(args):
     if args.cmd == "battle-hud":
         state, green_px = battle_hud_state(args.image)
         print(f"state={state} green_px={green_px}")
+        return
+
+    if args.cmd == "battle-hud-pvp":
+        state, (sb_score, gold_px) = battle_hud_state_pvp(args.image)
+        print(f"state={state} pvp_scoreboard_score={sb_score:.2f} gold_px={gold_px}")
         return
 
     if args.cmd == "field":

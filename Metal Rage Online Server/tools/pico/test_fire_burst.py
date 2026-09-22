@@ -27,6 +27,15 @@ subprocess/screenshot/log-file access, no time.sleep actually sleeping):
      the time spent waiting must NOT leak into firing_window_s (only
      actual clicking counts there -- see fire_burst()'s own docstring).
 
+Every screens.battle_hud_state mock below is paired with a
+screens.battle_hud_state_pvp mock fixed to "not_battle" (PVP-HUD-MARKER,
+docs/backlog.md, 2026-09-22 task): fire_burst() goes through
+actions._battle_any_check(), which since that task also calls
+battle_hud_state_pvp() -- unmocked, it would try to open the fake
+"/fake/shots/x.png" screenshot path these tests use and raise
+FileNotFoundError. These tests are all PvE scenarios, so the PvP judge is
+just held at a constant "not_battle" throughout.
+
 Run: python3 test_fire_burst.py
 """
 
@@ -86,7 +95,8 @@ class FireBurstTest(unittest.TestCase):
              mock.patch.object(actions, "take_screenshot", return_value="/fake/shots/x.png"), \
              mock.patch.object(actions.time, "sleep", side_effect=fake_sleep), \
              mock.patch.object(actions, "FIRE_BURST_BATTLE_WAIT_S", battle_wait_s), \
-             mock.patch.object(screens, "battle_hud_state", side_effect=fake_battle_hud_state):
+             mock.patch.object(screens, "battle_hud_state", side_effect=fake_battle_hud_state), \
+             mock.patch.object(screens, "battle_hud_state_pvp", return_value=("not_battle", (999.0, 0))):
             result = actions.fire_burst(ctx, "joiner", shots, interval_s)
         return result, click_calls, sleeps
 
@@ -174,7 +184,8 @@ class FireBurstTest(unittest.TestCase):
              mock.patch.object(actions, "take_screenshot", side_effect=fake_take_screenshot), \
              mock.patch.object(actions.time, "monotonic", side_effect=fake_monotonic), \
              mock.patch.object(actions.time, "sleep", return_value=None), \
-             mock.patch.object(screens, "battle_hud_state", side_effect=fake_battle_hud_state):
+             mock.patch.object(screens, "battle_hud_state", side_effect=fake_battle_hud_state), \
+             mock.patch.object(screens, "battle_hud_state_pvp", return_value=("not_battle", (999.0, 0))):
             result = actions.fire_burst(ctx, "joiner", 3, 0.0)
 
         self.assertTrue(result.ok, result.detail)
@@ -243,7 +254,8 @@ class FireBurstTest(unittest.TestCase):
              mock.patch.object(actions, "take_screenshot", side_effect=fake_take_screenshot), \
              mock.patch.object(actions.time, "monotonic", side_effect=fake_monotonic), \
              mock.patch.object(actions.time, "sleep", return_value=None), \
-             mock.patch.object(screens, "battle_hud_state", side_effect=fake_battle_hud_state):
+             mock.patch.object(screens, "battle_hud_state", side_effect=fake_battle_hud_state), \
+             mock.patch.object(screens, "battle_hud_state_pvp", return_value=("not_battle", (999.0, 0))):
             result = actions.fire_burst(ctx, "joiner", 3, 0.0)
 
         self.assertTrue(result.ok, result.detail)
