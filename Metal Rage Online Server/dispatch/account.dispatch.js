@@ -258,107 +258,7 @@ class ZAccountDispatch
             if (!account) {
                 //If database fails, send default data so client doesn't crash or hang
                 console.log(`[ZDispatchAccount::CQ_LOGIN_WASABII] DB unavailable - sending hardcoded defaults`);
-                client.nickname_ = username;
-
-                // SN_DEFAULT_INFO
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_DEFAULT_INFO, 0x1b);
-                    respBody.write('1\0', 0);
-                    respBody.write(username + '\0', 2);
-                    client.send(msg);
-                }
-
-                // SN_PLAY_INFO (critical for room creation)
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_PLAY_INFO, 0x16);
-                    respBody.writeUint32LE(0, 0);
-                    respBody.writeUint32LE(0, 4);
-                    respBody.writeUint8(0, 8);
-                    respBody.writeUint8(1, 9);
-                    respBody.writeInt32LE(1, 0x0A);
-                    respBody.writeUint16LE(1, 0x0E);
-                    respBody.writeUint16LE(0, 0x10);
-                    respBody.writeInt32LE(0, 0x12);
-                    client.send(msg);
-                }
-
-                // SN_RECORD_INFO (empty/level 1)
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_RECORD_INFO, 0x60);
-                    respBody.writeUint32LE(1, 0);
-                    client.send(msg);
-                }
-
-                // PVP-TEAM T1 hard rule (docs/design/d2-pvp-tdm.md §6 rule 1):
-                // this value must stay 0 -- IsMeGM_BD() reads it, and non-zero
-                // sends a PvP joiner's PlayerSelectMech.BeginState straight to
-                // GotoState('Spectating'). Asserted, not just commented: log
-                // loudly and skip this one send rather than crash the process.
-                {
-                    const gradeValue = 0; // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
-                    if (gradeValue !== 0) {
-                        console.error(`[ZDispatchAccount] !! Grade_Info_SN assertion failed: value=${gradeValue}, must be 0 -- refusing to send`);
-                    } else {
-                        const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-                        respBody.writeUInt32LE(gradeValue, 0);
-                        client.send(msg);
-                    }
-                }
-
-                // SN_MECH_LEVEL (all mechs level 1)
-                {
-                    const MAX_NUM_MECHS = 8;
-                    const MECH_RECORD_SIZE = 0x1c;
-                    const [msg, respBody] = client.getMessageBuffer(SN_MECH_LEVEL, 0x2 + (MECH_RECORD_SIZE * MAX_NUM_MECHS));
-                    respBody.writeUint16LE(MAX_NUM_MECHS, 0);
-                    let offset = 0;
-                    for (let i = 0; i < MAX_NUM_MECHS; ++i) {
-                        respBody.writeUint32LE(i + 1, offset);
-                        respBody.writeUint32LE(1, offset + 4);
-                        offset += MECH_RECORD_SIZE;
-                    }
-                    client.send(msg);
-                }
-
-                // SN_MAP_INFO
-                {
-                    const fallbackIds = Array.from({length: MAX_MAP_COUNT}, (_, i) => i);
-                    sendMapInfoSN(client, resolveRealMapIds() || fallbackIds);
-                }
-
-                // SN_LICENSE_INFO
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_LICENSE_INFO, 0x2 + (9 * MAX_SLOT_COUNT));
-                    let offset = 0;
-                    respBody[offset++] = 0x00;
-                    respBody[offset++] = MAX_SLOT_COUNT;
-                    for (let i = 0; i < MAX_SLOT_COUNT; ++i, offset += 9) {
-                        respBody.writeUint32LE(i + 1, offset);           // 0-3: mech_type
-                        respBody.writeUint32LE(0xFFFFFFFF, offset + 4);  // 4-7: expiry = permanent
-                        respBody.writeUint8(1, offset + 8);              // 8:   license_type = 1
-                    }
-                    client.send(msg);
-                }
-
-                // SN_ITEM_INFO (empty inventory — correct header format)
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_ITEM_INFO, 0x6);
-                    respBody.writeUint8(1, 0);      // SuccessFlag = 1 (valid)
-                    respBody.writeUint8(0, 1);      // ItemCount = 0
-                    respBody.writeUint32LE(0, 2);   // AccountKey = 0
-                    client.send(msg);
-                }
-
-                // SN_COMPLETE
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_COMPLETE, 0x100);
-                    respBody.writeUint16LE(0x0000, 0);
-                    respBody.writeInt32LE(0x0000, 2);
-                    client.send(msg);
-                }
-
-                // Gate info
-                this.sendGateInfo(client);
+                this.sendDefaultAccountData(client, username);
                 return;
             }
 
@@ -376,8 +276,19 @@ class ZAccountDispatch
 
             try {
                 const username = client.username_ || 'Player';
-                client.nickname_ = username;
 
+                // Merge note (DB-FAIL-PERREQ commit 1, 2026-09-23): kept here
+                // at the call site instead of inside sendDefaultAccountData()
+                // on purpose. The success ack at :226-231 already went out
+                // earlier in this same handler, before db.getAccountByUsername()
+                // failed and control landed in this catch. Resending
+                // SA_LOGIN_WASABII here means a mid-request DB failure
+                // currently makes the client receive TWO success acks -- a
+                // pre-existing behavior, not something this merge is
+                // introducing or fixing. Commit 2 removes this whole
+                // fallback (disconnect instead), which is when the duplicate
+                // send goes away; Commit 1 must not silently decide that for
+                // it, hence not folding this into the shared helper.
                 // SA_LOGIN_WASABII - success
                 {
                     const [msg, respBody] = client.getMessageBuffer(SA_LOGIN_WASABII, 0x6);
@@ -386,110 +297,128 @@ class ZAccountDispatch
                     client.send(msg);
                 }
 
-                // SN_DEFAULT_INFO
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_DEFAULT_INFO, 0x1b);
-                    respBody.write('1\0', 0);
-                    respBody.write(username + '\0', 2);
-                    client.send(msg);
-                }
-
-                // SN_PLAY_INFO (critical for room creation)
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_PLAY_INFO, 0x16);
-                    respBody.writeUint32LE(0, 0);
-                    respBody.writeUint32LE(0, 4);
-                    respBody.writeUint8(0, 8);
-                    respBody.writeUint8(1, 9);
-                    respBody.writeInt32LE(1, 0x0A);
-                    respBody.writeUint16LE(1, 0x0E);
-                    respBody.writeUint16LE(0, 0x10);
-                    respBody.writeInt32LE(0, 0x12);
-                    client.send(msg);
-                }
-
-                // SN_RECORD_INFO
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_RECORD_INFO, 0x60);
-                    respBody.writeUint32LE(1, 0);
-                    client.send(msg);
-                }
-
-                // PVP-TEAM T1 hard rule (docs/design/d2-pvp-tdm.md §6 rule 1):
-                // this value must stay 0 -- IsMeGM_BD() reads it, and non-zero
-                // sends a PvP joiner's PlayerSelectMech.BeginState straight to
-                // GotoState('Spectating'). Asserted, not just commented: log
-                // loudly and skip this one send rather than crash the process.
-                {
-                    const gradeValue = 0; // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
-                    if (gradeValue !== 0) {
-                        console.error(`[ZDispatchAccount] !! Grade_Info_SN assertion failed: value=${gradeValue}, must be 0 -- refusing to send`);
-                    } else {
-                        const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-                        respBody.writeUInt32LE(gradeValue, 0);
-                        client.send(msg);
-                    }
-                }
-
-                // SN_MECH_LEVEL
-                {
-                    const MAX_NUM_MECHS = 8;
-                    const MECH_RECORD_SIZE = 0x1c;
-                    const [msg, respBody] = client.getMessageBuffer(SN_MECH_LEVEL, 0x2 + (MECH_RECORD_SIZE * MAX_NUM_MECHS));
-                    respBody.writeUint16LE(MAX_NUM_MECHS, 0);
-                    let offset = 0;
-                    for (let i = 0; i < MAX_NUM_MECHS; ++i) {
-                        respBody.writeUint32LE(i + 1, offset);
-                        respBody.writeUint32LE(1, offset + 4);
-                        offset += MECH_RECORD_SIZE;
-                    }
-                    client.send(msg);
-                }
-
-                // SN_MAP_INFO
-                {
-                    const fallbackIds = Array.from({length: MAX_MAP_COUNT}, (_, i) => i);
-                    sendMapInfoSN(client, resolveRealMapIds() || fallbackIds);
-                }
-
-                // SN_LICENSE_INFO
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_LICENSE_INFO, 0x2 + (9 * MAX_SLOT_COUNT));
-                    let offset = 0;
-                    respBody[offset++] = 0x00;
-                    respBody[offset++] = MAX_SLOT_COUNT;
-                    for (let i = 0; i < MAX_SLOT_COUNT; ++i, offset += 9) {
-                        respBody.writeUint32LE(i + 1, offset);           // 0-3: mech_type
-                        respBody.writeUint32LE(0xFFFFFFFF, offset + 4);  // 4-7: expiry = permanent
-                        respBody.writeUint8(1, offset + 8);              // 8:   license_type = 1
-                    }
-                    client.send(msg);
-                }
-
-                // SN_ITEM_INFO (empty)
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_ITEM_INFO, 0x6);
-                    respBody.writeUint8(1, 0);
-                    respBody.writeUint8(0, 1);
-                    respBody.writeUint32LE(0, 2);
-                    client.send(msg);
-                }
-
-                // SN_COMPLETE
-                {
-                    const [msg, respBody] = client.getMessageBuffer(SN_COMPLETE, 0x100);
-                    respBody.writeUint16LE(0x0000, 0);
-                    respBody.writeInt32LE(0x0000, 2);
-                    client.send(msg);
-                }
-
-                // Gate info
-                this.sendGateInfo(client);
+                this.sendDefaultAccountData(client, username);
             } catch (e2) {
                 console.error(`[ZDispatchAccount] Fallback also failed:`, e2.message);
                 client.disconnect();
             }
         }
+    }
+
+    /**
+     * Send hardcoded default account data (empty inventory, level-1 mechs,
+     * no record) so the client can still enter the gate when the DB is
+     * unavailable. Shared by handleLogin()'s two DB-failure paths: the
+     * "account still null after auto-create attempt" branch above, and the
+     * outer catch below when db.getAccountByUsername()/db.createAccount()
+     * itself rejects. Extracted 2026-09-23 (DB-FAIL-PERREQ commit 1) -- the
+     * two call sites used to carry this same block of sends independently;
+     * see the comment at the SA_LOGIN_WASABII resend above for the one
+     * behavior difference deliberately left out of this helper.
+     */
+    sendDefaultAccountData(client, username)
+    {
+        client.nickname_ = username;
+
+        // SN_DEFAULT_INFO
+        {
+            const [msg, respBody] = client.getMessageBuffer(SN_DEFAULT_INFO, 0x1b);
+            respBody.write('1\0', 0);
+            respBody.write(username + '\0', 2);
+            client.send(msg);
+        }
+
+        // SN_PLAY_INFO (critical for room creation)
+        {
+            const [msg, respBody] = client.getMessageBuffer(SN_PLAY_INFO, 0x16);
+            respBody.writeUint32LE(0, 0);
+            respBody.writeUint32LE(0, 4);
+            respBody.writeUint8(0, 8);
+            respBody.writeUint8(1, 9);
+            respBody.writeInt32LE(1, 0x0A);
+            respBody.writeUint16LE(1, 0x0E);
+            respBody.writeUint16LE(0, 0x10);
+            respBody.writeInt32LE(0, 0x12);
+            client.send(msg);
+        }
+
+        // SN_RECORD_INFO (empty/level 1)
+        {
+            const [msg, respBody] = client.getMessageBuffer(SN_RECORD_INFO, 0x60);
+            respBody.writeUint32LE(1, 0);
+            client.send(msg);
+        }
+
+        // PVP-TEAM T1 hard rule (docs/design/d2-pvp-tdm.md §6 rule 1):
+        // this value must stay 0 -- IsMeGM_BD() reads it, and non-zero
+        // sends a PvP joiner's PlayerSelectMech.BeginState straight to
+        // GotoState('Spectating'). Asserted, not just commented: log
+        // loudly and skip this one send rather than crash the process.
+        {
+            const gradeValue = 0; // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
+            if (gradeValue !== 0) {
+                console.error(`[ZDispatchAccount] !! Grade_Info_SN assertion failed: value=${gradeValue}, must be 0 -- refusing to send`);
+            } else {
+                const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
+                respBody.writeUInt32LE(gradeValue, 0);
+                client.send(msg);
+            }
+        }
+
+        // SN_MECH_LEVEL (all mechs level 1)
+        {
+            const MAX_NUM_MECHS = 8;
+            const MECH_RECORD_SIZE = 0x1c;
+            const [msg, respBody] = client.getMessageBuffer(SN_MECH_LEVEL, 0x2 + (MECH_RECORD_SIZE * MAX_NUM_MECHS));
+            respBody.writeUint16LE(MAX_NUM_MECHS, 0);
+            let offset = 0;
+            for (let i = 0; i < MAX_NUM_MECHS; ++i) {
+                respBody.writeUint32LE(i + 1, offset);
+                respBody.writeUint32LE(1, offset + 4);
+                offset += MECH_RECORD_SIZE;
+            }
+            client.send(msg);
+        }
+
+        // SN_MAP_INFO
+        {
+            const fallbackIds = Array.from({length: MAX_MAP_COUNT}, (_, i) => i);
+            sendMapInfoSN(client, resolveRealMapIds() || fallbackIds);
+        }
+
+        // SN_LICENSE_INFO
+        {
+            const [msg, respBody] = client.getMessageBuffer(SN_LICENSE_INFO, 0x2 + (9 * MAX_SLOT_COUNT));
+            let offset = 0;
+            respBody[offset++] = 0x00;
+            respBody[offset++] = MAX_SLOT_COUNT;
+            for (let i = 0; i < MAX_SLOT_COUNT; ++i, offset += 9) {
+                respBody.writeUint32LE(i + 1, offset);           // 0-3: mech_type
+                respBody.writeUint32LE(0xFFFFFFFF, offset + 4);  // 4-7: expiry = permanent
+                respBody.writeUint8(1, offset + 8);              // 8:   license_type = 1
+            }
+            client.send(msg);
+        }
+
+        // SN_ITEM_INFO (empty inventory — correct header format)
+        {
+            const [msg, respBody] = client.getMessageBuffer(SN_ITEM_INFO, 0x6);
+            respBody.writeUint8(1, 0);      // SuccessFlag = 1 (valid)
+            respBody.writeUint8(0, 1);      // ItemCount = 0
+            respBody.writeUint32LE(0, 2);   // AccountKey = 0
+            client.send(msg);
+        }
+
+        // SN_COMPLETE
+        {
+            const [msg, respBody] = client.getMessageBuffer(SN_COMPLETE, 0x100);
+            respBody.writeUint16LE(0x0000, 0);
+            respBody.writeInt32LE(0x0000, 2);
+            client.send(msg);
+        }
+
+        // Gate info
+        this.sendGateInfo(client);
     }
 
     /**
