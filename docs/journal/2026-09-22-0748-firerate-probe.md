@@ -150,8 +150,34 @@ WeaponLog=====> Started
 
 ## 追加：補彈的方法（[OBS] 操作者 2026-09-22）與為什麼不能用 `sup1`
 
-操作者原話：「可以用控制台叫 `sp` 然後關控制台按 F3 補充彈藥」。
-→ 流程是**主控台打 `sp` → 關掉主控台 → 按 F3**。⬜ 尚未由我方實測。
+操作者 2026-09-22 的說明（第二次講得更精確）：有個指令可以把 **SP 補到 9999**，
+之後 **F3 只要消耗 50 SP 就能補彈**。**SP 是資源，不是指令名**
+（本篇初稿把它寫成「主控台打 `sp`」，錯了）。
+
+反編譯查到的實際東西：
+
+| 項目 | 位置 | 內容 |
+|---|---|---|
+| 指令 | `ZModePve/ZPvePlayercontroller.uc:1157` | `exec function SPMaxUP_BD()` → `SPPoint=9999`；在客戶端會先呼叫 `ServerSPMaxUP()`，**所以加入者端下也有效**（我們的射手正是加入者） |
+| F3 綁定 | `Engine/OptionAll.uc:1010` | `setinput_BD 0x72 "UseSPPoint_BD 2"` → **F3 ＝ `UseSPPoint_BD 2`** |
+| 補彈效果 | `ZSetCorePlayercontroller.uc:189`（該段已被註解掉，但語意清楚） | `EffectType 3` ＝ `탄충전`（彈藥充填）→ `ZAction.SupplyBullet` |
+| 花費 | `ZPvePlayercontroller.uc:142`／`:181` | `SkillInfos[ItemType].UsePoint`，活的判定在 `ZPvePlayercontroller` |
+
+`SPMaxUP_BD` 在 `ZPvePlayercontroller`，**PvE 專用**——我們跑的正是 PvE（潛入作戰），沒問題。
+⬜ `SkillInfos[2].UsePoint` 的實際數值沒有從原始碼讀到（操作者說 50）；
+⬜ `sp` 補滿後按 F3 是否真的補滿彈藥、log 裡有沒有留痕跡，都還沒實測。
+
+### ⚠️ 連帶：戰鬥中的 F1–F5 綁的是 SP 技能，不是選機體
+
+`Engine/OptionAll.uc:1008-1012` 把 F1–F5 綁成 `UseSPPoint_BD 0`–`4`
+（`OptionAll.uc:817` 另有一處也綁 F5 → `UseSPPoint_BD 4`，代表**不同畫面有不同的綁定組**）。
+
+🟡 **這給了「F5 為什麼拿到 `MOM_a`」一個機制層的解釋**：
+F5 可能**根本沒在選機體**，而是被當成 SP 技能吃掉，選機體頁的倒數計時到了就
+自動出預設（第一台）機體 ＝ RAVEN ＝ `MOM_a`。
+與 [OBS] 操作者說「選機體可以用 F1~F8 按」不衝突——兩者是**不同畫面的不同綁定組**，
+但也代表 `enter_battle` 現在送 F 鍵的**時機**可能落在錯的畫面。
+→ 已派的 F2／F3／F4 探針正好能驗證這件事；若三段都是 `MOM_a`，這個解釋就成立。
 
 這解掉了上一節的彈藥上限（`MTE_a` 一條命只有 34 次扣扳機）。
 
