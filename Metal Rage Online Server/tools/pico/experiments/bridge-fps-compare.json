@@ -1,0 +1,98 @@
+{
+  "id": "bridge-fps-compare",
+  "purpose": "BRIDGE-SPIKE 收窄版 FPS 對照（docs/backlog.md BRIDGE-SPIKE，待審）。單人 PvE，副本 C:\\Games\\MetalRage Online 3（已帶 proxy+gadget）。同一支腳本要跑四次，每次外層人工把 gadget 的 .config 指到：不掛／bridge-fire.js／bridge-fire-narrow.js／bridge-fire-late.js（見 tools/bridge/README.md「四組對照」）。骨架沿用 round2-probe-mte.json 的單人 mech_key=None 流程，差異：require_cn=false（房主自身收不到 ChangeSlot_CN，同 netspeed-budget-fps.json）、shots=6（只求湊出計數，不量射速）、fire_burst 後多一次 console_cmd_on('stat fps')——它的 shot_open 截圖（ENTER 尚未送出，overlay 還沒被這次呼叫的 toggle 關掉）就是開火後、戰鬥中的 FPS 畫面；這次呼叫結束後 overlay 會被切回 OFF，但接著就 leave_battle，無妨。max_wall_clock_s 以 round2-probe-mte.json 的 900s 為底，扣 4 發省下的時間、加一次 console_cmd_on，抓 950s。成功＝13 步全過，人工核對兩次 console_cmd_on 的截圖都看得到 FPS 數字。",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage",
+      "install_dir_win": "C:\\Games\\MetalRage Online 3",
+      "bat_path_win": "C:\\Games\\MetalRage Online 3\\Play With Log.bat"
+    }
+  },
+  "steps": [
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotest"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": null,
+        "require_cn": false
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "stat fps"
+      }
+    },
+    {
+      "action": "fire_burst",
+      "params": {
+        "client_id": "host",
+        "shots": 6,
+        "interval_s": 0
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "stat fps"
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    }
+  ],
+  "stop_conditions": {
+    "max_consecutive_failures": 1
+  },
+  "max_wall_clock_s": 950,
+  "max_image_reviews": 0
+}
