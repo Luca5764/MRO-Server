@@ -395,7 +395,11 @@ ENTER_BATTLE_NO_KEY_TIMEOUT_S = 120.0
 # grep). Not yet wired into any action here -- console_cmd_on() only proves
 # the command typed+closed, it does not read the overlay's numbers back.
 NETSPEED_CMD_RE = re.compile(r'^netspeed \d{1,7}$')
-CONSOLE_CMD_ON_WHITELIST_EXACT = {"stat net", "WeaponLog"}
+# "stat fps" added 2026-09-22 for NETSPEED-BUDGET contract step 1
+# (docs/backlog.md) -- need the host's in-battle FPS to compare against
+# Moon's claimed 1000-1800 before deciding whether the QueuedBytes budget
+# patch is necessary under our own conditions.
+CONSOLE_CMD_ON_WHITELIST_EXACT = {"stat net", "WeaponLog", "stat fps"}
 DEFAULT_CONSOLE_CMD_ON_CLOSE_TIMEOUT_S = 10.0
 
 # fire_burst()'s own sanity ceilings (2026-09-22, round 2 projectile-loss
