@@ -1426,7 +1426,18 @@ class ZRoomDispatch
         // Room_Default_SN raw type is not the same thing as the effective room type
         // chosen during CQ_CREATE handling. Static analysis shows:
         //   raw 1 -> internal 2
-        //   raw 2 -> internal 1
+        //   raw 2 -> internal 0 (NORMAL_GAME)
+        //   raw 3 -> internal 1
+        //   raw 4 -> internal 0
+        //   raw 5 -> internal 3
+        //   raw 6 -> internal 4
+        // 2026-09-22 correction: the old comment said "raw 2 -> internal 1",
+        // which the jump table contradicts. Read directly out of ZNetwork.dll
+        // at 0x107ea6d8 (indexed by raw-1, see 0x107ea4b5: movzx/dec/cmp 5/ja/
+        // jmp [eax*4+0x107ea6d8]); the raw 2 slot points at 0x107ea4ea, the
+        // `mov [esi+8], 0` arm. raw 6 -> internal 4 is a value we have seen in
+        // real Create_CQ bodies but do not handle anywhere -- see
+        // docs/research/2026-09-22-d2-tdm/pvp-start-gap.md Q6.
         // When we sent type=2 here, the client switched the room shell to a PvP
         // layout (Red/Blue team, team-balance options, broad map categories).
         // Campaign room creation still needs the raw create-type value here.
