@@ -1,0 +1,458 @@
+# Engine.dll (原廠, sha256 fc51fe1240ee34111fc1a483e74a1b131d4b69f2b2a0940adbb4a860a138d24e)
+# ImageBase 0x10300000; .text RVA 0x1000 VirtualSize 0x377b1e SizeOfRawData 0x378000 PointerToRawData 0x1000
+# to_off(VA) uses same tool as tools/disasm.py
+
+## sections
+ImageBase 0x10300000   SizeOfImage 0x006df000
+name       rva        vsize      rawptr    
+.text      0x00001000 0x00377b1e 0x00001000
+.rdata     0x00379000 0x0013569d 0x00379000
+.data      0x004af000 0x001d6708 0x004af000
+.reloc     0x00686000 0x0005858a 0x004cb000
+
+## function containing target, from candidate prologue 0x1042dda0 (first 45 instrs)
+  0x1042dda0  push                     ebp
+  0x1042dda1  mov                      ebp, esp
+  0x1042dda3  push                     -1
+  0x1042dda5  push                     0x10658b90
+  0x1042ddaa  mov                      eax, dword ptr fs:[0]
+  0x1042ddb0  push                     eax
+  0x1042ddb1  mov                      dword ptr fs:[0], esp
+  0x1042ddb8  sub                      esp, 0x28
+  0x1042ddbb  push                     ebx
+  0x1042ddbc  push                     esi
+  0x1042ddbd  mov                      esi, ecx
+  0x1042ddbf  mov                      eax, dword ptr [esi]
+  0x1042ddc1  push                     edi
+  0x1042ddc2  xor                      ebx, ebx
+  0x1042ddc4  mov                      dword ptr [ebp - 0x10], esp
+  0x1042ddc7  mov                      dword ptr [ebp - 4], ebx
+  0x1042ddca  call                     dword ptr [eax + 0x84]
+  0x1042ddd0  cmp                      dword ptr [esi + 0x4f78], ebx
+  0x1042ddd6  je                       0x1042de44
+  0x1042ddd8  mov                      dword ptr [ebp - 0x14], ebx
+  0x1042dddb  jmp                      0x1042dde0
+  0x1042dddd  lea                      ecx, [ecx]
+  0x1042dde0  mov                      ecx, dword ptr [ebp - 0x14]
+  0x1042dde3  cmp                      ecx, dword ptr [esi + 0x4f84]
+  0x1042dde9  jge                      0x1042de44
+  0x1042ddeb  mov                      eax, dword ptr [esi + 0x4f80]
+  0x1042ddf1  mov                      edi, ecx
+  0x1042ddf3  lea                      ebx, [esi + 0x4f80]
+  0x1042ddf9  lea                      edi, [edi + edi*4]
+  0x1042ddfc  shl                      edi, 2
+  0x1042ddff  add                      eax, edi
+  0x1042de01  mov                      dword ptr [ebp - 0x18], eax
+  0x1042de04  call                     dword ptr [0x10679660]
+  0x1042de0a  fst                      qword ptr [ebp - 0x30]
+  0x1042de0d  mov                      edx, dword ptr [ebp - 0x18]
+  0x1042de10  fcomp                    qword ptr [edx + 0xc]
+  0x1042de13  fnstsw                   ax
+  0x1042de15  test                     ah, 0x41
+  0x1042de18  jne                      0x1042de3d
+  0x1042de1a  mov                      eax, dword ptr [ebx]
+  0x1042de1c  mov                      ecx, dword ptr [eax + edi + 4]
+  0x1042de20  mov                      edx, dword ptr [esi]
+  0x1042de22  add                      eax, edi
+  0x1042de24  mov                      eax, dword ptr [eax]
+  0x1042de26  push                     ecx
+
+## no ret between 0x1042dda0 and past 0x1042e1ee (288 instrs shown, target at instr #288)
+  0x1042dda0  push                     ebp
+  0x1042dda1  mov                      ebp, esp
+  0x1042dda3  push                     -1
+  0x1042dda5  push                     0x10658b90
+  0x1042ddaa  mov                      eax, dword ptr fs:[0]
+  0x1042ddb0  push                     eax
+  0x1042ddb1  mov                      dword ptr fs:[0], esp
+  0x1042ddb8  sub                      esp, 0x28
+  0x1042ddbb  push                     ebx
+  0x1042ddbc  push                     esi
+  0x1042ddbd  mov                      esi, ecx
+  0x1042ddbf  mov                      eax, dword ptr [esi]
+  0x1042ddc1  push                     edi
+  0x1042ddc2  xor                      ebx, ebx
+  0x1042ddc4  mov                      dword ptr [ebp - 0x10], esp
+  0x1042ddc7  mov                      dword ptr [ebp - 4], ebx
+  0x1042ddca  call                     dword ptr [eax + 0x84]
+  0x1042ddd0  cmp                      dword ptr [esi + 0x4f78], ebx
+  0x1042ddd6  je                       0x1042de44
+  0x1042ddd8  mov                      dword ptr [ebp - 0x14], ebx
+  0x1042dddb  jmp                      0x1042dde0
+  0x1042dddd  lea                      ecx, [ecx]
+  0x1042dde0  mov                      ecx, dword ptr [ebp - 0x14]
+  0x1042dde3  cmp                      ecx, dword ptr [esi + 0x4f84]
+  0x1042dde9  jge                      0x1042de44
+  0x1042ddeb  mov                      eax, dword ptr [esi + 0x4f80]
+  0x1042ddf1  mov                      edi, ecx
+  0x1042ddf3  lea                      ebx, [esi + 0x4f80]
+  0x1042ddf9  lea                      edi, [edi + edi*4]
+  0x1042ddfc  shl                      edi, 2
+  0x1042ddff  add                      eax, edi
+  0x1042de01  mov                      dword ptr [ebp - 0x18], eax
+  0x1042de04  call                     dword ptr [0x10679660]
+  0x1042de0a  fst                      qword ptr [ebp - 0x30]
+  0x1042de0d  mov                      edx, dword ptr [ebp - 0x18]
+  0x1042de10  fcomp                    qword ptr [edx + 0xc]
+  0x1042de13  fnstsw                   ax
+  0x1042de15  test                     ah, 0x41
+  0x1042de18  jne                      0x1042de3d
+  0x1042de1a  mov                      eax, dword ptr [ebx]
+  0x1042de1c  mov                      ecx, dword ptr [eax + edi + 4]
+  0x1042de20  mov                      edx, dword ptr [esi]
+  0x1042de22  add                      eax, edi
+  0x1042de24  mov                      eax, dword ptr [eax]
+  0x1042de26  push                     ecx
+  0x1042de27  push                     eax
+  0x1042de28  mov                      ecx, esi
+  0x1042de2a  call                     dword ptr [edx + 0x7c]
+  0x1042de2d  mov                      ecx, dword ptr [ebp - 0x14]
+  0x1042de30  push                     1
+  0x1042de32  push                     ecx
+  0x1042de33  mov                      ecx, ebx
+  0x1042de35  call                     0x103aa5f0
+  0x1042de3a  dec                      dword ptr [ebp - 0x14]
+  0x1042de3d  inc                      dword ptr [ebp - 0x14]
+  0x1042de40  xor                      ebx, ebx
+  0x1042de42  jmp                      0x1042dde0
+  0x1042de44  mov                      edx, dword ptr [0x10679468]
+  0x1042de4a  fld                      dword ptr [edx]
+  0x1042de4c  mov                      eax, dword ptr [esi + 0x284]
+  0x1042de52  fadd                     qword ptr [esi + 0x274]
+  0x1042de58  inc                      eax
+  0x1042de59  mov                      dword ptr [esi + 0x284], eax
+  0x1042de5f  mov                      dword ptr [ebp - 0x18], eax
+  0x1042de62  fstp                     qword ptr [esi + 0x274]
+  0x1042de68  fld                      qword ptr [esi + 0x274]
+  0x1042de6e  fcomp                    qword ptr [0x10692dd0]
+  0x1042de74  fnstsw                   ax
+  0x1042de76  test                     ah, 0x41
+  0x1042de79  jne                      0x1042de9c
+  0x1042de7b  fild                     dword ptr [ebp - 0x18]
+  0x1042de7e  mov                      dword ptr [esi + 0x284], ebx
+  0x1042de84  fdivr                    qword ptr [esi + 0x274]
+  0x1042de8a  fstp                     qword ptr [esi + 0x27c]
+  0x1042de90  fld                      qword ptr [0x106930c8]
+  0x1042de96  fstp                     qword ptr [esi + 0x274]
+  0x1042de9c  cmp                      dword ptr [esi + 0xd0], ebx
+  0x1042dea2  je                       0x1042deef
+  0x1042dea4  mov                      ecx, dword ptr [esi + 0x74]
+  0x1042dea7  fld                      qword ptr [ecx + 0x1148]
+  0x1042dead  mov                      eax, dword ptr [esi + 0x4f04]
+  0x1042deb3  fstp                     qword ptr [esi + 0x12c]
+  0x1042deb9  lea                      edi, [eax - 1]
+  0x1042debc  lea                      esp, [esp]
+  0x1042dec0  cmp                      edi, ebx
+  0x1042dec2  jl                       0x1042deef
+  0x1042dec4  mov                      edx, dword ptr [esi + 0x4f00]
+  0x1042deca  mov                      ecx, dword ptr [edx + edi*4]
+  0x1042decd  mov                      eax, dword ptr [ecx + 0x5c]
+  0x1042ded0  cmp                      eax, ebx
+  0x1042ded2  je                       0x1042dee0
+  0x1042ded4  mov                      dword ptr [eax + 0x74], 1
+  0x1042dedb  mov                      eax, dword ptr [eax + 0x64]
+  0x1042dede  jmp                      0x1042ded0
+  0x1042dee0  mov                      dword ptr [ecx + 0x30], 1
+  0x1042dee7  call                     0x104254c0
+  0x1042deec  dec                      edi
+  0x1042deed  jmp                      0x1042dec0
+  0x1042deef  mov                      edi, dword ptr [esi + 0x74]
+  0x1042def2  fld                      qword ptr [edi + 0x1148]
+  0x1042def8  fsub                     qword ptr [esi + 0x200]
+  0x1042defe  fld                      dword ptr [esi + 0x208]
+  0x1042df04  fcompp                   
+  0x1042df06  fnstsw                   ax
+  0x1042df08  test                     ah, 5
+  0x1042df0b  jp                       0x1042e1d3
+  0x1042df11  mov                      eax, edi
+  0x1042df13  fld                      qword ptr [eax + 0x1148]
+  0x1042df19  mov                      byte ptr [ebp - 4], 1
+  0x1042df1d  fsub                     qword ptr [esi + 0x200]
+  0x1042df23  fdivr                    dword ptr [0x1067abc4]
+  0x1042df29  fild                     dword ptr [esi + 0x25c]
+  0x1042df2f  fmul                     st(1)
+  0x1042df31  fstp                     dword ptr [esi + 0x20c]
+  0x1042df37  fild                     dword ptr [esi + 0x260]
+  0x1042df3d  fmul                     st(1)
+  0x1042df3f  fstp                     dword ptr [esi + 0x210]
+  0x1042df45  fild                     dword ptr [esi + 0x24c]
+  0x1042df4b  fmul                     st(1)
+  0x1042df4d  fst                      dword ptr [ebp - 0x18]
+  0x1042df50  fstp                     dword ptr [esi + 0x214]
+  0x1042df56  fild                     dword ptr [esi + 0x250]
+  0x1042df5c  fmul                     st(1)
+  0x1042df5e  fst                      dword ptr [esi + 0x218]
+  0x1042df64  fild                     dword ptr [esi + 0x254]
+  0x1042df6a  fmul                     st(2)
+  0x1042df6c  fstp                     dword ptr [esi + 0x21c]
+  0x1042df72  fild                     dword ptr [esi + 0x258]
+  0x1042df78  fmul                     st(2)
+  0x1042df7a  fstp                     dword ptr [esi + 0x220]
+  0x1042df80  fild                     dword ptr [esi + 0x264]
+  0x1042df86  fmul                     st(2)
+  0x1042df88  fstp                     dword ptr [esi + 0x22c]
+  0x1042df8e  fild                     dword ptr [esi + 0x268]
+  0x1042df94  fmul                     st(2)
+  0x1042df96  fstp                     dword ptr [esi + 0x230]
+  0x1042df9c  fstp                     st(1)
+  0x1042df9e  fcom                     dword ptr [0x1067abc4]
+  0x1042dfa4  fnstsw                   ax
+  0x1042dfa6  test                     ah, 1
+  0x1042dfa9  je                       0x1042dfb3
+  0x1042dfab  fstp                     st(0)
+  0x1042dfad  fld                      dword ptr [0x1067abc4]
+  0x1042dfb3  fidivr                   dword ptr [esi + 0x248]
+  0x1042dfb9  fmul                     dword ptr [0x1069a240]
+  0x1042dfbf  fst                      dword ptr [esi + 0x228]
+  0x1042dfc5  fild                     dword ptr [esi + 0x244]
+  0x1042dfcb  fld                      dword ptr [ebp - 0x18]
+  0x1042dfce  fadd                     st(1)
+  0x1042dfd0  fcom                     dword ptr [0x1067abc4]
+  0x1042dfd6  fnstsw                   ax
+  0x1042dfd8  test                     ah, 1
+  0x1042dfdb  je                       0x1042dfe5
+  0x1042dfdd  fstp                     st(0)
+  0x1042dfdf  fld                      dword ptr [0x1067abc4]
+  0x1042dfe5  fxch                     st(1)
+  0x1042dfe7  mov                      eax, dword ptr [esi + 0x26c]
+  0x1042dfed  cmp                      eax, ebx
+  0x1042dfef  fdiv                     st(1)
+  0x1042dff1  mov                      dword ptr [ebp - 0x18], eax
+  0x1042dff4  fmul                     dword ptr [0x1069a240]
+  0x1042dffa  fstp                     dword ptr [ebp - 0x14]
+  0x1042dffd  mov                      ecx, dword ptr [ebp - 0x14]
+  0x1042e000  fstp                     st(0)
+  0x1042e002  mov                      dword ptr [esi + 0x224], ecx
+  0x1042e008  je                       0x1042e019
+  0x1042e00a  fild                     dword ptr [ebp - 0x18]
+  0x1042e00d  fdivr                    dword ptr [esi + 0x23c]
+  0x1042e013  fstp                     dword ptr [esi + 0x238]
+  0x1042e019  fld                      dword ptr [esi + 0x238]
+  0x1042e01f  fst                      dword ptr [ebp - 0x1c]
+  0x1042e022  fstp                     dword ptr [esi + 0x234]
+  0x1042e028  fcom                     dword ptr [0x10693418]
+  0x1042e02e  fnstsw                   ax
+  0x1042e030  test                     ah, 0x41
+  0x1042e033  je                       0x1042e04d
+  0x1042e035  fld                      dword ptr [ebp - 0x14]
+  0x1042e038  fcomp                    dword ptr [0x10693418]
+  0x1042e03e  fnstsw                   ax
+  0x1042e040  test                     ah, 0x41
+  0x1042e043  je                       0x1042e04d
+  0x1042e045  mov                      dword ptr [esi + 0x270], ebx
+  0x1042e04b  jmp                      0x1042e053
+  0x1042e04d  inc                      dword ptr [esi + 0x270]
+  0x1042e053  mov                      ecx, dword ptr [esi + 0x34]
+  0x1042e056  cmp                      ecx, ebx
+  0x1042e058  je                       0x1042e170
+  0x1042e05e  fld                      dword ptr [ebp - 0x14]
+  0x1042e061  fst                      dword ptr [ebp - 0x18]
+  0x1042e064  fcomp                    st(1)
+  0x1042e066  fnstsw                   ax
+  0x1042e068  test                     ah, 1
+  0x1042e06b  jne                      0x1042e072
+  0x1042e06d  fstp                     st(0)
+  0x1042e06f  fld                      dword ptr [ebp - 0x18]
+  0x1042e072  fmul                     dword ptr [0x1067eb28]
+  0x1042e078  mov                      eax, dword ptr [ecx + 0x740]
+  0x1042e07e  cmp                      eax, ebx
+  0x1042e080  fst                      dword ptr [ebp - 0x14]
+  0x1042e083  fmul                     qword ptr [0x106ac7f8]
+  0x1042e089  fadd                     dword ptr [ebp - 0x1c]
+  0x1042e08c  je                       0x1042e137
+  0x1042e092  cmp                      dword ptr [esi + 0xd0], ebx
+  0x1042e098  jne                      0x1042e11e
+  0x1042e09e  fcomp                    qword ptr [0x106ac7f0]
+  0x1042e0a4  fnstsw                   ax
+  0x1042e0a6  test                     ah, 0x41
+  0x1042e0a9  je                       0x1042e0c4
+  0x1042e0ab  fld                      dword ptr [0x1067abc4]
+  0x1042e0b1  fsub                     dword ptr [ebp - 0x14]
+  0x1042e0b4  fimul                    dword ptr [esi + 0x50]
+  0x1042e0b7  fcomp                    dword ptr [0x106ac7e8]
+  0x1042e0bd  fnstsw                   ax
+  0x1042e0bf  test                     ah, 5
+  0x1042e0c2  jp                       0x1042e120
+  0x1042e0c4  lea                      edx, [ebp - 0x1c]
+  0x1042e0c7  mov                      dword ptr [ebp - 0x1c], ecx
+  0x1042e0ca  push                     edx
+  0x1042e0cb  lea                      ecx, [esi + 0x4f18]
+  0x1042e0d1  call                     0x1042c330
+  0x1042e0d6  cmp                      eax, ebx
+  0x1042e0d8  je                       0x1042e120
+  0x1042e0da  mov                      eax, 1
+  0x1042e0df  mov                      edx, dword ptr [esi + 0x34]
+  0x1042e0e2  mov                      ecx, dword ptr [edx + 0x740]
+  0x1042e0e8  mov                      edx, dword ptr [ecx + 0x404]
+  0x1042e0ee  shl                      eax, 5
+  0x1042e0f1  xor                      eax, edx
+  0x1042e0f3  and                      eax, 0x20
+  0x1042e0f6  xor                      edx, eax
+  0x1042e0f8  mov                      dword ptr [ecx + 0x404], edx
+  0x1042e0fe  jmp                      0x1042e139
+  0x1042e100  mov                      eax, dword ptr [ebp - 0x2c]
+  0x1042e103  push                     0x106e04c8
+  0x1042e108  lea                      ecx, [ebp - 0x20]
+  0x1042e10b  mov                      dword ptr [ebp - 0x20], eax
+  0x1042e10e  push                     ecx
+  0x1042e10f  jmp                      0x1042e397
+  0x1042e114  push                     0x106ac7d0
+  0x1042e119  jmp                      0x1042e385
+  0x1042e11e  fstp                     st(0)
+  0x1042e120  fld                      dword ptr [esi + 0x214]
+  0x1042e126  fcomp                    dword ptr [0x1069e19c]
+  0x1042e12c  fnstsw                   ax
+  0x1042e12e  test                     ah, 5
+  0x1042e131  jnp                      0x1042e0da
+  0x1042e133  xor                      eax, eax
+  0x1042e135  jmp                      0x1042e0df
+  0x1042e137  fstp                     st(0)
+  0x1042e139  mov                      eax, dword ptr [esi + 0x34]
+  0x1042e13c  mov                      edi, dword ptr [eax + 0x4f0]
+  0x1042e142  cmp                      edi, ebx
+  0x1042e144  je                       0x1042e172
+  0x1042e146  fld                      dword ptr [esi + 0x228]
+  0x1042e14c  fld                      dword ptr [esi + 0x224]
+  0x1042e152  fst                      dword ptr [ebp - 0x1c]
+  0x1042e155  fcomp                    st(1)
+  0x1042e157  fnstsw                   ax
+  0x1042e159  test                     ah, 1
+  0x1042e15c  jne                      0x1042e163
+  0x1042e15e  fstp                     st(0)
+  0x1042e160  fld                      dword ptr [ebp - 0x1c]
+  0x1042e163  call                     0x1063e244
+  0x1042e168  mov                      byte ptr [edi + 0x490], al
+  0x1042e16e  jmp                      0x1042e172
+  0x1042e170  fstp                     st(0)
+  0x1042e172  mov                      edi, dword ptr [esi + 0x74]
+  0x1042e175  mov                      dword ptr [esi + 0x23c], ebx
+  0x1042e17b  mov                      dword ptr [esi + 0x240], 0x461c3c00
+  0x1042e185  mov                      dword ptr [esi + 0x25c], ebx
+  0x1042e18b  mov                      dword ptr [esi + 0x260], ebx
+  0x1042e191  mov                      dword ptr [esi + 0x24c], ebx
+  0x1042e197  mov                      dword ptr [esi + 0x250], ebx
+  0x1042e19d  mov                      dword ptr [esi + 0x254], ebx
+  0x1042e1a3  mov                      dword ptr [esi + 0x258], ebx
+  0x1042e1a9  mov                      dword ptr [esi + 0x244], ebx
+  0x1042e1af  mov                      dword ptr [esi + 0x248], ebx
+  0x1042e1b5  mov                      dword ptr [esi + 0x264], ebx
+  0x1042e1bb  mov                      dword ptr [esi + 0x268], ebx
+  0x1042e1c1  mov                      dword ptr [esi + 0x26c], ebx
+  0x1042e1c7  fld                      qword ptr [edi + 0x1148]
+  0x1042e1cd  fstp                     qword ptr [esi + 0x200]
+  0x1042e1d3  fld                      qword ptr [edi + 0x1148]
+  0x1042e1d9  mov                      dword ptr [ebp - 4], ebx
+  0x1042e1dc  fsub                     qword ptr [esi + 0x13c]
+  0x1042e1e2  fld                      qword ptr [edi + 0x1148]
+  0x1042e1e8  fstp                     qword ptr [esi + 0x13c]
+  0x1042e1ee  fimul                    dword ptr [esi + 0x50]
+  0x1042e1f1  fld                      st(0)
+  0x1042e1f3  call                     0x1063e244
+  0x1042e1f8  fadd                     st(0), st(0)
+  0x1042e1fa  mov                      ecx, dword ptr [esi + 0x14c]
+  0x1042e200  sub                      ecx, eax
+  0x1042e202  fchs                     
+  0x1042e204  mov                      dword ptr [ebp - 0x1c], ecx
+  0x1042e207  fild                     dword ptr [ebp - 0x1c]
+  0x1042e20a  mov                      dword ptr [esi + 0x14c], ecx
+  0x1042e210  fcomp                    st(1)
+  0x1042e212  fnstsw                   ax
+  0x1042e214  test                     ah, 5
+
+## context leading into target (misaligned bytes before 0x1042e1cd are byte-offset artifacts; clean stream resumes 0x1042e1cd)
+  0x1042e1a0  add                      al, byte ptr [eax]
+  0x1042e1a2  add                      byte ptr [ecx + 0x2589e], cl
+  0x1042e1a8  add                      byte ptr [ecx + 0x2449e], cl
+  0x1042e1ae  add                      byte ptr [ecx + 0x2489e], cl
+  0x1042e1b4  add                      byte ptr [ecx + 0x2649e], cl
+  0x1042e1ba  add                      byte ptr [ecx + 0x2689e], cl
+  0x1042e1c0  add                      byte ptr [ecx + 0x26c9e], cl
+  0x1042e1c6  add                      ch, bl
+  0x1042e1c8  xchg                     dword ptr [eax + 0x11], ecx
+  0x1042e1cb  add                      byte ptr [eax], al
+  0x1042e1cd  fstp                     qword ptr [esi + 0x200]
+  0x1042e1d3  fld                      qword ptr [edi + 0x1148]
+  0x1042e1d9  mov                      dword ptr [ebp - 4], ebx
+  0x1042e1dc  fsub                     qword ptr [esi + 0x13c]
+  0x1042e1e2  fld                      qword ptr [edi + 0x1148]
+  0x1042e1e8  fstp                     qword ptr [esi + 0x13c]
+  0x1042e1ee  fimul                    dword ptr [esi + 0x50]
+  0x1042e1f1  fld                      st(0)
+  0x1042e1f3  call                     0x1063e244
+  0x1042e1f8  fadd                     st(0), st(0)
+  0x1042e1fa  mov                      ecx, dword ptr [esi + 0x14c]
+  0x1042e200  sub                      ecx, eax
+  0x1042e202  fchs                     
+  0x1042e204  mov                      dword ptr [ebp - 0x1c], ecx
+  0x1042e207  fild                     dword ptr [ebp - 0x1c]
+  0x1042e20a  mov                      dword ptr [esi + 0x14c], ecx
+  0x1042e210  fcomp                    st(1)
+  0x1042e212  fnstsw                   ax
+  0x1042e214  test                     ah, 5
+  0x1042e217  jp                       0x1042e226
+  0x1042e219  call                     0x1063e244
+  0x1042e21e  mov                      dword ptr [esi + 0x14c], eax
+  0x1042e224  jmp                      0x1042e228
+  0x1042e226  fstp                     st(0)
+  0x1042e228  mov                      edx, dword ptr [esi + 0x78]
+  0x1042e22b  fld                      dword ptr [edi + 0x1154]
+  0x1042e231  cmp                      edx, 2
+  0x1042e234  je                       0x1042e265
+  0x1042e236  mov                      eax, dword ptr [esi + 0x34]
+  0x1042e239  cmp                      eax, ebx
+  0x1042e23b  je                       0x1042e265
+  0x1042e23d  mov                      ecx, dword ptr [eax + 0x57c]
+  0x1042e243  and                      ecx, 1
+  0x1042e246  jne                      0x1042e251
+  0x1042e248  test                     byte ptr [eax + 0x57b], 0x80
+  0x1042e24f  je                       0x1042e265
+  0x1042e251  cmp                      ecx, ebx
+  0x1042e253  fstp                     st(0)
+  0x1042e255  je                       0x1042e25f
+  0x1042e257  fld                      dword ptr [0x10696174]
+  0x1042e25d  jmp                      0x1042e265
+  0x1042e25f  fld                      dword ptr [edi + 0x1150]
+  0x1042e265  fld                      qword ptr [edi + 0x1148]
+  0x1042e26b  fsub                     qword ptr [esi + 0x12c]
+  0x1042e271  fld                      st(1)
+  0x1042e273  fld                      st(1)
+  0x1042e275  fcompp                   
+  0x1042e277  fnstsw                   ax
+  0x1042e279  test                     ah, 0x41
+  0x1042e27c  jne                      0x1042e2b1
+
+## target region, clean decode starting exactly at 0x1042e1ee
+  0x1042e1ee  fimul                    dword ptr [esi + 0x50]
+  0x1042e1f1  fld                      st(0)
+  0x1042e1f3  call                     0x1063e244
+  0x1042e1f8  fadd                     st(0), st(0)
+  0x1042e1fa  mov                      ecx, dword ptr [esi + 0x14c]
+  0x1042e200  sub                      ecx, eax
+  0x1042e202  fchs                     
+  0x1042e204  mov                      dword ptr [ebp - 0x1c], ecx
+  0x1042e207  fild                     dword ptr [ebp - 0x1c]
+  0x1042e20a  mov                      dword ptr [esi + 0x14c], ecx
+  0x1042e210  fcomp                    st(1)
+  0x1042e212  fnstsw                   ax
+  0x1042e214  test                     ah, 5
+  0x1042e217  jp                       0x1042e226
+  0x1042e219  call                     0x1063e244
+  0x1042e21e  mov                      dword ptr [esi + 0x14c], eax
+  0x1042e224  jmp                      0x1042e228
+  0x1042e226  fstp                     st(0)
+  0x1042e228  mov                      edx, dword ptr [esi + 0x78]
+  0x1042e22b  fld                      dword ptr [edi + 0x1154]
+
+## xrefs to candidate function start 0x1042dda0 (vtable slot references, not call sites)
+  file 0x392c18  dword reference
+  file 0x392cc0  dword reference
+
+2 reference(s)
+
+## raw byte checks
+0x1042e1f8 8 bytes: dcc08b8e4c010000 == DC C0 8B 8E 4C 01 00 00 -> True
+0x1042e200 2 bytes: 2bc8 (2B C8 = sub ecx,eax)
+0x10678b20 32 bytes: 0000000000000000000000000000000000000000000000000000000000000000
+all zero: True
+.text VirtualSize end VA: 0x10678b1e
+.text raw (SizeOfRawData) end VA: 0x10679000
