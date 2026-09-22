@@ -28,7 +28,8 @@
 
 **MySQL 不會自己啟動**，而伺服器連不到資料庫時**不會報錯**，會默默用預設空帳號頂上
 （登入後變成「Player／訓練兵」並跳新手任務彈窗）。
-- 啟動：Windows 的 PowerShell 執行 `wsl -u root service mysql start`
+- 啟動（擇一）：WSL 終端機 `sudo service mysql start`，或 Windows PowerShell `wsl -u root service mysql start`
+  （注意 Claude 對話框裡的 `!` 前綴沒有終端機，**sudo 問不到密碼**，要在自己的終端機跑）
 - **`service mysql status` 會誤報「停著」**（pid 檔名是 `Lucas.pid`），要用 `pgrep mysqld` 或測 3306
 - 啟動後要**重啟遊戲伺服器**，讓它重新連
 
@@ -41,15 +42,17 @@
 - 副本 3（`C:\Games\MetalRage Online 3`）帶 proxy `VERSION.dll`＋gadget，**gadget 目前改名停用**（`.dll.off`）。整個副本可刪。
 - 主安裝未動。
 
-### 下一步（照順序）
+### 下一步（照順序，PM 2026-09-22 22:5x 裁決）
 
+0. **明早第一件事：DB 連不到要大聲失敗**。伺服器啟動時連不到 MySQL 就**直接退出並印原因**，不要降級成空帳號（PM：這是大聲失敗規則的直接違反，比房間問題優先）。預期一行等級的改動。
 1. **修 PvP 房設定欄全空** —— 根因已找到：`room/room-map.sender.js:139-141` 的 `isTrueCampaign` 閘門
    讓 PvP 房不送 `Map_Change_One_SN`。**另開旗標**（不要改 `isTrueCampaign` 語意），
    詳見 `journal/2026-09-22-2230-pvp-2p-first.md` 末段。
-2. **修地圖選不了** —— 伺服器把客戶端送的 MapRound 1 改成 2 回傳（🟡 高度懷疑，未實測）。
+2. **修地圖選不了** —— **只修「不要蓋掉玩家選的 MapRound」**；「客戶端因此退回選擇」維持 🟡、**不追**（PM）。
+   另：**房間畫面兩人都紅隊**要跟 T1 分隊**一起修**——以 `member.team` 一處為準，`SN_USER_DEFAULT` 從它讀，**不要兩處各寫**（PM）。
 3. **T2 隊伍擊殺計數** —— 實測確定必要：個人分數會跳，**隊伍計分板不會**。
    開工前提：`Death_CN` 的 attacker 欄位 offset 要先 ✅ [DLL]（設計稿 §7）。
-4. `GOLDEN-ENV-GUARD`：worker 的 worktree 沒連 `MetalRage` 會產生**假的 golden 失敗**（今天發生兩次）。
+4. `GOLDEN-ENV-GUARD`（PM 同意）：golden 腳本自己檢查 `MetalRage` 連結，**缺就報 `ENV`，不要報 FAIL**。
 5. `KIT-PS1-SMOKE`：client-kit 的 `.ps1` 從沒用真 PowerShell 跑過，發包前要實跑。
 
 ### 今天學到、下一個人會再踩的

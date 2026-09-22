@@ -115,6 +115,11 @@ v1 §3 說「不確定房主會不會送 CN 通知伺服器」——**有 12,472
    `+0x04`（0）或 `+0x06`（1）。`Game_User_Team_Get` 就是拿兩者比對，對不上會回 255。
 3. `EndGame_SN` 的 `WinTeamIndex` **只能是 0 或 1**（平手規則見 U2，永遠會分出勝負）。
 
+### 4.1 TDM 的擊殺目標欄位（2026-09-22 實測補，PM 指定寫入）
+
+**TDM 的擊殺目標在 `Map_Change_One_SN` 的 `MapKill`（`+0x06`），不是 `Goal`（`+0x08`）。**
+[LOG] 操作者選 TDM 地圖時客戶端送出 `w6=150`（MapKill）、`w8=0`（Goal）；欄位對應 [DLL] `0x107eb771-0x107eb7a0`（`research/2026-09-22-d2-tdm/room-settings-blank.md` Q1）。客戶端自帶 **20 分／150 殺**，即韓版原廠 TDM 預設（U6）。→ **T4 的目標擊殺數以 `MapKill` 為準。**
+
 ## 7. 實作步驟（每步一個開關，預設關；開關關閉時 golden replay 四樣本逐 byte 不變）
 
 | 步 | 開關 | 做什麼 | 怎麼驗 |
