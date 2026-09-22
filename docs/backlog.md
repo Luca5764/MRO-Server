@@ -1052,3 +1052,21 @@ cave 重現了被覆蓋的 `fadd` 與 `mov`。
 
 budget 單獨在 10000（原廠 netspeed）下夠不夠？若夠，發包就只需要 budget 一個修補，
 不必動 netspeed。**現在不要做**，等發包穩定後再說。
+
+---
+
+## KIT-PS1-SMOKE — client-kit 的 setup-client.ps1 發包前要用真 PowerShell 跑一次（PM 2026-09-22 指定）
+
+`setup-client.ps1` 新增的雜湊驗證（`Set-EnginePatch`，第 162–193 行）
+**從未用真正的 PowerShell 執行過** —— WSL 沒有 `pwsh`，中階只能做括號配對、
+雜湊字串逐字元比對、以及用 bash 重現判斷邏輯（四個情境都符合預期）。
+
+**發包前**要在 Windows 上拿一份**乾淨原廠客戶端副本**（不要用主安裝）實跑一次，確認：
+1. 乾淨原廠 → 套用成功、雜湊驗證過；
+2. 同一份再跑一次 → 印「already patched」並跳過（冪等）；
+3. 故意改壞 `Engine.dll` 一個 byte → 停在套用前並拒絕碰；
+4. `uninstall-client.ps1` 能把 `Engine.dll.bak` 還原回去。
+
+**這是整份 client-kit 交付裡唯一沒有被真正驗證的環節。**
+修補後的檔案在 `~/mro-kit/Engine.dll.patched-30000-budget`（sha256 `f4b253a3…`），
+不在 git 裡。
