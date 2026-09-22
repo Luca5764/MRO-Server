@@ -34,7 +34,28 @@ release 頁面本身沒有附 checksum 檔），只能保證「這份檔案在�
 不能保證「這就是 frida 官方原始 build 沒被竄改」；如果要更高信心，之後可以另外用
 `pip install frida-tools` 裝出來的版本互相比對，或找 frida 專案的 PGP 簽章（本次沒做）。
 
-## 還沒做的事（留給階段 1）
+## 階段 1：proxy `VERSION.dll`（中階 `claude-worker` 2026-09-22，🟡 待審）
 
-- 沒有測試把這個 gadget 塞進任何 proxy DLL 或直接改名成候選 DLL 載入。
-- `stage1-plan.md` 只是計畫，沒有執行任何一步。
+兩版原始碼與建置腳本：
+
+- `proxy-version/`：**forwarder 版（建議採用）**，用 `.def` 的
+  `Foo=VERSION_ORIG.Foo` PE forwarder 語法轉發 6 個符號
+  （`GetFileVersionInfoA/W`、`GetFileVersionInfoSizeA/W`、`VerQueryValueA/W`），
+  `DllMain` 只寫 log + `LoadLibraryW` 載 gadget。`build.sh` 一鍵重建。
+- `proxy-version-thunk/`：手寫 thunk 對照組，`GetProcAddress` 拿到真函式
+  指標後手動轉呼叫，`LoadLibraryW` 用絕對路徑
+  `C:\Windows\SysWOW64\version.dll`（不依賴同目錄的 `VERSION_ORIG.dll`）。
+  `build.sh` 一鍵重建，**必須**帶 `-Wl,--kill-at`（見腳本註解，不然匯出
+  名字會帶 `@N` 尾巴，`GetProcAddress(..., "VerQueryValueA")` 這類 plain
+  名字查詢會失敗）。
+
+**兩版都編得出來，export 表用 `objdump -p`／`pefile` 靜態驗證過，
+匯出名字跟真正系統 `version.dll`（`/mnt/c/Windows/SysWOW64/version.dll`）
+的 17 個 export 逐一核對過名字一致**。`proxy-version/test/` 有一支最小
+32 位元測試 exe，implicit-link 2 個目標符號，import 表的 Hint/Name
+欄位跟官方 mingw-w64 系統 `libversion.a` 產生的版本逐 byte 比對過一致。
+
+**沒有做過的事**：WSL 沒裝 `wine`，**沒有任何執行期測試**——DllMain 有沒有
+真的被呼叫、gadget 有沒有真的載入成功、forwarder 在真正 Windows loader
+上會不會解析成功，都還沒驗證過。細節、安裝步驟、還原步驟見
+`stage1-plan.md`。

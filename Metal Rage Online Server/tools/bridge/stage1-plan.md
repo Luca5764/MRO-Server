@@ -1,8 +1,152 @@
-# 階段 1 計畫（只出計畫，未執行）
+# 階段 1 計畫
 
 依據 `docs/backlog.md` BRIDGE-SPIKE 契約 2026-09-22 修訂：
 proxy DLL 載入 `frida-gadget-*-windows-x86.dll`，過關條件是「開到登入畫面、
-掛 5 分鐘不被砍」。以下是計畫，**階段 0 不執行任何一步**，全部待審。
+掛 5 分鐘不被砍」。以下段落原本是計畫，**階段 0 不執行任何一步**；
+下方新增「BRIDGE-STAGE1-PROXY 執行結果（中階，待審）」一節記錄實際編譯與
+靜態驗證的結果，**還沒做過任何執行期測試（沒碰 `/mnt/c/Games/`，沒有
+wine，WSL 端只能做靜態驗證）**。
+
+## BRIDGE-STAGE1-PROXY 執行結果（中階 `claude-worker` 2026-09-22，🟡 待審）
+
+原始碼與建置腳本在 `tools/bridge/proxy-version/`（forwarder 版，**建議採用**）
+與 `tools/bridge/proxy-version-thunk/`（手寫 thunk 版，對照組）。
+
+### 結論：forwarder 與 thunk 兩種都可行，forwarder 版更簡單、建議用它
+
+1. **PE forwarder（`.def` 的 `Foo=VERSION_ORIG.Foo` 語法）mingw 的
+   `i686-w64-mingw32-ld`（GCC 10-win32 20220113 附帶）完全支援**，不用改
+   手寫 thunk。用 `objdump -p` 與 `pefile` 都確認匯出表裡是真正的
+   Forwarder RVA（`pefile` 的 `exp.forwarder` 欄位讀出
+   `b'VERSION_ORIG.GetFileVersionInfoA'`，`objdump` 印
+   `Forwarder RVA -- VERSION_ORIG.GetFileVersionInfoA`），不是一般函式位址。
+   → `stage1-plan.md` 原本寫的「🟡 待確認：GNU ld 對 PE forwarder RVA
+   支援度不確定」**這條疑點已解除，改用 forwarder**。
+2. **手寫 thunk 版也編得出來、export 表也對**，但過程中踩到一個真的會
+   讓實機載入失敗的坑，記在下面「踩到的坑」，已修正。
+3. **兩版的 export 表最終都是 6 個 plain（不帶 `@N`）名字**：
+   `GetFileVersionInfoA`、`GetFileVersionInfoSizeA`、`GetFileVersionInfoSizeW`、
+   `GetFileVersionInfoW`、`VerQueryValueA`、`VerQueryValueW`（比契約要求的
+   5 個多轉發了 `VerQueryValueW`，契約說可以多轉不會錯）。
+   用 `objdump -p` 的 `[Ordinal/Name Pointer] Table` 確認，兩版一致。
+
+### 踩到的坑：`__declspec(dllexport)` 的 `__stdcall` 函式預設會匯出成帶 `@N` 的名字
+
+手寫 thunk 版第一次編出來，`objdump -p` 顯示匯出名字是
+`GetFileVersionInfoA@16`、`VerQueryValueA@16` 這種帶 stdcall 參數位元組數
+尾巴的形式，**跟真正的系統 `version.dll`（SysWOW64，17 個 export 全部是
+plain 名字，已用 `pefile` 讀 `/mnt/c/Windows/SysWOW64/version.dll` 核對）
+對不上**——客戶端那幾個周邊模組是用
+`GetProcAddress(hVersion, "VerQueryValueA")`（plain 名字）在找函式，
+帶 `@16` 的匯出名字會讓 `GetProcAddress` 找不到、拿到 `NULL`，等於白轉發。
+**修法**：`gcc -shared` 加 `-Wl,--kill-at`，只影響 DLL 自己匯出表寫出的
+名字，不影響函式內部呼叫慣例。修完後 `objdump -p` 確認兩版一致為 plain 名字。
+這一步已經寫進 `tools/bridge/proxy-version-thunk/build.sh`，不用每次手動加。
+
+### 靜態驗證怎麼做的（WSL 沒有 `wine`，**沒有做過任何執行期測試**）
+
+1. 兩版 proxy `VERSION.dll` 都用 `objdump -p` 和 `pefile` 讀匯出表，
+   確認：機器碼是 `0x14c`（i386，32 位元，不是 x86_64）；6 個匯出名字
+   跟真正系統 `version.dll` 的名字完全一致（plain，無 `@N`）；forwarder
+   版的每個匯出都指到 `VERSION_ORIG.<函式名>`。
+2. 寫了一支最小測試 exe
+   （`tools/bridge/proxy-version/test/test_import.c`），implicit-link
+   `GetFileVersionInfoSizeW`、`VerQueryValueA` 這 2 個符號（5 個裡的 2 個，
+   達到契約「至少 2 個」的要求）。
+3. **關鍵的第二個坑**：一開始用 `dlltool --add-stdcall-alias` 產生測試用
+   import library，結果匯出 EXE 的 import 表 Hint/Name 欄位裡塞的是
+   `GetFileVersionInfoSizeW@8`（帶裝飾），這**不是**我們的 proxy DLL 有問題，
+   是這份「拿來測試用」的 import library 產生方式不對——跟真正 mingw-w64
+   系統內建的 `/usr/i686-w64-mingw32/lib/libversion.a`（展開後同一個符號的
+   `.idata$6` section 內容是 `03 00 "GetFileVersionInfoSizeW" 00`，plain）
+   逐 byte 比對後找出來的：正確做法是 `.def` 裡符號名**寫成裝飾過的**
+   （`GetFileVersionInfoSizeW@8`），dlltool 加 `--kill-at`（不要加
+   `--add-stdcall-alias`），這樣產生的 archive member 內部連結符號保留
+   `_GetFileVersionInfoSizeW@8`（跟 gcc 呼叫端的 undefined reference 對得上），
+   但寫進最終 exe import 表的 Hint/Name 字串是 plain 的，跟系統版一致。
+   這個修法只影響 `tools/bridge/proxy-version/test/`（拿假 import library
+   來測試我們的名字格式對不對），**跟真正安裝到客戶端目錄的兩個 `VERSION.dll`
+   本身無關**——那两個 DLL 的匯出表從頭到尾都是對的（forwarder 版本來就是
+   plain，thunk 版用 `--kill-at` 修正過），這一步只是在驗證「如果有一支真的
+   implicit-link 這幾個符號的 exe，它產生的 import 表長什麼樣」，確認跟
+   官方 mingw-w64 系統 import library 的行為一致，增加信心。
+4. `diff` 兩支測試 exe（一支連我們的假 import library、一支連系統真正的
+   `libversion.a`）的 `objdump -p ... VERSION.dll` 區塊，**Member-Name 欄位
+   完全一致**（`GetFileVersionInfoSizeW`、`VerQueryValueA`），只有
+   VMA／Hint 數值不同（那是不同 EXE 版面與不同目標 DLL 匯出序號造成的，
+   不影響 Windows loader 的名字比對邏輯，loader 找不到 hint 對應的序號時
+   會退回用名字全表比對）。
+5. **沒有做過的事**：沒有在 Windows／wine 上實際跑起來過任何一支 DLL 或
+   exe，WSL 上沒裝 `wine`／`wine64`（`command -v` 查無）。「DllMain 真的
+   會被呼叫」「LoadLibraryW 載入 gadget 真的成功」「forwarder 在真正的
+   Windows loader 上真的能解析到 `VERSION_ORIG.dll`」這三件事**都還沒驗證
+   過**，要等主力在 `MetalRage-bridge` 專用副本上實跑才知道。
+
+## 安裝說明（給主力照抄執行，🟡 中階寫的，操作前自行核對）
+
+**前提**：已經有一份跟主安裝隔離的 `MetalRage-bridge` 專用副本（複製，
+不是連結/共用），且該副本 `LocalDumps` 已關閉（見「執行前檢查清單」）。
+以下路徑一律指該副本的 `data/System/`，**不要對主安裝或 HOST-PATCH 用的
+副本做任何一步**。
+
+1. **選一版 proxy DLL**——建議用 forwarder 版
+   （`tools/bridge/proxy-version/VERSION.dll`，執行 `build.sh` 產生，或直接
+   commit 進 repo 的那份）。手寫 thunk 版
+   （`tools/bridge/proxy-version-thunk/VERSION.dll`）留作 forwarder 版
+   實機失敗時的備案，兩版介面（export 名字）完全一樣，可以直接互換測試，
+   不用重做其他步驟。
+2. **備份原始檔案**（還原用）：
+   ```
+   copy "<副本>\data\System\VERSION.dll" "<副本>\data\System\VERSION.dll.orig-backup"
+   ```
+   算一次 sha256 記下來（跟 `docs/research/2026-09-22-bridge-spike/` 底下
+   之後要留的證據比對用，本次任務沒有做這一步，因為沒有 Windows 端環境）。
+3. **改名原始 `VERSION.dll` 成 `VERSION_ORIG.dll`**（forwarder 版要用；
+   thunk 版**不需要**這步，因為 thunk 版寫死用絕對路徑
+   `C:\Windows\SysWOW64\version.dll`，不吃同目錄的 `VERSION_ORIG.dll`）：
+   ```
+   ren "<副本>\data\System\VERSION.dll" "VERSION_ORIG.dll"
+   ```
+4. **複製檔案到 `<副本>\data\System\`**（四個檔案，forwarder 版路線）：
+   - `tools/bridge/proxy-version/VERSION.dll`（我們編的 proxy，取代步驟 3
+     搬走後空出來的名字）
+   - `VERSION_ORIG.dll`（步驟 3 已經在原地改名，不用複製，留意路徑一致）
+   - `tools/bridge/frida-gadget-17.18.0-windows-x86.dll`（本目錄現成，不改名）
+   - `tools/bridge/frida-gadget-17.18.0-windows-x86.config`
+     **本次任務沒有建立這個檔案**（`stage1-plan.md` 只有草案 JSON，見下面
+     「要放的檔案」第 3 項），主力要先落地這個檔案才能讓 gadget 真的載入
+     腳本；DLL 本身沒有這個 `.config` 也能 `LoadLibraryW` 成功（gadget 找
+     不到 `.config` 時的行為**沒有查證過**，可能是靜默不啟用腳本、也可能
+     報錯，這是階段 1 實跑時要觀察的東西之一）。
+   - `bridge-stage1.js`（同上，本次沒有建立，草案內容見第 4 項，先放一個
+     空檔或 `console.log(...)` 都符合「能被載入就算數」的最低要求）。
+5. **環境變數（可選）**：預設 `bridge.log` 寫在 proxy DLL 自己所在目錄
+   （也就是 `<副本>\data\System\bridge.log`）。如果想改路徑，執行遊戲前
+   設定 `MRO_BRIDGE_LOG`（例如指到桌面方便看），Windows 下：
+   ```
+   set MRO_BRIDGE_LOG=C:\Users\<你>\Desktop\bridge.log
+   ```
+   不設就用預設路徑，不用特別處理。
+6. **啟動客戶端，觀察**：`<副本>\data\System\bridge.log`（或
+   `MRO_BRIDGE_LOG` 指定的路徑）有沒有出現
+   `VERSION.dll proxy attached, self=...` 那一行，以及
+   `gadget LoadLibraryW OK/FAILED, ...` 那一行。這是階段 1「載入成功」
+   的第一層驗證，其餘驗證方式見本檔「怎麼驗證『載入成功』」一節。
+
+### 怎麼還原（用不了或要收工都照這個順序）
+
+1. 關閉客戶端（如果還開著）。
+2. 刪除以下這幾個檔案（複製進去的，不是原本就有的）：
+   - `<副本>\data\System\VERSION.dll`（我們編的 proxy）
+   - `<副本>\data\System\frida-gadget-17.18.0-windows-x86.dll`
+   - `<副本>\data\System\frida-gadget-17.18.0-windows-x86.config`（如果有建立）
+   - `<副本>\data\System\bridge-stage1.js`（如果有建立）
+   - `<副本>\data\System\bridge.log`（如果 `MRO_BRIDGE_LOG` 沒有另外指路徑）
+3. **把 `VERSION_ORIG.dll` 改名回 `VERSION.dll`**：
+   ```
+   ren "<副本>\data\System\VERSION_ORIG.dll" "VERSION.dll"
+   ```
+4. 用步驟 2 算的 sha256（如果有算）核對還原後的 `VERSION.dll` 跟原始一致。
 
 ## 為什麼不能直接把 gadget 改名成候選 DLL
 
@@ -22,15 +166,21 @@ peripheral 模組呼叫 `GetProcAddress(hVersion, "VerQueryValueA")` 會拿到 N
      a) 往 `bridge.log` 寫一行 pid/時間/自己的路徑（階段 1 過關條件要看的那行）；
      b) `LoadLibraryW(L"frida-gadget-17.18.0-windows-x86.dll")`（相對路徑，
         放在同一個 System 資料夾）。
-   - 5 個真正用到的 export（`GetFileVersionInfoA/W`、`GetFileVersionInfoSizeA/W`、
-     `VerQueryValueA`）**轉發**到系統原本的 `version.dll`——原檔案先改名成
-     `VERSION_ORIG.dll` 放在同一資料夾，我們的 proxy 在啟動時
-     `LoadLibraryW(L"VERSION_ORIG.dll")` + `GetProcAddress` 拿到真函式指標，
-     每個 export 用一個轉發 thunk（`jmp [real_ptr]`）頂上去。
-     🟡 待確認：GNU ld/`dlltool`（mingw 工具鏈）對 PE forwarder RVA
-    （`.def` 裡 `Foo=RealDLL.Foo` 那種語法）支援度不確定，**保守做法**是寫
-     真正的 C thunk 函式（`GetProcAddress` 後手動轉呼叫），不依賴 forwarder RVA，
-     階段 1 動工時先花 10 分鐘確認 mingw 是否支援，不支援就直接用 thunk。
+   - 6 個 export（`GetFileVersionInfoA/W`、`GetFileVersionInfoSizeA/W`、
+     `VerQueryValueA/W`——契約只要求前 5 個，`VerQueryValueW` 沒有 consumer
+     用到，但一併轉發不會錯）**轉發**到系統原本的 `version.dll`——原檔案先
+     改名成 `VERSION_ORIG.dll` 放在同一資料夾。
+     🟡 待審（中階做的，靜態驗證，非執行期測試）：**GNU ld 支援 PE forwarder RVA**：
+     `.def` 用 `Foo=VERSION_ORIG.Foo` 語法，`i686-w64-mingw32-gcc`
+     （GCC 10-win32 20220113）編出來的 `VERSION.dll`，`objdump -p` 印出
+     `Forwarder RVA -- VERSION_ORIG.GetFileVersionInfoA`，`pefile` 讀
+     `exp.forwarder` 也對得上，**不用寫手動轉呼叫 thunk**，原始碼與建置
+     腳本在 `tools/bridge/proxy-version/`。手寫 thunk 版本也編出來放在
+     `tools/bridge/proxy-version-thunk/` 當對照組（過程中踩到
+     `__declspec(dllexport)` 的 `__stdcall` 函式預設會把 export 名字寫成
+     帶 `@N` 尾巴的形式，需要 `-Wl,--kill-at` 修正，見同目錄 `build.sh`
+     註解），**兩版都只做過靜態驗證，沒有實機測試過**，細節見本檔前面
+     「BRIDGE-STAGE1-PROXY 執行結果」一節。
    - 需要的符號列表與各檔案用量見
      `docs/research/2026-09-22-bridge-spike/proxy-dll-candidates.md`。
 2. **`frida-gadget-17.18.0-windows-x86.dll`**（本目錄現成，複製過去，不改名——
