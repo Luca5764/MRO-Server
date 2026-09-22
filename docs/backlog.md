@@ -1119,3 +1119,21 @@ budget 單獨在 10000（原廠 netspeed）下夠不夠？若夠，發包就只�
 另記一個建議（尚未採納）：TDM 若要送 `Timeout_SN`，建議另開乾淨的 handler，
 不要沿用 `lobby.dispatch.js` 現有那段（那裡 `0x00230111` 與「Lobby Enter CQ」兩個身分
 共用同一段程式碼，雖然實務上分支不會撞到，但繼續共用會讓後面的人踩坑）。
+
+---
+
+## PVP-HUD-MARKER — `battle_hud_state()` 需要 PvP 變體（P1 的擋路項）
+
+`screens.battle_hud_state()` 照 PvE HUD 校準：找綠色 `SP 0000` 計數器。
+**TDM 的 HUD 是金黃色 `P 0000`** → `green_px=0` → 判定 `not_battle`。
+
+2026-09-22 實測：PvP 開戰明明成功（截圖＋`ChangeSlot_CN/Respawn_CN` 封包都證實在戰場上），
+`enter_battle` 仍回報 `ok=False`（`journal/2026-09-22-2055-pvp-start-works.md`）。
+**不修的話所有 PvP 自動化都會誤判失敗。**
+
+要做：加一個 PvP 的 HUD 判定（金黃 `P` 計數器，或改用 TDM 專屬的隊伍計分板／計時器區域），
+並讓 `_battle_any_check()` 同時接受 PvE 與 PvP 兩種。參考截圖
+`research/2026-09-22-d2-tdm/pvp-tdm-battle-first.png`。
+
+順帶：`enter_battle` 會留下開著的 GAME MENU，清理流程不能無條件再送 ESC
+（會關掉選單，後續點擊直接打進遊戲變成開火）。同篇日誌有記。
