@@ -25,3 +25,8 @@ CLAUDE.md
 Metal Rage Online Server/tools/pico/.pico_port
 Metal Rage Online Server/tools/pico/.pico_ip
 Metal Rage Online Server/tools/pico/.pico_session
+
+# 已修補的 Engine.dll：太大不進 repo，操作者發包前自己用
+# tools/patch_netspeed_host.py --value 30000 --budget --apply 產生一份，
+# 放進這個資料夾再一起壓縮寄給朋友（見 tools/client-kit/README.md）
+Metal Rage Online Server/tools/client-kit/Engine.dll.patched

@@ -1,6 +1,6 @@
 <#
-Undo setup-client.ps1: restore the exe/ini/bat files it backed up under
-client-kit-backup\, and remove the MRO-P2P-UDP-30907 firewall rule.
+Undo setup-client.ps1: restore the exe/Engine.dll/ini/bat files it backed up
+under client-kit-backup\, and remove the MRO-P2P-UDP-30907 firewall rule.
 
 Run as: elevated PowerShell, from the client root folder (same folder
 you ran setup-client.ps1 from).
@@ -30,6 +30,7 @@ if (-not (Test-Path $BackupDir)) {
 } else {
     $restores = @(
         @{ Backup = 'MetalRage.exe.bak'; Target = Join-Path $SystemDir 'MetalRage.exe' },
+        @{ Backup = 'Engine.dll.bak'; Target = Join-Path $SystemDir 'Engine.dll' },
         @{ Backup = 'MetalRage.ini.bak'; Target = Join-Path $SystemDir 'MetalRage.ini' },
         @{ Backup = 'Default.ini.bak'; Target = Join-Path $SystemDir 'Default.ini' },
         @{ Backup = 'Play Metal Rage Online.bat.bak'; Target = Join-Path $ClientRoot 'Play Metal Rage Online.bat' }
