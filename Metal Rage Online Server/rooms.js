@@ -377,9 +377,45 @@ function updateRoomMapSelection(roomId, { mapId, playTime, playRound }) {
 }
 
 /**
+ * ROOM-TEAM-REBALANCE (contract 2026-09-23 follow-up to ROOM-TEAM-DISPLAY):
+ * recomputes every member's `team` from the room's *current* insertion
+ * order (Map iteration order == who is still in the room, in join order)
+ * -- i%2, PvP rooms only (rawRoomType===2); PvE stays all-red. Called from
+ * addMember() and removeMember() below, right after each mutates
+ * room.members, so a member leaving mid-room re-balances everyone still in
+ * it instead of leaving a stale assignment from before they left (the join-
+ * time-only version this replaced could leave two remaining members both on
+ * team 1 once an earlier member's slot 0 vacated -- see the contract). This
+ * is now the *only* place member.team is decided -- resolvePvpTeamIndex()
+ * in gate.game.dispatch.js reads it back instead of recomputing its own
+ * copy while ROOM_MEMBER_TEAM_MODE is enabled. Entirely a no-op (does not
+ * touch any member.team) while roomMemberTeamMode is 'disabled' -- both so
+ * addMember()/removeMember() stay byte-identical to before this function
+ * existed for the real dispatch call sites (which only ever pass team 0
+ * anyway), and so callers that set an explicit team directly through this
+ * module's own addMember() to test unrelated team-dependent behaviour
+ * (e.g. test/room-chat.js's team-filtered chat) keep working: forcing every
+ * member to 0 regardless of what was passed would silently break those.
+ */
+function recomputeMemberTeams(room) {
+    if (!room || roomMemberTeamMode !== 'enabled') return;
+    const isPvpRoom = Number(room.rawRoomType) === 2;
+    let i = 0;
+    for (const member of room.members.values()) {
+        member.team = isPvpRoom ? (i % 2) : 0;
+        i += 1;
+    }
+}
+
+/**
  * Adds (or replaces) a member in a room. Fills in defaults for any field the
  * caller omits so partial member objects (e.g. { accountId, nickname,
- * client }) are safe to pass.
+ * client }) are safe to pass. `member.team`, if passed, is immediately
+ * superseded by recomputeMemberTeams() below whenever
+ * isRoomMemberTeamEnabled() is true -- the real dispatch call sites
+ * (gate.game.dispatch.js) no longer need to (and should not try to) compute
+ * a join-order team themselves. While the switch is off, `member.team` is
+ * used as passed, same as always -- see recomputeMemberTeams()'s comment.
  */
 function addMember(roomId, member) {
     const room = rooms.get(roomId);
@@ -396,6 +432,7 @@ function addMember(roomId, member) {
     };
     room.members.set(full.accountId, full);
     byAccount.set(full.accountId, roomId);
+    recomputeMemberTeams(room);
     return full;
 }
 
@@ -413,6 +450,11 @@ function removeMember(accountId) {
         room.members.delete(accountId);
         if (room.members.size === 0) {
             rooms.delete(roomId);
+        } else {
+            // ROOM-TEAM-REBALANCE: re-balance whoever is left -- see that
+            // function's comment for why this must happen on leave too, not
+            // just on join.
+            recomputeMemberTeams(room);
         }
     }
     byAccount.delete(accountId);
