@@ -1,0 +1,533 @@
+Log: Log file open, 09/22/26 19:22:14
+Init: Name subsystem initialized
+Init: Detected: Microsoft Windows NT 6.2 (Build: 9200)
+Init: Version: 3369 (134.29)
+Init: Compiled: Nov  8 2010 20:59:51
+Init: Command line:  -globalid=TW&ip=127.0.0.1&port=9211&age=30 -log=run-192214.53.log
+Init: Character set: Unicode
+Init: Base directory: C:\Games\MetalRage Online\data\System\
+Init: Ini:MetalRage.ini   UserIni:User.ini
+Init: Build label:  Build MR_Build_[2009-12-10_09.30]
+Init: Object subsystem initialized
+Log: Default_Set_Initialize_MH : C:\Games\MetalRage Online\data\System\MetalRage.exe
+Log: 	nvldumd.dll/NVIDIA GeForce RTX 4080
+Log: 	nvldumd.dll/NVIDIA GeForce RTX 4080
+Log: Game class is 'GameInfo'
+Log: Bringing Level Entry.myLevel up for play (0) appSeconds: 4.408000...
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+Log: Browse: NoIntro.tzp
+Log: SetFlag_BD
+Log: ClearFlag_BD
+Log: PurgeGarbage_BD
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 18455->18455; refs: 155833
+Log: CollectGarbage_BD
+Warning: Missing FinalBlend FinalBlend CYEffect.dust.Debris1_Final
+Log: Game class is 'CinematicGameInfo'
+Log: Bringing Level NoIntro.myLevel up for play (0) appSeconds: 4.609000...
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+Log: Window Font Count=512
+Log: Not Register Font:MingLiu
+ScriptLog: Style already registered 'GUI2K4.STY2TextButton'
+Log: ALAudio: Using DirectSound to record audio.
+Log: Couden't FuncInputWndProc
+Log: Opened viewport
+Log: Enter SetRes: 1600x1200 Fullscreen 0
+Log: Using back-buffer format 22(32-bit)
+Log: Using depth-buffer format 77(32-bit)
+Log: Creating device
+Log: xD3D9Helper::Init (QuadEmulation)
+Log: Unknown style requested Header
+Log: Unknown style requested EditBox
+Log: Unknown style requested CloseButton
+Log: Startup time: 9.906000 seconds
+Log: Precaching: NoIntro.LevelInfo0
+Log: Static mesh batches: 0 vertex bytes, 0 index bytes
+Log: Allocating 16384 byte dynamic index buffer.
+Log: Register Font:Verdana
+Log: Finished precaching geometry in 0.012 seconds
+Log: Finished precaching textures in 0.000 seconds
+Log: Enter SetRes: 1600x1200 Fullscreen 0
+Log: Using back-buffer format 22(32-bit)
+Log: Using depth-buffer format 77(32-bit)
+Log: xD3D9Helper::Init (QuadEmulation)
+Log: Browse: Index.tzp?disconnect
+Log: ENTRY
+Log: GP=FALSE
+Log: Spawning new actor for Viewport WindowsViewport
+Log: Browse: Store_01?Game=ZModeHangar.HangarGameInfo?Team=0
+Warning: Missing MeshNormalShader MeshNormalShader ChibT02.IB02.IBT02B1
+ScriptLog: Destroty Start: PlayerController
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: HUD
+ScriptLog: Pawn Destroy
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: PlayerSecurity: UnrealSecurity
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Log: CelanAudio
+Log: SetFlag_BD
+Log: ClearFlag_BD
+Log: PurgeGarbage_BD
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 42991->42831; refs: 451820
+Log: CollectGarbage_BD
+Log: SetViewPortAudioEntry_BD
+Log: SetViewPortAudio_BD 1
+Log: Game class is 'HangarGameInfo'
+Log: Bringing Level Store_01.myLevel up for play (0) appSeconds: 11.688000...
+Log: (Karma): Autodetecting CPU for SSE
+Log: (Karma): Using SSE Optimizations
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+ScriptLog: PRELoadAllMesh_BD
+Log: Spawning new actor for Viewport WindowsViewport
+Warning: NULL ': 
+Warning: Material''None'
+Log: Precaching: Store_01.LevelInfo0
+Log: Static mesh batches: 3168 vertex bytes, 396 index bytes
+Log: Finished precaching geometry in 0.020 seconds
+Log: Allocating 65536 byte dynamic vertex buffer.
+Log: Finished precaching textures in 0.038 seconds
+ScriptLog: START MATCH
+Log: Precaching: Store_01.LevelInfo0
+Log: Allocating 65536 byte dynamic vertex buffer.
+Log: Finished precaching geometry in 0.074 seconds
+Log: Finished precaching textures in 0.031 seconds
+Log: Allocating 74448 byte dynamic vertex buffer.
+Log: Allocating 76896 byte dynamic vertex buffer.
+Log: Allocating 78768 byte dynamic vertex buffer.
+ScriptLog: [ ZPage_Room ][ GameStart ]  start <HOST_VPN_IP>:30907/Map_PC04?team=0
+Log: URL: Adding default option Name=5
+Log: Browse: <HOST_VPN_IP>/Map_PC04?team=0?Name=5
+Log: Attemp Begin LoadMap
+ScriptLog: Destroty Start: HangarPlayerController
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: HangarHud
+ScriptLog: Pawn Destroy
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: PlayerSecurity: UnrealSecurity
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Log: NetMode now NM_Client
+Log: CelanAudio
+Log: SetFlag_BD
+Log: ClearFlag_BD
+Log: PurgeGarbage_BD
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 65116->53890; refs: 686967
+Log: CollectGarbage_BD
+Log: SetViewPortAudioEntry_BD
+Log: SetViewPortAudio_BD 1
+Log: Core
+Log: Engine
+Log: Fire
+Log: Editor
+Log: IpDrv
+Log: GamePlay
+Log: UnrealGame
+Log: XGame
+Log: ZNetwork
+Log: ZEmiWeather
+Log: ZBaseObject
+Log: ZBase
+Log: ZBaseMechanic
+Log: ZBaseMRKit
+Log: ZEvent
+Log: ZVolume
+Log: ZDynamicWeapon
+Log: ZBaseWeapon
+Log: ZDefineWeapon
+Log: ZWeapon
+Log: ZMechanic
+Log: ZMechanicA
+Log: ZAction
+Log: ZGame
+Log: ZModeBot
+Log: ZModeCapture
+Log: ZModeOccupation
+Log: ZModeBlow
+Log: ZModeSuddenDeath
+Log: ZModeRage
+Log: ZModePve
+Log: ZModeEscortPve
+Log: Bringing Level Map_PC04.myLevel up for play (90) appSeconds: 167.038000...
+Log: (Karma): Autodetecting CPU for SSE
+Log: (Karma): Using SSE Optimizations
+Log: Spawning new actor for Viewport WindowsViewport
+Log: Allocating 65536 byte dynamic vertex buffer.
+ScriptLog: PRELoadAllMesh_BD
+Log: NetMode now NM_Client
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: (Karma): Level Karma Terminated.
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 60676->60259; refs: 724331
+Log: ZSetCorePlayercontroller setplayer WindowsViewport
+Log: Precaching: Map_PC04.LevelInfo0
+Warning: NULL ': 
+Warning: Class''None'
+Warning: NULL ': 
+Warning: Class''None'
+Log: Static mesh batches: 78336 vertex bytes, 6780 index bytes
+Log: Allocating 16384 byte dynamic index buffer.
+Log: Allocating 509856 byte dynamic index buffer.
+Log: Allocating 83664 byte dynamic vertex buffer.
+Log: Finished precaching geometry in 0.241 seconds
+Log: Finished precaching textures in 0.065 seconds
+Warning: ZSetCorePlayercontroller Map_PC04.ZSetCorePlayercontroller (Function ZBase.DefaultPlayerController.Spectating.BeginState:0023) Accessed None 'PlayerReplicationInfo'
+ScriptLog: WeaponLog=====> Started
+ScriptLog: HitLoc=== >  -371.69,-23184.87,666.40
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: HitLoc=== >  33.41,-23079.29,730.88
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: HitLoc=== >  3543.37,-20727.53,5563.66
+ScriptLog: ApplyHitRate====> HitRate:  95.00  NowHitRate:  96
+ScriptLog: Miss=== iXApplyRot :  -69  iYApplyRot :  -90
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4106.14,-19461.24,5563.67
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   DeSelectIdle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.AOM_a   DeSelectIdle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.AOC_a   DeSelectIdle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   SelectIdle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  6104.47,-16784.11,5563.76
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: HitLoc=== >  3802.21,-18885.93,5563.67
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  3802.21,-18885.93,5563.67
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  3936.37,-20002.38,5563.66
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4139.59,-20307.03,5563.66
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  4098.48,-19998.67,5563.68
+ScriptLog: ApplyHitRate====> HitRate:  70.00  NowHitRate:  89
+ScriptLog: Miss=== iXApplyRot :  -43  iYApplyRot :  -85
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  4656.87,-19901.77,5563.68
+ScriptLog: ApplyHitRate====> HitRate:  70.00  NowHitRate:  84
+ScriptLog: Miss=== iXApplyRot :  41  iYApplyRot :  72
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  4746.31,-18821.01,5563.70
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  3613.53,-19997.94,5563.65
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  4995.33,-18305.86,5563.72
+ScriptLog: ApplyHitRate====> HitRate:  70.00  NowHitRate:  85
+ScriptLog: Miss=== iXApplyRot :  91  iYApplyRot :  -48
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  4368.72,-19652.19,5563.68
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  3703.29,-20233.53,5563.65
+ScriptLog: ApplyHitRate====> HitRate:  70.00  NowHitRate:  89
+ScriptLog: Miss=== iXApplyRot :  -88  iYApplyRot :  -86
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  4352.44,-19782.42,5563.68
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  4602.18,-18713.58,5563.70
+ScriptLog: ApplyHitRate====> HitRate:  70.00  NowHitRate:  94
+ScriptLog: Miss=== iXApplyRot :  -7  iYApplyRot :  77
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4980.64,-18651.50,5563.70
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4593.81,-18897.34,5563.71
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: HitLoc=== >  5004.84,-18730.69,5563.71
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4636.36,-19397.40,5563.69
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4376.69,-19470.62,5563.68
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4077.62,-19254.59,5563.68
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: HitLoc=== >  4763.37,-19291.47,5563.69
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: HitLoc=== >  4686.46,-19325.01,5563.69
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4348.21,-19277.77,5563.69
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4715.99,-19112.91,5563.70
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMech   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4977.42,-19031.72,5563.70
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: HitLoc=== >  3290.58,-19552.71,5563.65
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: HitLoc=== >  4946.80,-20386.79,5563.69
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5124.58,-20054.13,5563.70
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4806.70,-20040.92,5563.69
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  4804.51,-20227.09,5563.69
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.BPE_a   Idle
+Log: URL: Adding default option team=0
+Log: URL: Adding default option Name=5
+Log: Browse: Index.tzp?disconnect?team=0?Name=5
+Log: ENTRY
+NetComeGo: Close TcpipConnection <HOST_VPN_IP>:30907 09/22/26 19:29:29
+ScriptLog: Destroty Start: ZSetCorePlayercontroller
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: ZPveSetCoreHud
+ScriptLog: Pawn Destroy
+ScriptLog: Pawn: SA01m -279.72,-22747.37,641.21
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Exit: Socket shut down
+Log: GP=FALSE
+Log: Spawning new actor for Viewport WindowsViewport
+Log: MatchViewportsToActors: CurrentPage
+Log: URL: Adding default option Name=5
+Log: URL: Adding default option Name=5
+Log: Browse: Store_01?Game=ZModeHangar.HangarGameInfo?Team=0?Name=5
+ScriptLog: Destroty Start: PlayerController
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: HUD
+ScriptLog: Pawn Destroy
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: PlayerSecurity: UnrealSecurity
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Log: CelanAudio
+Log: SetFlag_BD
+Log: ClearFlag_BD
+Log: PurgeGarbage_BD
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: (Karma): Level Karma Terminated.
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 69203->48387; refs: 563946
+Log: CollectGarbage_BD
+Log: SetViewPortAudioEntry_BD
+Log: SetViewPortAudio_BD 1
+Log: Game class is 'HangarGameInfo'
+Log: Bringing Level Store_01.myLevel up for play (0) appSeconds: 435.005000...
+Log: (Karma): Autodetecting CPU for SSE
+Log: (Karma): Using SSE Optimizations
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+ScriptLog: PRELoadAllMesh_BD
+Log: Spawning new actor for Viewport WindowsViewport
+Log: Precaching: Store_01.LevelInfo0
+Log: Static mesh batches: 3168 vertex bytes, 396 index bytes
+Log: Allocating 65536 byte dynamic vertex buffer.
+Log: Finished precaching geometry in 0.014 seconds
+Log: Allocating 80064 byte dynamic vertex buffer.
+Log: Finished precaching textures in 0.052 seconds
+Log: Allocating 82512 byte dynamic vertex buffer.
+Log: Allocating 82800 byte dynamic vertex buffer.
+Log: Allocating 83088 byte dynamic vertex buffer.
+Log: Allocating 83376 byte dynamic vertex buffer.
+Log: Allocating 83664 byte dynamic vertex buffer.
+ScriptLog: START MATCH
+Log: Allocating 83952 byte dynamic vertex buffer.
+ScriptLog: Destroty Start: HangarPlayerController
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: HangarHud
+ScriptLog: Pawn Destroy
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: PlayerSecurity: UnrealSecurity
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Log: Closed viewport
+Log: All Windows Closed
+Log: appRequestExit(0)
+Exit: Preparing to exit.
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: Unbound to Window.dll
+Log: Unbound to Core.dll
+Log: Unbound to Engine.dll
+Exit: Game engine shut down
+Log: Unbound to WinDrv.dll
+Exit: Windows client shut down
+Log: Unbound to D3D9Drv.dll
+Log: Unbound to XGame.dll
+Log: Unbound to Editor.dll
+Log: Unbound to Fire.dll
+Log: Unbound to XInterface.dll
+Log: Unbound to ZNetwork.dll
+Log: Unbound to IpDrv.dll
+Log: Unbound to ALAudio.dll
+Log: Waiting for file streaming thread to finish...
+Exit: OpenAL Audio subsystem shut down.
+Log: (Karma): Level Karma Terminated.
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 54969->0; refs: 563946
+Exit: Object subsystem successfully closed.
+Exit: Exiting.
+Log: FileManager: Reading 0 GByte 494 MByte 306 KByte 414 Bytes from HD took 0.881994 seconds (0.781994 reading, 0.100000 seeking).
+Log: FileManager: 0.238000 seconds spent with misc. duties
+Uninitialized: Name subsystem shut down
+Uninitialized: Memory Allocation Status
+Uninitialized: Curr Memory  13.302M /  18.121M
+Uninitialized: Peak Memory  269.785M /  273.176M
+Uninitialized: Allocs        2452 Current /  53646407 Total
+Uninitialized: Log file closed, 09/22/26 19:29:56
