@@ -16,6 +16,7 @@ const { broadcastRoomListChange } = require('./room/room-list.sender');
 // P3 step 2 (docs/design/p3-step1-writeback.md §2.2): room-level match/
 // round stats, memory + log only, default-disabled (MATCH_STATS_MODE).
 const matchStats = require('./room/match-stats');
+const pvpKillTracking = require('./room/pvp-kill-tracking');
 // RANK (docs/backlog.md, config/server.json's pveFixedRank): test-mode
 // WinTeamRank sent via User_Score_SN 0x00222221 -- see the Campaign_CN
 // handler below.
@@ -699,6 +700,13 @@ class ZLobbyDispatch
                 // not change battleStats' meaning. No-op unless
                 // MATCH_STATS_MODE is enabled.
                 matchStats.recordDeathCn(roomForDeath, attackerIndex, victimIndex);
+
+                // T2 (docs/design/d2-pvp-tdm.md §7 step T2, PVP_KILL_TRACKING_MODE):
+                // same accepted (host-gated, see the non-host early return
+                // above) Death_CN this room.battleStats update already uses --
+                // separate room field (room.pvpTeamKills), separate switch,
+                // no packets. No-op unless PVP_KILL_TRACKING_MODE is enabled.
+                pvpKillTracking.recordDeathCn(roomForDeath, attackerIndex, victimIndex);
 
                 // Builds a fresh Death_SN buffer every call (rooms.js's
                 // sendAll() requires this) via the target connection's own
