@@ -1169,3 +1169,21 @@ Gadget 本身保留，做**不掛鉤**的事（階段 3 主控台指令、每秒
 **提升權限跑的 `MetalRage.exe` 認得出名字**（6 秒 8379 幀，不是 `<unknown>`）；
 `dwm.exe` 是系統帳號，會變 `<unknown>`、不能用名字指定——那不影響我們。
 CSV 開頭有 **BOM**，讀取要用 `utf-8-sig`。
+
+---
+
+## GOLDEN-ENV-GUARD — golden replay 在缺遊戲資料的環境要直接報錯，不要假裝失敗
+
+**2026-09-22 兩個 worker 各自回報了不存在的「既存 golden 失敗」**，都因為它們的 worktree
+**沒有 `MetalRage` 與 `node_modules` 連結**：`WearInfo_SN 0x00210113` 讀不到遊戲資料 →
+產生不同 bytes → 回報 FAIL → 在同一個缺資料的環境 `git stash` 回基底再跑也 FAIL →
+結論「既存問題」。**主目錄重跑兩次都是 ALL PASS**（`journal/2026-09-22-2210-pvp-t1-team.md` 末段）。
+
+危險之處：**假的「既存失敗」會讓人以為 golden 本來就紅，之後真的回歸也被當成既存問題放過。**
+
+要做（擇一或都做）：
+1. `test/replay-golden.js` 開頭**檢查遊戲資料是否存在**，不在就以明確訊息中止
+   （例如「找不到 `MetalRage` 連結，這個環境跑 golden 沒有意義」），**不要產生 FAIL**。
+2. 寫一支 `tools/new-worktree.sh`：建 worktree 同時建好兩個連結，契約改成一律用它。
+
+依 PM 的方向：**讓規則沒辦法漏，比寫在交接文件裡提醒可靠。**
