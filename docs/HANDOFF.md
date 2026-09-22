@@ -34,6 +34,11 @@
 - 啟動後要**重啟遊戲伺服器**，讓它重新連
 
 ### 機器狀態
+- ⚠️ **2026-09-22 改寫過 `reverse-work` 未推的歷史**（遮蔽兩份原始 log 裡的 VPN 位址，PM 裁決）。
+  `test-server` 分支裡是**改寫前**的舊 commit → 下次 `git merge reverse-work` 進測試樹時，
+  `docs/research/2026-09-22-netspeed-budget/manual-30000-*.log` 兩檔會衝突，**一律取 `reverse-work` 版本**（有佔位字那份）。
+  本機另有備份分支 `backup/pre-ip-scrub`（含真實位址，**不要推**，確認無用後可刪）。
+- **pre-commit 已啟用**：commit 時會擋下 `docs/` 裡的真實 IP（`tools/git-hooks/pre-commit`，所有 worktree 共用）。
 
 - 測試伺服器：tmux `server`，跑在 `~/mro-wt/test`（分支 `test-server`，`dirty=false`）。
   `PVP_START_FLOW_MODE`、`PVP_TEAM_ASSIGN_MODE`、`MATCH_STATS_MODE`、`roomPlayingStateMode` 四個開關
