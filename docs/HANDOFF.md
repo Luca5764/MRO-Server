@@ -43,7 +43,10 @@
 - 測試伺服器：tmux `server`，跑在 `~/mro-wt/test`（分支 `test-server`，`dirty=false`）。
   `PVP_START_FLOW_MODE`、`PVP_TEAM_ASSIGN_MODE`、`MATCH_STATS_MODE`、`roomPlayingStateMode` 四個開關
   **commit 在 `test-server` 分支，不合回 `reverse-work`**（那邊預設都是 disabled）。
-- 副本 2（`C:\Games\MetalRage Online 2`）`Engine.dll` 是修補狀態（最後一次是 30000 系列），還原用 `patch_netspeed_host.py --restore`
+- 副本 2（`C:\Games\MetalRage Online 2`）`Engine.dll` 目前是 **`b0a3d9dd…`＝15000、沒有 budget**
+  （最後動它的是 15000 A/B 的 A4 輪，不是 30000）。**下一次 PvP 實跑前要先換成發包設定**：
+  `patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --value 30000 --budget --apply`，
+  套完 sha256 應為 `f4b253a3…`。還原原廠用 `--restore`
 - 副本 3（`C:\Games\MetalRage Online 3`）帶 proxy `VERSION.dll`＋gadget，**gadget 目前改名停用**（`.dll.off`）。整個副本可刪。
 - 主安裝未動。
 
