@@ -2,6 +2,11 @@
 """
 patch_netspeed_host.py
 
+Two independent patches to the HOST's Engine.dll, toggled by separate flags.
+Neither implies the other; either can be applied alone or both together.
+
+--value (netspeed force, always on unless --budget is given without --value)
+------------------------------------------------------------------------
 Patches Engine.dll so the HOST's UNetConnection::CurrentNetSpeed (the value
 `AActor::ProcessRemoteFunction`'s IsNetReady check reads to decide whether to
 drop a reliable RPC that tick) is unconditionally forced to a fixed value
@@ -36,6 +41,49 @@ After patching, the branch always falls through to `mov eax,<value>` then
 <value> is 100000 unless overridden with --value (must fit in an unsigned
 32-bit immediate, i.e. 1..0xFFFFFFFF).
 
+This patch group is applied whenever --budget is NOT given (matching this
+script's original, pre-existing behavior: with no flags at all you still get
+the default-100000 netspeed force). Once --budget IS given, the netspeed
+group only applies if --value was also explicitly passed -- `--budget` alone
+means "only the bandwidth-bank patch below", so the two flags compose
+predictably: whichever of {--value, --budget} you name, you get exactly that
+patch group (plus --value's default-on behavior when --budget is absent, for
+backward compatibility with every existing caller of this script).
+
+--budget (bandwidth-bank widening, external source, reviewed but unproven
+in our conditions)
+------------------------------------------------------------------------
+Patches Engine.dll's UNetConnection tick code (Moon's external report; our
+own disasm review is in
+docs/research/2026-09-22-netspeed-budget/high-tier-review.md -- do not
+re-derive the bytes or the jump arithmetic, that file already has it) so the
+per-tick bandwidth debit clamps its floor to
+`-(2*DeltaTime*CurrentNetSpeed + CurrentNetSpeed/4)` instead of
+`-(2*DeltaTime*CurrentNetSpeed)`, i.e. the connection's send budget can carry
+a bit more than two ticks' worth of headroom. Three edits:
+
+  VA          file offset  original                          patched
+  0x1042e1f8  0x12e1f8     dc c0 8b 8e 4c 01 00 00            e9 23 a9 24 00 90 90 90  (jmp to cave)
+  0x10678b20  0x378b20     32 bytes, all zero (.text pad)     27-byte cave body (see high-tier-review.md), zero-padded to 32
+  (resolved)  (resolved)   .text VirtualSize == 0x377b1e      0x378000
+
+The third edit is the file offset of the `.text` IMAGE_SECTION_HEADER's
+VirtualSize field. That offset is NOT hardcoded here -- it is resolved by
+walking the PE header at runtime (see find_text_section_header_offset()),
+and the script refuses to guess if the section table doesn't look like the
+build this was reviewed against (name isn't literally ".text", or the
+current VirtualSize isn't the expected stock 0x377b1e -- the latter check
+reuses the same per-byte original/patched comparison used for every other
+patch offset in this script, so it aborts the same way a plain byte
+mismatch would).
+
+The cave lives past the declared end of `.text` (VirtualSize 0x377b1e) but
+inside its raw/aligned size (0x378000), so it's already mapped executable
+without touching the VirtualSize field; bumping VirtualSize to 0x378000 just
+declares that padding as real code instead of leaving it looking
+uninitialized. See high-tier-review.md section 3 for the section-boundary
+math (doesn't reach into .rdata).
+
 Safety
 ------
 Only ever apply this to the disposable test copy, `C:\\Games\\MetalRage
@@ -49,15 +97,23 @@ Does not touch MetalRage.exe. Only Engine.dll.
 Usage
 -----
   # dry run (default): verify hashes/bytes, report, write nothing
+  # (this alone still means "apply netspeed with the default value 100000",
+  # matching this script's original behavior)
   tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2"
 
-  # actually patch (backs up first), default value 100000
+  # actually patch (backs up first), default netspeed value 100000
   tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --apply
 
-  # patch to a different value instead of the 100000 default
+  # patch netspeed to a different value instead of the 100000 default
   tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --apply --value 30000
 
-  # put the backup back (works regardless of which --value was applied)
+  # only the bandwidth-bank patch, netspeed left untouched
+  tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --apply --budget
+
+  # both patches together
+  tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --apply --value 30000 --budget
+
+  # put the backup back (restores whichever patches were applied, together)
   tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --restore
 """
 
@@ -90,6 +146,81 @@ def build_patches(value):
         (0x17f9b8, bytes.fromhex('08070000'), imm, f'mov eax,0x708 -> mov eax,{value}'),
     ]
 
+
+# --- budget (bandwidth-bank) patch -----------------------------------------
+
+TEXT_SECTION_NAME = b'.text'
+TEXT_VIRTUALSIZE_ORIG = 0x377b1e
+TEXT_VIRTUALSIZE_PATCHED = 0x378000
+
+# 27-byte cave body, transcribed from
+# docs/research/2026-09-22-netspeed-budget/high-tier-review.md section 2.
+# Zero-padded to 32 bytes (the full cave region) when used as a patch so it
+# compares/writes the same way every other fixed-length edit in this script
+# does; the trailing 5 bytes stay the pad's original zero.
+_BUDGET_CAVE_CODE = bytes.fromhex(
+    'DCC08B4E50C1E902894DE4DB45E4DEC18B8E4C010000E9C556DBFF'
+)
+assert len(_BUDGET_CAVE_CODE) == 27
+
+BUDGET_JMP_OFFSET = 0x12e1f8
+BUDGET_JMP_ORIG = bytes.fromhex('DCC08B8E4C010000')
+BUDGET_JMP_PATCHED = bytes.fromhex('E923A92400909090')
+assert len(BUDGET_JMP_ORIG) == len(BUDGET_JMP_PATCHED) == 8
+
+BUDGET_CAVE_OFFSET = 0x378b20
+BUDGET_CAVE_ORIG = b'\x00' * 32
+BUDGET_CAVE_PATCHED = _BUDGET_CAVE_CODE + b'\x00' * (32 - len(_BUDGET_CAVE_CODE))
+assert len(BUDGET_CAVE_PATCHED) == 32
+
+
+def find_text_section_header_offset(data):
+    """Walk the PE header (never assume a fixed layout) and return the file
+    offset of the '.text' IMAGE_SECTION_HEADER (a 40-byte entry; its
+    VirtualSize field is the 4 bytes right after the 8-byte Name field).
+    Raises ValueError with a description on any structural mismatch instead
+    of guessing an offset."""
+    if len(data) < 0x40 or data[0:2] != b'MZ':
+        raise ValueError('not an MZ/PE file (bad DOS header)')
+    e_lfanew = int.from_bytes(data[0x3c:0x40], 'little')
+    if data[e_lfanew:e_lfanew + 4] != b'PE\x00\x00':
+        raise ValueError(f'no PE signature at e_lfanew=0x{e_lfanew:x}')
+    coff = e_lfanew + 4
+    num_sections = int.from_bytes(data[coff + 2:coff + 4], 'little')
+    size_opt_hdr = int.from_bytes(data[coff + 16:coff + 18], 'little')
+    sec_table = coff + 20 + size_opt_hdr
+    for i in range(num_sections):
+        off = sec_table + i * 40
+        name = data[off:off + 8].rstrip(b'\x00')
+        if name == TEXT_SECTION_NAME:
+            return off
+    raise ValueError('.text section header not found in section table')
+
+
+def build_budget_patches(data):
+    """Return the 3-entry budget patch list: the two fixed code offsets plus
+    the .text VirtualSize field, whose file offset is resolved from the PE
+    header at runtime (see find_text_section_header_offset -- never
+    hardcoded). Raises ValueError if the section table doesn't look like the
+    reviewed build; the caller is responsible for treating that as a hard
+    abort when actually applying this patch group. Whether the *current*
+    bytes at the resolved offset actually equal the expected stock
+    0x377b1e is NOT checked here -- that reuses the same generic
+    original/patched byte comparison every other patch offset in this
+    script goes through (see main()'s mismatches check)."""
+    sec_off = find_text_section_header_offset(data)
+    vsize_off = sec_off + 8  # IMAGE_SECTION_HEADER::VirtualSize
+    return [
+        (BUDGET_JMP_OFFSET, BUDGET_JMP_ORIG, BUDGET_JMP_PATCHED,
+         'jmp to cave (bandwidth-bank formula)'),
+        (BUDGET_CAVE_OFFSET, BUDGET_CAVE_ORIG, BUDGET_CAVE_PATCHED,
+         'cave body: floor -> -(2D + CurrentNetSpeed/4)'),
+        (vsize_off, TEXT_VIRTUALSIZE_ORIG.to_bytes(4, 'little'),
+         TEXT_VIRTUALSIZE_PATCHED.to_bytes(4, 'little'),
+         '.text section header VirtualSize 0x377b1e -> 0x378000'),
+    ]
+
+
 BACKUP_TAG = 'netspeed-host'
 
 MAIN_INSTALL_BASENAME = 'metalrage online'
@@ -120,16 +251,32 @@ def guard_target(target, i_know):
         )
 
 
-def describe_bytes(data, patches):
-    for off, orig, patched, what in patches:
-        cur = bytes(data[off:off + len(orig)])
-        if cur == orig:
-            state = 'original'
-        elif cur == patched:
-            state = 'patched'
-        else:
-            state = f'UNKNOWN ({cur.hex()})'
-        print(f'  0x{off:06x}  {cur.hex()}  {what}  [{state}]')
+def describe_bytes(data, groups):
+    """groups: list of (label, patches), patches being the same
+    (offset, orig, patched, what) tuples build_patches()/build_budget_patches()
+    return. Prints every offset in every group tagged [original]/[patched]/
+    [unexpected]."""
+    for label, patches in groups:
+        for off, orig, patched, what in patches:
+            cur = bytes(data[off:off + len(orig)])
+            if cur == orig:
+                state = 'original'
+            elif cur == patched:
+                state = 'patched'
+            else:
+                state = f'unexpected ({cur.hex()})'
+            print(f'  [{label}] 0x{off:06x}  {cur.hex()}  {what}  [{state}]')
+
+
+def budget_display_group(data):
+    """Best-effort (label, patches) pair for describe_bytes(), used purely
+    for informational status printing -- never raises. Returns None if the
+    budget offsets can't be resolved (prints why instead)."""
+    try:
+        return ('budget', build_budget_patches(data))
+    except ValueError as e:
+        print(f'  [budget] status unavailable: {e}')
+        return None
 
 
 def find_latest_backup(dll):
@@ -158,23 +305,40 @@ def main():
                           '(must be the disposable copy, not the main install)')
     ap.add_argument('--i-know-this-is-the-copy', action='store_true', dest='i_know',
                      help='required if --target basename is not literally "MetalRage Online 2"')
-    ap.add_argument('--value', type=netspeed_value, default=DEFAULT_VALUE,
-                     help=f'netspeed immediate to write at both patch sites (default {DEFAULT_VALUE}); '
-                          f'must be a positive integer that fits an unsigned 32-bit immediate')
+    ap.add_argument('--value', type=netspeed_value, default=None,
+                     help=f'netspeed immediate to write at the netspeed patch sites '
+                          f'(default {DEFAULT_VALUE} if this flag is omitted); '
+                          f'must be a positive integer that fits an unsigned 32-bit immediate. '
+                          f'The netspeed patch group is applied whenever --budget is NOT given; '
+                          f'if --budget IS given, the netspeed group only applies when --value '
+                          f'is also explicitly passed (so `--budget` alone means budget-only)')
+    ap.add_argument('--budget', action='store_true',
+                     help='also (or only, if --value is not given) apply the bandwidth-bank '
+                          'widening patch (external source, see docstring); independent of '
+                          '--value in both directions')
     ap.add_argument('--apply', action='store_true',
                      help='actually write the patch (default is dry-run: verify and report only)')
     ap.add_argument('--restore', action='store_true',
-                     help='restore the most recent .bak-netspeed-host-<timestamp> backup')
+                     help='restore the most recent .bak-netspeed-host-<timestamp> backup '
+                          '(restores every patch group that backup covers, together)')
     ap.add_argument('--backup', help='explicit backup path to restore from (with --restore)')
     ap.add_argument('--force', action='store_true',
-                     help='skip the whole-file SHA256 check (the per-byte check at the three '
-                          'patch offsets still runs and still aborts on any mismatch -- this '
-                          'has no override)')
+                     help='skip the whole-file SHA256 check (the per-byte check at each '
+                          'active patch group\'s offsets still runs and still aborts on any '
+                          'mismatch -- this has no override)')
     a = ap.parse_args()
 
     guard_target(a.target, a.i_know)
 
-    patches = build_patches(a.value)
+    # --budget and --value are independent switches. Backward compatibility
+    # rule: the netspeed group is applied whenever --budget is NOT given
+    # (this is the script's original behavior -- no flags at all still means
+    # "force netspeed to the 100000 default"). Once --budget IS given,
+    # netspeed only comes along if --value was also explicitly named, so
+    # `--budget` alone means "only budget".
+    apply_netspeed = (not a.budget) or (a.value is not None)
+    resolved_value = a.value if a.value is not None else DEFAULT_VALUE
+    netspeed_patches = build_patches(resolved_value)
 
     dll = os.path.join(a.target, REL_DLL)
     if not os.path.isfile(dll):
@@ -182,10 +346,12 @@ def main():
 
     if a.restore:
         # --restore only copies the backup back; it does not need to know
-        # which --value (if any) was applied when the backup was made. The
-        # describe_bytes() call below still works because the "original"
-        # bytes at each offset never depend on value -- only "patched" does,
-        # and a successful restore should read back as "original" regardless.
+        # which --value/--budget combination was applied when the backup
+        # was made -- it's a whole-file copy, so it restores every group
+        # the backup covers, together. The describe_bytes() call below
+        # still works because the "original" bytes at each offset never
+        # depend on --value/--budget -- only "patched" does, and a
+        # successful restore should read back as "original" regardless.
         bak = a.backup or find_latest_backup(dll)
         if not bak or not os.path.isfile(bak):
             sys.exit(f'no backup to restore (looked for {dll}.bak-{BACKUP_TAG}-*)')
@@ -193,7 +359,12 @@ def main():
         print(f'restored from {bak}')
         print(f'sha256 now {sha256(dll)}')
         with open(dll, 'rb') as f:
-            describe_bytes(f.read(), patches)
+            restored = f.read()
+        groups = [('netspeed', netspeed_patches)]
+        budget_group = budget_display_group(restored)
+        if budget_group:
+            groups.append(budget_group)
+        describe_bytes(restored, groups)
         return
 
     with open(dll, 'rb') as f:
@@ -215,22 +386,39 @@ def main():
             )
         print('--force given: skipping whole-file SHA256 check, per-byte check below still applies')
 
-    print(f'\ntarget value: {a.value}')
-    print('current state of the three patch offsets:')
-    describe_bytes(data, patches)
+    print(f'\nnetspeed: {"applying, value=" + str(resolved_value) if apply_netspeed else "not applied this run"}')
+    print(f'budget:   {"applying" if a.budget else "not applied this run"}')
+
+    print('\ncurrent state of the patch offsets:')
+    display_groups = [('netspeed', netspeed_patches)]
+    budget_group_for_display = budget_display_group(data)
+    if budget_group_for_display:
+        display_groups.append(budget_group_for_display)
+    describe_bytes(data, display_groups)
+
+    active_groups = []
+    if apply_netspeed:
+        active_groups.append(('netspeed', netspeed_patches))
+    if a.budget:
+        try:
+            budget_patches = build_budget_patches(data)
+        except ValueError as e:
+            sys.exit(f'refusing: could not resolve budget patch offsets: {e}')
+        active_groups.append(('budget', budget_patches))
 
     mismatches = []
-    for off, orig, patched, what in patches:
-        cur = data[off:off + len(orig)]
-        if cur != orig:
-            mismatches.append((off, orig, cur, what))
+    for label, patches in active_groups:
+        for off, orig, patched, what in patches:
+            cur = data[off:off + len(orig)]
+            if cur != orig:
+                mismatches.append((label, off, orig, cur, what))
     if mismatches:
         print('\nrefusing: byte-level check failed, aborting (no override for this check):')
-        for off, orig, cur, what in mismatches:
-            print(f'  0x{off:06x}  expected {orig.hex()}  got {cur.hex()}  {what}')
+        for label, off, orig, cur, what in mismatches:
+            print(f'  [{label}] 0x{off:06x}  expected {orig.hex()}  got {cur.hex()}  {what}')
         sys.exit(1)
 
-    print('\nall three offsets match the expected original bytes.')
+    print('\nall active-group offsets match the expected original bytes.')
 
     if not a.apply:
         print('\ndry-run only (no --apply given): nothing written.')
@@ -243,8 +431,9 @@ def main():
     print(f'\nbackup -> {bak}')
 
     data = bytearray(data)
-    for off, orig, patched, what in patches:
-        data[off:off + len(patched)] = patched
+    for label, patches in active_groups:
+        for off, orig, patched, what in patches:
+            data[off:off + len(patched)] = patched
 
     with open(dll, 'wb') as f:
         f.write(data)
@@ -254,7 +443,11 @@ def main():
 
     print(f'\nwrote patch. sha256 now {sha256(dll)}')
     print('\nstate after patch (re-read from disk):')
-    describe_bytes(after, patches)
+    after_groups = [('netspeed', netspeed_patches)]
+    after_budget_group = budget_display_group(after)
+    if after_budget_group:
+        after_groups.append(after_budget_group)
+    describe_bytes(after, after_groups)
     print(f'\nRestore with: --restore  (backup: {bak})')
 
 
