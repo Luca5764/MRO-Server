@@ -1,0 +1,17 @@
+方案 C（掛點後移到 0x10523564）實跑崩潰 —— [OBS] 操作者貼回的客戶端 GPF 堆疊
+2026-09-22 20:28，bridge-fps-compare 第 4 組（`[FAIL]`）
+
+Build MR_Build_[2009-12-10_09.30]
+OS: Windows NT 6.2 (Build: 9200)
+CPU: AuthenticAMD Unknown processor @ 3792 MHz with 2047MB RAM
+Video: NVIDIA GeForce RTX 4080 (9579)
+
+General protection fault!
+
+History: UObject::ProcessEvent <- (ZSetCorePlayercontroller Map_PC04.ZSetCorePlayercontroller,
+Function ZModePve.ZPvePlayercontroller.PostNetBeginPlay) <- ULevel::SpawnActor <-
+(ZSetCorePlayercontroller) <- UObject::ProcessEvent <- (ZSetCoreModePve Map_PC04.ZSetCoreModePve,
+Function ZModePve.ZModePve.Login) <- ULevel::SpawnPlayActor <- MatchViewportsToActors <-
+(Map_PC04) <- ClientInit_BD <- UGameEngine::LoadMap <- LocalMapURL <- UGameEngine::Browse <-
+ClientTravel <- UGameEngine::Tick <- UpdateWorld <- MainLoop <- FMallocWindows::Free <-
+FMallocWindows::Realloc <- 00000011 0 FArray <- FArray::Realloc <- 0*2 <- FMallocWindows::Free
