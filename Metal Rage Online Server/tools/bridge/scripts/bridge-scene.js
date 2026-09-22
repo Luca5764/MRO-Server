@@ -134,10 +134,44 @@ whenModuleLoaded('ZNetwork.dll', 300000, 2000, function (znetBase) {
     appendLine('FATAL Interceptor.attach failed: ' + e);
   }
 
+  // [TEST] 2026-09-22：只掛 Scene_Change 不夠——登入→大廳整段都沒有觸發它，
+  // 所以那個函式不是場景切換的必經之路。改用 stage2-addresses.txt 給的另一條路：
+  // 直接呼叫 Core.dll 的 GetDefaultObject 取得 UZNetwork_DJ 的 CDO，再讀 +0x38c。
+  // 這同時驗證 explorer 標為不確定的那一點（ZNetwork.dll+0x1e9b70 到底是不是那個 UClass）。
+  // 只呼叫一次並快取，不在每秒的 timer 裡重複呼叫（UE2 不是執行緒安全的，少碰為妙）。
+  const GET_DEFAULT_OBJECT_OFFSET = 0x0ce20;   // Core.dll VA 0x1010ce20
+  const UZNETWORK_UCLASS_OFFSET  = 0x1e9b70;   // ZNetwork.dll VA 0x108e9b70
+  let cdoThis = null;
+  let cdoTried = false;
+
+  function tryCdo() {
+    cdoTried = true;
+    try {
+      const coreBase = resolveModuleBase('Core.dll');
+      if (coreBase === null) { appendLine('cdo: Core.dll not found'); return; }
+      const fn = new NativeFunction(
+        coreBase.add(GET_DEFAULT_OBJECT_OFFSET), 'pointer', ['pointer'], 'thiscall');
+      const uclass = znetBase.add(UZNETWORK_UCLASS_OFFSET);
+      const obj = fn(uclass);
+      if (obj.isNull()) { appendLine('cdo: GetDefaultObject returned NULL'); return; }
+      cdoThis = obj;
+      appendLine('cdo: GetDefaultObject(ZNetwork+0x1e9b70) = ' + obj);
+    } catch (e) {
+      appendLine('cdo: threw ' + e);
+    }
+  }
+
   setInterval(function () {
     try {
+      if (cachedThis === null && !cdoTried) tryCdo();
+      const who = cachedThis !== null ? cachedThis : cdoThis;
+      if (who === null) {
+        appendLine('scene=unknown (Scene_Change never fired, cdo unavailable)');
+        return;
+      }
       if (cachedThis === null) {
-        appendLine('scene=unknown (waiting for Scene_Change)');
+        const sceneCdo = who.add(SCENE_FIELD_OFFSET).readU8();
+        appendLine('scene=' + sceneCdo + ' (via cdo)');
         return;
       }
       const scene = cachedThis.add(SCENE_FIELD_OFFSET).readU8();

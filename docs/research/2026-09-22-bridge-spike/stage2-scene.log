@@ -1,0 +1,115 @@
+[2026-09-22T10:43:08.113Z] pid=63964 script loaded; waiting for ZNetwork.dll (delay-loaded)
+[2026-09-22T10:43:10.225Z] pid=63964 waiting for ZNetwork.dll to load (delay-loaded; will poll)
+[2026-09-22T10:43:14.412Z] pid=63964 module ZNetwork.dll appeared, base=0xcda0000
+[2026-09-22T10:43:14.412Z] pid=63964 script loaded, ZNetwork.dll base=0xcda0000 Scene_Change@0xcdd8910
+[2026-09-22T10:43:15.413Z] pid=63964 cdo: GetDefaultObject(ZNetwork+0x1e9b70) = 0xd34d800
+[2026-09-22T10:43:15.413Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:16.578Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:17.579Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:18.666Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:19.814Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:20.970Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:21.971Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:23.052Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:24.170Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:25.367Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:26.514Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:27.514Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:28.515Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:29.516Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:30.516Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:31.517Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:32.517Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:33.518Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:34.518Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:35.519Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:36.519Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:37.520Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:38.520Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:39.521Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:40.521Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:41.522Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:42.689Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:43.689Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:44.690Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:45.691Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:46.691Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:47.695Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:48.695Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:49.696Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:50.696Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:51.697Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:52.697Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:53.697Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:54.697Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:55.698Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:56.698Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:57.698Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:58.699Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:43:59.699Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:44:00.699Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:44:01.700Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:44:02.700Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:44:03.701Z] pid=63964 scene=0 (via cdo)
+[2026-09-22T10:44:04.608Z] pid=63964 cached UZNetwork_DJ this=0xd34d800
+[2026-09-22T10:44:04.609Z] pid=63964 scene_change old=unknown new=2
+[2026-09-22T10:44:04.699Z] pid=63964 scene_change old=2 new=3
+[2026-09-22T10:44:04.700Z] pid=63964 scene_change old=3 new=2
+[2026-09-22T10:44:04.701Z] pid=63964 scene_change old=2 new=0
+[2026-09-22T10:44:04.702Z] pid=63964 scene=0
+[2026-09-22T10:44:04.704Z] pid=63964 scene_change old=0 new=2
+[2026-09-22T10:44:04.894Z] pid=63964 scene_change old=2 new=3
+[2026-09-22T10:44:04.897Z] pid=63964 scene_change old=3 new=4
+[2026-09-22T10:44:05.875Z] pid=63964 scene=4
+[2026-09-22T10:44:06.876Z] pid=63964 scene=4
+[2026-09-22T10:44:07.877Z] pid=63964 scene=4
+[2026-09-22T10:44:08.878Z] pid=63964 scene=4
+[2026-09-22T10:44:09.878Z] pid=63964 scene=4
+[2026-09-22T10:44:10.880Z] pid=63964 scene=4
+[2026-09-22T10:44:11.880Z] pid=63964 scene=4
+[2026-09-22T10:44:12.880Z] pid=63964 scene=4
+[2026-09-22T10:44:13.880Z] pid=63964 scene=4
+[2026-09-22T10:44:14.881Z] pid=63964 scene=4
+[2026-09-22T10:44:15.882Z] pid=63964 scene=4
+[2026-09-22T10:44:16.882Z] pid=63964 scene=4
+[2026-09-22T10:44:17.882Z] pid=63964 scene=4
+[2026-09-22T10:44:18.883Z] pid=63964 scene=4
+[2026-09-22T10:44:19.884Z] pid=63964 scene=4
+[2026-09-22T10:44:20.884Z] pid=63964 scene=4
+[2026-09-22T10:44:21.885Z] pid=63964 scene=4
+[2026-09-22T10:44:22.885Z] pid=63964 scene=4
+[2026-09-22T10:44:23.885Z] pid=63964 scene=4
+[2026-09-22T10:44:24.886Z] pid=63964 scene=4
+[2026-09-22T10:44:25.887Z] pid=63964 scene=4
+[2026-09-22T10:44:26.887Z] pid=63964 scene=4
+[2026-09-22T10:44:27.888Z] pid=63964 scene=4
+[2026-09-22T10:44:28.889Z] pid=63964 scene=4
+[2026-09-22T10:44:29.889Z] pid=63964 scene=4
+[2026-09-22T10:44:30.890Z] pid=63964 scene=4
+[2026-09-22T10:44:31.891Z] pid=63964 scene=4
+[2026-09-22T10:44:32.892Z] pid=63964 scene=4
+[2026-09-22T10:44:33.893Z] pid=63964 scene=4
+[2026-09-22T10:44:34.894Z] pid=63964 scene=4
+[2026-09-22T10:44:35.894Z] pid=63964 scene=4
+[2026-09-22T10:44:36.895Z] pid=63964 scene=4
+[2026-09-22T10:44:37.895Z] pid=63964 scene=4
+[2026-09-22T10:44:38.896Z] pid=63964 scene=4
+[2026-09-22T10:44:39.896Z] pid=63964 scene=4
+[2026-09-22T10:44:40.897Z] pid=63964 scene=4
+[2026-09-22T10:44:41.897Z] pid=63964 scene=4
+[2026-09-22T10:44:42.898Z] pid=63964 scene=4
+[2026-09-22T10:44:43.898Z] pid=63964 scene=4
+[2026-09-22T10:44:44.899Z] pid=63964 scene=4
+[2026-09-22T10:44:45.899Z] pid=63964 scene=4
+[2026-09-22T10:44:46.899Z] pid=63964 scene=4
+[2026-09-22T10:44:47.900Z] pid=63964 scene=4
+[2026-09-22T10:44:48.901Z] pid=63964 scene=4
+[2026-09-22T10:44:49.901Z] pid=63964 scene=4
+[2026-09-22T10:44:50.902Z] pid=63964 scene=4
+[2026-09-22T10:44:51.902Z] pid=63964 scene=4
+[2026-09-22T10:44:52.903Z] pid=63964 scene=4
+[2026-09-22T10:44:53.904Z] pid=63964 scene=4
+[2026-09-22T10:44:54.905Z] pid=63964 scene=4
+[2026-09-22T10:44:55.905Z] pid=63964 scene=4
+[2026-09-22T10:44:56.905Z] pid=63964 scene=4
+[2026-09-22T10:44:57.906Z] pid=63964 scene=4
