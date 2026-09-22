@@ -1,0 +1,232 @@
+{
+  "id": "round2-probe-mechkey",
+  "purpose": "round2-probe-mechkey: 直接接續 docs/journal/2026-09-22-0748-firerate-probe.md 第二節的懸案——那份探針按 F5 拿到的是 Map_PC04.MOM_a（22100101，輕量型來福機槍，mech_type 1），不是預期的 mech_type 6（MTE_a）。那篇日誌列了兩個沒有排除的成因：(1) F5 真的就是對到 mech_type 1；(2) F 鍵根本沒生效，選機體頁的倒數計時到了自動出預設（第一個）機體。日誌自己給的『下一步（最便宜的分辨方法）』是『跑一段只改一個變數的探針——按 F2，讀武器名。變成別把武器 -> F 鍵有效；還是 MOM_a -> F 鍵沒生效』。這份腳本把那個建議擴成三段（F2/F3/F4），一次拿到比較完整的對照，而不是只測一個鍵就下結論。三段結構完全照 round2-probe-firerate.json 現有的 12 步（launch_client -> login_as -> focus_client -> create_pve_room -> dismiss_notice -> idle_nudge -> host_start_battle -> enter_battle -> console_cmd_on(WeaponLog) -> fire_burst -> leave_battle -> close_client），三段之間唯一的差異是 enter_battle 的 mech_key（F2/F3/F4）；shots 三段都改成 3。跟原腳本一樣不呼叫 select_map：create_pve_room 建出來的房間預設就是潛入作戰／Map_PC04（✅ 已在 2026-09-22-0748-firerate-probe.md 第六節用兩張截圖與客戶端不送封包的事實確認過，這裡直接沿用，不重新推導）。account、install_dir_win、bat_path_win 沿用同一支 host 帳號 mrotesthost、副本 C:\\Games\\MetalRage Online 2。\n\n為什麼只打 3 發（不是 30 發）：這裡要的答案只是『log 裡出現的武器名稱字串』，不是射速統計量，用 30 發去量統計量是上一份探針（round2-probe-firerate.json）已經做過的事。2026-09-22-0748-firerate-probe.md 第一節已經量出 ✅ 每次 CLICK 有 3.44 秒固定開銷（run_pico() 每一發都重新 shell 出一個 pico_ctl.py process、每次都重新自動偵測序列埠），interval_s 只要低於這個門檻就完全不影響實際間隔，被開銷本身決定；因此這裡 interval_s 三段都填 0.25（比照原探針最快那一段），純粹是滿足 fire_burst 的參數需求，本身數值在 3.44 秒以下不起作用，不是在控制變因。實際開火視窗約 shots × (3.44 + interval_s) ≈ 3 × 3.69 ≈ 11 秒，含 focus_client/precondition 開銷後整段 fire_burst 動作約 10-15 秒，三段合計省下大量壁鐘時間（原本 30 發一段要 110-132 秒）。\n\n讀法（沿用原探針，關掉客戶端後離線分析，這支腳本本身不讀 log）：每段各自的 run-*.log 位於該次啟動的 C:\\Games\\MetalRage Online 2\\data\\System\\，跑 grep -oE 'Now Animation Name : [^ ]+   Fire$' run-*.log，'Map_PC04.' 後面、'   Fire' 前面那一段文字就是武器資產名，對照 docs/reference/item-names.md（DB 已覆核的 8 個主武器 mech_type 對照：1=22100101 MOM_a／2=26300101 MSA_a／3=21200101 MNC_a／4=24100201 MSC_b／5=22200201 MNV_a／6=25300101 MTE_a／7=28100101 MAT_a／8=28300101 MPF_a）。⚠️ HitLoc=== 不是每把主武器都有（2026-09-22-0748-firerate-probe.md 第三節：MOM_a 29 次開火 0 行 HitLoc），這支腳本一樣不依賴 HitLoc 做任何判定，只看 Fire 行本身有沒有出現、出現的武器名是什麼。⚠️ 同一篇日誌第四節量到兩段各 30 發都是 29 行 Fire（缺第一發，疑似落在機體還沒生成完的空窗），這裡只打 3 發，理論上可能只拿到 2 行 Fire——這不影響武器名稱的判讀，只要有任何一行 Fire 就能讀出武器名，讀的人不要把『只有 2 行不是 3 行』誤判成失敗。\n\n判讀方式：(a) 三段都還是 Map_PC04.MOM_a -> 支持『F 鍵沒生效，倒數計時自動出預設（第一個）機體』這個假說（2026-09-22-0748 的成因 2）；enter_battle() 目前用 F 鍵而非滑鼠點擊的做法可能需要改走滑鼠路徑，但那是下一輪才談的事，這裡只負責把證據擺出來，不動 enter_battle() 的程式碼。(b) 三段出現三種不同的武器名 -> 支持『F 鍵確實有生效』，可以照實測結果建立 F 鍵 -> 武器的對照表（超越 actions.py MECH_SELECT_SLOTS 目前只有 [OBS] 2026-09-21 操作者截圖讀出的機體名稱／類型標籤，沒有任何實測驗證過那個表跟『按下去實際出生的機體』一致——這份探針的三個結果本身就是對那個表的獨立驗證，不要假設它本來就是對的）。(c) 其他組合（例如兩段相同一段不同、或出現前所未見的武器名）-> 標🟡，不要用這份探針自己去猜成因，留給下一位審查。三段的難度分頁跟 2026-09-22-0748 一樣不是控制變因（帳號、房間分頁狀態沿用上一段結束時的分頁），砲類武器/機槍的判讀跟難度無關；如果三段面板顯示的難度不同，照實記錄即可，不用重跑。地圖身份一樣要靠 create_pve_room 這個步驟自己存的截圖人工確認寫著「選擇地圖　潛入作戰」，不要無條件相信預設值不變。\n\nmax_wall_clock_s 算式：round2-probe-firerate.json 用 2400 秒（3 段 × 800 秒／段）涵蓋 shots=30 的情境，2026-09-22-0748-firerate-probe.md 第一節已經量出來單發 CLICK 開銷是 3.44 秒，所以 800 秒／段這個上限里，fire_burst 貢獻的部分大約是 30 × 3.44 ≈ 103.2 秒。這裡把 shots 從 30 降到 3，其餘 11 個步驟完全沒變，直接用『扣掉舊的 fire_burst 開銷、換成新的』重算：每段上限 = 800 − 30×3.44 + 3×3.44 = 800 − 103.2 + 10.32 = 707.12 秒；三段合計 707.12 × 3 ≈ 2121.4 秒，取整數並留一點餘裕，寫成 2200 秒。\n\n成功 = 三段共 36 個步驟全部 ok。失敗先看：enter_battle（這正是本探針要驗的環節，卡住本身也是訊號，但不代表腳本有 bug，先確認是不是 F 鍵沒有登記到、還是純粹 UI 座標/時序問題）、fire_burst（fail-closed 會在 detail 裡報第幾發失敗）、create_pve_room（如果截圖不是潛入作戰，先查帳號預設值是不是被改過）。未執行任何劇本、未啟動客戶端、未送出任何 Pico 輸入，純粹是劇本檔的撰寫。",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    }
+  },
+  "steps": [
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": "F2"
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "WeaponLog"
+      }
+    },
+    {
+      "action": "fire_burst",
+      "params": {
+        "client_id": "host",
+        "shots": 3,
+        "interval_s": 0.25
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": "F3"
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "WeaponLog"
+      }
+    },
+    {
+      "action": "fire_burst",
+      "params": {
+        "client_id": "host",
+        "shots": 3,
+        "interval_s": 0.25
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": "F4"
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "WeaponLog"
+      }
+    },
+    {
+      "action": "fire_burst",
+      "params": {
+        "client_id": "host",
+        "shots": 3,
+        "interval_s": 0.25
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    }
+  ],
+  "stop_conditions": {
+    "max_consecutive_failures": 1
+  },
+  "max_wall_clock_s": 2200,
+  "max_image_reviews": 0
+}
