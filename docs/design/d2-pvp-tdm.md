@@ -1,6 +1,6 @@
 # D2 PvP 團隊死鬥（TDM）設計稿：計分、回合、勝負
 
-> **狀態：v2 草稿，待 PM 審。** 高階 2026-09-22 在 v1（explorer 撰、全篇 🟡）上改版。
+> **狀態：v2，PM 2026-09-22 審查通過（附 4 處必改，已改），可開工 T1。** 高階 2026-09-22 在 v1（explorer 撰、全篇 🟡）上改版。
 > **審過才實作**（PM 2026-09-22 裁決：PvP 動工照關卡走）。
 > v1 原文在 git（`6504ed5`）。v1 → v2 改了什麼見 §9。
 
@@ -25,11 +25,13 @@
 
 **結論：伺服器決定，客戶端只負責回報事件。**
 
+（PM 2026-09-22 審查更正：v2 初稿第一列引用 Moon 的「called from Network on round end」，那句實際在 `ZModePve.uc:716`、不在 `ZTeamDM`，Moon 已認錯；改用我們自己讀源碼的結論。）
+
 依據（證據等級各不同，照實標）：
 
 | 依據 | 等級 |
 |---|---|
-| `ZTeamDM.EndRound_BD` 原始碼註解寫「called from Network on round end」——原廠就是伺服器宣布 | 🟡 Moon，`protocol_objective.en.md:180-181` |
+| **`DefaultGameInfo.uc:395-405` 把 `EndGame()` 覆寫成空殼**：`Reason` 不是 `"TimeLimit"` 就什麼都不做 → `ZTeamDM.CheckScore` 送進來的 `"teamscorelimit"`（擊殺達標）**被整個吃掉**，不 `GotoState`、不通知任何人。**客戶端永遠不會因擊殺達標而結束比賽** | ✅ 我方讀源碼，`research/2026-09-21-d2-pvp/verify-p1p2.md` |
 | 時間到 00:00 時，**房主**呼叫 `Game_Timeout()` 送 `Timeout_CN 0x00230111`（空 body），伺服器收到後決定勝方 | 🟡 Moon，同檔 `:199-215` |
 | **我方 log 裡實際有 12,472 筆 `Timeout_CN` recv**（body 全空）——房主確實會送這包 | ✅ [LOG]，`research/2026-09-22-d2-tdm/timeout-opcode-conflict.md` |
 | `0x00230111` ＝ `Timeout_CN` | ✅ [DLL]，`state.md` |
@@ -41,7 +43,7 @@ v1 §3 說「不確定房主會不會送 CN 通知伺服器」——**有 12,472
 | 情況 | 勝方 |
 |---|---|
 | 某隊擊殺數達到 `GoalScore` | 該隊，立即結束 |
-| 時間到（收到 `Timeout_CN`） | 擊殺數較多的隊；**相同 ＝ 平手** |
+| 時間到（收到 `Timeout_CN`） | 擊殺數較多的隊；**相同時死亡數少的隊勝，仍相同則紅隊（0）勝**（PM 裁決，見 U2） |
 | 房主離線（`state==='playing'`） | 沿用現行 `room-leave.js:203-212` 的處理 |
 
 ## 3. 封包序列
@@ -58,10 +60,16 @@ v1 §3 說「不確定房主會不會送 CN 通知伺服器」——**有 12,472
 伺服器：比擊殺數決定勝方 → 跳到「結束」
 
 結束：
-伺服器 ──EndGame_SN 0x00222213──▶ 全房  （WinTeamIndex ＋ 兩隊 14-byte 分數紀錄）
-伺服器 ──User_Score_SN 0x00222221──▶ 全房（結算頁）
+伺服器 ──User_Score_SN 0x00222221──▶ 全房（結算頁資料，**先送**）
+伺服器 ──EndGame_SN 0x00222213──▶ 全房  （WinTeamIndex ＋ 兩隊 14-byte 分數紀錄，**後送**）
+        房間狀態 → ended（見 §3.1）
         → 回房（沿用 PvE 現行流程）
 ```
+
+### 3.1 結束必須冪等（PM 2026-09-22 審查追加）
+
+送出 `EndGame_SN` 之後房間進入 **`ended`** 狀態，**之後收到的 `Death_CN`／`Timeout_CN` 一律忽略並記 log**。
+理由：**加入者的計時器也會走到 00:00**，不能假設只有房主會送 `Timeout_CN`——兩人房就可能在同一秒收到兩包 `Timeout_CN`，擊殺達標與時間到也可能撞在一起。沒有這個狀態，同一場比賽會被結束兩次。
 
 ## 4. 每一包送給誰、填什麼
 
@@ -72,7 +80,7 @@ v1 §3 說「不確定房主會不會送 CN 通知伺服器」——**有 12,472
 | `Death_SN 0x00230124` | S→C | **全房（含加入者）** | 現行格式不變 | 現行已實作；加入者安全性見 §5 |
 | `Timeout_CN 0x00230111` | C→S | — | 空 body | 目前落進 `unhandled` fallback（只記 log、無回應），**要新開 handler** |
 | `EndGame_SN 0x00222213` | S→C | 全房 | `+0x10` WinTeamIndex，接兩個 14-byte 隊伍區塊，共 0x1E | 格式與 PvE 相同 ✅（PvE 已在送）；**要填真正的勝方與分數** |
-| `User_Score_SN 0x00222221` | S→C | 全房 | 只能在 `EndGame_SN` 的 Scene_Change(5) 之後被接受 | 🟡 Moon（`:223-238`）；我方 PvE 已在送，TDM 的逐人欄位要確認 |
+| `User_Score_SN 0x00222221` | S→C | 全房 | **在 `EndGame_SN` 之前送**（PvE 現行順序） | ✅ 我方 PvE 現行就是先 `User_Score_SN` 再 `EndGame_SN` 且結算頁正確（`source-tables.md` 表 A #14）；`ZDispatchRoom::Check`（`0x107e9eb0`）接受 scene 5 **或 6**。Moon「只能在 Scene_Change(5) 之後」是舊猜測，**不採用**。TDM 的逐人欄位要確認 |
 
 ### 14-byte 隊伍分數紀錄（`EndGame_SN` 與 `Timeout_SN` 共用）
 
@@ -105,17 +113,21 @@ v1 §3 說「不確定房主會不會送 CN 通知伺服器」——**有 12,472
    實作時要**寫成斷言**，不是註解。
 2. **隊伍值必須兩處一致**：`Game_User_SN` 的 `rec+0x02` 只能是 `Game_Info_SN` 的
    `+0x04`（0）或 `+0x06`（1）。`Game_User_Team_Get` 就是拿兩者比對，對不上會回 255。
-3. `EndGame_SN` 的 `WinTeamIndex` 也只能是 0、1，或平手值（⬜ 平手用什麼值要查）。
+3. `EndGame_SN` 的 `WinTeamIndex` **只能是 0 或 1**（平手規則見 U2，永遠會分出勝負）。
 
 ## 7. 實作步驟（每步一個開關，預設關；開關關閉時 golden replay 四樣本逐 byte 不變）
 
 | 步 | 開關 | 做什麼 | 怎麼驗 |
 |---|---|---|---|
 | **T1** | `PVP_TEAM_ASSIGN_MODE` | `Game_User_SN` TeamIndex 依加入順序輪流填 0／1 | 2 人實跑：兩人是否被分到不同顏色、互相是敵人 |
-| **T2** | `PVP_KILL_TRACKING_MODE` | 房間層級記錄兩隊擊殺數（從 `Death_CN` 的 attacker 歸隊） | log 印每隊擊殺數；比對實際擊殺 |
+| **T2** | `PVP_KILL_TRACKING_MODE` | 房間層級記錄兩隊擊殺數（從 `Death_CN` 的 attacker 歸隊）。**歸隊規則**：attacker 與 victim **同隊（含自殺）→ 不計分**（不採 −1，理由：沒有原廠依據，而 −1 會讓分數可能變負、計分板顯示未驗證）；**attacker 解析不到 → 記 WARN、不計分**。⚠️ **開工前提：`Death_CN` 的 attacker 欄位 offset 要先 ✅ [DLL]** | log 印每隊擊殺數；比對實際擊殺 |
 | **T3** | `PVP_TIMEOUT_MODE` | 新開 `Timeout_CN` handler：比擊殺數 → 送 `EndGame_SN`＋`User_Score_SN` | 把時限設成 1 分鐘，等它時間到 |
 | **T4** | `GAME_INFO_TDM_GOAL_MODE` | `Game_Info_SN +0x16` 填目標擊殺數；擊殺達標就結束 | 目標設小（例如 3），打到 3 殺 |
 | **T5** | — | 結算頁 → 回房 | 沿用 PvE 流程，確認兩人都回到房間 |
+
+**開關收斂**：每一步的開關驗證 ✅ 後 **7 天內收斂**（刪開關、保留驗證過的路徑），照 `AGENTS.md`。
+
+**第一次 2 人實跑唯一要盯的：加入者有沒有崩潰**（PM 2026-09-22）。其他都其次。§5 的 `Death_SN` 處置、T1 的分隊，都是在這一輪第一次被真正考驗。
 
 **順序理由**：T1 沒做，擊殺就無法歸隊；T3 比 T4 先，因為 `Timeout_CN` 是**已確認房主會送**的訊號，
 而「達到目標就結束」是**伺服器自己判斷**的規則，風險較高。
@@ -124,8 +136,8 @@ v1 §3 說「不確定房主會不會送 CN 通知伺服器」——**有 12,472
 
 | # | 未知 | 影響 | 怎麼解 |
 |---|---|---|---|
-| U1 | **TDM 是 mode 0 還是 1**（決定 GoalScore 寫 `+0x16` 還是別處） | T4 | 看建房封包的 mode 欄；或三個 GoalScore 欄位都填同一值（v1 的建議） |
-| U2 | **平手的 `WinTeamIndex` 填什麼** | T3 | 反編譯 `EndGame_SN` handler |
+| U1 | TDM 是 mode 0 還是 1（決定 GoalScore 寫 `+0x16` 還是別處） | T4 | **PM 裁決：照 v1，三個 GoalScore 欄位（`+0x15`／`+0x16`／`+0x18`）都填同一值** |
+| U2 | ~~平手的 `WinTeamIndex` 填什麼~~ **PM 裁決：不擋 T3** | — | **訂我們的規則：擊殺數相同時，死亡數少的隊勝；仍相同則紅隊（0）勝。`WinTeamIndex` 永遠是 0／1，不需要平手值。** 反編譯 `EndGame_SN` 找真正的平手值改列低優先，找到再換 |
 | U3 | **加入者的計分板會不會跟著 `Death_SN` 更新**，還是要靠 `Timeout_SN` 同步 | 顯示正確性 | T2 實跑時直接看加入者畫面；Moon 說 `Timeout_SN` 對加入者安全、可用來推分數（🟡） |
 | U4 | 房間裡換隊（`Team_Change_All_SN 0x00222121`）格式 | 讓玩家自己選隊 | **本稿不做**，T1 先用輪流分配 |
 | U5 | `Game_Score_SN 0x00222114` 格式 | 逐人計分板 | 本稿不做，Moon 自己也標未確認 |
