@@ -4,8 +4,9 @@ patch_netspeed_host.py
 
 Patches Engine.dll so the HOST's UNetConnection::CurrentNetSpeed (the value
 `AActor::ProcessRemoteFunction`'s IsNetReady check reads to decide whether to
-drop a reliable RPC that tick) is unconditionally forced to 100000, instead of
-being clamp(v, 1800, MaxClientRate)'d from whatever the client sent.
+drop a reliable RPC that tick) is unconditionally forced to a fixed value
+(100000 by default, override with --value), instead of being
+clamp(v, 1800, MaxClientRate)'d from whatever the client sent.
 
 Design and evidence trail: docs/research/2026-09-21-netspeed-host-patch/design.md
 (candidate 1b, PM-approved 2026-09-21). Do not re-derive the offsets from
@@ -20,17 +21,20 @@ reaches this code -- see design.md "把關一"). This is triggered by a player
 the in-game console; after this patch the value typed no longer matters.
 
 Three edits, 10 bytes total, all immediates or NOPs (no length change, no
-relocation to fix up):
+relocation to fix up). Table below shows the default (--value not given,
+i.e. 100000); the two immediate edits scale with --value, the NOP does not:
 
-  VA          file offset  original       patched        effect
-  0x1047f9b1  0x17f9b1     08 07 00 00    A0 86 01 00    cmp eax,0x708 -> cmp eax,100000
-  0x1047f9b5  0x17f9b5     7d 07          90 90          NOP out `jge` (was: v>=1800 -> go compare against cap)
-  0x1047f9b8  0x17f9b8     08 07 00 00    A0 86 01 00    mov eax,0x708 -> mov eax,100000
+  VA          file offset  original       patched (default)  effect
+  0x1047f9b1  0x17f9b1     08 07 00 00    A0 86 01 00         cmp eax,0x708 -> cmp eax,<value>
+  0x1047f9b5  0x17f9b5     7d 07          90 90               NOP out `jge` (was: v>=1800 -> go compare against cap)
+  0x1047f9b8  0x17f9b8     08 07 00 00    A0 86 01 00         mov eax,0x708 -> mov eax,<value>
 
-After patching, the branch always falls through to `mov eax,100000` then
-`jmp 0x1047f9c4`, which writes 100000 into Connection+0x50
+After patching, the branch always falls through to `mov eax,<value>` then
+`jmp 0x1047f9c4`, which writes <value> into Connection+0x50
 (CurrentNetSpeed) regardless of what the client sent. 0x1047f9be-0x1047f9c3
 (the old cap-compare code) becomes dead but is left byte-for-byte unchanged.
+<value> is 100000 unless overridden with --value (must fit in an unsigned
+32-bit immediate, i.e. 1..0xFFFFFFFF).
 
 Safety
 ------
@@ -47,10 +51,13 @@ Usage
   # dry run (default): verify hashes/bytes, report, write nothing
   tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2"
 
-  # actually patch (backs up first)
+  # actually patch (backs up first), default value 100000
   tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --apply
 
-  # put the backup back
+  # patch to a different value instead of the 100000 default
+  tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --apply --value 30000
+
+  # put the backup back (works regardless of which --value was applied)
   tools/patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --restore
 """
 
@@ -68,12 +75,20 @@ REL_DLL = os.path.join('data', 'System', 'Engine.dll')
 EXPECTED_SIZE = 5390336
 EXPECTED_SHA256 = 'fc51fe1240ee34111fc1a483e74a1b131d4b69f2b2a0940adbb4a860a138d24e'
 
-# (file_offset, original_bytes, patched_bytes, description)
-PATCHES = [
-    (0x17f9b1, bytes.fromhex('08070000'), bytes.fromhex('a0860100'), 'cmp eax,0x708 -> cmp eax,100000'),
-    (0x17f9b5, bytes.fromhex('7d07'),     bytes.fromhex('9090'),     'NOP out jge'),
-    (0x17f9b8, bytes.fromhex('08070000'), bytes.fromhex('a0860100'), 'mov eax,0x708 -> mov eax,100000'),
-]
+DEFAULT_VALUE = 100000
+MAX_U32 = 0xFFFFFFFF
+
+
+def build_patches(value):
+    """Return the (file_offset, original_bytes, patched_bytes, description)
+    list for a given netspeed value. The NOP-out-jge edit at 0x17f9b5 does
+    not depend on value; the cmp/mov immediates at 0x17f9b1/0x17f9b8 do."""
+    imm = value.to_bytes(4, 'little')
+    return [
+        (0x17f9b1, bytes.fromhex('08070000'), imm, f'cmp eax,0x708 -> cmp eax,{value}'),
+        (0x17f9b5, bytes.fromhex('7d07'),     bytes.fromhex('9090'), 'NOP out jge'),
+        (0x17f9b8, bytes.fromhex('08070000'), imm, f'mov eax,0x708 -> mov eax,{value}'),
+    ]
 
 BACKUP_TAG = 'netspeed-host'
 
@@ -105,8 +120,8 @@ def guard_target(target, i_know):
         )
 
 
-def describe_bytes(data):
-    for off, orig, patched, what in PATCHES:
+def describe_bytes(data, patches):
+    for off, orig, patched, what in patches:
         cur = bytes(data[off:off + len(orig)])
         if cur == orig:
             state = 'original'
@@ -122,6 +137,20 @@ def find_latest_backup(dll):
     return candidates[-1] if candidates else None
 
 
+def netspeed_value(s):
+    """argparse type= for --value: must be an integer that fits an unsigned
+    32-bit immediate (the cmp/mov patch bytes are exactly 4 bytes)."""
+    try:
+        v = int(s, 0)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f'{s!r} is not an integer')
+    if v <= 0 or v > MAX_U32:
+        raise argparse.ArgumentTypeError(
+            f'{s!r} out of range: must be a positive integer <= {MAX_U32} (0x{MAX_U32:08x})'
+        )
+    return v
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.strip().split('\n')[0])
     ap.add_argument('--target', required=True,
@@ -129,6 +158,9 @@ def main():
                           '(must be the disposable copy, not the main install)')
     ap.add_argument('--i-know-this-is-the-copy', action='store_true', dest='i_know',
                      help='required if --target basename is not literally "MetalRage Online 2"')
+    ap.add_argument('--value', type=netspeed_value, default=DEFAULT_VALUE,
+                     help=f'netspeed immediate to write at both patch sites (default {DEFAULT_VALUE}); '
+                          f'must be a positive integer that fits an unsigned 32-bit immediate')
     ap.add_argument('--apply', action='store_true',
                      help='actually write the patch (default is dry-run: verify and report only)')
     ap.add_argument('--restore', action='store_true',
@@ -142,11 +174,18 @@ def main():
 
     guard_target(a.target, a.i_know)
 
+    patches = build_patches(a.value)
+
     dll = os.path.join(a.target, REL_DLL)
     if not os.path.isfile(dll):
         sys.exit(f'not found: {dll}')
 
     if a.restore:
+        # --restore only copies the backup back; it does not need to know
+        # which --value (if any) was applied when the backup was made. The
+        # describe_bytes() call below still works because the "original"
+        # bytes at each offset never depend on value -- only "patched" does,
+        # and a successful restore should read back as "original" regardless.
         bak = a.backup or find_latest_backup(dll)
         if not bak or not os.path.isfile(bak):
             sys.exit(f'no backup to restore (looked for {dll}.bak-{BACKUP_TAG}-*)')
@@ -154,7 +193,7 @@ def main():
         print(f'restored from {bak}')
         print(f'sha256 now {sha256(dll)}')
         with open(dll, 'rb') as f:
-            describe_bytes(f.read())
+            describe_bytes(f.read(), patches)
         return
 
     with open(dll, 'rb') as f:
@@ -176,11 +215,12 @@ def main():
             )
         print('--force given: skipping whole-file SHA256 check, per-byte check below still applies')
 
-    print('\ncurrent state of the three patch offsets:')
-    describe_bytes(data)
+    print(f'\ntarget value: {a.value}')
+    print('current state of the three patch offsets:')
+    describe_bytes(data, patches)
 
     mismatches = []
-    for off, orig, patched, what in PATCHES:
+    for off, orig, patched, what in patches:
         cur = data[off:off + len(orig)]
         if cur != orig:
             mismatches.append((off, orig, cur, what))
@@ -203,7 +243,7 @@ def main():
     print(f'\nbackup -> {bak}')
 
     data = bytearray(data)
-    for off, orig, patched, what in PATCHES:
+    for off, orig, patched, what in patches:
         data[off:off + len(patched)] = patched
 
     with open(dll, 'wb') as f:
@@ -214,7 +254,7 @@ def main():
 
     print(f'\nwrote patch. sha256 now {sha256(dll)}')
     print('\nstate after patch (re-read from disk):')
-    describe_bytes(after)
+    describe_bytes(after, patches)
     print(f'\nRestore with: --restore  (backup: {bak})')
 
 
