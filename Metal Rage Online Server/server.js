@@ -2,6 +2,7 @@ const NetworkClient = require('./client.js');
 const { createServer } = require('net');
 const packetlog = require('./packetlog.js');
 const session = require('./session.js');
+const db = require('./database/db.js');
 // D1-4 correction (docs/design/d1-multiplayer-room.md §4 "斷線即離開",
 // 2026-09-19 PM decision): the original step-1 comment here described a
 // planned grace-period/reconnect design. That plan was dropped -- log
@@ -225,8 +226,14 @@ class DispatchServer
 // binding the real ports 9211/30907 a second time. Nothing here changes
 // what happens when server.js is run the normal way: require.main === module
 // is true in that case, same as before this guard existed.
-function main()
+async function main()
 {
+    // 2026-09-23 (operator + PM roadmap item 0): fail loud, before either
+    // listener opens, if MySQL is not reachable -- see
+    // database/db.js's verifyConnectionOrExit() for why this exists.
+    // Single attempt; exits the process on failure (no retry loop).
+    await db.verifyConnectionOrExit();
+
     // Dispatch server handles: Account login, Gate (server/channel selection)
     const dispatchServices = require('./dispatch.js');
     const dispatchServer = new DispatchServer('DispatchServer', SERVER_PORT, dispatchServices);
@@ -366,6 +373,12 @@ function main()
 }
 
 if (require.main === module)
-    main();
+    main().catch((err) => {
+        // Defensive only: verifyConnectionOrExit() above already
+        // process.exit(1)s on its own failure. This only fires if
+        // something else in main() throws before/after that call.
+        console.error('[server] FATAL during startup:', err);
+        process.exit(1);
+    });
 
 module.exports = { DispatchServer };
