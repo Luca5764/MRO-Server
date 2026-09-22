@@ -1276,6 +1276,54 @@ def create_pve_room(ctx):
                          satisfied_by=satisfied_by)
 
 
+def create_pvp_room(ctx):
+    """Triggered by: clicking 建立房間 in the lobby, then clicking 確認 in the
+    create-room dialog WITHOUT switching tabs -- 對戰模式 (PVP) is the
+    dialog's default-active tab (per create_pve_room()'s own docstring
+    above, and screens.py BUILD_SPEC["tabs"]["dialog_pvp"]'s comment: "the
+    dialog's default-active tab"), so creating a PvP room is
+    create_pve_room()'s same flow minus its tab-switch step. Completion
+    accepts the room screen OR its NOTICE popup on top of it, same as
+    create_pve_room() (see _room_or_notice_check()'s docstring) -- this
+    task (2026-09-22) did not re-derive that reasoning, just reused it.
+
+    fail-closed: unlike create_pve_room() (which actively drives the tab to
+    a known state by clicking it), this action only VERIFIES dialog_pvp is
+    already active, via _dialog_tab_check("dialog_pvp"), before clicking
+    確認. If the client remembered a different tab from a previous
+    create-room session (no observation either way -- untested), this
+    action fails here with 確認 never clicked, rather than blindly
+    confirming and creating the wrong room type."""
+    t0 = time.monotonic()
+    pre = _precondition(ctx, "create_pvp_room", "lobby", _screen_check("lobby"))
+    if pre:
+        return pre
+    steps = []
+    if not ctx.dry_run:
+        steps.append(click_at(ctx, CREATE_ROOM_BUTTON))
+    ok, gray, detail, score, shot, _ = wait_for(ctx, "create_pvp_room-dialog", 6.0, _marker_check("create_dialog"))
+    if not ok:
+        return ActionResult("create_pvp_room", False, gray, time.monotonic() - t0,
+                             f"create-room dialog did not appear: {detail}", shot, score, steps)
+    ok, gray, detail, score, shot, _ = wait_for(ctx, "create_pvp_room-tab", 4.0, _dialog_tab_check("dialog_pvp"))
+    if not ok:
+        return ActionResult("create_pvp_room", False, gray, time.monotonic() - t0,
+                             "對戰模式 (PVP) tab is not the active default -- refusing to click 確認 "
+                             f"without switching tabs (client may have remembered a previous tab "
+                             f"selection, e.g. from a prior create_pve_room() run): {detail}", shot, score, steps)
+    if not ctx.dry_run:
+        steps.append(click_at(ctx, CREATE_CONFIRM_BUTTON))
+    ok, gray, detail, score, shot, _ = wait_for(ctx, "create_pvp_room-confirm", 10.0, _room_or_notice_check())
+    # Same satisfied_by bookkeeping as create_pve_room() above -- see that
+    # comment block for why (2026-09-21 incident this task reused, not
+    # re-derived).
+    satisfied_by, warn = _room_or_notice_satisfied_by(detail)
+    if warn:
+        detail = f"{detail} -- {warn}"
+    return ActionResult("create_pvp_room", ok, gray, time.monotonic() - t0, detail, shot, score, steps,
+                         satisfied_by=satisfied_by)
+
+
 def select_map(ctx, name):
     """Triggered by: clicking 選擇地圖▼ in the room (opens the map-select
     popup, see shots/esc-01-mapsel.png), then clicking one of its four map
@@ -3024,6 +3072,7 @@ ACTIONS = {
     "console_cmd": console_cmd,
     "dismiss_notice": dismiss_notice,
     "create_pve_room": create_pve_room,
+    "create_pvp_room": create_pvp_room,
     "select_map": select_map,
     "start_battle": start_battle,
     "campaign_win_all": campaign_win_all,
