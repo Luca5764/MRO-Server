@@ -272,6 +272,21 @@ const ROOM_STATE_RETRY_SCHEDULE = [
 // R3b verified: the 6-byte zero success header prevents the client error.
 // Evidence: docs/journal/2026-09-18-10-map-change-one-sa.md.
 const MAP_CHANGE_SA_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
+// ROOM-MAPROUND (docs/journal/2026-09-22-2230-pvp-2p-first.md "b5 沒被存起
+// 來"的機制段): triggered by the player clicking a map/difficulty tile in
+// the room's map picker (Room_Map_Change_One_CQ 0x00220221). The MapTime/
+// MapRound/MapKill/Goal fields that CQ carries (w2/b5/w6/w8) used to only be
+// adopted into client.playRound_/mapChangeOneTime_/etc. (and mirrored into
+// the shared Room) when the CQ's map id (w1) also fell in the PvE campaign
+// cache-key range 9001-9012 -- a PvP room's map ids (e.g. 1031) never
+// satisfy that, so its Map_Change_One_SA echo (buildMapChangeOneSaFields
+// below) kept whatever stale playRound_ CQ_CREATE had left there instead of
+// the value the player just picked. 'enabled' adopts those four fields on
+// every Map_Change_One_CQ regardless of map id; campaignMapCacheKey_ itself
+// stays PvE-range-gated (adopting a PvP map id there would be wrong -- it
+// feeds the PvE map-cache lookup, a separate concern). Default 'disabled':
+// byte-identical to the old range-gated-only behavior.
+const MAP_CHANGE_ONE_ROUND_PERSIST_MODE = 'disabled'; // 'disabled' | 'enabled'
 const MAP_CHANGE_ONE_SA_EXPERIMENT = {
     mode: 'manual',  // SA에 현재 선택된 맵 캐시키를 반환 (returns the currently selected map cache key in the SA)
     manual: {
@@ -511,8 +526,33 @@ function sendRoomGameWaitSn(client, tag)
 // host) -> 0 (red), 2nd -> 1 (blue), 3rd -> 0, ... (only 2 members are
 // expected for T1's 2-person scope; the alternation is here for when 4-way
 // rooms are tested later, per design §1).
+//
+// ROOM-TEAM-NEW-MEMBER (docs/journal/2026-09-22-2230-pvp-2p-first.md "房間畫面
+// 兩人都在紅隊", contract 2026-09-23 follow-ups): member.team is now the sole
+// source of truth for a member's team -- rooms.js's assignTeamForNewMember()
+// (called from addMember() only, for the joining member alone -- never
+// rebalances anyone already in the room, see that function's comment for
+// why) is the only place it gets computed. While rooms.isRoomMemberTeamEnabled()
+// is true *and* PVP_TEAM_ASSIGN_MODE is 'enabled', this function just reads
+// that value back instead of keeping its own separate join-order copy --
+// the old copy (computed once per battle attempt, cached on
+// room.battleStartGen) could disagree with the room screen's own display
+// once someone left and rejoined between the room screen being drawn and
+// battle start. Requiring PVP_TEAM_ASSIGN_MODE too (not just
+// ROOM_MEMBER_TEAM_MODE) keeps the two switches' scopes separate, per
+// contract "一次只改一個變數": ROOM_MEMBER_TEAM_MODE alone only changes the
+// room-screen display (member.team, written by assignTeamForNewMember() --
+// see its own "no-op while disabled" gate for why that alone cannot change
+// what Game_User_SN sends), never resolvePvpTeamIndex()'s battle-start
+// output. When either switch is off, this falls through to the original
+// PVP_TEAM_ASSIGN_MODE-gated cache below, byte-identical to before this
+// change -- that switch's own gating is untouched.
 function resolvePvpTeamIndex(room, accountId)
 {
+    if (rooms.isRoomMemberTeamEnabled() && PVP_TEAM_ASSIGN_MODE === 'enabled') {
+        const member = room && room.members.get(accountId);
+        return member ? member.team : 0;
+    }
     if (PVP_TEAM_ASSIGN_MODE !== 'enabled' || !room || Number(room.rawRoomType) !== 2) {
         return 0;
     }
@@ -1398,6 +1438,11 @@ class ZGateGameDispatch
                     rooms.addMember(room.id, {
                         accountId: hostAccountId,
                         nickname,
+                        // ROOM-TEAM-NEW-MEMBER: team is decided by
+                        // rooms.js's assignTeamForNewMember() inside this
+                        // same addMember() call -- whatever is passed here
+                        // is superseded, so there is nothing to compute on
+                        // this side anymore.
                         team: 0,
                         slot: 0,
                         ready: false,
@@ -2130,7 +2175,12 @@ class ZGateGameDispatch
                 rooms.addMember(room.id, {
                     accountId,
                     nickname,
-                    team: 0, // PvE all-red (design §2, R11); PvP team assignment is M4, out of scope here
+                    // ROOM-TEAM-NEW-MEMBER: was hardcoded 0 ("PvE all-red,
+                    // design §2, R11" -- still true when the switch is off).
+                    // team is now decided by rooms.js's
+                    // assignTeamForNewMember() inside this same addMember()
+                    // call, so there is nothing to compute here.
+                    team: 0,
                     slot: 0,
                     ready: false,
                     client,
@@ -2197,9 +2247,20 @@ class ZGateGameDispatch
                 // Tell whoever was already in the room about the new
                 // arrival. No scene-change race for them -- they are
                 // already sitting in the room scene.
+                // ROOM-TEAM-DISPLAY: was a synthetic `{ accountId, nickname,
+                // team: 0, client }` stand-in for the joiner's own member
+                // record -- team hardcoded even though rooms.addMember()
+                // above already computed and stored the real one. The joiner
+                // is already a live entry in room.members by this point;
+                // 'enabled' reads it back instead of rebuilding a second
+                // copy of the same fields with team stuck at 0. Disabled
+                // path keeps constructing the same ad hoc object as before,
+                // byte-identical.
+                const joinerCtxSource = (rooms.isRoomMemberTeamEnabled() && room.members.get(accountId))
+                    || { accountId, nickname, team: 0, client };
                 for (const member of otherMembers) {
                     if (!member.client) continue;
-                    sendRoomUserPackets(member.client, buildMemberUserCtx({ accountId, nickname, team: 0, client }), getExactMessageBuffer, { includeMaster: false });
+                    sendRoomUserPackets(member.client, buildMemberUserCtx(joinerCtxSource), getExactMessageBuffer, { includeMaster: false });
                 }
                 console.log(`[ZGateGameDispatch] >> Notified ${otherMembers.length} existing room member(s) of new arrival (account=${accountId})`);
 
@@ -2227,8 +2288,15 @@ class ZGateGameDispatch
                 // Map_Change_One_CQ (ZDispatchRoom 0x107eec30): w1 = MapIndex,
                 // b5 = MapRound. Take the difficulty/map the player switched to,
                 // before the SA and the room map resend read campaignMapCacheKey_.
-                if (incomingFields.w1 >= 9001 && incomingFields.w1 <= 9012) {
+                const inPveMapRange = incomingFields.w1 >= 9001 && incomingFields.w1 <= 9012;
+                if (inPveMapRange) {
                     client.campaignMapCacheKey_ = incomingFields.w1;
+                }
+                // ROOM-MAPROUND: old behavior only ran this block when
+                // inPveMapRange (see MAP_CHANGE_ONE_ROUND_PERSIST_MODE's
+                // comment above) -- keep that exact gating while the switch
+                // is off; 'enabled' additionally persists a PvP room's pick.
+                if (inPveMapRange || MAP_CHANGE_ONE_ROUND_PERSIST_MODE === 'enabled') {
                     client.playRound_ = incomingFields.b5;
                     // Preserve the settings accepted with Map_Change_One_CQ
                     // for the following SN_MAP_CHANGE_ONE resend.
