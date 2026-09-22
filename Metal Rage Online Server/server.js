@@ -11,6 +11,11 @@ const db = require('./database/db.js');
 // disconnect" case to time out. A closed socket always means "gone".
 const rooms = require('./rooms.js');
 const { leaveRoomAndNotify } = require('./dispatch/room/room-leave');
+// T2.5a: manual `/pvpscore` console command, default-off (see its own file
+// header for the full contract). Required unconditionally so the switch
+// check below (isPvpTeamScoreSyncEnabled()) can decide, at startup, whether
+// to register the console command at all.
+const pvpScoreDebug = require('./dispatch/room/pvp-score-debug.js');
 
 const SERVER_PORT = 9211;
 const GAME_PORT = 30907;
@@ -365,11 +370,20 @@ async function main()
     // Lets the operator annotate the recording from the console while playing:
     // type what you just did in the client, press Enter, and it lands in the log
     // between the packets it caused.
-    packetlog.listenForMarkers({
+    const consoleCommands = {
         '/reload': reloadServices,
         '/conns': listConnections,
         '/drop': dropAccount,
-    });
+    };
+    // T2.5a: '/pvpscore' only gets registered at all while
+    // PVP_TEAM_SCORE_SYNC_MODE is 'enabled' -- with the switch at its
+    // default 'disabled', this branch never runs, so the command does not
+    // exist (typing it falls through to a plain marker, same as any other
+    // unrecognized text), not "registered but rejects the call".
+    if (pvpScoreDebug.isPvpTeamScoreSyncEnabled())
+        consoleCommands['/pvpscore'] = pvpScoreDebug.handlePvpScoreCommand;
+
+    packetlog.listenForMarkers(consoleCommands);
 }
 
 if (require.main === module)
