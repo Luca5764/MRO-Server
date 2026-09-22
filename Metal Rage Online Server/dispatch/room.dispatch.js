@@ -225,7 +225,7 @@ function resetRoomSessionState(client) {
     client.maxPlayers_ = 0;
     client.gameMode_ = 0;
     client.campaignRoom_ = false;
-    client.campaignStarted_ = false;
+    client.battleStartSequenceArmed_ = false;
     client.gameStarted_ = false;
     client.readyHostHandshakeSent_ = false;
     client.gameUserBootstrapSent_ = false;
@@ -578,9 +578,19 @@ class ZRoomDispatch
                 console.log(`[ZRoomDispatch] >> Body: ${body.toString('hex')}`);
 
                 client.gameStarted_ = true;
-                client.campaignStarted_ = (Number(client.rawRoomType_) === 1) ||
+                // PVP-START rename only (no formula change here): this case
+                // is dead code -- 0x00240301 is actually
+                // ZDispatchHangar::Item_Expiration_SN, a server->client
+                // opcode the client never sends as this "CN" (see
+                // docs/client-dispatch-map.md:161,497,
+                // docs/reference/multiplayer-audit.md:29). Real Game_Start_CN
+                // is 0x00222103 in gate.game.dispatch.js. Not adding the
+                // PVP_START_FLOW_MODE OR-clause here (that switch lives in
+                // gate.game.dispatch.js/map-info.sender.js) since this path
+                // never runs; renamed only so it does not silently diverge.
+                client.battleStartSequenceArmed_ = (Number(client.rawRoomType_) === 1) ||
                     (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5);
-                if (client.campaignStarted_) {
+                if (client.battleStartSequenceArmed_) {
                     console.log(`[ZRoomDispatch] >> Campaign solo start armed: room=${client.roomIndex_ || 0}, map=${client.mapId_ || 0}`);
                 }
 

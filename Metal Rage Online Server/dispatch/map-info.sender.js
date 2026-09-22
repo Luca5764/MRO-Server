@@ -19,15 +19,34 @@
 let mapInfoRealIdMode = 'enabled'; // 'disabled' | 'enabled'
 const MAP_INFO_REAL_IDS = [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009, 9010, 9011, 9012];
 
+// PVP-START (2026-09-22 contract, docs/journal/2026-09-22-*-pvp-start-flow.md):
+// layer 1 of the three-layer PvP-start gap (docs/research/2026-09-22-d2-tdm/
+// pvp-start-gap.md Q2) -- MapInfo_SN never sent any PvP map id, so the
+// client's Account_MapList_Check always rejects the 8 TDM maps even when the
+// room-scene MapType filter would otherwise let a PvP room through. Same 8
+// ids as room.dispatch.js's MAP_IDS_PVP (dispatch/room.dispatch.js:180,
+// sourced from Cache.Bin Table 1, see source-tables.md table A footnote) --
+// kept as its own copy here rather than a cross-file require, same
+// precedent as CAMPAIGN_MAP_ALL_HINTS/ROOM_DEFAULT_ENTRY_HINTS being
+// duplicated between room.dispatch.js and gate.game.dispatch.js.
+// Default 'disabled': resolveRealMapIds() below returns exactly
+// MAP_INFO_REAL_IDS, byte-identical to before this switch existed.
+const PVP_START_FLOW_MODE = 'disabled'; // 'disabled' | 'enabled'
+const MAP_IDS_PVP = [1011, 1021, 1031, 1041, 1051, 1061, 1071, 1081];
+
 const SN_MAP_INFO = 0x210115;
 
 function _setMapInfoRealIdModeForTests(mode) {
     mapInfoRealIdMode = mode;
 }
 
-/** Real PvE ids when mapInfoRealIdMode is 'enabled', else null (caller supplies its own legacy list). */
+/** Real PvE ids when mapInfoRealIdMode is 'enabled', else null (caller supplies its own legacy list).
+ *  PVP_START_FLOW_MODE 'enabled' additionally appends the 8 TDM map ids. */
 function resolveRealMapIds() {
-    return mapInfoRealIdMode === 'enabled' ? MAP_INFO_REAL_IDS : null;
+    if (mapInfoRealIdMode !== 'enabled') return null;
+    return PVP_START_FLOW_MODE === 'enabled'
+        ? MAP_INFO_REAL_IDS.concat(MAP_IDS_PVP)
+        : MAP_INFO_REAL_IDS;
 }
 
 // Writes and sends SN_MAP_INFO 0x00210115: [u8 0][u8 count][u32 mapId]*count.
@@ -44,4 +63,4 @@ function sendMapInfoSN(client, mapIds) {
     client.send(msg);
 }
 
-module.exports = { SN_MAP_INFO, MAP_INFO_REAL_IDS, resolveRealMapIds, sendMapInfoSN, _setMapInfoRealIdModeForTests };
+module.exports = { SN_MAP_INFO, MAP_INFO_REAL_IDS, PVP_START_FLOW_MODE, MAP_IDS_PVP, resolveRealMapIds, sendMapInfoSN, _setMapInfoRealIdModeForTests };

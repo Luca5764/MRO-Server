@@ -124,16 +124,18 @@ async function main()
         assert.strictEqual(startHandled, true, 'Game_Start_CN 0x00222103 must be handled');
 
         // SOL-REVIEW-2 must-fix list (docs/research/2026-09-19-sol-review/
-        // batch2.md): gameStarted_/campaignStarted_ must be set
-        // synchronously (before any of the setTimeout callbacks even run)
-        // on every live room member's own client, not only the trigger's --
-        // otherwise a non-host's later 0x00230111 lobby poll would be
-        // treated as a real return to the lobby.
+        // batch2.md): gameStarted_/battleStartSequenceArmed_ (renamed from
+        // campaignStarted_, PVP-START 2026-09-22 contract -- same value,
+        // clearer name) must be set synchronously (before any of the
+        // setTimeout callbacks even run) on every live room member's own
+        // client, not only the trigger's -- otherwise a non-host's later
+        // 0x00230111 lobby poll would be treated as a real return to the
+        // lobby.
         assert.strictEqual(clientA.gameStarted_, true, 'A (host, trigger) must have gameStarted_=true');
         assert.strictEqual(clientB.gameStarted_, true, 'B (non-host) must also have gameStarted_=true, not just the trigger');
-        assert.strictEqual(clientA.campaignStarted_, true, 'A must have campaignStarted_=true (PvE room)');
-        assert.strictEqual(clientB.campaignStarted_, true, 'B must also have campaignStarted_=true');
-        console.log('[room-battle-start-broadcast test] PASS: gameStarted_/campaignStarted_ are set on every live room member, not only the trigger');
+        assert.strictEqual(clientA.battleStartSequenceArmed_, true, 'A must have battleStartSequenceArmed_=true (PvE room)');
+        assert.strictEqual(clientB.battleStartSequenceArmed_, true, 'B must also have battleStartSequenceArmed_=true');
+        console.log('[room-battle-start-broadcast test] PASS: gameStarted_/battleStartSequenceArmed_ are set on every live room member, not only the trigger');
 
         while (fakeTimers.hasPending()) {
             fakeTimers.fireNext();

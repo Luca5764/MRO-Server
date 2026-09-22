@@ -32,6 +32,11 @@ const matchStats = require('./room/match-stats');
 // getHostAddress() to decide whether a would-be host of a 2+ member room is
 // allowed to start a battle at all.
 const whitelist = require('../config/whitelist.js');
+// PVP-START (2026-09-22 contract, docs/journal/2026-09-22-*-pvp-start-flow.md):
+// PVP_START_FLOW_MODE/MAP_IDS_PVP are single-sourced in map-info.sender.js
+// (a dependency-free leaf, no cycle risk) so this file and map-info.sender.js
+// itself never toggle the switch independently.
+const { PVP_START_FLOW_MODE, MAP_IDS_PVP } = require('./map-info.sender');
 
 // ZGateGameDispatch - Handles Gate-range (0x22XXXX) messages on the GAME server
 //
@@ -242,6 +247,12 @@ let HOST_ADDRESS_REQUIRE_MODE = 'enabled'; // 'disabled' | 'enabled'
 
 // Map_PC01 easy — the campaign room's default until the client picks another.
 const MAP_ID_DEFAULT_CAMPAIGN = 9001;
+// PVP-START: Map_C08 (십자로, 十字路口) — same value as room.dispatch.js's
+// MAP_ID_DEFAULT_PVP (dispatch/room.dispatch.js:182), duplicated here rather
+// than cross-required, same precedent as MAP_ID_DEFAULT_CAMPAIGN's own
+// neighbours in this file (CAMPAIGN_MAP_ALL_HINTS/ROOM_DEFAULT_ENTRY_HINTS).
+// Only read when PVP_START_FLOW_MODE is 'enabled' (see CQ_CREATE below).
+const MAP_ID_DEFAULT_PVP = 1011;
 
 const ROOM_STATE_RETRY_SCHEDULE = [
     [350, 'delayed'],
@@ -789,8 +800,8 @@ function scheduleGameWaitSnExperiment(client)
     if (GAME_WAIT_SN_EXPERIMENT_MODE !== 'enabled') {
         return;
     }
-    if (!client.campaignStarted_) {
-        console.log(`[ZGateGameDispatch] >> Skipped Game_Wait_SN experiment (campaignStarted_=false)`);
+    if (!client.battleStartSequenceArmed_) {
+        console.log(`[ZGateGameDispatch] >> Skipped Game_Wait_SN experiment (battleStartSequenceArmed_=false)`);
         return;
     }
     if (client.gameWaitExperimentSent_) {
@@ -810,8 +821,8 @@ function schedulePostGameWaitReadyHost(client)
     if (POST_GAME_WAIT_READY_HOST_MODE !== 'enabled') {
         return;
     }
-    if (!client.campaignStarted_) {
-        console.log(`[ZGateGameDispatch] >> Skipped post-Game_Wait Ready_Host (campaignStarted_=false)`);
+    if (!client.battleStartSequenceArmed_) {
+        console.log(`[ZGateGameDispatch] >> Skipped post-Game_Wait Ready_Host (battleStartSequenceArmed_=false)`);
         return;
     }
     if (client.postGameWaitReadyHostSent_) {
@@ -833,8 +844,8 @@ function scheduleGameInfoSnExperiment(client)
     if (GAME_INFO_SN_EXPERIMENT_MODE !== 'enabled') {
         return;
     }
-    if (!client.campaignStarted_) {
-        console.log(`[ZGateGameDispatch] >> Skipped Game_Info_SN experiment (campaignStarted_=false)`);
+    if (!client.battleStartSequenceArmed_) {
+        console.log(`[ZGateGameDispatch] >> Skipped Game_Info_SN experiment (battleStartSequenceArmed_=false)`);
         return;
     }
     if (client.waitingGameInfoExperimentSent_) {
@@ -855,8 +866,8 @@ function primeReadyHostHandshake(client)
     if (READY_HOST_GATE_PRIME_MODE !== 'enabled') {
         return;
     }
-    if (!client.campaignStarted_) {
-        console.log(`[ZGateGameDispatch] >> Skipped Ready_Host prime (campaignStarted_=false)`);
+    if (!client.battleStartSequenceArmed_) {
+        console.log(`[ZGateGameDispatch] >> Skipped Ready_Host prime (battleStartSequenceArmed_=false)`);
         return;
     }
     if (client.readyHostHandshakeSent_) {
@@ -1260,10 +1271,21 @@ class ZGateGameDispatch
                 // DefaultMap==3, i.e. 9010 Map_PC04 easy). PvE map ids are
                 // 9001..9012, three difficulties per map ((index-9001)/3,
                 // ZPanel_PVE.uc:328). Anything else falls back to 9001.
+                //
+                // PVP-START: layer 2 of the three-layer PvP-start gap
+                // (pvp-start-gap.md Q4) -- unconditionally falling back to
+                // MAP_ID_DEFAULT_CAMPAIGN (9001, a PvE map) meant even a PvP
+                // room's sendGameInfoSn()/sendReadyHostSn() would send the
+                // wrong map. PVP_START_FLOW_MODE 'enabled' routes a PvP room
+                // (raw roomType===2, see Q6) through MAP_IDS_PVP/
+                // MAP_ID_DEFAULT_PVP instead; default 'disabled' keeps the
+                // branch below byte-identical to before.
                 {
                     const pickedMap = body.length >= 4 ? body.readUInt16LE(2) : 0;
-                    client.campaignMapCacheKey_ = (pickedMap >= 9001 && pickedMap <= 9012)
-                        ? pickedMap : MAP_ID_DEFAULT_CAMPAIGN;
+                    const isPvpRoomForMapDefault = PVP_START_FLOW_MODE === 'enabled' && Number(roomType) === 2;
+                    client.campaignMapCacheKey_ = isPvpRoomForMapDefault
+                        ? (MAP_IDS_PVP.includes(pickedMap) ? pickedMap : MAP_ID_DEFAULT_PVP)
+                        : ((pickedMap >= 9001 && pickedMap <= 9012) ? pickedMap : MAP_ID_DEFAULT_CAMPAIGN);
                 }
                 client.readyHostHandshakeSent_ = false;
                 client.gameUserBootstrapSent_ = false;
@@ -1711,10 +1733,10 @@ class ZGateGameDispatch
 
                     // SOL-REVIEW-2 must-fix list (docs/research/
                     // 2026-09-19-sol-review/batch2.md): this PvE-map default
-                    // fallback plus gameStarted_/campaignStarted_ used to
+                    // fallback plus gameStarted_/battleStartSequenceArmed_ used to
                     // only ever be set on the triggering connection's own
                     // client -- a non-host member's own gameStarted_/
-                    // campaignStarted_ stayed false forever, so its later
+                    // battleStartSequenceArmed_ stayed false forever, so its later
                     // 0x00230111 (lobby poll) got treated as a genuine
                     // return to the lobby (lobby.dispatch.js's channel-enter
                     // handler) instead of "already in a started battle".
@@ -1724,7 +1746,7 @@ class ZGateGameDispatch
                     // isTrueCampaign_ (Enter_CQ already mirrors
                     // room.isTrueCampaign onto a joiner's connection, so this
                     // reads the same value the host's own field would);
-                    // campaignStarted_ reads room.isTrueCampaign directly
+                    // battleStartSequenceArmed_ reads room.isTrueCampaign directly
                     // (CQ_CREATE computed both isTrueCampaign_ and
                     // rawRoomType_ === 1 / gameMode_ === 4|5 from the exact
                     // same CQ_CREATE fields, so this is the identical value
@@ -1738,15 +1760,24 @@ class ZGateGameDispatch
                             if (member.client.isTrueCampaign_ && !member.client.campaignMapCacheKey_)
                                 member.client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
                             member.client.gameStarted_ = true;
-                            member.client.campaignStarted_ = !!roomForBattleBroadcast.isTrueCampaign;
+                            // PVP-START: battleStartSequenceArmed_ is the
+                            // "run the post-Game_Start_CN sequence" flag, not
+                            // "is this a campaign room" (that stays
+                            // isTrueCampaign_/room.isTrueCampaign, untouched
+                            // above). Default 'disabled' -> identical to the
+                            // pre-existing isTrueCampaign_-only value.
+                            member.client.battleStartSequenceArmed_ = !!roomForBattleBroadcast.isTrueCampaign ||
+                                (PVP_START_FLOW_MODE === 'enabled' && Number(roomForBattleBroadcast.rawRoomType) === 2);
                         }
                     } else {
                         // Push to scene 6 first, then set the map there.
                         if (client.isTrueCampaign_ && !client.campaignMapCacheKey_)
                             client.campaignMapCacheKey_ = MAP_ID_DEFAULT_CAMPAIGN;
                         client.gameStarted_ = true;
-                        client.campaignStarted_ = (Number(client.rawRoomType_) === 1) ||
-                            (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5);
+                        // PVP-START: same armed-vs-campaign split as above.
+                        client.battleStartSequenceArmed_ = (Number(client.rawRoomType_) === 1) ||
+                            (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5) ||
+                            (PVP_START_FLOW_MODE === 'enabled' && Number(client.rawRoomType_) === 2);
                     }
 
                     if (useRoomBattleBroadcast) {
@@ -1859,10 +1890,18 @@ class ZGateGameDispatch
                 sendGameInfoSn(client, 'immediate, on game-start cq');
 
                 client.gameStarted_ = true;
-                client.campaignStarted_ = (Number(client.rawRoomType_) === 1) ||
-                    (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5);
-                console.log(`[ZGateGameDispatch] >> Armed gameStarted_=${client.gameStarted_} campaignStarted_=${client.campaignStarted_}`);
-                if (READY_HOST_GATE_PRIME_MODE === 'enabled' && client.campaignStarted_) {
+                // PVP-START: same armed-vs-campaign split as the
+                // SERVER_DRIVEN_START_MODE branch above. NOTE: this whole
+                // block sits past that branch's own `return true` (line
+                // ~1854), so with SERVER_DRIVEN_START_MODE's current default
+                // ('enabled') this line never runs -- kept in sync anyway so
+                // toggling that switch back off does not silently regress
+                // this one.
+                client.battleStartSequenceArmed_ = (Number(client.rawRoomType_) === 1) ||
+                    (Number(client.gameMode_) === 4 || Number(client.gameMode_) === 5) ||
+                    (PVP_START_FLOW_MODE === 'enabled' && Number(client.rawRoomType_) === 2);
+                console.log(`[ZGateGameDispatch] >> Armed gameStarted_=${client.gameStarted_} battleStartSequenceArmed_=${client.battleStartSequenceArmed_}`);
+                if (READY_HOST_GATE_PRIME_MODE === 'enabled' && client.battleStartSequenceArmed_) {
                     sendReadyHostSq(client);
                 }
                 // Game_Info_SN을 먼저 보내고, 그 다음 Game_Ready_SN + Game_Start_SN (send Game_Info_SN first, then Game_Ready_SN + Game_Start_SN)

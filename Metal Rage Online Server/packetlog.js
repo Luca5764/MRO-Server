@@ -85,7 +85,7 @@ const CONTEXT_FIELDS = [
     'mapId_',
     'gameMode_',
     'gameStarted_',
-    'campaignStarted_',
+    'battleStartSequenceArmed_',
     'isTrueCampaign_',
     'currentHangarSlot_',
 ];
