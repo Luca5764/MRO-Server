@@ -1,0 +1,8 @@
+LIBRARY VERSION.dll
+EXPORTS
+GetFileVersionInfoA@16
+GetFileVersionInfoW@16
+GetFileVersionInfoSizeA@8
+GetFileVersionInfoSizeW@8
+VerQueryValueA@16
+VerQueryValueW@16

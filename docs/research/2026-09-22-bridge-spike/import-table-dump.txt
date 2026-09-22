@@ -1,0 +1,272 @@
+# MetalRage.exe + data/System/*.dll import table dump
+# 來源：/mnt/c/Games/鐵影特攻(MetalRage Online)/data/System （主安裝，唯讀）
+# 工具：pefile 2024.8.26，fast_load + parse import/export directory
+
+## ALAudio.dll  machine=0x14c  own_exports=168
+    imports Core.dll                 [OWN   ] 144 symbols
+    imports DSOUND.dll               [SYSTEM] 1 symbols
+    imports Engine.dll               [OWN   ] 43 symbols
+    imports KERNEL32.dll             [SYSTEM] 4 symbols
+    imports MSVCR71.dll              [OWN   ] 30 symbols
+    imports vorbisfile.dll           [OWN   ] 6 symbols
+
+## atl71.dll  machine=0x14c  own_exports=53
+    imports KERNEL32.dll             [SYSTEM] 69 symbols
+    imports SHLWAPI.dll              [SYSTEM] 1 symbols
+
+## binkw32.dll  machine=0x14c  own_exports=66
+    imports GDI32.dll                [SYSTEM] 12 symbols
+    imports KERNEL32.dll             [SYSTEM] 35 symbols
+    imports USER32.dll               [SYSTEM] 28 symbols
+    imports WINMM.dll                [SYSTEM] 12 symbols
+
+## Core.dll  machine=0x14c  own_exports=2608
+    imports ADVAPI32.dll             [SYSTEM] 2 symbols
+    imports KERNEL32.dll             [SYSTEM] 36 symbols
+    imports MSVCR71.dll              [OWN   ] 53 symbols
+    imports SHELL32.dll              [SYSTEM] 2 symbols
+    imports USER32.dll               [SYSTEM] 8 symbols
+    imports WINMM.dll                [SYSTEM] 3 symbols
+    imports ole32.dll                [SYSTEM] 1 symbols
+
+## D3D9Drv.dll  machine=0x14c  own_exports=62
+    imports ADVAPI32.dll             [SYSTEM] 3 symbols
+    imports Core.dll                 [OWN   ] 175 symbols
+    imports Engine.dll               [OWN   ] 54 symbols
+    imports GDI32.dll                [SYSTEM] 2 symbols
+    imports KERNEL32.dll             [SYSTEM] 43 symbols
+    imports MSVCR71.dll              [OWN   ] 63 symbols
+    imports OLEAUT32.dll             [SYSTEM] 2 symbols
+    imports USER32.dll               [SYSTEM] 6 symbols
+    imports binkw32.dll              [OWN   ] 12 symbols
+    imports d3d9.dll                 [SYSTEM] 1 symbols
+    imports ole32.dll                [SYSTEM] 3 symbols
+
+## D3DDrv.dll  machine=0x14c  own_exports=46
+    imports ADVAPI32.dll             [SYSTEM] 3 symbols
+    imports Core.dll                 [OWN   ] 171 symbols
+    imports Engine.dll               [OWN   ] 51 symbols
+    imports GDI32.dll                [SYSTEM] 12 symbols
+    imports KERNEL32.dll             [SYSTEM] 23 symbols
+    imports MSVCR71.dll              [OWN   ] 34 symbols
+    imports USER32.dll               [SYSTEM] 6 symbols
+    imports d3d8.dll                 [SYSTEM] 1 symbols
+
+## dbghelp.dll  machine=0x14c  own_exports=98
+    imports ADVAPI32.dll             [SYSTEM] 12 symbols
+    imports KERNEL32.dll             [SYSTEM] 84 symbols
+    imports RPCRT4.dll               [SYSTEM] 1 symbols
+    imports VERSION.dll              [SYSTEM] 5 symbols
+    imports msvcrt.dll               [SYSTEM] 89 symbols
+
+## DefOpenAL32.dll  machine=0x14c  own_exports=72
+    imports KERNEL32.dll             [SYSTEM] 51 symbols
+    imports USER32.dll               [SYSTEM] 3 symbols
+    imports WINMM.dll                [SYSTEM] 12 symbols
+    imports ole32.dll                [SYSTEM] 3 symbols
+
+## dinterface.dll  machine=0x14c  own_exports=22
+    imports advapi32.dll             [SYSTEM] 3 symbols
+    imports kernel32.dll             [SYSTEM] 84 symbols
+    imports oleaut32.dll             [SYSTEM] 11 symbols
+    imports user32.dll               [SYSTEM] 28 symbols
+
+## dinterface.original.dll  machine=0x14c  own_exports=22
+    imports advapi32.dll             [SYSTEM] 9 symbols
+    imports comctl32.dll             [SYSTEM] 24 symbols
+    imports comdlg32.dll             [SYSTEM] 5 symbols
+    imports gdi32.dll                [SYSTEM] 85 symbols
+    imports kernel32.dll             [SYSTEM] 138 symbols
+    imports ole32.dll                [SYSTEM] 8 symbols
+    imports oleaut32.dll             [SYSTEM] 9 symbols
+    imports shell32.dll              [SYSTEM] 1 symbols
+    imports user32.dll               [SYSTEM] 191 symbols
+    imports version.dll              [SYSTEM] 3 symbols
+    imports winspool.drv             [SYSTEM] 4 symbols
+
+## DLLtest.dll  machine=0x14c  own_exports=2
+    imports advapi32.dll             [SYSTEM] 6 symbols
+    imports comctl32.dll             [SYSTEM] 22 symbols
+    imports gdi32.dll                [SYSTEM] 54 symbols
+    imports kernel32.dll             [SYSTEM] 103 symbols
+    imports oleaut32.dll             [SYSTEM] 11 symbols
+    imports user32.dll               [SYSTEM] 158 symbols
+    imports version.dll              [SYSTEM] 3 symbols
+
+## Editor.dll  machine=0x14c  own_exports=913
+    imports Core.dll                 [OWN   ] 671 symbols
+    imports Engine.dll               [OWN   ] 465 symbols
+    imports GDI32.dll                [SYSTEM] 17 symbols
+    imports MSVCR71.dll              [OWN   ] 22 symbols
+    imports USER32.dll               [SYSTEM] 1 symbols
+
+## Engine.dll  machine=0x14c  own_exports=9573
+    imports ADVAPI32.dll             [SYSTEM] 8 symbols
+    imports Core.dll                 [OWN   ] 788 symbols
+    imports GDI32.dll                [SYSTEM] 15 symbols
+    imports IFC23.dll                [OWN   ] 19 symbols
+    imports KERNEL32.dll             [SYSTEM] 19 symbols
+    imports MSVCR71.dll              [OWN   ] 79 symbols
+    imports USER32.dll               [SYSTEM] 2 symbols
+
+## Fire.dll  machine=0x14c  own_exports=161
+    imports Core.dll                 [OWN   ] 53 symbols
+    imports Engine.dll               [OWN   ] 40 symbols
+    imports MSVCR71.dll              [OWN   ] 14 symbols
+
+## GameConnect.dll  machine=0x14c  own_exports=51
+    imports KERNEL32.dll             [SYSTEM] 94 symbols
+    imports USER32.dll               [SYSTEM] 3 symbols
+    imports WS2_32.dll               [SYSTEM] 14 symbols
+
+## GUIDesigner.dll  machine=0x14c  own_exports=58
+    imports Core.dll                 [OWN   ] 58 symbols
+    imports MSVCR71.dll              [OWN   ] 12 symbols
+    imports Window.dll               [OWN   ] 71 symbols
+    imports XInterface.dll           [OWN   ] 5 symbols
+
+## IFC23.dll  machine=0x14c  own_exports=719
+    imports ADVAPI32.dll             [SYSTEM] 1 symbols
+    imports GDI32.dll                [SYSTEM] 5 symbols
+    imports KERNEL32.dll             [SYSTEM] 72 symbols
+    imports USER32.dll               [SYSTEM] 6 symbols
+    imports VERSION.dll              [SYSTEM] 3 symbols
+    imports ole32.dll                [SYSTEM] 7 symbols
+
+## ImpersonatorLib_rd.dll  machine=0x14c  own_exports=15
+    imports KERNEL32.dll             [SYSTEM] 6 symbols
+    imports MSACM32.dll              [SYSTEM] 6 symbols
+    imports MSVCP60.dll              [SYSTEM] 46 symbols
+    imports MSVCRT.dll               [SYSTEM] 58 symbols
+    imports WINMM.dll                [SYSTEM] 5 symbols
+
+## InputProcess.dll  machine=0x14c  own_exports=4
+    imports ADVAPI32.dll             [SYSTEM] 3 symbols
+    imports IMM32.dll                [SYSTEM] 6 symbols
+    imports KERNEL32.dll             [SYSTEM] 63 symbols
+    imports OLEAUT32.dll             [SYSTEM] 2 symbols
+    imports USER32.dll               [SYSTEM] 2 symbols
+    imports VERSION.dll              [SYSTEM] 3 symbols
+    imports ole32.dll                [SYSTEM] 2 symbols
+
+## IpDrv.dll  machine=0x14c  own_exports=397
+    imports Core.dll                 [OWN   ] 240 symbols
+    imports Engine.dll               [OWN   ] 211 symbols
+    imports KERNEL32.dll             [SYSTEM] 2 symbols
+    imports MSVCR71.dll              [OWN   ] 14 symbols
+    imports WSOCK32.dll              [SYSTEM] 26 symbols
+
+## JRVoice.dll  machine=0x14c  own_exports=6
+    imports advapi32.dll             [SYSTEM] 7 symbols
+    imports comctl32.dll             [SYSTEM] 21 symbols
+    imports gdi32.dll                [SYSTEM] 55 symbols
+    imports kernel32.dll             [SYSTEM] 102 symbols
+    imports oleaut32.dll             [SYSTEM] 11 symbols
+    imports user32.dll               [SYSTEM] 168 symbols
+    imports version.dll              [SYSTEM] 3 symbols
+    imports winmm.dll                [SYSTEM] 13 symbols
+
+## MetalRage.exe  machine=0x14c  own_exports=1
+    imports KERNEL32.DLL             [SYSTEM] 1 symbols
+    imports USER32.DLL               [SYSTEM] 1 symbols
+
+## msvcp71.dll  machine=0x14c  own_exports=2903
+    imports KERNEL32.dll             [SYSTEM] 16 symbols
+    imports MSVCR71.dll              [OWN   ] 93 symbols
+
+## MSVCR71.dll  machine=0x14c  own_exports=837
+    imports KERNEL32.dll             [SYSTEM] 154 symbols
+
+## NFMngr.dll  machine=0x14c  own_exports=3
+    imports KERNEL32.dll             [SYSTEM] 50 symbols
+    imports OLEAUT32.dll             [SYSTEM] 3 symbols
+    imports ole32.dll                [SYSTEM] 3 symbols
+
+## NO1_MH.dll  machine=0x14c  own_exports=2
+    imports advapi32.dll             [SYSTEM] 6 symbols
+    imports comctl32.dll             [SYSTEM] 22 symbols
+    imports gdi32.dll                [SYSTEM] 64 symbols
+    imports kernel32.dll             [SYSTEM] 116 symbols
+    imports oleaut32.dll             [SYSTEM] 11 symbols
+    imports user32.dll               [SYSTEM] 162 symbols
+    imports version.dll              [SYSTEM] 3 symbols
+
+## ogg.dll  machine=0x14c  own_exports=43
+    imports KERNEL32.dll             [SYSTEM] 1 symbols
+    imports MSVCR71.dll              [OWN   ] 11 symbols
+
+## RegData.dll  machine=0x14c  own_exports=3
+    imports advapi32.dll             [SYSTEM] 9 symbols
+    imports kernel32.dll             [SYSTEM] 75 symbols
+    imports oleaut32.dll             [SYSTEM] 11 symbols
+    imports user32.dll               [SYSTEM] 9 symbols
+
+## UTV2004.dll  machine=0x14c  own_exports=37
+    imports Core.dll                 [OWN   ] 206 symbols
+    imports Engine.dll               [OWN   ] 134 symbols
+    imports IpDrv.dll                [OWN   ] 45 symbols
+    imports MSVCR71.dll              [OWN   ] 17 symbols
+
+## UWeb.dll  machine=0x14c  own_exports=60
+    imports Core.dll                 [OWN   ] 95 symbols
+    imports Engine.dll               [OWN   ] 3 symbols
+    imports MSVCR71.dll              [OWN   ] 14 symbols
+
+## vorbis.dll  machine=0x14c  own_exports=35
+    imports KERNEL32.dll             [SYSTEM] 1 symbols
+    imports MSVCR71.dll              [OWN   ] 30 symbols
+    imports ogg.dll                  [OWN   ] 11 symbols
+
+## vorbisfile.dll  machine=0x14c  own_exports=25
+    imports KERNEL32.dll             [SYSTEM] 1 symbols
+    imports MSVCR71.dll              [OWN   ] 16 symbols
+    imports ogg.dll                  [OWN   ] 16 symbols
+    imports vorbis.dll               [OWN   ] 16 symbols
+
+## Window.dll  machine=0x14c  own_exports=1047
+    imports COMCTL32.dll             [SYSTEM] 1 symbols
+    imports Core.dll                 [OWN   ] 180 symbols
+    imports Engine.dll               [OWN   ] 4 symbols
+    imports GDI32.dll                [SYSTEM] 23 symbols
+    imports KERNEL32.dll             [SYSTEM] 9 symbols
+    imports MSVCR71.dll              [OWN   ] 15 symbols
+    imports SHELL32.dll              [SYSTEM] 3 symbols
+    imports USER32.dll               [SYSTEM] 99 symbols
+    imports comdlg32.dll             [SYSTEM] 1 symbols
+
+## WinDrv.dll  machine=0x14c  own_exports=154
+    imports ADVAPI32.dll             [SYSTEM] 10 symbols
+    imports ATL71.DLL                [OWN   ] 2 symbols
+    imports Core.dll                 [OWN   ] 215 symbols
+    imports DINPUT8.dll              [SYSTEM] 1 symbols
+    imports Engine.dll               [OWN   ] 59 symbols
+    imports GDI32.dll                [SYSTEM] 1 symbols
+    imports IMM32.dll                [SYSTEM] 9 symbols
+    imports KERNEL32.dll             [SYSTEM] 46 symbols
+    imports MSVCR71.dll              [OWN   ] 26 symbols
+    imports OLEAUT32.dll             [SYSTEM] 6 symbols
+    imports USER32.dll               [SYSTEM] 66 symbols
+    imports Window.dll               [OWN   ] 67 symbols
+    imports ole32.dll                [SYSTEM] 6 symbols
+
+## XGame.dll  machine=0x14c  own_exports=69
+    imports Core.dll                 [OWN   ] 104 symbols
+    imports Engine.dll               [OWN   ] 121 symbols
+    imports MSVCR71.dll              [OWN   ] 13 symbols
+
+## XInterface.dll  machine=0x14c  own_exports=1492
+    imports Core.dll                 [OWN   ] 129 symbols
+    imports Engine.dll               [OWN   ] 141 symbols
+    imports MSVCR71.dll              [OWN   ] 16 symbols
+    imports USER32.dll               [SYSTEM] 1 symbols
+    imports XGame.dll                [OWN   ] 3 symbols
+
+## ZNetwork.dll  machine=0x14c  own_exports=1331
+    imports Core.dll                 [OWN   ] 104 symbols
+    imports Engine.dll               [OWN   ] 17 symbols
+    imports KERNEL32.dll             [SYSTEM] 24 symbols
+    imports MSVCP71.dll              [OWN   ] 4 symbols
+    imports MSVCR71.dll              [OWN   ] 33 symbols
+    imports USER32.dll               [SYSTEM] 5 symbols
+    imports WS2_32.dll               [SYSTEM] 24 symbols
+

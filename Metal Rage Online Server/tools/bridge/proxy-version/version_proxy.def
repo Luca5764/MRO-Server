@@ -1,0 +1,8 @@
+LIBRARY VERSION.dll
+EXPORTS
+GetFileVersionInfoA=VERSION_ORIG.GetFileVersionInfoA
+GetFileVersionInfoW=VERSION_ORIG.GetFileVersionInfoW
+GetFileVersionInfoSizeA=VERSION_ORIG.GetFileVersionInfoSizeA
+GetFileVersionInfoSizeW=VERSION_ORIG.GetFileVersionInfoSizeW
+VerQueryValueA=VERSION_ORIG.VerQueryValueA
+VerQueryValueW=VERSION_ORIG.VerQueryValueW
