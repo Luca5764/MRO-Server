@@ -36,7 +36,7 @@ const whitelist = require('../config/whitelist.js');
 // PVP_START_FLOW_MODE/MAP_IDS_PVP are single-sourced in map-info.sender.js
 // (a dependency-free leaf, no cycle risk) so this file and map-info.sender.js
 // itself never toggle the switch independently.
-const { PVP_START_FLOW_MODE, MAP_IDS_PVP } = require('./map-info.sender');
+const { PVP_START_FLOW_MODE, PVP_TEAM_ASSIGN_MODE, MAP_IDS_PVP } = require('./map-info.sender');
 
 // ZGateGameDispatch - Handles Gate-range (0x22XXXX) messages on the GAME server
 //
@@ -493,20 +493,64 @@ function sendRoomGameWaitSn(client, tag)
     console.log(`[ZGateGameDispatch] >> Sent Game_Wait_SN 0x00420111 [${tag}]`);
 }
 
+// PVP-TEAM T1 (docs/design/d2-pvp-tdm.md §7 step T1, contract 2026-09-22):
+// resolves the Game_User_SN TeamIndex for one room member when
+// PVP_TEAM_ASSIGN_MODE is 'enabled'. PvE rooms (or the switch off) keep the
+// existing hardcoded 0 for every member -- byte-identical to before this
+// function existed.
+//
+// Stability (design §7 T1 bullet "分配結果要穩定"): assignment is computed
+// once per battle attempt and cached on the room object, keyed by
+// room.battleStartGen (bumped once per accepted Game_Start_CN, see the case
+// 0x00222103 handler below) -- so every Game_User_SN send/resend within the
+// same battle gives one member the same team, but a rematch (a new
+// battleStartGen on room reuse) recomputes from the room's membership at
+// that moment instead of reusing a stale assignment from a previous match.
+// room.members is a Map, which iterates in insertion (join) order, so
+// Array.from(room.members.keys()) is exactly "join order" -- 1st member (the
+// host) -> 0 (red), 2nd -> 1 (blue), 3rd -> 0, ... (only 2 members are
+// expected for T1's 2-person scope; the alternation is here for when 4-way
+// rooms are tested later, per design §1).
+function resolvePvpTeamIndex(room, accountId)
+{
+    if (PVP_TEAM_ASSIGN_MODE !== 'enabled' || !room || Number(room.rawRoomType) !== 2) {
+        return 0;
+    }
+    const gen = room.battleStartGen || 0;
+    if (room.pvpTeamAssignmentGen_ !== gen || !room.pvpTeamAssignment_) {
+        const assignment = new Map();
+        let i = 0;
+        for (const memberAccountId of room.members.keys()) {
+            assignment.set(memberAccountId, i % 2);
+            i += 1;
+        }
+        room.pvpTeamAssignment_ = assignment;
+        room.pvpTeamAssignmentGen_ = gen;
+    }
+    const team = room.pvpTeamAssignment_.get(accountId);
+    return team === undefined ? 0 : team;
+}
+
 // Game_User_SN, sent from here rather than from room state because the handler
 // is ZDispatchGame's and only runs in scene 6. The context the room build needs
 // is small enough to assemble from the client; the sender reads the equipped
 // loadout out of the database itself.
 function sendGameUserSn(client, tag)
 {
+    const accountIndex = Number(client.accountIndex_ || client.accountId_ || 1);
     const ctx = {
-        accountIndex: Number(client.accountIndex_ || client.accountId_ || 1),
+        accountIndex,
         nickname: client.nickname_ || 'Player',
         userLevelText: '1',
         // Must match one of the two values Game_Info_SN puts in [0xffc] and
         // [0x1000], which Game_Play_Start copies to [0xff0] and [0xff4]. We
         // send red=0 there, so team 0 resolves to red instead of 255.
-        teamIndex: 0,
+        // PVP-TEAM T1: this is the single-connection fallback path (no
+        // tracked room, or GAME_USER_SN_BROADCAST_MODE disabled) -- still
+        // routed through resolvePvpTeamIndex() so a PvP room found via
+        // rooms.getRoomByAccount() gets the same join-order team a room
+        // broadcast would have given it; PvE (or switch off) stays 0.
+        teamIndex: resolvePvpTeamIndex(rooms.getRoomByAccount(accountIndex), accountIndex),
         selectedMech: Number(client.currentHangarSlot_) || 1,
         pilotId: Number(client.pilot_) || 101,
     };
@@ -580,10 +624,16 @@ async function sendGameUserSnRoomBroadcast(room, tag, expectedGen)
             if (!currentSource) continue;
 
             const sourceClient = currentSource.client;
+            // PVP-TEAM T1: resolved against currentRoom (the freshly re-read
+            // room, same one expectedGen was just checked against above),
+            // not the stale `room` parameter -- keeps this in the same
+            // re-read-every-packet pattern the rest of this loop already
+            // uses for leave/disconnect races.
+            const teamIndex = resolvePvpTeamIndex(currentRoom, currentSource.accountId);
             const ctx = {
                 accountIndex: Number(currentSource.accountId),
                 nickname: currentSource.nickname || 'Player',
-                teamIndex: 0,
+                teamIndex,
                 userLevelText: '1',
                 selectedMech: Number(sourceClient && sourceClient.currentHangarSlot_) || 1,
                 pilotId: Number(sourceClient && sourceClient.pilot_) || 101,

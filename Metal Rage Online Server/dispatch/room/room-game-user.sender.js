@@ -114,6 +114,17 @@ async function sendGameUserBootstrap(client, ctx, getExactMessageBuffer, opts) {
         pilotId,
     } = ctx;
 
+    // PVP-TEAM T1 hard rule (docs/design/d2-pvp-tdm.md §6 rule 2): rec+0x02
+    // TeamIndex only ever means red (0) or blue (1) to Game_User_Team_Get --
+    // any other value there is a bug in whatever built `ctx`, not a
+    // legitimate state. Assertion, not a comment: log loudly and refuse to
+    // send this one packet rather than let a bad value reach the client (or
+    // crash the whole process).
+    if (teamIndex !== 0 && teamIndex !== 1) {
+        console.error(`[ZRoomDispatch] !! Game_User_SN assertion failed: teamIndex=${teamIndex} is not 0/1 (accountIndex=${accountIndex}) -- refusing to send`);
+        return;
+    }
+
     const targetClient = (opts && opts.sendTo) || client;
     const itemsAccountId = (opts && opts.itemsAccountId !== undefined) ? opts.itemsAccountId : client.accountId_;
 

@@ -289,10 +289,20 @@ class ZAccountDispatch
                     client.send(msg);
                 }
 
+                // PVP-TEAM T1 hard rule (docs/design/d2-pvp-tdm.md §6 rule 1):
+                // this value must stay 0 -- IsMeGM_BD() reads it, and non-zero
+                // sends a PvP joiner's PlayerSelectMech.BeginState straight to
+                // GotoState('Spectating'). Asserted, not just commented: log
+                // loudly and skip this one send rather than crash the process.
                 {
-                    const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-                    respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
-                    client.send(msg);
+                    const gradeValue = 0; // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
+                    if (gradeValue !== 0) {
+                        console.error(`[ZDispatchAccount] !! Grade_Info_SN assertion failed: value=${gradeValue}, must be 0 -- refusing to send`);
+                    } else {
+                        const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
+                        respBody.writeUInt32LE(gradeValue, 0);
+                        client.send(msg);
+                    }
                 }
 
                 // SN_MECH_LEVEL (all mechs level 1)
@@ -405,10 +415,20 @@ class ZAccountDispatch
                     client.send(msg);
                 }
 
+                // PVP-TEAM T1 hard rule (docs/design/d2-pvp-tdm.md §6 rule 1):
+                // this value must stay 0 -- IsMeGM_BD() reads it, and non-zero
+                // sends a PvP joiner's PlayerSelectMech.BeginState straight to
+                // GotoState('Spectating'). Asserted, not just commented: log
+                // loudly and skip this one send rather than crash the process.
                 {
-                    const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-                    respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
-                    client.send(msg);
+                    const gradeValue = 0; // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
+                    if (gradeValue !== 0) {
+                        console.error(`[ZDispatchAccount] !! Grade_Info_SN assertion failed: value=${gradeValue}, must be 0 -- refusing to send`);
+                    } else {
+                        const [msg, respBody] = client.getMessageBuffer(SN_GRADE_INFO, 4);
+                        respBody.writeUInt32LE(gradeValue, 0);
+                        client.send(msg);
+                    }
                 }
 
                 // SN_MECH_LEVEL
@@ -555,11 +575,21 @@ class ZAccountDispatch
         // Without this, nMedalLevel stays at default 255 → szMedalLevel[255] OOB crash.
         // Grade_Info_SN reads u32 at body[0], subtracts 11, switch(0..3) → grade 1-4.
         // value 11 → grade 1 (lowest valid tier).
+        // PVP-TEAM T1 hard rule (docs/design/d2-pvp-tdm.md §6 rule 1): this
+        // value must stay 0 -- IsMeGM_BD() reads it, and non-zero sends a PvP
+        // joiner's PlayerSelectMech.BeginState straight to
+        // GotoState('Spectating'). Asserted, not just commented: log loudly
+        // and skip this one send rather than crash the process.
         {
-            const [msg, body] = client.getMessageBuffer(SN_GRADE_INFO, 4);
-            body.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
-            client.send(msg);
-            console.log(`[ZDispatchAccount] >> Sent SN_GRADE_INFO: value=11 (grade=1)`);
+            const gradeValue = 0; // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
+            if (gradeValue !== 0) {
+                console.error(`[ZDispatchAccount] !! Grade_Info_SN assertion failed: value=${gradeValue}, must be 0 -- refusing to send`);
+            } else {
+                const [msg, body] = client.getMessageBuffer(SN_GRADE_INFO, 4);
+                body.writeUInt32LE(gradeValue, 0);
+                client.send(msg);
+                console.log(`[ZDispatchAccount] >> Sent SN_GRADE_INFO: value=11 (grade=1)`);
+            }
         }
 
         // SN_MECH_LEVEL — DLL reads u8 count (NOT u16), then 28-byte entries
