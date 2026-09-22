@@ -176,9 +176,14 @@ def validate_experiment(exp):
                 raise ExperimentError(f"step {i}: {name} needs params.client_id as a non-empty string")
         if name == "enter_battle":
             mech_key = params.get("mech_key", "F1")
-            if mech_key not in actions.MECH_SELECT_SLOTS:
+            # mech_key may be JSON null (Python None) -- 2026-09-22
+            # round2-probe-mte task: ESC only, no mech-select key, let the
+            # page's own countdown auto-pick (see actions.enter_battle()'s
+            # docstring). Omitting the field entirely still defaults to "F1",
+            # unchanged.
+            if mech_key is not None and mech_key not in actions.MECH_SELECT_SLOTS:
                 raise ExperimentError(f"step {i}: enter_battle params.mech_key must be one of "
-                                       f"{sorted(actions.MECH_SELECT_SLOTS)}")
+                                       f"{sorted(actions.MECH_SELECT_SLOTS)} or null")
         if name == "host_start_battle":
             client_id = params.get("client_id", "host")
             if not isinstance(client_id, str) or not client_id:
@@ -362,6 +367,11 @@ def describe_step(step):
     if name == "enter_battle":
         cid = params.get("client_id")
         mech_key = params.get("mech_key", "F1")
+        if mech_key is None:
+            return (f"enter_battle({cid!r}, mech_key=None): focus_client({cid!r}), KEY ESC (skip cinematic) "
+                    f"only -- no mech-select key sent, rely on the page's own RESPAWN countdown to "
+                    f"auto-pick a mech, wait<={actions.ENTER_BATTLE_NO_KEY_TIMEOUT_S}s "
+                    f"for a {actions.CHANGE_SLOT_CN_OPCODE}/{actions.RESPAWN_CN_OPCODE} recv pkt (conn-filtered)")
         mech_name, mech_type = actions.MECH_SELECT_SLOTS.get(mech_key, (mech_key, None))
         return (f"enter_battle({cid!r}, mech_key={mech_key!r}): focus_client({cid!r}), KEY ESC (skip cinematic), "
                 f"sleep {actions.ENTER_BATTLE_POST_ESC_WAIT_S}s, KEY {mech_key} ({mech_name}/{mech_type}, see "

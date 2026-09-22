@@ -361,6 +361,23 @@ ENTER_BATTLE_POST_ESC_WAIT_S = 8.0
 # (~30s) for margin until a real run measures it.
 DEFAULT_ENTER_BATTLE_TIMEOUT_S = 45.0
 
+# enter_battle(mech_key=None)'s timeout -- used ONLY on the no-F-key path
+# (2026-09-22 round2-probe-mte task), where this action sends ESC and then
+# does nothing else, relying entirely on the mech-select page's own RESPAWN
+# countdown to auto-pick a mech (see CHANGE_SLOT_CN_OPCODE's "CORRECTED
+# MECHANISM" comment above). DEFAULT_ENTER_BATTLE_TIMEOUT_S above is sized for
+# the ACTIVE key-press path, where the F-key skips that countdown entirely --
+# it must NOT be reused here, since the countdown itself can outlast it.
+# Reusing the exact OLD value this action used before the 2026-09-21 F-key
+# rewrite (see "Was 120.0" note above): that value is not a fresh guess, it
+# is the constant [LOG]-confirmed to comfortably outlast the real countdown
+# in this exact zero-input scenario (the ~18s Game_Start_SN -> ChangeSlot_CN/
+# Respawn_CN gap cited above, itself measured with zero pico input at all,
+# i.e. including the full cinematic AND the full countdown -- sending ESC
+# here should only make the real wait SHORTER than that 18s figure by
+# skipping the cinematic, so 120s keeps the same large margin it always had).
+ENTER_BATTLE_NO_KEY_TIMEOUT_S = 120.0
+
 # console_cmd_on()'s whitelist (design.md section 3: "只加 netspeed <n>、
 # stat net、WeaponLog"). Separate from CONSOLE_CMD_WHITELIST above (that one
 # is console_cmd()'s own, GameCampaign-only, whitelist) -- kept as two
@@ -2473,6 +2490,17 @@ def enter_battle(ctx, client_id, mech_key="F1"):
     MECH_SELECT_SLOTS' keys (F1-F8); default F1 (RAVEN, 輕量型) since that is
     the only slot this task has a reference screenshot for.
 
+    mech_key may also be None (JSON `null` in a script): send ESC only and
+    do NOT press any mech-select F-key, letting the page's own RESPAWN
+    countdown auto-pick whatever mech is in its first slot instead (2026-09-
+    22 round2-probe-mte task -- used to test whether that auto-pick tracks
+    database mech_licenses.slot ordering rather than a fixed mech, after a
+    DB-side slot swap; docs/journal/2026-09-22-0748-firerate-probe.md). This
+    is the SAME mechanism the "CORRECTED MECHANISM" note above describes,
+    just deliberately invoked instead of avoided: waits out the countdown on
+    ENTER_BATTLE_NO_KEY_TIMEOUT_S instead of sending a key. Not the default
+    -- omitting mech_key in a script still means "F1", unchanged.
+
     🟡 residual risk: ESC's effect if the cinematic has ALREADY ended by the
     time this action sends it (e.g. if the real cinematic is much shorter
     than the operator's ~5s estimate) is unconfirmed -- it may be a harmless
@@ -2498,17 +2526,25 @@ def enter_battle(ctx, client_id, mech_key="F1"):
     signal."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
-    if mech_key not in MECH_SELECT_SLOTS:
-        raise ActionError(f"enter_battle mech_key must be one of {sorted(MECH_SELECT_SLOTS)}, got {mech_key!r}")
+    if mech_key is not None and mech_key not in MECH_SELECT_SLOTS:
+        raise ActionError(f"enter_battle mech_key must be one of {sorted(MECH_SELECT_SLOTS)} or None, got {mech_key!r}")
     t0 = time.monotonic()
     steps, fail = _focus_or_fail(ctx, "enter_battle", client_id, t0)
     if fail:
         return fail
 
-    mech_name, mech_type = MECH_SELECT_SLOTS[mech_key]
+    if mech_key is None:
+        mech_name, mech_type = None, None
+    else:
+        mech_name, mech_type = MECH_SELECT_SLOTS[mech_key]
     if ctx.dry_run:
-        detail = (f"dry-run: would key ESC (skip cinematic), sleep {ENTER_BATTLE_POST_ESC_WAIT_S}s, "
-                  f"key {mech_key} ({mech_name}/{mech_type}) to spawn (see docstring)")
+        if mech_key is None:
+            detail = (f"dry-run: would key ESC (skip cinematic) only, no mech-select key -- "
+                      f"rely on the mech-select page's own RESPAWN countdown to auto-pick a mech "
+                      f"(timeout {ENTER_BATTLE_NO_KEY_TIMEOUT_S}s, see docstring)")
+        else:
+            detail = (f"dry-run: would key ESC (skip cinematic), sleep {ENTER_BATTLE_POST_ESC_WAIT_S}s, "
+                      f"key {mech_key} ({mech_name}/{mech_type}) to spawn (see docstring)")
         return ActionResult("enter_battle", True, False, time.monotonic() - t0, detail, None, None, steps)
 
     user_index, fail = _require_user_index(ctx, "enter_battle", client_id, t0, steps)
@@ -2519,16 +2555,22 @@ def enter_battle(ctx, client_id, mech_key="F1"):
         return fail
     base = _newest_log_ms(ctx.logs_dir)
     steps.append(key(ctx, "ESC"))
-    time.sleep(ENTER_BATTLE_POST_ESC_WAIT_S)
-    steps.append(key(ctx, mech_key))
+    if mech_key is None:
+        timeout_s = ENTER_BATTLE_NO_KEY_TIMEOUT_S
+        key_desc = "ESC only (no mech-select key, relying on auto-pick countdown)"
+    else:
+        time.sleep(ENTER_BATTLE_POST_ESC_WAIT_S)
+        steps.append(key(ctx, mech_key))
+        timeout_s = DEFAULT_ENTER_BATTLE_TIMEOUT_S
+        key_desc = f"ESC + key {mech_key} ({mech_name}/{mech_type})"
     ok_pkt, found, elapsed = wait_for_log_pkts(
-        ctx, DEFAULT_ENTER_BATTLE_TIMEOUT_S,
+        ctx, timeout_s,
         {"spawn": lambda e: e.get("dir") == "recv" and e.get("op") in (CHANGE_SLOT_CN_OPCODE, RESPAWN_CN_OPCODE)
                   and _pkt_user_index(e) == user_index},
         baseline_ms=base, conn=host_conn_id,
     )
     ok_hud, gray, detail_hud, score, shot, _ = wait_for(ctx, "enter_battle-hud", 15.0, _battle_any_check())
-    detail = (f"ESC + key {mech_key} ({mech_name}/{mech_type}); "
+    detail = (f"{key_desc}; "
               f"ChangeSlot_CN/Respawn_CN recv (host conn={host_conn_id}, user_index={user_index}): "
               f"{'seen' if ok_pkt else 'MISSING'} (waited {elapsed:.1f}s); battle HUD: {detail_hud}")
     return ActionResult("enter_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)
