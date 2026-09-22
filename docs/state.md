@@ -80,7 +80,7 @@
 
 ### 尚未實作（S→C 名稱已由 DLL 確認）
 
-`Game_Score_SN 0x00222114`、`EndQuater_SN 0x00222212`、`EndGame_SN 0x00222213`、`InstantRespawn_SN 0x00230106`、`Special_SN 0x00230126`、`Capture_SN 0x00230132`、`Conquest_SN 0x00230134`、`Bomb_SN 0x00230136`、`Boss_SN 0x00230138`、`Campaign_SN 0x0023013a`、`TwoBoss_SN 0x0023013c`、`TriggerTouch_SN 0x0023013e`、`HostChange_SN 0x00420121`、`Leave_SN 0x00420133`、`Ready_Failed_SN 0x00420112`。✅ [DLL] 名稱，body 結構大多未查。
+`Game_Score_SN 0x00222114`、`EndQuater_SN 0x00222212`、~~`EndGame_SN 0x00222213`~~（**2026-09-22 更正：已實作**，`lobby.dispatch.js:401-404,573-586` 在最後回合送出，`journal/2026-09-19-0900-r-round-impl.md` 有 5 回合實測；本行是 R-ROUND 實作後沒回頭更新的過期資訊）、`InstantRespawn_SN 0x00230106`、`Special_SN 0x00230126`、`Capture_SN 0x00230132`、`Conquest_SN 0x00230134`、`Bomb_SN 0x00230136`、`Boss_SN 0x00230138`、`Campaign_SN 0x0023013a`、`TwoBoss_SN 0x0023013c`、`TriggerTouch_SN 0x0023013e`、`HostChange_SN 0x00420121`、`Leave_SN 0x00420133`、`Ready_Failed_SN 0x00420112`。✅ [DLL] 名稱，body 結構大多未查。
 
 ## 4. 登入、機庫與裝備
 
