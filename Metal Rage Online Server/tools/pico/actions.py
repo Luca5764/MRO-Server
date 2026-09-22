@@ -970,12 +970,31 @@ def _battle_any_check():
     (a MAD region compare tuned to one map's HUD layout) does not
     generalize across maps/terrain. Same wait_for check_fn shape as
     _marker_check; gray is always False, same reasoning as _marker_check's
-    own docstring (no ambiguous second-place candidate here either)."""
+    own docstring (no ambiguous second-place candidate here either).
+
+    PVP-HUD-MARKER (docs/backlog.md, 2026-09-22 task): also accepts PvP TDM
+    battle via screens.battle_hud_state_pvp() (the gold "P0000" counter +
+    team scoreboard, see that function's docstring) -- PvE's green-only
+    check alone reads every real TDM battle as not_battle
+    (docs/journal/2026-09-22-2055-pvp-start-works.md), which made
+    enter_battle() report failure on a PvP room that had actually started
+    fine. "battle" here means either check passing; detail names which one
+    (pve/pvp) so callers/logs can tell the two apart."""
     def check(shot_path):
-        state, green_px = screens.battle_hud_state(shot_path)
-        ok = state == "battle"
-        detail = f"battle_hud={state} green_px={green_px}"
-        return ok, False, detail, float(green_px)
+        state_pve, green_px = screens.battle_hud_state(shot_path)
+        state_pvp, (pvp_score, gold_px) = screens.battle_hud_state_pvp(shot_path)
+        ok = state_pve == "battle" or state_pvp == "battle"
+        if state_pve == "battle":
+            kind = "pve"
+        elif state_pvp == "battle":
+            kind = "pvp"
+        else:
+            kind = None
+        state_desc = f"battle({kind})" if kind else "not_battle"
+        detail = (f"battle_hud={state_desc} green_px={green_px} "
+                  f"pvp_scoreboard={pvp_score:.2f} gold_px={gold_px}")
+        score = float(green_px if kind == "pve" else gold_px if kind == "pvp" else max(green_px, gold_px))
+        return ok, False, detail, score
     return check
 
 
@@ -2546,6 +2565,25 @@ def host_start_battle(ctx, client_id="host"):
     return ActionResult("host_start_battle", ok, False, time.monotonic() - t0, detail, shot, None, steps)
 
 
+# PVP-HUD-MARKER (docs/backlog.md, PM 2026-09-22 addendum): enter_battle()'s
+# HUD check (_battle_any_check()) and its ChangeSlot_CN/Respawn_CN pkt check
+# are two independent signals for the same thing ("did we spawn into
+# battle?") and can disagree -- this happened for real on 2026-09-22 (PvP
+# TDM, before battle_hud_state_pvp() existed): the screenshot and the pkt
+# capture both showed the client on the battlefield, but the HUD check said
+# not_battle (docs/journal/2026-09-22-2055-pvp-start-works.md). PM: don't
+# let a screen-only judgment silently override a packet-level "it actually
+# happened" signal -- print a WARN instead of trusting the screen. This is
+# an OBSERVATIONAL note only, added to `detail`; it does not change which of
+# ok_hud/ok_pkt the caller's ActionResult.ok is based on (packet "received"
+# is not proof of "still on the battlefield" either -- see require_cn's own
+# docstring -- so this does not become a new pass condition by itself).
+def _hud_pkt_contradiction_note(ok_hud, ok_pkt):
+    if ok_hud or not ok_pkt:
+        return ""
+    return " -- WARN: 畫面與封包矛盾 (battle HUD says not_battle but ChangeSlot_CN/Respawn_CN was received)"
+
+
 def enter_battle(ctx, client_id, mech_key="F1", require_cn=True):
     """Triggered by: the match starting (or a respawn) dropping this client
     into the load-in flow: loading screen -> opening cinematic -> mech-select
@@ -2662,7 +2700,8 @@ def enter_battle(ctx, client_id, mech_key="F1", require_cn=True):
         ok_hud, gray, detail_hud, score, shot, _ = wait_for(ctx, "enter_battle-hud", 15.0, _battle_any_check())
         detail = (f"{key_desc}; "
                   f"ChangeSlot_CN/Respawn_CN recv (host conn={host_conn_id}, user_index={user_index}): "
-                  f"{'seen' if ok_pkt else 'MISSING'} (waited {elapsed:.1f}s); battle HUD: {detail_hud}")
+                  f"{'seen' if ok_pkt else 'MISSING'} (waited {elapsed:.1f}s); battle HUD: {detail_hud}"
+                  f"{_hud_pkt_contradiction_note(ok_hud, ok_pkt)}")
         return ActionResult("enter_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)
 
     # require_cn=False (see docstring): battle HUD is the ONLY completion
@@ -2678,7 +2717,8 @@ def enter_battle(ctx, client_id, mech_key="F1", require_cn=True):
     )
     detail = (f"{key_desc}; battle HUD: {detail_hud}; "
               f"ChangeSlot_CN/Respawn_CN recv (host conn={host_conn_id}, user_index={user_index}): "
-              f"{'seen' if ok_pkt else 'MISSING'} (not required; single non-blocking poll after HUD wait)")
+              f"{'seen' if ok_pkt else 'MISSING'} (not required; single non-blocking poll after HUD wait)"
+              f"{_hud_pkt_contradiction_note(ok_hud, ok_pkt)}")
     return ActionResult("enter_battle", ok_hud, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
