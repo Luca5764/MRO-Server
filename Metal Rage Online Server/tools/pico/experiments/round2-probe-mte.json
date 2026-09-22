@@ -1,0 +1,90 @@
+{
+  "id": "round2-probe-mte",
+  "purpose": "round2-probe-mte: 單段、單人探針，驗證 enter_battle() 新加的 mech_key=None 路徑（只送 ESC、不送任何機體選擇 F 鍵，讓選機體頁的 RESPAWN 倒數計時自動出機體，見 actions.py enter_battle() docstring 2026-09-22 追加段落）——(a) 自動選到的機體開火是不是 Map_PC04.MTE_a、(b) HitLoc=== 在這把武器上是不是真的有。背景：docs/journal/2026-09-22-0748-firerate-probe.md 已排除『F5 對到 mech_type 6』（F5/F2 皆拿到 Map_PC04.MOM_a），Engine/OptionAll.uc:1008-1012 顯示戰鬥中 F1-F5 綁的是 UseSPPoint_BD 0-4（SP 技能，不是選機體），因此改用 enter_battle(mech_key=None) 完全不送 F 鍵，直接讓倒數計時自動出第一個槽位的機體。已用 database/swap-test-mech-slots.js 把帳號 5、6 的 mech_licenses slot 0 與 slot 5 對調（commit c7a2cdb），這支腳本要驗的原始問題是：現在 slot 0 = mech_type 6（主武器 25300101 = MTE_a）之後，自動選到的還是不是 mech_type 6。判讀方式（原始版本，見下方【重要更正】）：log 出現 Map_PC04.MTE_a Fire → 槽位對調有效，客戶端自動選到 mech_type 6；仍是 Map_PC04.MOM_a → 槽位對調無效，客戶端的機體清單順序不是照 mech_licenses.slot。同時要數 grep -c 'HitLoc=== >'：docs/journal/2026-09-22-0748-firerate-probe.md 第三節實測 MOM_a 29 次開火 0 行 HitLoc，這個訊號不是每把主武器都有，第 2 輪的分母整個依賴它，必須在 MTE_a 上重新確認它存在、而且和 Fire 行數的比例合理（2026-09-20 run-213726.73.log 的先驗是 68 HitLoc / 47 Fire，兩個數字不相等，比例本身也是這次要重新確認的東西，不是預設 1:1）。提醒：第一發可能落空（docs/journal/2026-09-22-0748-firerate-probe.md 第四節，先前兩段 30 發都只拿到 29 行 Fire，疑似機體還沒生成完的空窗），10 發可能只得到 9 行 Fire/HitLoc，不影響判讀，不要誤判成失敗。【重要更正，寫這支腳本時發現，尚未經高階確認，讀結果前務必先看這段】：commit c7a2cdb 之後、這支腳本寫成之前，flash-wip-dualpico 分支上又多了 commit f4df812（database: swap mech_type1 main weapon to cannon-class）——commit message 宣稱『槽位對調（c7a2cdb）並沒有改變自動選到的機體，仍然固定是 mech_type 1』，因此改成直接把 mech_type 1 自己的主武器從 22100101（MOM_a）換成 25300101（MTE_a）。⚠️ 這個宣稱在本 repo 目前找得到的 docs/journal/2026-09-22-0748-firerate-probe.md 裡沒有對應的實測記錄佐證（該篇只到『F2/F3/F4 探針是下一步，尚未跑』，完全沒提到槽位對調的結果），c7a2cdb 與 f4df812 之間也只有這一個 commit，代表『槽位對調無效』這句話目前查無 [LOG]/[TEST] 證據，來源不明，待審。這件事直接讓本腳本原本的判讀邏輯失去鑑別力：不論槽位對調本身有沒有效，f4df812 之後 mech_type 1 自己的主武器已經被換成 MTE_a——如果自動選到的固定是 mech_type 1（f4df812 的假設），現在也會開 MTE_a；如果槽位對調其實有效、自動選到 mech_type 6（本腳本原本要驗的假說），mech_type 6 本來的主武器就是 MTE_a（docs/reference/item-names.md 對照表）。兩種情況現在都會觀察到『開火是 MTE_a』，本腳本已經無法用『有沒有看到 MTE_a』分辨兩個假說了——這是這支腳本要交出去之前才發現的，還沒讓任何高階看過，讀結果的人先確認高階有沒有先處理這個矛盾（例如先 --revert f4df812 再跑，或者接受這一輪只能回答『(a)(b)（是不是 MTE_a／HitLoc 存不存在）』兩個問題，回答不了『槽位對調到底有沒有效』這個問題），不要直接套用上面『判讀方式』段落的槽位對調結論。這支腳本本身沒有改資料庫、沒有動 c7a2cdb／f4df812，純粹紀錄寫腳本當下發現的矛盾。地圖身份：跟 round2-probe-firerate.json/round2-probe-mechkey.json 一樣不呼叫 select_map，create_pve_room 建出來的房間預設就是潛入作戰／Map_PC04（docs/journal/2026-09-22-0748-firerate-probe.md 第六節已用兩張截圖與客戶端不送封包的事實確認），地圖身份靠 create_pve_room 這個步驟自己存的截圖人工確認寫著「選擇地圖　潛入作戰」，不要無條件相信預設值不變；難度分頁不是控制變因，照實記錄即可。account/install_dir_win/bat_path_win 沿用同一支 host 帳號 mrotesthost、副本 C:\\Games\\MetalRage Online 2。fire_burst 用 shots=10、interval_s=0：docs/journal/2026-09-22-0748-firerate-probe.md 第一節已量出每次 CLICK 有 3.44 秒固定開銷（run_pico() 每一發都重新 shell 出一個 pico_ctl.py process、每次都重新自動偵測序列埠），interval_s 只要低於這個門檻就完全不影響實際間隔，被開銷本身決定，因此 interval_s=0 純粹是滿足 fire_burst 的參數需求，數值本身不是控制變因（跟 round2-probe-mechkey.json 一樣的理由，那份用 0.25，這份直接用 0 更清楚地表明這個參數不重要）。10 發不是統計射速用（那是 round2-probe-firerate.json 已經做過的事），只是要湊出足夠的 Fire/HitLoc 行數確認 (a)(b) 兩個答案，且比 30 發省壁鐘時間。max_wall_clock_s 算式：以 round2-probe-firerate.json 的 800 秒／段（shots=30, interval_s=0.25）為基準，減掉舊的 fire_burst 開銷、加回新的 fire_burst 開銷（30x3.44=103.2s -> 10x3.44=34.4s），再加上 enter_battle(mech_key=None) 用的是 ENTER_BATTLE_NO_KEY_TIMEOUT_S=120s 而不是 F 鍵路徑的 DEFAULT_ENTER_BATTLE_TIMEOUT_S=45s 這個差額（+75s，這支探針故意不送 F 鍵，必須讓選機體倒數計時自然跑完，不能沿用原本『F 鍵立刻出生』的預算），並扣掉 mech_key=None 路徑不再送出的 ENTER_BATTLE_POST_ESC_WAIT_S=8s 固定 sleep（那個 sleep 只有『送 F 鍵之前留時間讓畫面渲染完成』的用途，沒有 F 鍵可送就不需要它）：800 − 103.2 + 34.4 + 75 − 8 = 798.2 秒，取整數並留一點餘裕，寫成 900 秒（單段，不像 mechkey.json 要乘以 3 段）。成功 = 12 個步驟全部 ok。失敗先看：create_pve_room（如果截圖不是潛入作戰，先查帳號預設值是不是被改過，不是腳本 bug）、enter_battle（mech_key=None 這條路徑目前完全沒有實機驗證過，卡在這裡本身也是訊號，但先確認是不是純粹等待時間不夠——ENTER_BATTLE_NO_KEY_TIMEOUT_S 是保守值不是實測值——而不是連線判斷邏輯有問題）、fire_burst（非成功 CLICK 會在第幾發中止，見 detail）。未執行任何劇本、未啟動客戶端、未送出任何 Pico 輸入，純粹是劇本檔與 actions.py/runner.py 的撰寫。",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    }
+  },
+  "steps": [
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "host",
+        "mech_key": null
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "host",
+        "text": "WeaponLog"
+      }
+    },
+    {
+      "action": "fire_burst",
+      "params": {
+        "client_id": "host",
+        "shots": 10,
+        "interval_s": 0
+      }
+    },
+    {
+      "action": "leave_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "close_client",
+      "params": {
+        "client_id": "host"
+      }
+    }
+  ],
+  "stop_conditions": {
+    "max_consecutive_failures": 1
+  },
+  "max_wall_clock_s": 900,
+  "max_image_reviews": 0
+}
