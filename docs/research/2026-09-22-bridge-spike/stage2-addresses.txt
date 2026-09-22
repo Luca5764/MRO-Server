@@ -1,0 +1,196 @@
+BRIDGE-SPIKE 階段 2：位址與資料結構調查（中階 explorer，唯讀）
+2026-09-22
+
+工具：Metal Rage Online Server/tools/disasm.py（sections/exports/at/xref）
+目標 DLL（唯讀）：/mnt/c/Games/MetalRage Online/data/System/{ZNetwork,Engine,Core}.dll
+Engine.dll sha256 = fc51fe1240ee34111fc1a483e74a1b131d4b69f2b2a0940adbb4a860a138d24e（與任務指定的前綴相符）
+
+=========================================================================
+A. 場景編號
+=========================================================================
+
+A0. 與既有假設不符，先說明：
+`ZDispatchRoom::Check`（thunk 0x1070966a → 本體 0x107e9eb0）**本身不讀取「目前場景」變數**。
+組語核對（disasm.py at 0x107e9eb0 60）：
+
+  0x107e9eb0  mov  eax, [0x1091b884]     ; 全域指標
+  0x107e9eb5  mov  edx, [eax]            ; 二次解參考 -> IsClient 相關旗標，==0 就整個關閉
+  0x107e9eb8  mov  esi, ecx              ; esi = this (ZDispatchRoom 物件, thiscall)
+  0x107e9ec0  mov  eax, [esp+8]          ; ★ eax = 呼叫端傳進來的「場景」實參（stack 參數，不是讀記憶體）
+  0x107e9ec4  cmp  eax, 5
+  0x107e9ec7  je   0x107e9ed5            ; ==5 或 ==6 才 enable，否則 this+4=0
+  0x107e9ec9  cmp  eax, 6
+  0x107e9ecc  je   0x107e9ed5
+  0x107e9ece  mov  byte ptr [esi+4], cl  ; cl=0 -> disable
+  ...
+  0x107e9ed5  mov  byte ptr [esi+4], 1   ; enable
+
+這與既有文件 docs/research/2026-09-21-moon-objective-protocol/verify-c-items.md 第 5b 節的核對一致
+（該篇已標註 Check 的閘門是 scene==5 || scene==6，Moon 的「必須切到 5」假設不成立）。
+**結論：`Check` 只是「拿呼叫端傳入的場景數字跟 5/6 比對」，真正儲存「目前場景」的欄位在呼叫鏈更上游。**
+
+A1/A2. 追到真正的來源：`UZNetwork_DJ::Scene_Change(this, sceneId)`
+（thunk 0x1070148d → 本體 ZNetwork.dll VA 0x10738910，21 個呼叫點，已用 xref 逐一列出）：
+
+  0x10738911  mov  ebx, [esp+8]          ; ebx = sceneId 參數（第一個顯式參數）
+  0x10738916  mov  esi, ecx              ; esi = this（UZNetwork_DJ 單例）
+  0x1073891e  mov  byte ptr [esi+0x38c], bl   ; ★★ this->+0x38c = sceneId（單一 byte）
+  0x10738924  call 0x10701c6c           ; 監聽者廣播（走 0x108e5510 固定全域鏈結串列，已由 verify-d-endgame.md 核過）
+  ...（scene==4／scene==5 各自多呼叫一到兩個輔助函式，跟場景編號本身無關）
+
+已知數值（跟既有文件互相印證，逐一在 journal 的 Scene_Change(N) 呼叫點旁核對過）：
+  0 = 斷線完成 / 尚未登入（2026-09-17-03-iteminfo-accumulation.md）
+  1 = ZDispatchWaiting（Game_Info_SN 進入的等待場景）
+  4 = 出現在 Room 內某使用者離開分支（2026-09-19-0330-d1-step4-room-join.md:324），語意未深究
+  5 = ZDispatchRoom 房間 / 結算（EndGame_SN 之後）
+  6 = ZDispatchGame 戰鬥中
+`ZDispatchRoom::Check` 的邏輯證實 5、6 都算「房間 dispatcher 啟用」，與 docs/reference/protocol.md:184-186、
+docs/state.md:28 一致。
+
+寬度：**1 byte**（`mov byte ptr [esi+0x38c], bl`，不是 dword）。
+
+A3. offset 與「this」怎麼拿：
+**這不是一個固定的全域位址，是一個物件欄位；物件本身要透過一次 API 呼叫取得，不能只靠
+`moduleBase+offset` 直接讀到 scene 值。** 逐段拆解：
+
+1. `this`（UZNetwork_DJ 單例）是呼叫 Core.dll 匯出 `?GetDefaultObject@UClass@@QAEPAVUObject@@XZ`
+   （VA 0x1010ce20，thiscall，ecx=UClass*）取得的回傳值（也就是該 UClass 的 Class Default Object）。
+   多個呼叫點（例如 ZDispatchLobby::Enter_SA，0x107e4117 / 0x107e41ac 附近）都用同一個模式：
+     mov ecx, 0x108e9b70          ; UClass 結構的固定位址（ZNetwork.dll 內嵌的靜態物件）
+     call dword ptr [0x1091b990]  ; IAT slot -> Core.dll!UClass::GetDefaultObject
+   已用 pefile 核對 IAT：VA 0x1091b990 對應 import
+   `Core.dll  ?GetDefaultObject@UClass@@QAEPAVUObject@@XZ`（精確比對，非猜測）。
+   **UClass 結構位址 = ZNetwork.dll + 0x1e9b70**（0x108e9b70 - imagebase 0x10700000）。這段是固定的
+   module-relative offset，可以用 `Module.findBaseAddress('ZNetwork.dll').add(0x1e9b70)` 求出。
+   但這只是 UClass 描述子的位址，不是 CDO 指標本身——CDO 指標藏在 UClass 內部某個尚未核對的欄位，
+   要嘛去反查 UClass 的欄位佈局，要嘛（建議）直接在 Frida 裡呼叫真正的 Core.dll 匯出函式：
+     new NativeFunction(Module.getExportByName('Core.dll',
+       '?GetDefaultObject@UClass@@QAEPAVUObject@@XZ'), 'pointer', ['pointer'], 'thiscall')
+       (Module.findBaseAddress('ZNetwork.dll').add(0x1e9b70))
+   这样不需要逆向 UClass 内部欄位，直接借用客戶端已載入的真正函式。
+2. 拿到 `this`（UZNetwork_DJ*）之後，場景欄位在 **`this + 0x38c`**（1 byte）。
+
+**替代方案（更簡單、更推薦給 Frida）：** 直接 `Interceptor.attach` 在 `Scene_Change` 本體
+（ZNetwork.dll + 0x38910，即 VA 0x10738910，offset = 0x10738910-0x10700000）的入口，
+第一次呼叫時把 `this.context.ecx` 存成全域快取（這就是 UZNetwork_DJ 單例指標，之後穩定不變，
+因為它是 CDO，程式生命週期內只會被同一個 class-default-object 使用），之後直接讀
+`cachedThis.add(0x38c).readU8()` 拿目前場景，不需要每次都重新呼叫 GetDefaultObject。
+這條路徑我在這次任務裡完全用組語核對過（thiscall、byte 寬度、offset 都是實際讀到的，不是猜測）。
+
+ZNetwork.dll sections（disasm.py sections ZNetwork.dll）：
+  ImageBase 0x10700000   SizeOfImage 0x00233000
+  相關 offset：
+    Scene_Change 本體      VA 0x10738910  offset 0x00038910
+    Scene_Change thunk     VA 0x1070148d  offset 0x0000148d
+    ZDispatchRoom::Check   VA 0x107e9eb0  offset 0x000e9eb0（本體不含場景欄位，見上）
+    UClass(UZNetwork_DJ)   VA 0x108e9b70  offset 0x001e9b70
+    IAT: GetDefaultObject  VA 0x1091b990  offset 0x0021b990（Core.dll import，pefile 核對過）
+
+=========================================================================
+B. 開火計數的掛鉤點
+=========================================================================
+
+Engine.dll sections：ImageBase 0x10300000，SizeOfImage 0x006df000
+Core.dll   sections：ImageBase 0x10100000，SizeOfImage 0x0020a000
+
+B4. `AActor::ProcessRemoteFunction` 函式簽章
+export：`?ProcessRemoteFunction@AActor@@UAEHPAVUFunction@@PAXPAUFFrame@@@Z`
+VA 0x105234b0（Engine.dll offset = 0x002234b0）。
+組語核對（disasm.py at 0x105234b0 60 Engine.dll）prologue：
+
+  0x105234b0  push ebp
+  0x105234b1  mov  ebp, esp
+  ...
+  0x105234cc  mov  ebx, [ebp+8]      ; 第一個顯式（stack）參數
+  0x105234cf  mov  eax, [ebx+0x84]   ; 立刻讀 ebx+0x84 = FunctionFlags -> 證實 ebx 就是 UFunction*
+  0x105234df  mov  edi, ecx          ; ★ this（AActor*）在 ecx，thiscall
+  ...
+  0x10523537  mov  ecx, [ebp+0x10]   ; 第三個參數
+  0x1052353a  mov  edx, [ebp+0xc]    ; 第二個參數
+  ...
+  0x10523534  ret  0xc               ; 彈 3*4=12 bytes -> 3 個顯式參數，跟 mangled name 的
+                                       ; (UFunction*, void*, FFrame*) 三參數吻合，this 走 ecx 不算在內
+
+**結論（從組語 prologue/參數存取推出，非 Ghidra 猜測）：**
+  __thiscall int AActor::ProcessRemoteFunction(
+      /*ecx*/ AActor* this,
+      /*[ebp+8] 第1個stack參數*/ UFunction* Function,
+      /*[ebp+0xc]*/ void* Parms,
+      /*[ebp+0x10]*/ FFrame* Stack)
+第 1 個參數（也是唯一的 stack 參數中第一個）就是 `UFunction*`。
+Frida `Interceptor.attach` 在 ia32 上 `args[0]` 對應第一個 stack 參數（不含 this），
+所以 `args[0]` 直接就是 `UFunction*`，`this.context.ecx` 是 `AActor*`。
+
+B5. 從 `UFunction*` 拿函式名字 — **可行，且比預期簡單，已用組語核對，不是猜測**
+
+Core.dll 匯出這幾個直接命中的函式（disasm.py exports Core.dll）：
+  0x10102800  ?GetFName@UObject@@QBE?BVFName@@XZ
+  0x1010cbc0  ?GetName@UObject@@QBEPBGXZ
+  0x102ca6fc  ?Names@FName@@0V?$TArray@PAUFNameEntry@@@@A   <- 這就是名字表本體
+
+反組譯 `UObject::GetFName`（disasm.py at 0x10102800 20 Core.dll）：
+  mov ecx, [ecx+0x24]     ; ★★ UObject::Name 欄位在 this+0x24，且就是單一 4-byte 值
+  mov eax, [esp+4]        ; hidden return-by-pointer
+  mov [eax], ecx
+  ret 4
+**在這個引擎版本裡 FName 不是「index+number」雙欄位，儲存在 UObject 上的就是單一 dword
+（Names 陣列的索引）。** 這點跟任務描述預期的「index+number」不同，特此指出矛盾。
+
+反組譯 `UObject::GetName`（disasm.py at 0x1010cbc0 20 Core.dll，回傳 const TCHAR*，
+mangled `PBG`=const unsigned short*，也就是 UTF-16）：
+  mov eax, [ecx+0x24]         ; Name 索引（同一欄位）
+  mov ecx, [0x102ca6fc]       ; FName::Names（TArray<FNameEntry*>）的 Data 指標（TArray 第一個欄位）
+  mov eax, [ecx + eax*4]      ; Names.Data[index] -> FNameEntry*
+  add eax, 0xc                ; ★ FNameEntry 的字串資料從 entry+0xc 開始
+  ret
+
+**在 Frida 裡走到字串的完整路徑（全部欄位都經組語核對，不是猜測）：**
+  1. functionNameIndex = UFunction_ptr.add(0x24).readU32()
+  2. namesArrayData = Module.findBaseAddress('Core.dll').add(0x1ca6fc /* 0x102ca6fc-0x10100000 */).readPointer()
+     （0x102ca6fc 本身是 TArray 物件，其第一個欄位就是 Data 指標，所以這裡直接 readPointer 兩層即可，
+     不需要額外呼叫任何函式）
+  3. entryPtr = namesArrayData.add(functionNameIndex * 4).readPointer()
+  4. namePtr = entryPtr.add(0xc)
+  5. name = namePtr.readUtf16String()
+
+Core.dll 相關 offset（module-relative，供 Frida 用）：
+  UObject::Name 欄位           this + 0x24（1 dword，任何 UObject 子類都適用，UFunction 也是 UObject）
+  FName::Names（TArray 起點）  Core.dll + 0x001ca6fc（VA 0x102ca6fc - imagebase 0x10100000）
+  FNameEntry 字串起點          entry + 0xc（UTF-16LE，以 NUL 結尾；未逐位元組核對 FNameEntry 其餘欄位，
+                                只核對了字串起點這一個 offset，其餘欄位語意 ⬜）
+
+B6. 有沒有更簡單的計數掛鉤點？
+**沒找到獨立 native 位址。** 檢查過 Engine.dll / Core.dll / ZNetwork.dll 的 exports（disasm.py exports
+<dll> 'Fire'、disasm.py str 'FireProjectileCenterLoc' Engine.dll），只找到通用武器事件
+（`UWeaponFire::eventModeDoFire` 等），完全没有 `ServerFireProjectileCenterLoc_MH` /
+`ClientFireProjectileCenterLoc_MH` 的字串或符號命中。判斷：這兩個是純 UnrealScript
+`simulated function`（沒有 `native` 關鍵字），只存在於遊戲腳本封包（.u 檔）的 bytecode 裡，
+不會在這三個 DLL 裡產生獨立可掛鉤的機器碼位址。
+**因此目前找到「最簡單」的掛鉤點就是 B4/B5：Hook `AActor::ProcessRemoteFunction`
+（Engine.dll + 0x2234b0），在 onEnter 用 B5 的路徑把 args[0] 解回函式名字字串，
+過濾出 "ServerFireProjectileCenterLoc_MH" / "ClientFireProjectileCenterLoc_MH" 兩個名字再計數。**
+沒有再往下查 .u script 檔或 bytecode dispatcher（超出這次唯讀 DLL 反組譯的範圍，需要另外討論要不要做）。
+
+=========================================================================
+不確定 / 待審 / 與既有文件的落差
+=========================================================================
+
+1. **A 項與任務描述的落差**：任務背景假設 `ZDispatchRoom::Check` 直接讀「目前場景編號」變數；
+   實際上它讀的是呼叫端傳入的參數，真正儲存場景的欄位在 `UZNetwork_DJ`（Scene_Change 的 this）
+   的 `+0x38c`。這與既有 docs/reference/protocol.md:184「每個 ZDispatch*::Check(SCENE_TYPE) 設
+   *(this+4)」的描述一致（`this+4` 是 ZDispatchRoom 自己的 enable flag，不是場景值本身），
+   但跟這次任務 prompt 的措辭不同，需要主力確認是否要更新後續 Frida 腳本的假設。
+2. `UClass(UZNetwork_DJ)` 位於 ZNetwork.dll+0x1e9b70 這個判斷，是靠「同一個常數在多個呼叫點都配
+   `call [GetDefaultObject IAT]`」的重複模式間接推出來的，**沒有進一步反查 UClass 內部欄位確認
+   它的類別名字串真的是 "ZNetwork_DJ"**（UClass 結構佈局本身沒有深入）。建議：如果要在 Frida 裡
+   信任這個位址，先用「Hook Scene_Change 拿 this，跟呼叫 GetDefaultObject(0x108e9b70) 拿到的值
+   比對是否相同」做一次靜態確認（在客戶端啟動時，唯讀 attach 觀察即可，不用改任何東西）。
+3. FName 只有單一 dword（無 number 尾碼）這件事，只核對了 `GetFName`/`GetName` 兩個函式，
+   沒有反查 FNameEntry 結構其餘欄位（可能仍有 Flags/HashNext 等，只有「字串起點在 +0xc」被核對）。
+4. B6 沒有查 .u 腳本檔（bytecode 層），只確認了三個 native DLL 裡沒有專屬符號；不代表 bytecode
+   dispatcher 沒有更簡單的掛鉤點（例如某個固定的 opcode 執行位址），但那超出這次「反組譯 DLL」
+   的範圍。
+5. 全程唯讀：只用 `tools/disasm.py`（sections/exports/at/xref）與 python3+pefile 讀 IAT，
+   沒有啟動客戶端、沒有寫入任何 DLL、沒有跑 frida。
+
+Agent: claude-sonnet (中階 explorer)

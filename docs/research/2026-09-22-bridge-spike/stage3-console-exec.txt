@@ -1,0 +1,195 @@
+BRIDGE-SPIKE 階段 3 — console exec 入口偵查（中階 explorer，唯讀）
+2026-09-22 / 未經審查 / 中階產出，結論一律待審
+
+對象：/mnt/c/Games/MetalRage Online/data/System/{Engine,Core,WinDrv}.dll（原廠、未修改）
+工具：Metal Rage Online Server/tools/disasm.py（sections/exports/at/xref/str）
+方法：exports 表拿到 mangled 名稱與位址 → tools/disasm.py at 逐條核對組語 → objdump -p 核對匯入表
+
+======================================================================
+1. UViewport::Exec 位置與往回推函式開頭
+======================================================================
+export： ?Exec@UViewport@@UAEHPBGAAVFOutputDevice@@@Z
+VA：      Engine.dll 0x104154f0  （export 本體就是函式起點，不是 thunk——
+          disasm at 0x104154f0 看到標準 push ebp/mov ebp,esp/push -1/SEH prologue，
+          不是 jmp）
+既有 journal（2026-09-20-2130-netspeed-clamp.md）給的位址 0x10415620 只是
+"ParseCommand(&Cmd,'NETSPEED') 那段對齊乾淨的起點"，不是函式開頭——
+函式真正開頭在 0x104154f0，往前 0x130 bytes。本次從 0x104154f0 重新
+disasm 60 行，銜接得上原 journal 的 0x10415620 段（同一函式內，中間是
+FExec-hook 廣播與其他 ParseCommand 分支，路徑：WEBADMIN → GAMEDEMOREC
+之類 → NETSPEED）。[已核對組語]
+
+======================================================================
+2. 簽章
+======================================================================
+Engine.dll export 全名（MSVC demangle）：
+  int __thiscall UViewport::Exec(const unsigned short* Cmd, FOutputDevice& Ar)
+
+確認依據（[已核對組語]）：
+- this 在 ecx：0x10415511 `mov edi, ecx`（edi 全程當 this 用，[edi+4]/[edi+0x48]
+  等都是成員存取）
+- 兩個 stack 參數：[ebp+8]＝Cmd、[ebp+0xc]＝Ar
+  - Cmd 是 TCHAR*（16-bit 寬字元）：ParseCommand 呼叫全部用
+    `lea eax,[ebp+8]; push <utf16le字串VA>; push eax; call esi` 的形狀，
+    字串常數本身確認是 UTF-16LE（如 "NETSPEED" 在 0x106a7fb4，
+    disasm.py str 標成 utf-16le）；atoi-like helper 也是直接
+    `mov ecx,[ebp+8]; push ecx; call [0x10679464]` 把該指標當寬字串處理。
+  - Ar 是 FOutputDevice&（by-ref，也就是傳指標）：對應 mangled 的
+    `AAVFOutputDevice@@`。函式尾端 `ret 8`（callee 清 2 個 DWORD 參數）
+    與 3 個 SAVE 系列（見下）一致。
+- 是的，**有第二個參數 Ar**。呼叫端要傳什麼進去才安全，見下方風險小節；
+  **簡單可行的做法是傳 `GLog`**（Core.dll 匯出的全域 `FOutputDevice*`，
+  VA `?GLog@@3PAVFOutputDevice@@A` = Core.dll 0x102126a0，本身就是給
+  「沒有專屬輸出裝置時用」的通用 log sink，UE2 到處這樣用）。
+  ⬜ 沒有實際測試傳 GLog 進 Exec 會不會出錯，只是根據命名慣例判斷風險低。
+
+同一模式在 Core.dll 也看到一個更完整的版本：
+  ?ScriptConsoleExec@UObject@@UAEHPBGAAVFOutputDevice@@PAV1@@Z
+  int __thiscall UObject::ScriptConsoleExec(const TCHAR* Cmd, FOutputDevice& Ar, UObject* Executor)
+  VA Core.dll 0x10147ad0，disasm 開頭 `mov esi, ecx`（this=ecx）、
+  `ret 0xc`（清 3 個 DWORD＝Cmd/Ar/Executor）——三個 stack 參數對得上
+  mangled 名稱的三個型別。[已核對組語]
+
+======================================================================
+3. UObject::ScriptConsoleExec 在不在，位置
+======================================================================
+**在，但在 Core.dll，不在 Engine.dll。**
+  export：?ScriptConsoleExec@UObject@@UAEHPBGAAVFOutputDevice@@PAV1@@Z
+  VA：Core.dll 0x10147ad0
+  簽章見上一節。這是 UE2 標準「把主控台字串轉呼叫 UnrealScript exec 函式」
+  的入口，通常在 UObject::Exec / UViewport::Exec 內部往下呼叫，還沒逐行
+  核對它跟 UViewport::Exec 的呼叫關係（時間不夠，見「建議下一步」）。
+
+======================================================================
+4. 拿到 this（Viewport 物件）的路徑 ← 本次重點
+======================================================================
+**沒有走 GEngine 鏈——那條鏈查不到（見下）。改用 GObjObjects 掃描，
+每一跳都已核對組語，是可以直接照抄進 Frida JS 的完整路徑：**
+
+第一步：GObjObjects（Core.dll，全域 UObject 陣列，TArray<UObject*>）
+  export：?GObjObjects@UObject@@0V?$TArray@PAVUObject@@@@A
+  VA：Core.dll 0x102ce790
+  TArray 版面（[已核對組語]，xref 到 0x102ce790 的其中一段迭代器程式碼，
+  Core.dll VA 0x10118d60 附近）：
+    +0x00  Data   (UObject** ，元素陣列指標)   ← 確認：`mov edx,[0x102ce790]`
+                                                  取的就是這個
+    +0x04  ArrayNum (int，目前元素數)          ← 確認：`cmp eax,[0x102ce794]`
+                                                  當作上限比對
+    +0x08  ArrayMax (int)                       ⬜ 沒有在這段程式碼直接看到，
+                                                  是標準 UE2 TArray 第三欄位的
+                                                  慣例值，未逐行核對
+  同一段也看到 UObject 本身的欄位：`eax = [obj+0x28]`，緊接著拿去跟
+  一個 UClass* 比對——這是 FObjectIterator 依 Class 過濾的寫法，代表
+  **UObject::Class 在物件偏移 +0x28**（[已核對組語]，但只核對了這一處
+  用法，不是專門去查 UObject 完整版面的權威來源）。
+
+第二步：判斷哪個 UObject* 是 Viewport
+  用 vtable 指標比對，不用 +0x28 的 Class（Class 比對還要多一層解析
+  UClass 物件本身，vtable 比對更直接）：
+    WinDrv.dll export：?_7UWindowsViewport@@6BUObject@@@  VA 0x1112d710
+    （WinDrv.dll ImageBase 0x11100000，這是 UWindowsViewport 對外表現
+    為 UObject 時用的主 vtable，偏移 0——多重繼承下 UObject 一定是最左邊
+    的 base，vtable 指標在物件開頭）
+  演算法：
+    for obj in GObjObjects.Data[0 .. GObjObjects.ArrayNum):
+        if obj != NULL and obj.readPointer() == WinDrv.dll_base + (0x1112d710 - 0x11100000):
+            viewport = obj   # 這就是 UViewport::Exec / UWindowsViewport::Exec 要用的 this
+  ⬜ 沒有實機驗證這個掃描真的只會命中一個物件（理論上執行期只會有一個
+  UWindowsViewport 實例，但沒有用 Frida 實際跑一次確認）。
+
+第三步：呼叫
+  可以直接呼叫 WinDrv.dll 的覆寫版（更接近真實輸入路徑）：
+    ?Exec@UWindowsViewport@@UAEHPBGAAVFOutputDevice@@@Z
+    VA：WinDrv.dll 0x11112c30，[已核對組語]確認 this=ecx（`mov ebx,ecx`）、
+    兩個 stack 參數 Cmd/[ebp+8]、Ar/[ebp+0xc]，跟 Engine.dll 那版同款式。
+  這個匯出名稱不是 adjustor thunk（MSVC adjustor thunk 的 mangled 名會
+  帶 `$4PPPPPPPM@A@` 這種記號，這個沒有），代表可以直接用 GObjObjects
+  掃到的 this（偏移 0）呼叫，不需要額外調整 this 指標。
+
+**GEngine 鏈為什麼放棄**：Core.dll 匯出表裡有一大票 G-開頭的全域
+（GLog／GMalloc／GExec／GConfig／GIsServer……共約 90 個，见
+/tmp/engine_exports.txt 與 /tmp/core_exports.txt，本次執行期間產生，
+未存檔），**唯獨沒有 GEngine**。Engine.dll 的 UGameEngine::Init
+（export VA 0x1045a0e0）前 80 行組語看不出明顯的 `mov [GEngine], ecx`
+賦值（時間不夠往後追完整個函式，可能有幾百行）。GEngine 應該是存在的
+全域（UE2 標準架構一定有），但**不是 dllexport 的資料符號**，要嘛在
+Engine.dll 內部找一個沒有名字的 .data 位址（要整個函式看完才找得到寫入點），
+要嘛乾脆不用它——GObjObjects 這條路本身就是完整、可核對、且不需要
+猜位址的替代方案，所以本次直接改用它，沒有再花時間找 GEngine。
+
+⚠ **矛盾／需要主力注意**：一開始沿著 `?GetOuterUClient@UViewport@@` 
+(Engine.dll export VA 0x10322f60) 想找「Viewport→Outer→Client」鏈，
+disasm 發現這個 export 的本體是 `jmp dword ptr [0x106791a0]`——
+也就是說 **這個 export 本身是個轉呼叫（IAT 風格 thunk），不是它自己
+實作的**，很可能直接轉呼叫 Core.dll 的 UObject::GetOuter() 再由編譯器
+內聯轉型。我一開始誤跟著這個 jmp 目標往下讀了一段不相關的程式碔
+（結果看起來完全不像「回傳 Outer」的邏輯），已確認那段讀錯，**沒有
+拿那段的欄位偏移做任何結論**，只是記錄下來避免下一個人重複踩。
+
+======================================================================
+5. netspeed 走的兩條路，跟 2026-09-21 的結論對不對得上
+======================================================================
+- 本地主控台指令 `netspeed <n>`：UWindowsViewport::Exec（WinDrv.dll
+  0x11112c30）先被呼叫（Windows 輸入層的具體實作），組語顯示它一開始
+  就 `call dword ptr [0x11129444]`，this/Cmd/Ar 三者都原封不動轉傳——
+  **形狀跟「先呼叫 Super::Exec，處理不了才輪到自己」完全一致**，但
+  ⚠ **這個呼叫目標我沒能核對到底是不是 Engine.dll 的 UViewport::Exec**：
+  用 objdump -p 查 WinDrv.dll 的匯入表，Engine.dll 匯入清單裡確實有
+  `?Exec@UViewport@@...`（thunk RVA 0x60348, VA 0x11160348），但這跟
+  呼叫用的位址 0x11129444 對不上，我沒有在剩餘時間內查到 0x11129444
+  實際對應哪一個匯入符號。**這條「本地指令會先過 Super::Exec」只是
+  組語形狀上的推論，不是確認**，標 ⬜。
+- 不影響既有結論本身：2026-09-20-2130 那篇已經直接核對過
+  `UViewport::Exec` VA 0x104156f0-0x104156ff 的 clamp 邏輯，那段
+  今天原封不動看了一次，位址、邏輯都還是一樣（15000 上限，讀
+  NetDriver+0x1168）。
+- `ULevel::NotifyReceivedText`（網路文字命令路徑，Engine.dll
+  0x1047ec80）跟 `UViewport::Exec`（本地主控台路徑，Engine.dll
+  0x104154f0）確實是兩個不同進入點、各自做一次同款 clamp——這點
+  本次重看沒有發現任何跟 2026-09-21-2230 矛盾的地方：加入者在本地
+  打 netspeed 只會走 UViewport::Exec 這條，只改自己這端的
+  `Connection->CurrentNetSpeed`（[esi+0x3c]+0x50，esi 是本地
+  NetDriver），不會產生網路封包去觸發房主那邊的
+  `ULevel::NotifyReceivedText`——這正是「不會重新協商」的組語層
+  解釋，跟既有結論吻合。
+
+======================================================================
+6. 風險：外部執行緒呼叫安全嗎？有沒有每 frame 的掛點？
+======================================================================
+- UE2（這個引擎）**不是執行緒安全的**：GObjObjects、UNetDriver、
+  UViewport 內部狀態全部假設單一遊戲執行緒存取，從 Frida 的
+  Interceptor 回呼直接跨執行緒呼叫 UViewport::Exec 是危險動作
+  （典型後果：跟渲染/tick 執行緒的資料競爭，可能寫壞 TArray 或
+  在遊戲執行緒剛好在 realloc 同一個陣列時整個崩潰）。這一點
+  只是根據 UE2 通用架構常識判斷，**沒有對這個引擎版本做專門的
+  多執行緒安全性測試**，標 ⬜。
+- **每 frame 掛點候選**：
+    export：?Tick@UGameEngine@@UAEXM@Z
+    簽章：void __thiscall UGameEngine::Tick(float DeltaTime)
+    VA：Engine.dll 0x10463820
+  這是標準 UE2 主迴圈進入點（exe 的 WinMain 每個 frame 呼叫一次），
+  名稱與簽章都在 exports 表清楚核對到，**但沒有花時間反組譯函式本體
+  去確認它真的每 frame 被呼叫一次、以及呼叫者是誰**——只是根據
+  UE2 通用架構命名慣例判斷，標 🟡。
+  做法建議（給下一步，不是本次交付的一部分）：Frida 在
+  `Engine.dll+（0x10463820-0x10300000）` 的**函式進入點**
+  `Interceptor.attach`，在 onEnter 裡把一個佇列裡待執行的指令字串
+  逐一呼叫 UWindowsViewport::Exec——這樣呼叫點就落在遊戲自己的
+  執行緒上，不是 Frida 的背景執行緒。
+
+======================================================================
+建議主力接下來確認的三件事
+======================================================================
+1. **`call dword ptr [0x11129444]` 到底轉呼叫誰**——用 objdump -p 對
+   WinDrv.dll 全量匯入表跑一次 RVA→符號對照（本次只挑著查沒查全），
+   確認 UWindowsViewport::Exec 是不是真的先呼叫 Super（Engine.dll
+   UViewport::Exec）。這件事確認了，第 5 項的 ⬜ 就能收斂。
+2. **實機用 Frida 跑一次 GObjObjects 掃描**，確認真的只掃到一個
+   UWindowsViewport 實例、vtable 比對邏輯真的命中——這是第 4 項
+   全部推論裡唯一還沒有實測驗證的環節。
+3. **UGameEngine::Tick 是不是真的每 frame 呼叫一次**——反組譯它的
+   呼叫端（找誰 call 0x10463820），或者先用 Frida hook 它、印
+   時間戳，比反組譯快。這是第 6 項掛點是否可行的關鍵。
+
+四、五、六項是本次要求優先做紮實的兩項（4、6），已完成；第 5 項
+的核對過程中意外暴露了第 6 節前段那個未核對的呼叫目標，一併記錄。

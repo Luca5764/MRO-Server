@@ -69,17 +69,56 @@ function appendLine(msg) {
   appendLines(['[' + nowIso() + '] pid=' + Process.id + ' ' + msg]);
 }
 
+// Frida 17 拿掉了 Module.findBaseAddress（[TEST] 2026-09-22 實機回報
+// "TypeError: not a function"），改用 Process.findModuleByName。這裡三種寫法都試，
+// 讓腳本跨 Frida 版本都能動，不要為了版本差異再燒一輪實跑。
 function resolveModuleBase(name) {
+  const lower = name.toLowerCase();
   try {
-    const base = Module.findBaseAddress(name);
-    if (base === null) {
-      appendLine('FATAL module not found: ' + name);
+    if (typeof Process !== 'undefined' && typeof Process.findModuleByName === 'function') {
+      const m = Process.findModuleByName(name);
+      if (m !== null && m !== undefined) return m.base;
     }
-    return base;
-  } catch (e) {
-    appendLine('FATAL findBaseAddress(' + name + ') threw: ' + e);
-    return null;
-  }
+  } catch (e) { /* 換下一種 */ }
+  try {
+    if (typeof Module !== 'undefined' && typeof Module.findBaseAddress === 'function') {
+      const base = Module.findBaseAddress(name);
+      if (base !== null && base !== undefined) return base;
+    }
+  } catch (e) { /* 換下一種 */ }
+  try {
+    const mods = Process.enumerateModules();
+    for (let i = 0; i < mods.length; i += 1) {
+      if (String(mods[i].name).toLowerCase() === lower) return mods[i].base;
+    }
+  } catch (e) { /* 三種都失敗 */ }
+  return null;
+}
+
+// 模組是延遲載入的（[TEST] 2026-09-22：階段 1 的心跳看到模組數從 106 長到 117，
+// 而腳本在行程剛起來時就執行，那時 ZNetwork.dll 還沒載入）。所以不能一次找不到就放棄，
+// 要輪詢等它出現。等到就執行 onReady，逾時才真的放棄。
+function whenModuleLoaded(name, timeoutMs, intervalMs, onReady) {
+  const deadline = Date.now() + timeoutMs;
+  let reported = false;
+  const timer = setInterval(function () {
+    let base = null;
+    try { base = resolveModuleBase(name); } catch (e) { base = null; }
+    if (base !== null) {
+      clearInterval(timer);
+      appendLine('module ' + name + ' appeared, base=' + base);
+      try { onReady(base); } catch (e) { appendLine('FATAL onReady(' + name + ') threw: ' + e); }
+      return;
+    }
+    if (!reported) {
+      reported = true;
+      appendLine('waiting for ' + name + ' to load (delay-loaded; will poll)');
+    }
+    if (Date.now() > deadline) {
+      clearInterval(timer);
+      appendLine('giving up: ' + name + ' never loaded within ' + timeoutMs + 'ms');
+    }
+  }, intervalMs);
 }
 
 // ---------------------------------------------------------------------------
@@ -112,12 +151,14 @@ function resolveFunctionName(coreBase, ufunctionPtr) {
   return name;
 }
 
-const engineBase = resolveModuleBase('Engine.dll');
-const coreBase = resolveModuleBase('Core.dll');
+appendLine('script loaded; waiting for Engine.dll / Core.dll');
 
-if (engineBase === null || coreBase === null) {
-  appendLine('giving up: Engine.dll or Core.dll not loaded, fire counting disabled');
-} else {
+whenModuleLoaded('Engine.dll', 300000, 2000, function (engineBase) {
+  const coreBase = resolveModuleBase('Core.dll');
+  if (coreBase === null) {
+    appendLine('giving up: Core.dll not found even though Engine.dll is loaded');
+    return;
+  }
   const hookAddr = engineBase.add(PROCESS_REMOTE_FUNCTION_OFFSET);
   appendLine(
     'script loaded, Engine.dll base=' + engineBase + ' Core.dll base=' + coreBase +
@@ -216,4 +257,4 @@ if (engineBase === null || coreBase === null) {
   }
 
   setInterval(flush, FLUSH_MS);
-}
+});
