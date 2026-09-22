@@ -1,0 +1,107 @@
+{
+  "id": "manual-handover-setup",
+  "purpose": "MANUAL HANDOVER SETUP (2026-09-22, 操作者要求「把環境設定到開火前，我只負責開火」)。\n這是 experiments/round2-projectile.json 砍掉尾巴的版本：保留 launch/login/create_pve_room/\ndismiss_notice/idle_nudge/host_start_battle/enter_battle/console_cmd_on(WeaponLog)，\n**移除 fire_burst、兩個 leave_battle、兩個 close_client**。跑完之後客戶端會留在戰場、\n焦點在加入者(MetalRage, mrotest, 射手)，WeaponLog 已 toggle 開啟，操作者直接開火即可。\n\n為什麼要人手開火：Pico 每次 CLICK 有 3.44 秒固定開銷（三個獨立樣本 3.45/3.44/3.45），\n打不快過 MTE_a 的 1.5 秒冷卻，因此測不到**成串失敗**那一支成因\n（🟡 H-AMMO-DESYNC，`HasAmmo()` 閘門）。2026-09-22 自動化 A 組四輪的逐發序列幾乎全是\n孤立單發（例 `....X....X.X.X...X..X`），而 2026-09-20 人手那輪記到失敗串 `1,2,3,1,2,1,1`。\n→ 人手連按到底才能重現成串失敗，這是自動化的已知盲區。\n\n⚠️ WeaponLog 是 toggle，本劇本已經打過一次，**操作者不要再打第二次**。\n⚠️ 跑完不會關客戶端。log 要等客戶端關掉才會寫完整（data/System/run-*.log）。\n⚠️ A′/B′ 的房主 Engine.dll 由高階在外層切換，本劇本不碰 DLL。\n\n原始 purpose 保留於 round2-projectile.json，不在此重複。",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    },
+    "joiner": {
+      "proc_name": "MetalRage",
+      "install_dir_win": "C:\\Games\\MetalRage Online",
+      "bat_path_win": "C:\\Games\\MetalRage Online\\Play With Log.bat"
+    }
+  },
+  "steps": [
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "joiner",
+        "account": "mrotest"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pve_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "join_room",
+      "params": {
+        "client_id": "joiner",
+        "room_name": "round2-projectile (auto-named, label only)"
+      }
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "set_ready",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "joiner",
+        "mech_key": null
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "joiner",
+        "text": "WeaponLog"
+      }
+    }
+  ],
+  "stop_conditions": {
+    "max_consecutive_failures": 1
+  },
+  "max_wall_clock_s": 600,
+  "max_image_reviews": 0
+}

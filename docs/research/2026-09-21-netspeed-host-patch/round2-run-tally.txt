@@ -1,0 +1,12 @@
+R1 房主 Engine.dll sha256: fc51fe1240ee3411 => A組(原廠)
+R1 A組(原廠 fc51fe12) HitLoc=21 Fire=15 缺口=28.6%  log=run-102037.12.log
+R2 B組(修補 a007507d) HitLoc=15 Fire=15 缺口=0.0%  log=run-110728.02.log
+R3 A組(原廠 fc51fe12) HitLoc=14 Fire=12 缺口=14.3%  log=run-111752.04.log
+R4 B組(修補 a007507d) HitLoc=11 Fire=11 缺口=0.0%  log=run-112812.73.log
+R5 A組(原廠 fc51fe12) HitLoc=14 Fire=10 缺口=28.6%  log=run-113837.70.log
+R6 B組(修補 a007507d) HitLoc=15 Fire=15 缺口=0.0%  log=run-114855.14.log
+R7 A組(原廠 fc51fe12) HitLoc=12 Fire=10 缺口=16.7%  log=run-115927.62.log
+R8 B組(修補 a007507d) HitLoc=8 Fire=8 缺口=0.0%  log=run-120943.58.log
+R9 A組(原廠 fc51fe12) HitLoc=10 Fire=8 缺口=20.0% log=run-122007.06.log
+MANUAL-A' 原廠 fc51fe12 HitLoc=34 Fire=24 缺口=29.4% 串=3,2,1,1,2,1 log=run-123101.72.log
+MANUAL-B' 修補 a007507d HitLoc=34 Fire=34 缺口=0.0% 串=無 log=run-124222.34.log
