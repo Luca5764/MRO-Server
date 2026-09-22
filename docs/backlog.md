@@ -896,3 +896,76 @@ Pico 加截圖這條路又慢又脆，**操作者本人是瓶頸**。之後商�
 每個階段都有明確的「過／沒過」並附證據檔名；或 1 天時限到，回報做到哪、卡在哪。
 
 ---
+
+---
+
+## NETSPEED-BUDGET — Moon 的第二個修補在我們這邊必不必要（PM 2026-09-22 開的任務）
+
+### 目標
+
+判定 Moon 提供的 `UNetConnection::Tick` 頻寬銀行修補（放寬 `QueuedBytes` 下限）
+**在我們的條件下是否必要、是否安全**。結論要分開寫「我們條件下」與「高 FPS 房主下」，
+不要只寫「有效」。
+
+### 範圍
+
+1. **先量我們房主的 FPS**（`stat fps`，或 log 的 tick 資訊），對照 Moon 的 1000–1800。
+   這一步決定後面怎麼解讀，先做。
+2. **verifier 用 disasm 確認** `Engine.dll 0x1042e1ee`–`0x1042e224` 的語意真的是
+   `QueuedBytes -= D; if (QueuedBytes < -2D) QueuedBytes = -2D`（D = DeltaTime × CurrentNetSpeed），
+   且 `[esi+0x14c]` ＝ `QueuedBytes`、`[esi+0x50]` ＝ `CurrentNetSpeed`（後者已知）。
+3. **修補工具加第二個獨立開關**（`--budget`）：先驗雜湊、逐 byte 比對、可 `--restore`，
+   **section header 的改動要一起還原**。
+4. **實跑，只改這一個變數**：房主 30000＋budget vs 房主 30000 不加，自動化各 3 輪。
+   預期兩組都 0%（因為我們 FPS 低）；這一輪的重點是**證明加了不會壞**
+   （第 0 輪：能開到登入、能打完一場）。
+5. 若第 1 步量到我們房主 FPS 也很高，或想重現 Moon 的 22%：
+   **關掉房主 vsync／解除 FPS 上限再跑一次 A/B**，這輪才有鑑別力。
+
+### 背景
+
+**外部來源，🟡。** Moon 套我們的 netspeed 修補後遺失率只從 84–87% 降到 **22%（7/32）**，
+再加這個修補才 **0/40**。他給的成因：`UNetConnection::Tick` 裡
+`QueuedBytes -= D; if (QueuedBytes < -2D) QueuedBytes = -2D`，連線只能存**兩個 tick** 的頻寬；
+他房主 1000–1800 FPS，銀行只剩 110–260 bytes，任何 send 之後緊接的 RPC 都被 `IsNetReady` 擋掉。
+他推測**我們房主 FPS 低，所以 netspeed 單獨就夠** —— 這正是第 1 步要量的。
+
+**他的修補（bytes 由 PM 機械核對過，機制推論要我們自己驗）**：
+
+| 位址 | 原始 | 修補後 |
+|---|---|---|
+| `0x1042e1f8` | `DC C0 8B 8E 4C 01 00 00` | `E9 23 A9 24 00 90 90 90`（jmp `0x10678b20`） |
+| cave `0x10678b20` | 全零（`.text` 尾端） | `DC C0 8B 4E 50 C1 E9 02 89 4D E4 DB 45 E4 DE C1 8B 8E 4C 01 00 00 E9 C5 56 DB FF` |
+| section header | `.text` VirtualSize `0x377b1e` | `0x378000` |
+
+效果 ＝ 下限從 `-2D` 改成 `-(2D + CurrentNetSpeed/4)`。**房主與加入者都要套**（他的說法）。
+
+PM 已核對：`0x1042e1f8` 原始 bytes 相符、`0x10678b20` 起 32 bytes 全零、
+VirtualSize `0x377b1e`／raw `0x378000`、cave 尾 jmp 回 `0x1042e200`（`sub ecx,eax`）正確、
+cave 重現了被覆蓋的 `fadd` 與 `mov`。
+
+我們這邊的既有結論：房主 netspeed 30000 時自動化 36/36、缺口 0.0%
+（`journal/2026-09-22-1345-netspeed-min.md`），所以**我們的起點跟他的 22% 完全不同**。
+
+### 限制
+
+- **只在副本 `C:\Games\MetalRage Online 2`**，不碰主安裝、不碰 `MetalRage.exe`。
+- **加入者先不套**，只套房主測；加入者那份另開一輪（一次只改一個變數）。
+- 外部來源的 bytes 與機制**都先標 🟡**，我們自己的 disasm 與實跑過了才升級。
+- 實跑之前不要改 DB、不要改劇本；跑到一半更不要動。
+- 每輪開跑前獨立驗一次房主 `Engine.dll` 的 sha256 並記進台帳。
+
+### 交付
+
+- `docs/research/2026-09-22-netspeed-budget/`（disasm、逐輪台帳、FPS 證據）
+- 一篇日誌
+- `docs/state.md` 一列，**標明外部來源，並寫清楚我們條件下的結果**
+
+### 完成條件
+
+1. 房主 FPS 有數字與證據檔名。
+2. `0x1042e1ee`–`0x1042e224` 的語意有我們自己的 disasm 佐證（或指出與 Moon 說法不符之處）。
+3. `--budget` 開關有離線測試，含 section header 的還原。
+4. A/B 各 3 輪有逐輪數字；第 0 輪證明套了之後能開到登入、能打完一場。
+5. 結論寫成「我們條件下必要／不必要，但高 FPS 房主下必要（外部 🟡）」這種形式，
+   不要只寫「有效」。
