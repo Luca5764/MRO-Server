@@ -1,0 +1,2 @@
+[2026-09-22 18:15:30] pid=43960 VERSION.dll proxy attached, self=C:\Games\MetalRage Online 3\data\System\VERSION.dll
+[2026-09-22 18:15:30] pid=43960 gadget LoadLibraryW OK, handle=617c0000 path=C:\Games\MetalRage Online 3\data\System\frida-gadget-17.18.0-windows-x86.dll
