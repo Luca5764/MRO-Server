@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""pre-commit：擋下要進 docs/ 的真實 IP 位址（PM 2026-09-22 裁決）。
+
+緣由：2026-09-22 從客戶端直接複製原始 run-*.log 進 docs/research/，
+log 的 GameStart／Browse／Close TcpipConnection 行必定帶房主的 Radmin VPN 位址，
+差點推上公開的 origin。見 journal/2026-09-22-2230-pvp-2p-first.md 與同日遮蔽 commit。
+
+只掃「這次 commit 新增的行」、只掃 docs/ 底下（含 research）。命中就拒絕並列出檔名與行號。
+放行：區網（192.168.x、10.x、172.16-31.x）、127.x、0.0.0.0（綁定用），
+以及網段寫法 26.0.0.0（防火牆規則 -VirtualSubnet 26.0.0.0/8 用）。
+
+遮蔽方式：換成 <HOST_VPN_IP>／<LAPTOP_VPN_IP> 這類佔位字。
+真的要放行（例如確定不是位址的版本號）就 `git commit --no-verify`，並在 commit 訊息說明為什麼。
+安裝：ln -sf "$PWD/Metal Rage Online Server/tools/git-hooks/pre-commit" "$(git rev-parse --git-common-dir)/hooks/pre-commit"
+（hooks 在 common dir，所有 worktree 共用，子 agent 的 commit 也會被檢查）
+"""
+import re, subprocess, sys
+
+RADMIN = re.compile(r'\b26\.\d+\.\d+\.\d+\b')
+PUBLIC = re.compile(r'\b(?!192\.168\.|127\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)\d{1,3}(?:\.\d{1,3}){3}\b')
+ALLOW = {'0.0.0.0', '26.0.0.0'}
+
+def staged_added_lines():
+    out = subprocess.run(['git', 'diff', '--cached', '-U0', '--no-color', '--', 'docs/'],
+                         capture_output=True, text=True, errors='replace').stdout
+    path, lineno = None, 0
+    for line in out.splitlines():
+        if line.startswith('+++ '):
+            path = line[6:] if line.startswith('+++ b/') else None
+        elif line.startswith('@@'):
+            m = re.search(r'\+(\d+)', line)
+            lineno = int(m.group(1)) if m else 0
+        elif line.startswith('+') and not line.startswith('+++'):
+            if path:
+                yield path, lineno, line[1:]
+            lineno += 1
+
+hits = []
+for path, lineno, text in staged_added_lines():
+    found = set(RADMIN.findall(text)) | set(PUBLIC.findall(text))
+    found = {ip for ip in found if ip not in ALLOW}
+    if found:
+        hits.append((path, lineno, sorted(found), text.strip()[:100]))
+
+if hits:
+    print('✗ pre-commit：docs/ 裡有真實 IP，拒絕 commit（專案規則：文件不寫真實 IP）\n', file=sys.stderr)
+    for path, lineno, ips, text in hits:
+        print(f'  {path}:{lineno}  {", ".join(ips)}\n      {text}', file=sys.stderr)
+    print('\n換成 <HOST_VPN_IP>／<LAPTOP_VPN_IP> 等佔位字後再 commit。'
+          '\n確定不是位址（例如版本號）才用 --no-verify，並在 commit 訊息寫明理由。', file=sys.stderr)
+    sys.exit(1)
