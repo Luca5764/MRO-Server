@@ -1,6 +1,6 @@
 {
   "id": "netspeed-budget-fps",
-  "purpose": "netspeed-budget-fps：NETSPEED-BUDGET 契約第 1 步（docs/backlog.md），量房主戰鬥中 FPS 對照 Moon 的 1000-1800。前綴同 round2-projectile.json（launch/login→create_pve_room→dismiss_notice→idle_nudge→join_room→idle_nudge→set_ready→host_start_battle），AFK 窗口分析沿用不重算。不需要 WeaponLog/fire_burst；改成 enter_battle(joiner,None)→enter_battle(host,None)→console_cmd_on(host,'stat fps')（已加入 actions.py 白名單）。截圖沿用 console_cmd_on() 自己 ESC 關閉後 wait_for 存的 shot_closed（console 關、overlay 還在），跟 stat net 同一機制，未另加 action。收尾 leave_battle×2→close_client×2，同 round2-projectile.json。max_wall_clock_s：720(baseline)-68-25+135+135+10=907，取整抓 1000。成功＝19 步全過，並確認截圖上看得到 FPS 數字。",
+  "purpose": "netspeed-budget-fps：NETSPEED-BUDGET 契約第 1 步（docs/backlog.md），量房主戰鬥中 FPS 對照 Moon 的 1000-1800。前綴同 round2-projectile.json（launch/login→create_pve_room→dismiss_notice→idle_nudge→join_room→idle_nudge→set_ready→host_start_battle），AFK 窗口分析沿用不重算。不需要 WeaponLog/fire_burst；改成 enter_battle(joiner,None)→enter_battle(host,None,require_cn=false)→console_cmd_on(host,'stat fps')（已加入 actions.py 白名單）。enter_battle(host) 加 require_cn=false 是因為第 1 次實跑房主等不到 ChangeSlot_CN/Respawn_CN（畫面已證明在戰鬥中），見 docs/research/2026-09-22-netspeed-budget/fps-run-1-failures.md 第 2 節；joiner 那步不受影響，仍要求 CN。截圖沿用 console_cmd_on() 自己 ESC 關閉後 wait_for 存的 shot_closed（console 關、overlay 還在），跟 stat net 同一機制，未另加 action。收尾 leave_battle×2→close_client×2，同 round2-projectile.json。max_wall_clock_s：720(baseline)-68-25+135+135+10=907，取整抓 1000。成功＝19 步全過，並確認截圖上看得到 FPS 數字。",
   "preconditions": {},
   "clients": {
     "host": {
@@ -95,7 +95,8 @@
       "action": "enter_battle",
       "params": {
         "client_id": "host",
-        "mech_key": null
+        "mech_key": null,
+        "require_cn": false
       }
     },
     {
