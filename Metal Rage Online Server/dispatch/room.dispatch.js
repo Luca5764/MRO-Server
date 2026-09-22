@@ -1474,7 +1474,21 @@ class ZRoomDispatch
         // Re-reading User_Default_SN shows the team word is forwarded directly
         // into Room_User_Add, unlike the separate mapped state fields.
         // team=0 for RED team (first slot); matches 2011 log team=0 URL param.
-        const teamIndex = 0;
+        // ROOM-TEAM-DISPLAY (docs/journal/2026-09-22-2230-pvp-2p-first.md
+        // "房間畫面兩人都在紅隊", contract 2026-09-23): member.team (set by
+        // gate.game.dispatch.js's addMember() call sites) is the single
+        // source of truth for a member's team -- this must only read it
+        // back, not recompute it. 'enabled' looks up this connection's own
+        // Room membership and uses its stored team; falls back to 0 (the
+        // old constant) if the room registry has nothing tracked for this
+        // account yet (e.g. ROOM_JOIN_MODE off). Triggered by the same room
+        // CREATE burst / host resend this whole sendRoomState() call already
+        // runs for.
+        const trackedRoomForTeam = rooms.isRoomMemberTeamEnabled()
+            ? rooms.getRoomByAccount(Number(accountIndex))
+            : undefined;
+        const trackedMemberForTeam = trackedRoomForTeam && trackedRoomForTeam.members.get(Number(accountIndex));
+        const teamIndex = trackedMemberForTeam ? trackedMemberForTeam.team : 0;
         // record+0x0C in User_Default_SN is a separate dword field, not the
         // visible room state printed from record+0x13. Keep it neutral.
         const userHiddenRaw = 0;

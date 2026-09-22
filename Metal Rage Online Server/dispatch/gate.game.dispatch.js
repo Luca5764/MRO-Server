@@ -531,6 +531,34 @@ function resolvePvpTeamIndex(room, accountId)
     return team === undefined ? 0 : team;
 }
 
+// ROOM-TEAM-DISPLAY (docs/journal/2026-09-22-2230-pvp-2p-first.md "房間畫面
+// 兩人都在紅隊"): `member.team` is written once, here, when a member is
+// added to a room (CQ_CREATE/Enter_CQ below) -- it is the only place any
+// room-screen packet's team field is allowed to read from (design decision:
+// member.team is the sole source of truth, see the contract for this
+// change). This mirrors resolvePvpTeamIndex's own join-order i%2 rule
+// (same alternation, same "PvE stays all-red" PVP-room gate) so the room
+// screen does not show a pairing the post-Game_Start broadcast then
+// contradicts -- but is intentionally a separate function, not a shared
+// call into resolvePvpTeamIndex: that one is scoped to
+// PVP_TEAM_ASSIGN_MODE's already-verified battle-start flow (out of scope
+// for this switch) and additionally caches per room.battleStartGen, which
+// has no equivalent concept before a battle has even been requested.
+// `joinIndex` is the member's 0-based position in room.members at the
+// moment they are being added (i.e. room.members.size *before* the
+// rooms.addMember() call that follows). Switch (rooms.isRoomMemberTeamEnabled(),
+// default 'disabled') lives in rooms.js, not here, so room.dispatch.js can
+// read the same one without a require cycle -- see that switch's own
+// comment. Default 'disabled': every caller keeps passing team 0
+// explicitly, byte-identical to before this existed.
+function resolveRoomJoinTeam(room, joinIndex)
+{
+    if (!rooms.isRoomMemberTeamEnabled() || !room || Number(room.rawRoomType) !== 2) {
+        return 0;
+    }
+    return joinIndex % 2;
+}
+
 // Game_User_SN, sent from here rather than from room state because the handler
 // is ZDispatchGame's and only runs in scene 6. The context the room build needs
 // is small enough to assemble from the client; the sender reads the equipped
@@ -1398,7 +1426,11 @@ class ZGateGameDispatch
                     rooms.addMember(room.id, {
                         accountId: hostAccountId,
                         nickname,
-                        team: 0,
+                        // ROOM-TEAM-DISPLAY: host is always the room's first
+                        // member (joinIndex 0), so this is 0 either way --
+                        // routed through resolveRoomJoinTeam() anyway so
+                        // member.team stays the one place team is decided.
+                        team: resolveRoomJoinTeam(room, 0),
                         slot: 0,
                         ready: false,
                         client,
@@ -2130,7 +2162,13 @@ class ZGateGameDispatch
                 rooms.addMember(room.id, {
                     accountId,
                     nickname,
-                    team: 0, // PvE all-red (design §2, R11); PvP team assignment is M4, out of scope here
+                    // ROOM-TEAM-DISPLAY: was hardcoded 0 ("PvE all-red,
+                    // design §2, R11" -- still true when the switch is off,
+                    // since resolveRoomJoinTeam() returns 0 for anything
+                    // that is not a PvP room). joinIndex is this member's
+                    // position before this add, i.e. how many members the
+                    // room already had.
+                    team: resolveRoomJoinTeam(room, room.members.size),
                     slot: 0,
                     ready: false,
                     client,
@@ -2197,9 +2235,20 @@ class ZGateGameDispatch
                 // Tell whoever was already in the room about the new
                 // arrival. No scene-change race for them -- they are
                 // already sitting in the room scene.
+                // ROOM-TEAM-DISPLAY: was a synthetic `{ accountId, nickname,
+                // team: 0, client }` stand-in for the joiner's own member
+                // record -- team hardcoded even though rooms.addMember()
+                // above already computed and stored the real one. The joiner
+                // is already a live entry in room.members by this point;
+                // 'enabled' reads it back instead of rebuilding a second
+                // copy of the same fields with team stuck at 0. Disabled
+                // path keeps constructing the same ad hoc object as before,
+                // byte-identical.
+                const joinerCtxSource = (rooms.isRoomMemberTeamEnabled() && room.members.get(accountId))
+                    || { accountId, nickname, team: 0, client };
                 for (const member of otherMembers) {
                     if (!member.client) continue;
-                    sendRoomUserPackets(member.client, buildMemberUserCtx({ accountId, nickname, team: 0, client }), getExactMessageBuffer, { includeMaster: false });
+                    sendRoomUserPackets(member.client, buildMemberUserCtx(joinerCtxSource), getExactMessageBuffer, { includeMaster: false });
                 }
                 console.log(`[ZGateGameDispatch] >> Notified ${otherMembers.length} existing room member(s) of new arrival (account=${accountId})`);
 

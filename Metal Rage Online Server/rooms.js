@@ -225,6 +225,27 @@ function _setAssistSnFormatModeForTests(mode) {
     assistSnFormatMode = mode;
 }
 
+// ROOM-TEAM-DISPLAY (docs/journal/2026-09-22-2230-pvp-2p-first.md "房間畫面
+// 兩人都在紅隊", contract 2026-09-23): whether addMember() call sites
+// (gate.game.dispatch.js CQ_CREATE/Enter_CQ) compute a real join-order team
+// for `member.team` instead of hardcoding 0, and whether room.dispatch.js's
+// own User_Default_SN resend reads that stored value back instead of also
+// hardcoding 0. Lives here (not gate.game.dispatch.js, where the alternation
+// rule itself -- resolveRoomJoinTeam() -- is defined) because room.dispatch.js
+// needs the same switch and only lazily/one-directionally requires
+// gate.game.dispatch.js (cycle risk), same "single-sourced in a leaf module"
+// reasoning as every other cross-file switch in this file. Same `let` +
+// accessor + test-only setter pattern as every other switch here.
+let roomMemberTeamMode = 'disabled'; // 'disabled' | 'enabled'
+
+function isRoomMemberTeamEnabled() {
+    return roomMemberTeamMode === 'enabled';
+}
+
+function _setRoomMemberTeamModeForTests(mode) {
+    roomMemberTeamMode = mode;
+}
+
 // D1-4: which live client objects count as "in the lobby" for the
 // Room_List_SN broadcast. There is no separate "entered lobby" flag on
 // NetworkClient (login goes straight from channel-enter to the client
@@ -474,6 +495,7 @@ function _resetForTests() {
     roomOptionSourceMode = 'disabled';
     battleLeaveMode = 'disabled';
     assistSnFormatMode = 'disabled';
+    roomMemberTeamMode = 'disabled';
     clientSource = [];
 }
 
@@ -502,6 +524,8 @@ module.exports = {
     _setBattleLeaveModeForTests,
     isAssistSnFormatEnabled,
     _setAssistSnFormatModeForTests,
+    isRoomMemberTeamEnabled,
+    _setRoomMemberTeamModeForTests,
     registerLobbyClientSource,
     getLobbyClients,
     _resetForTests,
