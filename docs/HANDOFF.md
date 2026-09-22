@@ -42,7 +42,7 @@
 
 - **目的**：比賽中送一包 `Timeout_SN 0x00230112`，兩隊分數填 **7 和 3**，截圖看畫面上方隊伍總分會不會變成 7:3。
 - **一包同時回答三件事**：是不是這一包、那個欄位是不是畫面讀的、**加入者收了會不會崩**。
-- **狀態**：worker 正在做 `/pvpscore <roomId> <red> <blue> [target]` 這個伺服器 console 指令，worktree `~/mro-wt/pvpscore` 分支 `pvpscore`。**接手時先確認它有沒有交回來**（若 session 已換，去那個 worktree 看有沒有 commit）。
+- **狀態**：worker 已 commit `976ae0e`（worktree `~/mro-wt/pvpscore`，分支 `pvpscore`），但**高階還沒審、還沒合併**，worker 的完工回報也還沒讀到。**接手第一步是審它的 diff**：重點看 body 是否 `+0x00` u16／`+0x02` u32 都填 0（這兩個是 gate，非 0 客戶端整段跳過）、`+0x0c`／`+0x1a` 是不是 `0700`／`0300`、body 長度是否 `0x26`、開關關閉時指令是否**根本沒註冊**（不是註冊了再拒絕）。欄位表在 `research/2026-09-23-team-scoreboard/candidates.md` §2。
 - **測試分支已經備妥**：`~/mro-wt/test` 在 `186a49c`，已合併今天全部內容並開啟三個開關。**還沒重啟伺服器套用**（目前跑的是舊的 `7af0546`）。
 - **跑的順序（PM 指定，不要改）**：
   1. 跑 `tools/pico/runner.py run tools/pico/experiments/pvp-2p-handover.json`，把兩個客戶端弄進戰場
