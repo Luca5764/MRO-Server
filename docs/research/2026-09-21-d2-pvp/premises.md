@@ -14,7 +14,7 @@
 | P3 | **team 欄跟隨我們送的 `Game_Info_SN`**，不是固定 1／2。我們送 0／1 是對的 | ✅ [DLL]（未經跨公司審查） | `state.md` 第 4c 節；`verify-c-items.md` 第 2 項 |
 | P4 | **`User_Score_SN` 可以在 `EndGame_SN` 之前送**：場景閘門是 `IsClient && (scene==5 \|\| scene==6)`，戰鬥中的場景 6 本來就啟用 | ✅ [DLL]（未經跨公司審查） | `verify-c-items.md` 第 5 項 |
 | P5 | **加入者可以收 `Death_SN`／`EndRound_SN`**，不會出事（兩者機制不同：前者靠 `Game_Host_Check`，後者靠 GameInfo 的 null 檢查） | ✅ [DLL]＋[LOG]（未經跨公司審查） | `state.md` 第 4c 節 |
-| P6 | `User_Score_SN`／`EndGame_SN` 對加入者安不安全 | ⬜ **未窮盡**，四個 callee 沒展開。**PvP 用到之前要補查** | `verify-b2-endround-vtable.md` |
+| P6 | `User_Score_SN`／`EndGame_SN` 對加入者安不安全 | ✅ **2026-09-22 已解，不要重做**：`EndGame_SN` 唯一碰 `Level` vtable 的是 `Dedi_End`（`0x10716e90`），開頭就是 `if (GIsClient!=0) return;`（`0x10716e98 jne 0x10716ede`），我方 host 與 joiner 的 `GIsClient` 恆為非 0 → **不可達**；`User_Score_SN` 不碰 `Level`。剩下的 ⬜ 只有 `Event_Call` 佇列（`this+0x3cc`）的消費者沒找到，因 `Dedi_End` 不可達而無實務影響（跑 dedicated server 模式才要補）。依據 `../2026-09-21-moon-objective-protocol/verify-d-endgame.md`（高階 2026-09-22 覆核位址成立） | `verify-b2-endround-vtable.md` |
 | P7 | `Game_Score_Get`：`Mode` 2／3 回 goal，其餘回 score | ✅ [DLL]（未經跨公司審查） | `verify-c-items.md` 第 4 項 |
 
 ## 我們自己已經確立的（PvP 會直接踩到）

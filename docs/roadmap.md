@@ -32,6 +32,19 @@
 
 任務契約在 `docs/backlog.md`。
 
+## 2026-09-22 優先序變更（操作者決定，PM 同意）
+
+**PvP 提到最前面，M3 朋友 VPN 往後一階。**
+
+為什麼現在能做：`research/2026-09-21-d2-pvp/premises.md` 列的開工前提裡，**「投射物掉包對 PvP 公平性的影響」（P10）2026-09-22 已解** —— netspeed 30000 ＋ budget 修補，人手連按 34/34 零遺失（`journal/2026-09-22-1800-budget-ab.md`、台帳 `research/2026-09-22-netspeed-budget/threshold-tally.txt`）。PvP 裡掉 20% 投射物是致命的，PvE 還能忍，這條本來就是擋路的那一根。同日 **P6（`User_Score_SN`／`EndGame_SN` 對加入者安不安全）也已解**（`research/2026-09-21-moon-objective-protocol/verify-d-endgame.md`：`Dedi_End` 開頭 `GIsClient!=0 → ret`，我方兩端恆為非 0，唯一碰 `Level` vtable 的路徑不可達；`User_Score_SN` 不碰 `Level`）。
+
+為什麼舊順序可以動：舊理由是「朋友加入後才有 4 人以上測試人力，所以 PvP 排後面」——那隻對**完整 TDM 驗收**成立，不擋協定設計、handler 實作、回合／計分流程這些 2 個客戶端就測得到的部分。
+
+仍然是硬規則：**`Grade_Info_SN 0x00510101` 一律送 0**（P8），否則 `IsMeGM_BD()` 為真，加入者的 `PlayerSelectMech.BeginState` 會直接 `GotoState('Spectating')`。
+
+K1 安裝包不停：它不需要客戶端，與 PvP 平行（契約 `CLIENT-KIT-PATCH`）。
+
+
 ## 風險
 
 - **M3：** 朋友的作業系統決定要用哪個 exe：Win11 用修改版，Win10 用原廠版（`reference/setup.md`「依作業系統選 exe」）。**Win7 和 Win8 完全沒有測過。**
@@ -55,8 +68,9 @@
 | 階段 | 內容 | S2 完成度 |
 |---|---|---|
 | **P0（現在）** | M2 判定 → INTRUDE 保守規則 → 開關預設收斂；空檔時查分類疑點 0x00320104/5、0x00250102 | — |
-| **P1 M3 朋友 VPN** | K1 安裝包、VPN 實測（UDP 30907 穿過 VPN、hostAddress 改成 VPN IP）、白名單加朋友。朋友加入後才有 4 人以上的測試人力，所以排在 PvP 前面 | — |
-| **P2 PvP** | 先用 TDM 一個模式打通「開戰 → 計分 → 回合／結束」，再做 Bomb／Capture／Conquest；INTRUDE 正式支援、Game_Score_SN、EndQuater_SN 都在這一階段 | 0%，L |
+| **P1 PvP TDM（2026-09-22 提到最前面）** | 用 TDM 一個模式打通「開戰 → 計分 → 回合／結束」。起點 `research/2026-09-21-d2-pvp/premises.md`。**開工方式照關卡走：先出設計稿（封包序列、每包欄位、誰判勝負、送給誰）給 PM 審，再實作。**⚠️ 完整 TDM 要 4 人以上才驗收得完，我們只有 2 個客戶端 —— 先做 2 人測得到的部分，人力相關的驗收留到朋友進來 | 0%，L |
+| **P2 M3 朋友 VPN** | K1 安裝包、VPN 實測（UDP 30907 穿過 VPN、hostAddress 改成 VPN IP）、白名單加朋友 | — |
+| **P3 PvP 其餘模式** | Bomb／Capture／Conquest；INTRUDE 正式支援、Game_Score_SN、EndQuater_SN。TDM 打通後才做 | 0%，L |
 | **P3 結算、成長與經濟** | 升級和首勝獎勵的 SN、RANK 公式、exp／金錢公式、商店價格、物品到期、修理、Legend 授權、現金商店（要不要做待決定）。原廠數值多半查不到：先列出「需要操作者決定的數值清單」，附上研究到的原版資料當參考，並標明「自訂」 | 21%／18%／8% |
 | **P4 PvE 補完** | Boss／TwoBoss／Tutorial／Escort；單人就能測，可以跟 P3 穿插進行 | 59% |
 | **P5 社交** | 好友／密語 → 郵件／禮物 → 公會（57 個 opcode，最大，放最後；先確認社群真的需要再做） | 0%／5%／0% |
