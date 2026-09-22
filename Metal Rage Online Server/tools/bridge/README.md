@@ -59,3 +59,85 @@ release 頁面本身沒有附 checksum 檔），只能保證「這份檔案在�
 真的被呼叫、gadget 有沒有真的載入成功、forwarder 在真正 Windows loader
 上會不會解析成功，都還沒驗證過。細節、安裝步驟、還原步驟見
 `stage1-plan.md`。
+
+## 收窄版掛鉤：能不能直接掛 `Func`、方案 B／C（中階 `claude-worker` 2026-09-22，🟡 待審）
+
+背景：`bridge-fire.js` 掛 `Engine.dll+0x2234b0`（`AActor::ProcessRemoteFunction` 本體），
+戰鬥中每秒被呼叫 14–18 萬次，會拉低 FPS，讓 `D = DeltaTime × CurrentNetSpeed` 這個投射物
+遺失機制的分母系統性偏寬，導致量到的遺失率偏低（見
+`docs/journal/2026-09-22-1900-bridge-stage2.md`「⚠️ 方法論風險」一節）。這裡回答一個技術
+問題、交出兩支收窄版腳本。
+
+### 問題：能不能直接掛 `ServerFireProjectileCenterLoc_MH`／`ClientFireProjectileCenterLoc_MH`
+### 自己的 native 進入點（`UFunction->Func`）？
+
+**不能，這條路已排除（🟡，靠反組譯，非猜測）。** 兩個獨立證據：
+
+1. `docs/research/2026-09-22-bridge-spike/stage2-addresses.txt` 段落 B6：掃過
+   `Engine.dll`／`Core.dll`／`ZNetwork.dll` 三個 DLL 的 export 表與字串，
+   `ServerFireProjectileCenterLoc_MH`／`ClientFireProjectileCenterLoc_MH`
+   完全沒有對應符號——這兩個是純 UnrealScript `simulated function`（沒有 `native`
+   關鍵字），只存在於 `.u` 腳本的 bytecode 裡，本來就沒有獨立的機器碼位址可掛。
+2. `docs/research/2026-09-20-toall-dispatch/ProcessRemoteFunction-decompile.txt`
+   第 66–71 行：這個引擎呼叫非 native UFunction 時，走的是「讀 bytecode 第一個
+   opcode byte，再用這個 byte 去查一張共用的全域表 `GNatives`」，不是讀 UFunction
+   物件上某個各自不同的 `Func` 指標欄位去直接 call。就算查得出 `Func` 欄位在
+   `UFunction` 結構裡的 offset，對這兩個非 native 函式來說它也不會指到各自獨立的
+   程式碼——會落在所有非 native script 函式共用的 bytecode 直譯器入口，等於又掛回
+   通用分派點，沒有收窄。
+
+**結論：方案 A（直接掛 `Func`）不成立，改採方案 B。**
+
+### 方案 B — `bridge-fire-narrow.js`：原地掛鉤，onEnter 收成指標比對
+
+仍掛 `Engine.dll+0x2234b0`（跟 `bridge-fire.js` 同一個位址），但用「暖機階段」找出
+`ServerFireProjectileCenterLoc_MH`／`ClientFireProjectileCenterLoc_MH` 兩個
+`UFunction*` 的實際指標值（跟 `bridge-fire.js` 一樣做 FName 解析，直到兩個都出現過
+一次），之後切成 `narrow` 模式：`onEnter` 只剩「null 檢查 + 累計 + 至多兩次
+`ptr.equals(...)` 比較」，不查 Map、不解字串、不普查、不做 I/O。暖機沒有時間上限，
+必須讓操作者在暖機期間實際開過火，兩個指標才找得齊。log：`bridge-fire-narrow.log`。
+
+### 方案 C（PM 2026-09-22 補充）— `bridge-fire-late.js`：把掛鉤位址往後移
+
+跟方案 B 是不同的變數：不改 onEnter 的邏輯（仍做全套 FName 解析＋普查，跟
+`bridge-fire.js` 一樣），只把 `Interceptor.attach` 的**位址**往後移到
+`ProcessRemoteFunction` 本體內「已經確認這是網路函式（`FunctionFlags & 0x40`）」
+之後：
+
+```
+VA 0x1052355b  test  byte ptr [ebx+0x84], 0x40   ; ebx = UFunction*
+VA 0x10523562  je    0x10523521                  ; 沒有這個 flag -> 提早返回（非 RPC）
+VA 0x10523564  mov   edx, dword ptr [edi]         ; <- 掛鉤點；ebx/edi 全程未被覆寫
+```
+
+（`tools/disasm.py at 0x105234b0 400 Engine.dll` 現場反組譯核對，Engine.dll sha256
+`fc51fe1240ee34111fc1a483e74a1b131d4b69f2b2a0940adbb4a860a138d24e`，跟
+`stage2-addresses.txt` 記的一致；推導細節、為什麼不選 PM 原先給的 `0x10523597`
+候選、為什麼用 `this.context.ebx`/`edi` 而不是 `args[0]`，都寫在
+`bridge-fire-late.js` 檔頭註解裡）。**這一段反組譯只有這次任務做過一輪，尚未經
+高階覆核，標🟡**，下一位務必重跑同一條 `disasm.py` 指令核對再信任。
+
+理論上非網路的 script 事件（`RenderOverlays`、`PlayerMove`…）會在這個掛鉤點之前就
+提早返回，攔截頻率應該遠低於 `bridge-fire.js` 的「每個 script 事件」；能低多少、
+會不會漏掉什麼 RPC，**要靠實跑驗證**，log：`bridge-fire-late.log`。
+
+### 四組對照怎麼跑
+
+四次都用同一支 Pico 劇本 `tools/pico/experiments/bridge-fps-compare.json`（單人
+PvE，client id 固定叫 `host`），每次跑之前手動調整
+`C:\Games\MetalRage Online 3\data\System\frida-gadget-17.18.0-windows-x86.config`
+的 `interaction.path`：
+
+| 組別 | `.config` 的 `interaction.path` | 目的 |
+|---|---|---|
+| 1. 不掛 | 把 `.config` 整個移走或改 `interaction.type` 成不載入腳本，讓 gadget 附著但不 hook 任何東西 | FPS 基準 |
+| 2. 現行 | `...\\bridge-fire.js` | 已驗證的基準組（`docs/journal/2026-09-22-1900-bridge-stage2.md`），**不要改這支腳本** |
+| 3. 方案 B | `...\\bridge-fire-narrow.js` | 量「onEnter 收窄」單獨的效果 |
+| 4. 方案 C | `...\\bridge-fire-late.js` | 量「掛鉤位址後移」單獨的效果 |
+
+四組之間**建議重開客戶端**（gadget 的 `.config` 是行程啟動時讀一次的靜態設定，
+中途換腳本檔案不保證即時生效，沒有驗證過熱切換行不行，不要冒險去省這個重開）。
+每組跑完用 `close_client` 讓對應的 `.log` flush，四份 log 的 `calls=` 欄位與
+截圖裡 `stat fps` 顯示的數字就是要比對的東西；`ServerFire=`/`ClientFire=` 三支
+腳本應該都對得上（都是 6，對應 `fire_burst(shots=6)`），對不上代表收窄邏輯本身
+有問題，要先查那個，不要直接拿 FPS 數字去下結論。
