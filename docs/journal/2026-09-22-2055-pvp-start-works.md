@@ -55,3 +55,36 @@ P1（PvP TDM）。開關 `PVP_START_FLOW_MODE='enabled'`（測試樹 dirty，**�
 - ⬜ 計分、擊殺、回合結束、時間到判勝負 —— 一項都還沒做。
 - ⬜ 沒有打完一場（本次在 05:04 時人為離開）。
 - ⬜ 開關仍是**測試樹 dirty**，沒有 commit；要正式啟用得另外決定。
+
+---
+
+## PM 判定與兩個條件（2026-09-22 21:3x 補）
+
+**PM 判定：D2-1「PvP 房開戰進場」✅ [SHOT][LOG]，範圍：單人、未分隊、未計分、未打完。**
+這不是 M4，是它的第一格。
+
+### 條件 1：開關不留 dirty 過夜 ＋ golden replay 證據
+
+- 測試樹的四處非預設設定已 commit 在 **`test-server` 分支**（`5e2ef01`），**不合回 `reverse-work`**；
+  `reverse-work` 裡 `PVP_START_FLOW_MODE` 預設值仍是 `'disabled'`。
+- golden replay（`test/replay-golden.js`，2026-09-22 21:0x 高階在 `reverse-work@281e05d` 重跑）：
+  **ALL SAMPLES PASS**，開關為預設 `'disabled'`。四組樣本（`test/golden/<名稱>/` 底下各 4 個檔，
+  依檔名排序串接後的 sha256 前 16 碼）：
+
+  | 樣本 | 封包數 | sha256 |
+  |---|---|---|
+  | `login-dispatch` | 14 | `9675c44c3327c21d` |
+  | `login-room-game` | 51 | `64c8e5cb17b1f94b` |
+  | `login-room-shop-buy` | 364 | `581c03ac20af50d0` |
+  | `pve-full-match` | **8384** | `aaa62876dc591b0d` |
+
+  worker 先前回報 `pve-full-match` 有「既存的 send #21 失敗」，**高階重跑是全過的**，
+  所以那不是既存問題（可能是它當時環境的暫時狀況），不要當成已知失敗留著。
+
+### 條件 2：教訓
+
+> **查「為什麼不通」之前，先 grep 現成的東西有沒有接上。**
+
+TDM 的 8 張地圖 id 以 `MAP_IDS_PVP` 定義在 `room.dispatch.js:180`（連預設值 `MAP_ID_DEFAULT_PVP` 都有），
+**七天沒被任何地方呼叫**。這七天裡 PvP 開戰被當成「尚未實作」，所有戰鬥封包研究被迫改用戰役房。
+而答案一直就在程式裡，只差一行接線。
