@@ -34,6 +34,16 @@ const MAP_INFO_REAL_IDS = [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008, 9009,
 const PVP_START_FLOW_MODE = 'disabled'; // 'disabled' | 'enabled'
 const MAP_IDS_PVP = [1011, 1021, 1031, 1041, 1051, 1061, 1071, 1081];
 
+// PVP-TEAM T1 (contract 2026-09-22, docs/design/d2-pvp-tdm.md §7 step T1):
+// gates whether Game_User_SN's per-member TeamIndex (rec+0x02) is assigned
+// by room join order (0/1/0/1...) for PvP rooms, instead of the current
+// PvE-and-PvP-alike hardcoded 0 (docs/research/2026-09-22-d2-tdm/
+// pvp-start-gap.md Q5). Single source of truth for this switch, same
+// precedent as PVP_START_FLOW_MODE above. Default 'disabled': every
+// Game_User_SN TeamIndex write stays byte-identical to before this switch
+// existed (golden replay verified).
+const PVP_TEAM_ASSIGN_MODE = 'disabled'; // 'disabled' | 'enabled'
+
 const SN_MAP_INFO = 0x210115;
 
 function _setMapInfoRealIdModeForTests(mode) {
@@ -63,4 +73,4 @@ function sendMapInfoSN(client, mapIds) {
     client.send(msg);
 }
 
-module.exports = { SN_MAP_INFO, MAP_INFO_REAL_IDS, PVP_START_FLOW_MODE, MAP_IDS_PVP, resolveRealMapIds, sendMapInfoSN, _setMapInfoRealIdModeForTests };
+module.exports = { SN_MAP_INFO, MAP_INFO_REAL_IDS, PVP_START_FLOW_MODE, PVP_TEAM_ASSIGN_MODE, MAP_IDS_PVP, resolveRealMapIds, sendMapInfoSN, _setMapInfoRealIdModeForTests };

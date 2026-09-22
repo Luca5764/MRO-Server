@@ -277,10 +277,20 @@ class ZCommunityDispatch
         }
 
         // Step 2: SN_GRADE_INFO
+        // PVP-TEAM T1 hard rule (docs/design/d2-pvp-tdm.md §6 rule 1): this
+        // value must stay 0 -- IsMeGM_BD() reads it, and non-zero sends a PvP
+        // joiner's PlayerSelectMech.BeginState straight to
+        // GotoState('Spectating'). Asserted, not just commented: log loudly
+        // and skip this one send rather than crash the process.
         {
-            const [msg, respBody] = getExactMessageBuffer(0x00510101, 4);
-            respBody.writeUInt32LE(0, 0); // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
-            client.send(msg);
+            const gradeValue = 0; // Grade_Info_SN: 0xb→4 dev,0xc→3,0xd→1,0xe→2, else 0 normal (ZNetwork 0x107cf3e7); 11 made client apply GM keys
+            if (gradeValue !== 0) {
+                console.error(`[ZDispatchHangar] !! Grade_Info_SN assertion failed: value=${gradeValue}, must be 0 -- refusing to send`);
+            } else {
+                const [msg, respBody] = getExactMessageBuffer(0x00510101, 4);
+                respBody.writeUInt32LE(gradeValue, 0);
+                client.send(msg);
+            }
         }
 
         // Step 3: ShopList — 0x310201 per item (DLL handler at 0x0E6A90, patched)
