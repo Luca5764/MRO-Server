@@ -132,3 +132,25 @@ New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting
 Remove-Item "$env:LOCALAPPDATA\CrashDumps\MetalRage.exe*.dmp" -Force -ErrorAction SilentlyContinue
 ```
 只影響這個遊戲，其他程式的當機回報不變；想還原就把那個機碼刪掉。依據見 `docs/journal/2026-09-20-1240-stutter-root-cause.md`。
+
+## 給打包的人：`Engine.dll.patched` 不在 git 裡
+
+`setup-client.ps1` 會去同目錄找 **`Engine.dll.patched`**，但那是個 2MB 的遊戲二進位檔，
+`.gitignore:32` 刻意不收進 repo。**壓包之前一定要自己產一份放進去**，否則友人跑腳本會失敗
+（Sol 跨公司審查 2026-09-22 指出這個缺口）。
+
+產法（`<stock>` 是任何一份原廠客戶端根目錄，sha256 `fc51fe12…`）：
+
+```bash
+mkdir -p /tmp/kitbuild/data/System
+cp "<stock>/data/System/Engine.dll" /tmp/kitbuild/data/System/Engine.dll
+python3 "Metal Rage Online Server/tools/patch_netspeed_host.py" \
+    --target /tmp/kitbuild --i-know-this-is-the-copy --value 30000 --budget --apply
+sha256sum /tmp/kitbuild/data/System/Engine.dll
+# 必須是 f4b253a3606243a0aa41101b812a1bec9dca79ab3de91818c024e458f14b4970
+cp /tmp/kitbuild/data/System/Engine.dll \
+   "Metal Rage Online Server/tools/client-kit/Engine.dll.patched"
+```
+
+hash 對不上就不要出貨——`setup-client.ps1:62` 的 `$PatchedEngineHash` 會擋下來。
+[TEST] 2026-09-23 照上面重跑一次，產出的 hash 與腳本內寫的相同。
