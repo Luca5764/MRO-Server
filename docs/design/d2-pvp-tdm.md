@@ -187,9 +187,11 @@ body 全 0，是**同一個 opcode 數字在不同場景被複用成不同訊息
   `0x1071a560` 與 thunk `0x10707630`，皆無），也沒看到 `Level->`／`GameInfo->` 解參考
   （走的是 class default object）。但這是「沒找到閘門」，**不等於安全**——與 §5 那四包不同，
   那幾包有實跑佐證。T2.5a 的截圖驗證同時就是安全性驗證，**先對加入者送**。
-- ⚠️ **`+0xff0`／`+0xff4` 這兩個 team id 沒查**（`Game_Score_Update` 拿它們查表）。
-  **加入者端若與房主不一致，送對包也會拿到錯的隊伍分。** T2.5a 若分數出現在錯的一邊，
-  第一個要查的就是這裡。
+- ✅ **`+0xff0`／`+0xff4` 已收掉（PM 2026-09-23 提供，不必再查）**：這兩個是
+  `Game_Play_Start` 從 `+0xffc`／`+0x1000` 複製來的，而那兩個由
+  `Game_Info_Team_Set`（`0x1071a420`）從 `Game_Info_SN` 的 `+0x04`／`+0x06` 寫入
+  （見 `reply-to-moon-4` 第 5 點與 premises）。**我們對全房送的是同一份 `Game_Info_SN`，
+  所以兩端一致**，不會出現「分數掛在錯的隊」。
 - ⬜ `EndRound_SN`／`EndQuater_SN`／`EndGame_SN`（`0x107d7a50`／`0x107d7c90`／`0x107d7ed0`）
   **沒有被排除**，它們跟 `Timeout_SN` 緊挨著排、掃描視窗溢出無法歸屬。若 T2.5a 失敗，
   下一個就查它們，**要用 function-boundary-aware 的方式**（`tools/ghidra/decompile.sh`），
