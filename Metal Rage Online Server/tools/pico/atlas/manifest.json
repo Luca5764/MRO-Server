@@ -15,7 +15,7 @@
     "console_battle_accept": 8.0,
     "marker_accept": 12.0
   },
-  "built_at": "2026-09-22T21:50:19",
+  "built_at": "2026-09-22T21:57:56",
   "built_from": {
     "screen_lobby": "u-20260919-01-00-start.png",
     "screen_shop": "u-20260919-01-01-shop.png",
@@ -211,10 +211,10 @@
     },
     "pvp_scoreboard": {
       "box": [
-        520,
-        45,
-        1100,
-        145
+        595,
+        118,
+        1020,
+        142
       ],
       "crop": "marker_pvp_scoreboard.png",
       "accept": 25.0

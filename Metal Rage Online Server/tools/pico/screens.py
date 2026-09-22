@@ -212,11 +212,10 @@ BUILD_SPEC = {
         # past marker_accept=12.0 either way.
         "mapsel": {"source": "esc-01-mapsel.png", "box": [415, 495, 650, 535]},
         # PVP-HUD-MARKER (docs/backlog.md, this task, 2026-09-22): TDM's team
-        # scoreboard banner (red/blue shield crests + "000|000|000" kill
-        # counters + "TEAM DEATHMATCH" caption), top-center of the screen.
-        # Needed because screens.battle_hud_state()'s green "SP0000" counter
-        # is PvE-only -- TDM draws a GOLD "P0000" counter in that same box
-        # instead (docs/journal/2026-09-22-2055-pvp-start-works.md), so a PvE-
+        # scoreboard banner, top-center of the screen. Needed because
+        # screens.battle_hud_state()'s green "SP0000" counter is PvE-only --
+        # TDM draws a GOLD "P0000" counter in that same box instead
+        # (docs/journal/2026-09-22-2055-pvp-start-works.md), so a PvE-
         # calibrated check reads every real PvP battle as not_battle.
         # PM 2026-09-22 recommended this scoreboard over the gold counter as
         # the PvP judge because it is more stable; confirmed here: a plain
@@ -225,15 +224,31 @@ BUILD_SPEC = {
         # 4568px, close to real PvP counts of 4905-5289 -- not a safe margin)
         # -- see battle_hud_state_pvp()'s docstring for how the two are
         # combined instead of using the gold count alone.
+        #
+        # Box is deliberately just the "TEAM DEATHMATCH" caption text row
+        # (y=118-142), NOT the shield crests (x<595/x>1015) or the
+        # "000|000|000" kill-count digits above it (y=45-118, inside the
+        # ORIGINAL wider box this was narrowed down from) -- the digits are
+        # the one part of this banner that changes during a real match (a
+        # kill increments a team's count), and this task has no screenshot
+        # of a live nonzero score to confirm a MAD-against-fixed-crop check
+        # tolerates that. The caption text itself is a static mode-name
+        # string for the whole match, so narrowing to just that row removes
+        # the risk instead of leaving it untested. 🟡 residual risk: still
+        # unconfirmed for a nonzero-score frame because none exists in
+        # shots/ yet (this box just no longer depends on the score at all,
+        # by construction, rather than being verified against one).
+        #
         # Measured (this task) against every 1616x1239 image in shots/ (1097
-        # images): every real PvP-battle capture (host_start_battle result
-        # through leave_battle, GAME MENU open or closed, three different
-        # capture sessions) scores MAD 0.00-14.24 here; the closest non-PvP
-        # image (a PvE campaign battle frame) scores 46.91 -- and the PvE
-        # result/YOU-WIN screens that trip the gold-counter false positive
-        # above score 69.42-69.47, nowhere near this box's accept threshold.
-        # accept=25.0 sits in the middle of that gap (>10x either side).
-        "pvp_scoreboard": {"source": "shot-205104.png", "box": [520, 45, 1100, 145], "accept": 25.0},
+        # images) with this narrower box: every real PvP-battle capture
+        # (host_start_battle result through leave_battle, GAME MENU open or
+        # closed, three different capture sessions, all score 000|000|000)
+        # scores MAD 0.00-17.01 here; the closest non-PvP image (a PvE
+        # campaign battle frame) scores 40.23 -- accept=25.0 sits in the
+        # middle of that gap (comfortably clear either side, though tighter
+        # than the wider box's 46.91 -- see this comment's own 🟡 above for
+        # why the trade is still worth it).
+        "pvp_scoreboard": {"source": "shot-205104.png", "box": [595, 118, 1020, 142], "accept": 25.0},
     },
 }
 
@@ -627,14 +642,14 @@ def battle_hud_state(img):
 # to be a real false positive, not a safe margin, because desert sand is
 # itself gold-ish in RGB. PM 2026-09-22 had already flagged the scoreboard
 # marker (BUILD_SPEC["markers"]["pvp_scoreboard"]) as the more stable choice;
-# this confirms why -- that PvE result screen scores MAD 69.42-69.47 against
-# the scoreboard reference, nowhere near marker_accept=25.0, so requiring
-# BOTH signals (not gold count alone) removes the false positive.
+# this confirms why -- that PvE result screen scores MAD 66.81 against the
+# scoreboard reference, nowhere near marker_accept=25.0, so requiring BOTH
+# signals (not gold count alone) removes the false positive.
 #
 # The AND also fixes the opposite edge case: the post-ESC mech-select page
 # (shots/pvp-start-smoke-14-host_start_battle-result.png, RESPAWN countdown
 # still running, player has not spawned/is not controllable yet) already
-# shows the scoreboard banner (MAD 8.04, well inside accept=25.0) but not yet
+# shows the scoreboard banner (MAD 10.10, well inside accept=25.0) but not yet
 # the gold counter (221px, far below any reasonable threshold) -- scoreboard
 # alone would make enter_battle() report "battle" the instant ESC opens the
 # mech-select page, before a mech is even chosen. Requiring gold_px >=

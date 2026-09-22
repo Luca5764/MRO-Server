@@ -102,7 +102,7 @@ class BattleHudStatePvpTest(unittest.TestCase):
             self.assertEqual(state, "not_battle", p)
 
     def test_mech_select_not_yet_spawned_is_not_battle(self):
-        """Scoreboard marker alone would pass here (MAD ~8, well inside
+        """Scoreboard marker alone would pass here (MAD ~10, well inside
         accept=25) -- the AND with gold_px is what keeps this not_battle.
         See screens.battle_hud_state_pvp()'s docstring."""
         state, (score, gold_px) = screens.battle_hud_state_pvp(PVP_MECH_SELECT_NOT_SPAWNED)
@@ -113,7 +113,7 @@ class BattleHudStatePvpTest(unittest.TestCase):
     def test_pve_desert_result_screen_is_not_battle(self):
         """Gold-pixel-count alone false-positives here (measured 4568px,
         close to real PvP counts of 4905-5289) -- the scoreboard marker
-        (MAD ~69, far past accept=25) is what rejects it. See
+        (MAD ~67, far past accept=25) is what rejects it. See
         screens.battle_hud_state_pvp()'s docstring."""
         state, (score, gold_px) = screens.battle_hud_state_pvp(PVE_RESULT_DESERT_GOLD_TRAP)
         self.assertEqual(state, "not_battle")
