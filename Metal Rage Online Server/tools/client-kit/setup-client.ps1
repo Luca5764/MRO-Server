@@ -17,11 +17,16 @@ What it does:
   1. Detects Win10 vs Win11 and makes sure the right MetalRage.exe is in
      place (see docs/reference/setup.md "依作業系統選 exe" -- the Win11
      build is patched and crashes on Win10 with 0xc0000005).
-  2. Writes -ServerIp into the launch bat, MetalRage.ini and Default.ini
+  2. Verifies data\System\Engine.dll is the stock build (by sha256), then
+     swaps in the pre-patched Engine.dll shipped alongside this script
+     (netspeed 30000 + bandwidth-bank widening -- see the README for what
+     and why) and verifies the result's sha256 too. Stops if either hash
+     check fails; never guesses.
+  3. Writes -ServerIp into the launch bat, MetalRage.ini and Default.ini
      (client reads the server address from all three -- client.md).
-  3. Opens the in-battle P2P port (UDP 30907), same rule as
+  4. Opens the in-battle P2P port (UDP 30907), same rule as
      tools/win/p2p-open.ps1, scoped to -HostSubnet.
-  4. Checks the active network profile and offers to switch it to
+  5. Checks the active network profile and offers to switch it to
      Private (the firewall rule only applies on Private/Domain).
 
 Everything this script overwrites is backed up first under
@@ -52,6 +57,12 @@ $KitDir = $PSScriptRoot
 $Win10ExeHash = '419D927517E63FE73172840CF9B2237672B9890A590F16B334BF500D74DA14A0'
 $Win11ExeHash = '487646B0AAFB9F586126876EF483825F60053E0166F59B74A7CA86AC437021B4'
 # ^ copied from docs/reference/setup.md "依作業系統選 exe"; compared case-insensitively below.
+
+$StockEngineHash = 'FC51FE1240EE34111FC1A483E74A1B131D4B69F2B2A0940ADBB4A860A138D24E'
+$PatchedEngineHash = 'F4B253A3606243A0AA41101B812A1BEC9DCA79AB3DE91818C024E458F14B4970'
+# ^ produced by tools/patch_netspeed_host.py --value 30000 --budget on a clean stock
+# Engine.dll; both re-derived and verified against a fresh stock copy (not just copied
+# from a doc) before being pasted here -- see docs/journal/2026-09-22-*-client-kit-patch.md.
 
 function Assert-ClientRoot {
     if (-not (Test-Path $SystemDir)) {
@@ -140,7 +151,48 @@ function Set-CorrectExe {
     }
 }
 
-# --- 2. server IP: launch bat + both ini files ---
+# --- 2. Engine.dll patch (netspeed 30000 + bandwidth-bank widening) ---
+# Fixes projectiles that silently fail to register hits during sustained
+# firing (see README for the plain-language why). Ships as a pre-patched
+# Engine.dll alongside this script rather than patching on the friend's
+# machine, because the patch tool requires Python (friends won't have it)
+# and its main-install guard would refuse a folder literally named
+# "MetalRage Online" -- which is exactly what this README tells friends to
+# name their client folder.
+function Set-EnginePatch {
+    $enginePath = Join-Path $SystemDir 'Engine.dll'
+    $patchedSource = Join-Path $KitDir 'Engine.dll.patched'
+    if (-not (Test-Path $enginePath)) {
+        Write-Error "'$enginePath' not found. Is this a real extracted client?"
+        exit 1
+    }
+    if (-not (Test-Path $patchedSource)) {
+        Write-Error "'$patchedSource' missing from the kit. Cannot apply the netspeed/bandwidth patch."
+        exit 1
+    }
+
+    $currentHash = Get-FileHashUpper $enginePath
+
+    if ($currentHash -eq $PatchedEngineHash) {
+        Write-Output "engine: already patched (netspeed 30000 + bandwidth-bank), nothing to do"
+        return
+    }
+    if ($currentHash -ne $StockEngineHash) {
+        Write-Error "'$enginePath' hash ($currentHash) matches neither the known stock build nor our patched build. Refusing to touch it -- it may already be patched by something else, or this is a different game version than the kit expects. Re-extract the client archive if unsure."
+        exit 1
+    }
+
+    Backup-Once -SourcePath $enginePath -BackupName 'Engine.dll.bak'
+    Copy-Item $patchedSource $enginePath -Force
+    $verify = Get-FileHashUpper $enginePath
+    if ($verify -ne $PatchedEngineHash) {
+        Write-Error "engine patch failed verification: expected $PatchedEngineHash, got $verify. The original file is still safe in '$BackupDir'; do not launch the game until this is fixed."
+        exit 1
+    }
+    Write-Output "engine: patched to netspeed 30000 + bandwidth-bank widening, hash verified"
+}
+
+# --- 3. server IP: launch bat + both ini files ---
 function Set-ServerIp {
     # bat: installed from the launch-fixed.bat.template shipped in the kit,
     # replacing "Play Metal Rage Online.bat" (backed up first). This is the
@@ -184,7 +236,7 @@ function Set-ServerIp {
     }
 }
 
-# --- 3. P2P firewall rule (same as tools/win/p2p-open.ps1) ---
+# --- 4. P2P firewall rule (same as tools/win/p2p-open.ps1) ---
 function Set-P2PFirewallRule {
     $RuleName = 'MRO-P2P-UDP-30907'
     Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
@@ -193,7 +245,7 @@ function Set-P2PFirewallRule {
     Write-Output "firewall: added $RuleName (Inbound UDP 30907, Private, from $HostSubnet)"
 }
 
-# --- 4. network profile check ---
+# --- 5. network profile check ---
 function Test-NetworkProfile {
     $profiles = Get-NetConnectionProfile
     $publicProfiles = $profiles | Where-Object { $_.NetworkCategory -eq 'Public' }
@@ -214,6 +266,7 @@ function Test-NetworkProfile {
 
 Assert-ClientRoot
 Set-CorrectExe
+Set-EnginePatch
 Set-ServerIp
 Set-P2PFirewallRule
 Test-NetworkProfile
