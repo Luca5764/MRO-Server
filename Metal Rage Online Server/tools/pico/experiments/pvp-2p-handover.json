@@ -1,0 +1,107 @@
+{
+  "id": "pvp-2p-handover",
+  "purpose": "2026-09-22 第一次 2 人 PvP（TDM）實測。manual-handover-setup.json 只把 create_pve_room 換成 create_pvp_room，其餘不變：架到兩邊都進戰場、焦點在加入者後交給操作者。伺服器須開 PVP_START_FLOW_MODE 與 PVP_TEAM_ASSIGN_MODE（test-server@ed1cc85）。PM 指定唯一要盯的：加入者有沒有崩潰。其次看兩人是否被分到不同顏色。",
+  "preconditions": {},
+  "clients": {
+    "host": {
+      "proc_name": "MetalRage2",
+      "install_dir_win": "C:\\Games\\MetalRage Online 2",
+      "bat_path_win": "C:\\Games\\MetalRage Online 2\\Play Second Client.bat"
+    },
+    "joiner": {
+      "proc_name": "MetalRage",
+      "install_dir_win": "C:\\Games\\MetalRage Online",
+      "bat_path_win": "C:\\Games\\MetalRage Online\\Play With Log.bat"
+    }
+  },
+  "steps": [
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "host",
+        "account": "mrotesthost"
+      }
+    },
+    {
+      "action": "launch_client",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "login_as",
+      "params": {
+        "client_id": "joiner",
+        "account": "mrotest"
+      }
+    },
+    {
+      "action": "focus_client",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "create_pvp_room"
+    },
+    {
+      "action": "dismiss_notice"
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "join_room",
+      "params": {
+        "client_id": "joiner",
+        "room_name": "round2-projectile (auto-named, label only)"
+      }
+    },
+    {
+      "action": "idle_nudge",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "set_ready",
+      "params": {
+        "client_id": "joiner"
+      }
+    },
+    {
+      "action": "host_start_battle",
+      "params": {
+        "client_id": "host"
+      }
+    },
+    {
+      "action": "enter_battle",
+      "params": {
+        "client_id": "joiner",
+        "mech_key": null
+      }
+    },
+    {
+      "action": "console_cmd_on",
+      "params": {
+        "client_id": "joiner",
+        "text": "WeaponLog"
+      }
+    }
+  ],
+  "stop_conditions": {
+    "max_consecutive_failures": 1
+  },
+  "max_wall_clock_s": 600,
+  "max_image_reviews": 0
+}
