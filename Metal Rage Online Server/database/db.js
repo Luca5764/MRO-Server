@@ -80,6 +80,31 @@ const pool = mysql.createPool({
     timezone: 'Z',
 });
 
+// Startup-only, single-shot connectivity check (2026-09-23, operator +
+// PM roadmap item 0: the 2026-09-22 reboot ran half a day on an empty
+// account because nothing failed loudly when MySQL was down --
+// dispatch/account.dispatch.js's handleLogin catches the connection error
+// per-request and silently answers with hardcoded empty-account defaults,
+// see its own comment there). This is deliberately NOT that per-request
+// path: one connection attempt, at boot, before either TCP listener opens.
+// No retry loop -- a down DB is an operator-visible, one-time condition to
+// fix and restart for, not something to poll around.
+async function verifyConnectionOrExit()
+{
+    let conn;
+    try {
+        conn = await pool.getConnection();
+        await conn.query('SELECT 1');
+    } catch (err) {
+        console.error(`[DB] FATAL: cannot connect to MySQL at ${dbConfig.user}@${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`);
+        console.error(`[DB] mysql2 error: ${err && err.code || err && err.message || err}`);
+        console.error(`[DB] Is MySQL running? Try: sudo service mysql start`);
+        process.exit(1);
+    } finally {
+        if (conn) conn.release();
+    }
+}
+
 /**
  * Find an account by username. Returns null if not found.
  * @param {string} username
@@ -769,6 +794,7 @@ async function getItemCatalog()
 
 module.exports = {
     pool,
+    verifyConnectionOrExit,
     getAccountByUsername,
     getAccountByNickname,
     getAccountById,
