@@ -42,7 +42,10 @@
 
 - **目的**：比賽中送一包 `Timeout_SN 0x00230112`，兩隊分數填 **7 和 3**，截圖看畫面上方隊伍總分會不會變成 7:3。
 - **一包同時回答三件事**：是不是這一包、那個欄位是不是畫面讀的、**加入者收了會不會崩**。
-- **狀態**：worker 已 commit `976ae0e`（worktree `~/mro-wt/pvpscore`，分支 `pvpscore`），但**高階還沒審、還沒合併**，worker 的完工回報也還沒讀到。**接手第一步是審它的 diff**：重點看 body 是否 `+0x00` u16／`+0x02` u32 都填 0（這兩個是 gate，非 0 客戶端整段跳過）、`+0x0c`／`+0x1a` 是不是 `0700`／`0300`、body 長度是否 `0x26`、開關關閉時指令是否**根本沒註冊**（不是註冊了再拒絕）。欄位表在 `research/2026-09-23-team-scoreboard/candidates.md` §2。
+- **狀態**：✅ **工具做好了，已審、已合併到 `reverse-work`**。指令 `/pvpscore <roomId> <red> <blue> [joiner|host|all]`，預設 target＝`joiner`。開關 `PVP_TEAM_SCORE_SYNC_MODE` 預設關，**關閉時指令根本不註冊**。
+  body 已逐欄覆核：len `0x26`、`+0x00` u16＝0、`+0x02` u32＝0（gate，非 0 客戶端整段跳過）、`+0x0c` red＝7、`+0x1a` blue＝3，frame `0x36`。
+  🟡 **id key（`+0x0a`／`+0x18`）填 0／1 的依據沒有逐指令核對**——推論是 `Game_Info_SN +0x04/+0x06` 的隊伍 index 最終複製到 `Game_Score_Update` 查表用的 `+0xff0/+0xff4`。**若畫面分數掛在錯的隊，第一件事就是把這兩個 id key 互換重送**（註解與 log 都寫明了）。
+  ⚠️ **指令不檢查客戶端當下場景**。同一 opcode 在大廳是別的訊息，**一定要在比賽進行中送**。
 - **測試分支已經備妥**：`~/mro-wt/test` 在 `186a49c`，已合併今天全部內容並開啟三個開關。**還沒重啟伺服器套用**（目前跑的是舊的 `7af0546`）。
 - **跑的順序（PM 指定，不要改）**：
   1. 跑 `tools/pico/runner.py run tools/pico/experiments/pvp-2p-handover.json`，把兩個客戶端弄進戰場
@@ -60,7 +63,7 @@
 |---|---|
 | 伺服器 | tmux session `server`，跑在 `~/mro-wt/test`，目前是 `7af0546`（**比分支落後一個 commit，要重啟才會套用三個開關**） |
 | 主目錄 `/home/lucas/mro-reverse` | 乾淨，停在 `reverse-work@71b9a03`，已推 |
-| 測試分支 `~/mro-wt/test` | `186a49c`，非預設開關：`PVP_START_FLOW_MODE`、`PVP_TEAM_ASSIGN_MODE`、`MATCH_STATS_MODE`、`roomPlayingStateMode`、`ROOM_MEMBER_TEAM_MODE`、`MAP_CHANGE_ONE_ROUND_PERSIST_MODE`、`PVP_KILL_TRACKING_MODE`。**這個分支不合併回 `reverse-work`** |
+| 測試分支 `~/mro-wt/test` | `186a49c`，非預設開關：`PVP_START_FLOW_MODE`、`PVP_TEAM_ASSIGN_MODE`、`MATCH_STATS_MODE`、`roomPlayingStateMode`、`ROOM_MEMBER_TEAM_MODE`、`MAP_CHANGE_ONE_ROUND_PERSIST_MODE`、`PVP_KILL_TRACKING_MODE`。**`PVP_TEAM_SCORE_SYNC_MODE` 還沒開**——跑 T2.5a 前要先把 `reverse-work` 併進來再開它。**這個分支不合併回 `reverse-work`** |
 | 剩下的 worktree | `pvpscore`（進行中）、`bridge-stage0`／`dualpico`／`trace-task`（舊的 flash-wip，沒清） |
 | **副本 2 的 `Engine.dll`** | **`b0a3d9dd…`＝15000、沒有 budget**（15000 A/B 的 A4 輪留下的）。**PvP 實跑前要先套回發包設定**：`patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --value 30000 --budget --apply`，套完應為 `f4b253a3…` |
 | MySQL | **重開機不會自動起來**。用操作者自己的終端機 `sudo service mysql start`（`!` 前綴給不了 sudo 一個 TTY）。`service mysql status` 會誤報，因為 pid 檔名是 `Lucas.pid` |
@@ -75,16 +78,9 @@
 6. `KIT-PS1-SMOKE`。
 7. **`DB-FAIL-PERREQ` 還沒全做完**：(b)「回真正的登入失敗封包」要先查客戶端顯示什麼；30907 那條照 PM 例外只改了 log、沒斷線。**backlog 條目還沒搬去 `backlog-done.md`**，因為 (b) 沒做。
 
-### 六、要操作者自己貼進 `AGENTS.md` 陷阱表的兩行
+### 六、`AGENTS.md` 陷阱表
 
-`AGENTS.md` 不在專案 repo，由 `mro-config` 管（改完 `mro-config commit -am "..."`）。
-
-```
-| **原始客戶端 log 必定帶房主 VPN 位址**（`GameStart`／`Browse:`／`Close TcpipConnection` 行），複製進 `docs/` 前要換成 `<HOST_VPN_IP>`；commit 時 pre-commit 會擋下真實 IP | `tools/git-hooks/pre-commit` |
-| **同一個 opcode 數字在不同場景是不同訊息**，例如 `0x00230112` 在大廳是空 body 的通知、在戰鬥中才是 `Timeout_SN`。查封包一律連場景一起確認，不要只比對數字 | `research/2026-09-23-team-scoreboard/candidates.md` |
-```
-
-第一行 2026-09-22 就該貼了，**還沒貼**。
+2026-09-23 操作者已自行貼上兩行（IP 遮蔽＋pre-commit、同一 opcode 在不同場景是不同訊息）。**這項已完成，不用再提醒。**
 
 ### 七、今天犯的錯（留著避免重蹈）
 
