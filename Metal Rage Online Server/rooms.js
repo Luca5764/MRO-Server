@@ -377,45 +377,48 @@ function updateRoomMapSelection(roomId, { mapId, playTime, playRound }) {
 }
 
 /**
- * ROOM-TEAM-REBALANCE (contract 2026-09-23 follow-up to ROOM-TEAM-DISPLAY):
- * recomputes every member's `team` from the room's *current* insertion
- * order (Map iteration order == who is still in the room, in join order)
- * -- i%2, PvP rooms only (rawRoomType===2); PvE stays all-red. Called from
- * addMember() and removeMember() below, right after each mutates
- * room.members, so a member leaving mid-room re-balances everyone still in
- * it instead of leaving a stale assignment from before they left (the join-
- * time-only version this replaced could leave two remaining members both on
- * team 1 once an earlier member's slot 0 vacated -- see the contract). This
- * is now the *only* place member.team is decided -- resolvePvpTeamIndex()
- * in gate.game.dispatch.js reads it back instead of recomputing its own
- * copy while ROOM_MEMBER_TEAM_MODE is enabled. Entirely a no-op (does not
- * touch any member.team) while roomMemberTeamMode is 'disabled' -- both so
- * addMember()/removeMember() stay byte-identical to before this function
- * existed for the real dispatch call sites (which only ever pass team 0
- * anyway), and so callers that set an explicit team directly through this
- * module's own addMember() to test unrelated team-dependent behaviour
- * (e.g. test/room-chat.js's team-filtered chat) keep working: forcing every
- * member to 0 regardless of what was passed would silently break those.
+ * ROOM-TEAM-NEW-MEMBER (contract 2026-09-23 second follow-up to
+ * ROOM-TEAM-DISPLAY/ROOM-TEAM-REBALANCE): assigns a team for a member about
+ * to join -- whichever team currently has fewer members (0/red on a tie,
+ * including the empty-room case, so the host still lands on 0). Never
+ * touches any *other* member's `team`. This replaces the earlier
+ * recomputeMemberTeams() (which re-balanced the whole room on every join
+ * and leave): that approach could flip an existing member's team the
+ * instant someone else left mid-battle, and the only way to guard against
+ * that would have been checking room.state==='playing' -- which turned out
+ * to depend on a third switch (ROOM_PLAYING_STATE_MODE, default 'disabled')
+ * that has nothing to do with team assignment, so the guard would silently
+ * not protect anything unless a caller happened to also enable that
+ * unrelated switch (see the contract). Never touching existing members
+ * removes the need for that signal entirely -- there is nothing to flip.
+ * `room` is passed with the new member NOT YET inserted (addMember() below
+ * calls this before `room.members.set(...)`), so the counts below are
+ * exactly "whoever is already in the room". No-op (returns 0) for PvE
+ * rooms (rawRoomType !== 2) or while roomMemberTeamMode is 'disabled', same
+ * "byte-identical to before this existed" reasoning as before.
  */
-function recomputeMemberTeams(room) {
-    if (!room || roomMemberTeamMode !== 'enabled') return;
-    const isPvpRoom = Number(room.rawRoomType) === 2;
-    let i = 0;
-    for (const member of room.members.values()) {
-        member.team = isPvpRoom ? (i % 2) : 0;
-        i += 1;
+function assignTeamForNewMember(room) {
+    if (!room || roomMemberTeamMode !== 'enabled' || Number(room.rawRoomType) !== 2) {
+        return 0;
     }
+    let redCount = 0;
+    let blueCount = 0;
+    for (const existing of room.members.values()) {
+        if (existing.team === 1) blueCount += 1;
+        else redCount += 1;
+    }
+    return blueCount < redCount ? 1 : 0;
 }
 
 /**
  * Adds (or replaces) a member in a room. Fills in defaults for any field the
  * caller omits so partial member objects (e.g. { accountId, nickname,
- * client }) are safe to pass. `member.team`, if passed, is immediately
- * superseded by recomputeMemberTeams() below whenever
- * isRoomMemberTeamEnabled() is true -- the real dispatch call sites
- * (gate.game.dispatch.js) no longer need to (and should not try to) compute
- * a join-order team themselves. While the switch is off, `member.team` is
- * used as passed, same as always -- see recomputeMemberTeams()'s comment.
+ * client }) are safe to pass. `member.team`, if passed, is superseded by
+ * assignTeamForNewMember() above whenever isRoomMemberTeamEnabled() is
+ * true -- the real dispatch call sites (gate.game.dispatch.js) no longer
+ * need to (and should not try to) compute a join-order team themselves.
+ * While the switch is off, `member.team` is used as passed, same as
+ * always -- see assignTeamForNewMember()'s comment.
  */
 function addMember(roomId, member) {
     const room = rooms.get(roomId);
@@ -430,9 +433,19 @@ function addMember(roomId, member) {
         client: member.client || null,
         disconnectedAt: member.disconnectedAt || null,
     };
+    // ROOM-TEAM-NEW-MEMBER: must run before this member is inserted below --
+    // it counts room.members as "everyone else already in the room". Only
+    // overrides `full.team` when the switch is enabled (an explicit `if`,
+    // not `assignTeamForNewMember(room) || full.team` -- that would wrongly
+    // fall back to whatever was passed in whenever the assignment is
+    // legitimately 0); when disabled, `full.team` above (whatever the
+    // caller passed, defaulting to 0) is used untouched -- see
+    // assignTeamForNewMember()'s comment.
+    if (roomMemberTeamMode === 'enabled') {
+        full.team = assignTeamForNewMember(room);
+    }
     room.members.set(full.accountId, full);
     byAccount.set(full.accountId, roomId);
-    recomputeMemberTeams(room);
     return full;
 }
 
@@ -440,7 +453,9 @@ function addMember(roomId, member) {
  * Removes an accountId's membership from whatever room it is in. Deletes
  * the room itself once it has no members left. Returns false if the account
  * was not in any tracked room (nothing to do — safe to call unconditionally
- * from a leave/disconnect path).
+ * from a leave/disconnect path). Does not touch any remaining member's
+ * `team` -- see assignTeamForNewMember()'s comment for why team assignment
+ * is now join-only.
  */
 function removeMember(accountId) {
     const roomId = byAccount.get(accountId);
@@ -450,11 +465,6 @@ function removeMember(accountId) {
         room.members.delete(accountId);
         if (room.members.size === 0) {
             rooms.delete(roomId);
-        } else {
-            // ROOM-TEAM-REBALANCE: re-balance whoever is left -- see that
-            // function's comment for why this must happen on leave too, not
-            // just on join.
-            recomputeMemberTeams(room);
         }
     }
     byAccount.delete(accountId);

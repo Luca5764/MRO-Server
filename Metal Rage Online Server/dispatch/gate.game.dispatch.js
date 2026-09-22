@@ -527,27 +527,26 @@ function sendRoomGameWaitSn(client, tag)
 // expected for T1's 2-person scope; the alternation is here for when 4-way
 // rooms are tested later, per design §1).
 //
-// ROOM-TEAM-REBALANCE (docs/journal/2026-09-22-2230-pvp-2p-first.md "房間畫面
-// 兩人都在紅隊", contract 2026-09-23 follow-up): member.team is now the sole
-// source of truth for a member's team -- rooms.js's recomputeMemberTeams()
-// (called from addMember()/removeMember() on every join *and* leave, so a
-// departure re-balances whoever is left instead of leaving a stale
-// assignment) is the only place it gets computed. While
-// rooms.isRoomMemberTeamEnabled() is true *and* PVP_TEAM_ASSIGN_MODE is
-// 'enabled', this function just reads that value back instead of keeping
-// its own separate join-order copy -- the old copy (computed once per
-// battle attempt, cached on room.battleStartGen) could disagree with the
-// room screen's own display once someone left and rejoined between the
-// room screen being drawn and battle start. Requiring PVP_TEAM_ASSIGN_MODE
-// too (not just ROOM_MEMBER_TEAM_MODE) keeps the two switches' scopes
-// separate, per contract "一次只改一個變數": ROOM_MEMBER_TEAM_MODE alone
-// only changes the room-screen display (member.team, written by
-// recomputeMemberTeams -- see its own "no-op while disabled" gate for why
-// that alone cannot change what Game_User_SN sends), never
-// resolvePvpTeamIndex()'s battle-start output. When either switch is off,
-// this falls through to the original PVP_TEAM_ASSIGN_MODE-gated cache
-// below, byte-identical to before this change -- that switch's own gating
-// is untouched.
+// ROOM-TEAM-NEW-MEMBER (docs/journal/2026-09-22-2230-pvp-2p-first.md "房間畫面
+// 兩人都在紅隊", contract 2026-09-23 follow-ups): member.team is now the sole
+// source of truth for a member's team -- rooms.js's assignTeamForNewMember()
+// (called from addMember() only, for the joining member alone -- never
+// rebalances anyone already in the room, see that function's comment for
+// why) is the only place it gets computed. While rooms.isRoomMemberTeamEnabled()
+// is true *and* PVP_TEAM_ASSIGN_MODE is 'enabled', this function just reads
+// that value back instead of keeping its own separate join-order copy --
+// the old copy (computed once per battle attempt, cached on
+// room.battleStartGen) could disagree with the room screen's own display
+// once someone left and rejoined between the room screen being drawn and
+// battle start. Requiring PVP_TEAM_ASSIGN_MODE too (not just
+// ROOM_MEMBER_TEAM_MODE) keeps the two switches' scopes separate, per
+// contract "一次只改一個變數": ROOM_MEMBER_TEAM_MODE alone only changes the
+// room-screen display (member.team, written by assignTeamForNewMember() --
+// see its own "no-op while disabled" gate for why that alone cannot change
+// what Game_User_SN sends), never resolvePvpTeamIndex()'s battle-start
+// output. When either switch is off, this falls through to the original
+// PVP_TEAM_ASSIGN_MODE-gated cache below, byte-identical to before this
+// change -- that switch's own gating is untouched.
 function resolvePvpTeamIndex(room, accountId)
 {
     if (rooms.isRoomMemberTeamEnabled() && PVP_TEAM_ASSIGN_MODE === 'enabled') {
@@ -1439,11 +1438,11 @@ class ZGateGameDispatch
                     rooms.addMember(room.id, {
                         accountId: hostAccountId,
                         nickname,
-                        // ROOM-TEAM-REBALANCE: team is decided by
-                        // rooms.js's recomputeMemberTeams() right after this
-                        // call inserts the member -- whatever is passed here
-                        // is immediately superseded, so there is nothing to
-                        // compute on this side anymore.
+                        // ROOM-TEAM-NEW-MEMBER: team is decided by
+                        // rooms.js's assignTeamForNewMember() inside this
+                        // same addMember() call -- whatever is passed here
+                        // is superseded, so there is nothing to compute on
+                        // this side anymore.
                         team: 0,
                         slot: 0,
                         ready: false,
@@ -2176,11 +2175,11 @@ class ZGateGameDispatch
                 rooms.addMember(room.id, {
                     accountId,
                     nickname,
-                    // ROOM-TEAM-REBALANCE: was hardcoded 0 ("PvE all-red,
+                    // ROOM-TEAM-NEW-MEMBER: was hardcoded 0 ("PvE all-red,
                     // design §2, R11" -- still true when the switch is off).
                     // team is now decided by rooms.js's
-                    // recomputeMemberTeams() right after this call inserts
-                    // the member, so there is nothing to compute here.
+                    // assignTeamForNewMember() inside this same addMember()
+                    // call, so there is nothing to compute here.
                     team: 0,
                     slot: 0,
                     ready: false,
