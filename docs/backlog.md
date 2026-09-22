@@ -1135,5 +1135,37 @@ budget 單獨在 10000（原廠 netspeed）下夠不夠？若夠，發包就只�
 並讓 `_battle_any_check()` 同時接受 PvE 與 PvP 兩種。參考截圖
 `research/2026-09-22-d2-tdm/pvp-tdm-battle-first.png`。
 
+**PM 2026-09-22 追加（列為 P1 擋路項，先於設計稿實作）**：這次是操作者叫高階直接截圖才抓到，
+正好是 `satisfied_by` 該補的一格——**runner 判 FAIL、但伺服器封包顯示已在戰鬥中**時，
+要印**矛盾 WARN**，不要直接信畫面。具體：`enter_battle` 的 HUD 檢查失敗、而
+`ChangeSlot_CN`／`Respawn_CN` 其實有收到時，detail 要明寫「畫面與封包矛盾」。
+
 順帶：`enter_battle` 會留下開著的 GAME MENU，清理流程不能無條件再送 ESC
 （會關掉選單，後續點擊直接打進遊戲變成開火）。同篇日誌有記。
+
+---
+
+## IS-NETREADY-DROP-COUNT（低優先，PM 2026-09-22 從「過關後第一件事」降級）
+
+原計畫：在 `IsNetReady` 回 false 的跳轉（`0x105236ad`）掛 Frida 計數，直接數引擎丟掉的發數——
+唯一能直接驗證 budget 機制的量法。
+
+**降級原因**：`journal/2026-09-22-2040-hook-fps-cost.md` —— 中段掛點（方案 C，`0x10523564`）
+讓客戶端 GPF，而 `0x105236ad` 同樣在函式中段、同類風險。另外 Frida 掛鉤在高頻路徑上會砍半 FPS，
+四組都沒過 PM 的 <5% 門檻。
+
+**要重開這件事的前提**：找到一個**低頻、而且不會搬到別處跳轉目標**的掛點
+（先做完整 xref 掃描，確認沒有任何跳轉落在被覆蓋的 bytes 內）。
+Gadget 本身保留，做**不掛鉤**的事（階段 3 主控台指令、每秒讀場景變數）。
+
+---
+
+## FPS-SUMMARY-PER-PROC（小修，PresentMon 已可用）
+
+`tools/win/fps.sh summary` **不會按行程分開算**。2026-09-22 用全行程錄製時把 `Code.exe` 與
+`<unknown>` 混進去，算出沒有意義的數字。要加 `--proc <名稱>` 過濾（CSV 的 `Application` 欄）。
+
+另記 PresentMon 已實測可用（操作者 2026-09-22 把帳號加進 Performance Log Users 並重開機）：
+**提升權限跑的 `MetalRage.exe` 認得出名字**（6 秒 8379 幀，不是 `<unknown>`）；
+`dwm.exe` 是系統帳號，會變 `<unknown>`、不能用名字指定——那不影響我們。
+CSV 開頭有 **BOM**，讀取要用 `utf-8-sig`。
