@@ -1,0 +1,394 @@
+Log: Log file open, 09/22/26 16:42:01
+Init: Name subsystem initialized
+Init: Detected: Microsoft Windows NT 6.2 (Build: 9200)
+Init: Version: 3369 (134.29)
+Init: Compiled: Nov  8 2010 20:59:51
+Init: Command line:  -globalid=TW&ip=127.0.0.1&port=9211&age=30 -log=run-164200.58.log
+Init: Character set: Unicode
+Init: Base directory: C:\Games\MetalRage Online\data\System\
+Init: Ini:MetalRage.ini   UserIni:User.ini
+Init: Build label:  Build MR_Build_[2009-12-10_09.30]
+Init: Object subsystem initialized
+Log: Default_Set_Initialize_MH : C:\Games\MetalRage Online\data\System\MetalRage.exe
+Log: 	nvldumd.dll/NVIDIA GeForce RTX 4080
+Log: 	nvldumd.dll/NVIDIA GeForce RTX 4080
+Log: Game class is 'GameInfo'
+Log: Bringing Level Entry.myLevel up for play (0) appSeconds: 4.138000...
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+Log: Browse: NoIntro.tzp
+Log: SetFlag_BD
+Log: ClearFlag_BD
+Log: PurgeGarbage_BD
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 18455->18455; refs: 155833
+Log: CollectGarbage_BD
+Warning: Missing FinalBlend FinalBlend CYEffect.dust.Debris1_Final
+Log: Game class is 'CinematicGameInfo'
+Log: Bringing Level NoIntro.myLevel up for play (0) appSeconds: 4.334000...
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+Log: Window Font Count=512
+Log: Not Register Font:MingLiu
+ScriptLog: Style already registered 'GUI2K4.STY2TextButton'
+Log: ALAudio: Using DirectSound to record audio.
+Log: Couden't FuncInputWndProc
+Log: Opened viewport
+Log: Enter SetRes: 1600x1200 Fullscreen 0
+Log: Using back-buffer format 22(32-bit)
+Log: Using depth-buffer format 77(32-bit)
+Log: Creating device
+Log: xD3D9Helper::Init (QuadEmulation)
+Log: Unknown style requested Header
+Log: Unknown style requested EditBox
+Log: Unknown style requested CloseButton
+Log: Startup time: 9.726000 seconds
+Log: Precaching: NoIntro.LevelInfo0
+Log: Static mesh batches: 0 vertex bytes, 0 index bytes
+Log: Allocating 16384 byte dynamic index buffer.
+Log: Register Font:Verdana
+Log: Finished precaching geometry in 0.012 seconds
+Log: Finished precaching textures in 0.002 seconds
+Log: Enter SetRes: 1600x1200 Fullscreen 0
+Log: Using back-buffer format 22(32-bit)
+Log: Using depth-buffer format 77(32-bit)
+Log: xD3D9Helper::Init (QuadEmulation)
+Log: Browse: Index.tzp?disconnect
+Log: ENTRY
+Log: GP=FALSE
+Log: Spawning new actor for Viewport WindowsViewport
+Log: Browse: Store_01?Game=ZModeHangar.HangarGameInfo?Team=0
+Warning: Missing MeshNormalShader MeshNormalShader ChibT02.IB02.IBT02B1
+ScriptLog: Destroty Start: PlayerController
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: HUD
+ScriptLog: Pawn Destroy
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: PlayerSecurity: UnrealSecurity
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Log: CelanAudio
+Log: SetFlag_BD
+Log: ClearFlag_BD
+Log: PurgeGarbage_BD
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 42991->42831; refs: 451820
+Log: CollectGarbage_BD
+Log: SetViewPortAudioEntry_BD
+Log: SetViewPortAudio_BD 1
+Log: Game class is 'HangarGameInfo'
+Log: Bringing Level Store_01.myLevel up for play (0) appSeconds: 11.287000...
+Log: (Karma): Autodetecting CPU for SSE
+Log: (Karma): Using SSE Optimizations
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+ScriptLog: PRELoadAllMesh_BD
+Log: Spawning new actor for Viewport WindowsViewport
+Warning: NULL ': 
+Warning: Material''None'
+Log: Precaching: Store_01.LevelInfo0
+Log: Static mesh batches: 3168 vertex bytes, 396 index bytes
+Log: Finished precaching geometry in 0.018 seconds
+Log: Allocating 65536 byte dynamic vertex buffer.
+Log: Finished precaching textures in 0.037 seconds
+ScriptLog: START MATCH
+Log: Precaching: Store_01.LevelInfo0
+Log: Allocating 65536 byte dynamic vertex buffer.
+Log: Finished precaching geometry in 0.074 seconds
+Log: Finished precaching textures in 0.030 seconds
+Log: Allocating 74448 byte dynamic vertex buffer.
+Log: Allocating 76896 byte dynamic vertex buffer.
+Log: Allocating 78768 byte dynamic vertex buffer.
+ScriptLog: [ ZPage_Room ][ GameStart ]  start <HOST_VPN_IP>:30907/Map_PC04?team=0
+Log: URL: Adding default option Name=5
+Log: Browse: <HOST_VPN_IP>/Map_PC04?team=0?Name=5
+Log: Attemp Begin LoadMap
+ScriptLog: Destroty Start: HangarPlayerController
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: HangarHud
+ScriptLog: Pawn Destroy
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: PlayerSecurity: UnrealSecurity
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Log: NetMode now NM_Client
+Log: CelanAudio
+Log: SetFlag_BD
+Log: ClearFlag_BD
+Log: PurgeGarbage_BD
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 65116->53890; refs: 686967
+Log: CollectGarbage_BD
+Log: SetViewPortAudioEntry_BD
+Log: SetViewPortAudio_BD 1
+Log: Core
+Log: Engine
+Log: Fire
+Log: Editor
+Log: IpDrv
+Log: GamePlay
+Log: UnrealGame
+Log: XGame
+Log: ZNetwork
+Log: ZEmiWeather
+Log: ZBaseObject
+Log: ZBase
+Log: ZBaseMechanic
+Log: ZBaseMRKit
+Log: ZEvent
+Log: ZVolume
+Log: ZDynamicWeapon
+Log: ZBaseWeapon
+Log: ZDefineWeapon
+Log: ZWeapon
+Log: ZMechanic
+Log: ZMechanicA
+Log: ZAction
+Log: ZGame
+Log: ZModeBot
+Log: ZModeCapture
+Log: ZModeOccupation
+Log: ZModeBlow
+Log: ZModeSuddenDeath
+Log: ZModeRage
+Log: ZModePve
+Log: ZModeEscortPve
+Log: Bringing Level Map_PC04.myLevel up for play (90) appSeconds: 164.314000...
+Log: (Karma): Autodetecting CPU for SSE
+Log: (Karma): Using SSE Optimizations
+Log: Spawning new actor for Viewport WindowsViewport
+Log: Allocating 65536 byte dynamic vertex buffer.
+ScriptLog: PRELoadAllMesh_BD
+Log: NetMode now NM_Client
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: (Karma): Level Karma Terminated.
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 60676->60259; refs: 724331
+Log: ZSetCorePlayercontroller setplayer WindowsViewport
+Log: Precaching: Map_PC04.LevelInfo0
+Warning: NULL ': 
+Warning: Class''None'
+Warning: NULL ': 
+Warning: Class''None'
+Log: Static mesh batches: 78336 vertex bytes, 6780 index bytes
+Log: Allocating 16384 byte dynamic index buffer.
+Log: Allocating 509856 byte dynamic index buffer.
+Log: Allocating 83664 byte dynamic vertex buffer.
+Log: Finished precaching geometry in 0.250 seconds
+Log: Finished precaching textures in 0.065 seconds
+Warning: NULL ': 
+Warning: Class''None'
+Warning: NULL ': 
+Warning: Class''None'
+Warning: ZSetCorePlayercontroller Map_PC04.ZSetCorePlayercontroller (Function ZBase.DefaultPlayerController.Spectating.BeginState:0023) Accessed None 'PlayerReplicationInfo'
+ScriptLog: WeaponLog=====> Started
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: HitLoc=== >  5349.44,-24358.09,849.38
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   Fire
+ScriptLog: WeaponLog=====>Now Animation Name : Map_PC04.MTE_a   ReLoad
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+ScriptLog: WeaponLog=====>Emitter N WaterEmiClass N Decal : ZEmiWepGround.HMOC01_ExpMetal   None   ZDecalWeapon.HMOC01_GMMetal
+Log: URL: Adding default option team=0
+Log: URL: Adding default option Name=5
+Log: Browse: Index.tzp?disconnect?team=0?Name=5
+Log: ENTRY
+NetComeGo: Close TcpipConnection <HOST_VPN_IP>:30907 09/22/26 16:47:04
+ScriptLog: Destroty Start: ZSetCorePlayercontroller
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: ZPveSetCoreHud
+ScriptLog: Pawn Destroy
+ScriptLog: Pawn: SA01m 484.65,-24477.51,709.38
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Exit: Socket shut down
+Log: GP=FALSE
+Log: Spawning new actor for Viewport WindowsViewport
+Log: MatchViewportsToActors: CurrentPage
+Log: URL: Adding default option Name=5
+Log: URL: Adding default option Name=5
+Log: Browse: Store_01?Game=ZModeHangar.HangarGameInfo?Team=0?Name=5
+ScriptLog: Destroty Start: PlayerController
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: HUD
+ScriptLog: Pawn Destroy
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: PlayerSecurity: UnrealSecurity
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Log: CelanAudio
+Log: SetFlag_BD
+Log: ClearFlag_BD
+Log: PurgeGarbage_BD
+Log: Collecting garbage
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: (Karma): Level Karma Terminated.
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 69320->48386; refs: 563933
+Log: CollectGarbage_BD
+Log: SetViewPortAudioEntry_BD
+Log: SetViewPortAudio_BD 1
+Log: Game class is 'HangarGameInfo'
+Log: Bringing Level Store_01.myLevel up for play (0) appSeconds: 304.176000...
+Log: (Karma): Autodetecting CPU for SSE
+Log: (Karma): Using SSE Optimizations
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+ScriptLog: PRELoadAllMesh_BD
+Log: Spawning new actor for Viewport WindowsViewport
+Log: Precaching: Store_01.LevelInfo0
+Log: Static mesh batches: 3168 vertex bytes, 396 index bytes
+Log: Allocating 65536 byte dynamic vertex buffer.
+Log: Finished precaching geometry in 0.026 seconds
+Log: Allocating 74592 byte dynamic vertex buffer.
+Log: Finished precaching textures in 0.037 seconds
+Log: Allocating 77040 byte dynamic vertex buffer.
+ScriptLog: START MATCH
+ScriptLog: Destroty Start: HangarPlayerController
+ScriptLog: AdminManager Destroy
+ScriptLog: StopFeedBack Effect
+ScriptLog: MyHud Destroy
+ScriptLog: MyHud: HangarHud
+ScriptLog: Pawn Destroy
+ScriptLog: AnnouncerQueueManager Destroy
+ScriptLog: FreeMoves Destroy
+ScriptLog: SaveMoves Destroy
+ScriptLog: PlayerSecurity Destroy
+ScriptLog: PlayerSecurity: UnrealSecurity
+ScriptLog: CheatManager Destroy
+ScriptLog: Player Controller Destroyed Succes
+Log: Closed viewport
+Log: All Windows Closed
+Log: appRequestExit(0)
+Exit: Preparing to exit.
+Log: Purging garbage
+Log: GDebuggr NotifyGC
+Log: DispatchDestroys
+Log: Unbound to Window.dll
+Log: Unbound to Core.dll
+Log: Unbound to Engine.dll
+Exit: Game engine shut down
+Log: Unbound to WinDrv.dll
+Exit: Windows client shut down
+Log: Unbound to D3D9Drv.dll
+Log: Unbound to XGame.dll
+Log: Unbound to Editor.dll
+Log: Unbound to Fire.dll
+Log: Unbound to XInterface.dll
+Log: Unbound to ZNetwork.dll
+Log: Unbound to IpDrv.dll
+Log: Unbound to ALAudio.dll
+Log: Waiting for file streaming thread to finish...
+Exit: OpenAL Audio subsystem shut down.
+Log: (Karma): Level Karma Terminated.
+Log: DeleteGarbage
+Log: DeleteName
+Log: Garbage: objects: 54968->0; refs: 563933
+Exit: Object subsystem successfully closed.
+Exit: Exiting.
+Log: FileManager: Reading 0 GByte 477 MByte 279 KByte 221 Bytes from HD took 0.815995 seconds (0.707995 reading, 0.108000 seeking).
+Log: FileManager: 0.190000 seconds spent with misc. duties
+Uninitialized: Name subsystem shut down
+Uninitialized: Memory Allocation Status
+Uninitialized: Curr Memory  13.286M /  18.121M
+Uninitialized: Peak Memory  269.005M /  272.098M
+Uninitialized: Allocs        2452 Current /  56884631 Total
+Uninitialized: Log file closed, 09/22/26 16:47:54

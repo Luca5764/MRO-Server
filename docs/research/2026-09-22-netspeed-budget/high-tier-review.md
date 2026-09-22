@@ -34,6 +34,10 @@ verifier 的逐指令核對在 `disasm-0x1042e1ee.txt`。這份只記**高階自
 但 xref 只找到兩筆 `.rdata` dword（研判 vtable slot），**沒有任何字串或 RTTI 把它綁到
 `UNetConnection::Tick`**。風格相符，名稱未證。這不影響機制判讀。
 
+> **更正（2026-09-23，Sol 跨公司審查）：此 ⬜ 已解除。** `Engine.dll` 的匯出表直接把
+> `0x1042dda0` 命名為 `?Tick@UNetConnection@@UAEXXZ`，目標區間在同一函式內、中間無 `ret`，
+> 所以這就是 `UNetConnection::Tick`。當初漏掉是因為只查了 xref 與字串，沒有查匯出表。
+
 ## 2. 跳轉算術（高階自己算的，verifier 沒算這段）
 
 - 去程 `0x1042e1f8: E9 23 A9 24 00` → 下一條 `0x1042e1fd` + `0x0024a923` = **`0x10678b20`** ✅

@@ -25,8 +25,13 @@ function EndGame(PlayerReplicationInfo Winner, string Reason)
 }
 ```
 
-這**完全蓋掉** `Engine/GameInfo.uc:2002` 的原版（原版會 `CheckEndGame()`、通知所有 controller、
-`GotoState('MatchOver')`）。改寫後：
+這**完全蓋掉** `Engine/GameInfo.uc:2002` 的原版（原版會 `CheckEndGame()`、設 `bGameEnded`、
+通知所有 controller、觸發事件與結束 logging）。改寫後：
+
+> **更正（2026-09-23，Sol 跨公司審查）：** 上一句原本寫原版會 `GotoState('MatchOver')`，那是錯的——
+> 現存 `Engine/GameInfo.uc:2002-2014` 裡沒有這個呼叫。不影響本節主結論
+> （`DefaultGameInfo` 的 override 把正式結束流程換掉了）。
+
 - `Reason` 不是 `"TimeLimit"` 就**什麼都不做**——`ZTeamDM.CheckScore` 送進來的
   `"teamscorelimit"` 被整個吃掉，不 `GotoState`、不通知任何人。
 - 唯一活的分支做的事不是結束遊戲，是送 `Timeout_CN 0x00230111`，**把決定權交還伺服器**。
