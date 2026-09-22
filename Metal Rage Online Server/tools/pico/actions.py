@@ -2498,7 +2498,7 @@ def host_start_battle(ctx, client_id="host"):
     return ActionResult("host_start_battle", ok, False, time.monotonic() - t0, detail, shot, None, steps)
 
 
-def enter_battle(ctx, client_id, mech_key="F1"):
+def enter_battle(ctx, client_id, mech_key="F1", require_cn=True):
     """Triggered by: the match starting (or a respawn) dropping this client
     into the load-in flow: loading screen -> opening cinematic -> mech-select
     page (shots/mech-select-page.png) -> spawned in battle. This action now
@@ -2549,7 +2549,23 @@ def enter_battle(ctx, client_id, mech_key="F1"):
     correspondence is empirical (see ClientState.user_index's docstring),
     not DLL-confirmed. Battle HUD (screens.battle_hud_state(),
     map-independent, see campaign_win_all's docstring) is the secondary
-    signal."""
+    signal.
+
+    require_cn (default True -- SAME as every existing caller, behaviour
+    unchanged): a real host run waited the full ENTER_BATTLE_NO_KEY_TIMEOUT_S
+    (120.2s) for its own ChangeSlot_CN/Respawn_CN and never saw one, even
+    though the battle HUD check right after it showed the host was already
+    in battle (docs/research/2026-09-22-netspeed-budget/fps-run-1-failures.md
+    第 2 節). Consistent with round2-projectile.json never calling
+    enter_battle on host and leave_battle(host) always working -- the CN
+    filter above may just not fire for the host's own spawn. ⬜ why not is
+    NOT investigated here. Pass require_cn=False to drop the CN pkt as a
+    completion requirement and use ONLY the battle HUD check
+    (_battle_any_check()) as pass/fail -- fail-closed: the HUD not reaching
+    "battle" within the timeout still fails the action, this only removes
+    the CN half of the AND. The CN pkt is still polled (non-blocking, after
+    the HUD wait) and reported in `detail` so this observation keeps
+    accumulating for whoever investigates the ⬜ above."""
     if client_id not in ctx.clients:
         raise ActionError(f"unknown client id {client_id!r} (known: {sorted(ctx.clients)})")
     if mech_key is not None and mech_key not in MECH_SELECT_SLOTS:
@@ -2589,17 +2605,33 @@ def enter_battle(ctx, client_id, mech_key="F1"):
         steps.append(key(ctx, mech_key))
         timeout_s = DEFAULT_ENTER_BATTLE_TIMEOUT_S
         key_desc = f"ESC + key {mech_key} ({mech_name}/{mech_type})"
+    cn_pred = {"spawn": lambda e: e.get("dir") == "recv" and e.get("op") in (CHANGE_SLOT_CN_OPCODE, RESPAWN_CN_OPCODE)
+               and _pkt_user_index(e) == user_index}
+    if require_cn:
+        ok_pkt, found, elapsed = wait_for_log_pkts(
+            ctx, timeout_s, cn_pred, baseline_ms=base, conn=host_conn_id,
+        )
+        ok_hud, gray, detail_hud, score, shot, _ = wait_for(ctx, "enter_battle-hud", 15.0, _battle_any_check())
+        detail = (f"{key_desc}; "
+                  f"ChangeSlot_CN/Respawn_CN recv (host conn={host_conn_id}, user_index={user_index}): "
+                  f"{'seen' if ok_pkt else 'MISSING'} (waited {elapsed:.1f}s); battle HUD: {detail_hud}")
+        return ActionResult("enter_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)
+
+    # require_cn=False (see docstring): battle HUD is the ONLY completion
+    # signal here, so it gets the full timeout_s budget instead of the 15.0s
+    # secondary-confirmation window the require_cn=True branch above uses --
+    # fail-closed, HUD not reaching "battle" within timeout_s still fails.
+    # The CN pkt is polled AFTER the HUD wait with a single non-blocking
+    # poll (timeout 0.0) purely to keep recording whether the host ever gets
+    # one, for whoever investigates the ⬜ in the docstring later.
+    ok_hud, gray, detail_hud, score, shot, _ = wait_for(ctx, "enter_battle-hud", timeout_s, _battle_any_check())
     ok_pkt, found, elapsed = wait_for_log_pkts(
-        ctx, timeout_s,
-        {"spawn": lambda e: e.get("dir") == "recv" and e.get("op") in (CHANGE_SLOT_CN_OPCODE, RESPAWN_CN_OPCODE)
-                  and _pkt_user_index(e) == user_index},
-        baseline_ms=base, conn=host_conn_id,
+        ctx, 0.0, cn_pred, baseline_ms=base, conn=host_conn_id,
     )
-    ok_hud, gray, detail_hud, score, shot, _ = wait_for(ctx, "enter_battle-hud", 15.0, _battle_any_check())
-    detail = (f"{key_desc}; "
+    detail = (f"{key_desc}; battle HUD: {detail_hud}; "
               f"ChangeSlot_CN/Respawn_CN recv (host conn={host_conn_id}, user_index={user_index}): "
-              f"{'seen' if ok_pkt else 'MISSING'} (waited {elapsed:.1f}s); battle HUD: {detail_hud}")
-    return ActionResult("enter_battle", ok_pkt, gray, time.monotonic() - t0, detail, shot, score, steps)
+              f"{'seen' if ok_pkt else 'MISSING'} (not required; single non-blocking poll after HUD wait)")
+    return ActionResult("enter_battle", ok_hud, gray, time.monotonic() - t0, detail, shot, score, steps)
 
 
 def _console_cmd_on_allowed(text):
