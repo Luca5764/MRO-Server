@@ -1,10 +1,12 @@
 # M3-R：筆電＋手機熱點的 VPN 預演（2026-09-20）
 
+> **2026-09-22 遮蔽**：本篇原本寫著桌機與筆電的真實 Radmin VPN 位址，已換成 `<HOST_VPN_IP>`／`<LAPTOP_VPN_IP>`。**原值曾於 2026-09-20 進入 git 歷史並已推上 origin**；依 PM 裁決不 force push 改寫已公開歷史（其他 clone 會分叉、記錄鏈會斷，而 Radmin 26.x 只在該 VPN 網內可達、換網就變）。要不要進一步改寫歷史由操作者決定。
+
 契約見 PM 的 M3-R。目的：在筆電離開家用區網（走手機行動網路，電信級 NAT）的條件下，完成 M2 的全部內容。
 
 ## 設定
 - VPN：**Radmin VPN**（操作者選；ZeroTier 免費版 10 台、Tailscale 6 人，Radmin 官網宣稱不限人數，見 `research/2026-09-20-vpn-choice/notes.md`）。
-- 位址：桌機 `26.252.21.150`、筆電 `26.98.113.112`。
+- 位址：桌機 `<HOST_VPN_IP>`、筆電 `<LAPTOP_VPN_IP>`。
 - 伺服器：`config/server.json` 的 `publicHost` 與白名單的 `hostAddress` 全部改成 VPN 位址，完整重啟。
 - 連接埠轉發本來就綁 `0.0.0.0`，所有介面通用，不用改。
 - 防火牆：`lan-open.ps1 -VirtualSubnet 26.0.0.0/8`、`p2p-open.ps1 -VirtualSubnet 26.0.0.0/8` 另外建一組規則，原本的區網規則不動。筆電另外加一條 UDP 30907 的入站規則。Radmin 介面在兩台都是「私人網路」。
@@ -12,8 +14,8 @@
 
 ## 結果 ✅（未經跨公司審查）
 - [LOG] `session-20260920-140707.jsonl`：筆電（test）經 VPN 登入 9211 成功。
-- [LOG] 同檔 06:51:42：Lucas 當房主，`Ready_Host_SN 0x00420115` body 帶 `26.252.21.150`，筆電連過去，兩人同房開戰、互相看得到。
-- [LOG] `session-20260920-152820.jsonl` 07:32:36：**反方向**，筆電當房主，`Ready_Host_SN` 帶 `26.98.113.112`，桌機連過去；07:32:45 兩邊都收到 `BeginRound_SN`。[OBS] 兩邊都能正常操控。
+- [LOG] 同檔 06:51:42：Lucas 當房主，`Ready_Host_SN 0x00420115` body 帶 `<HOST_VPN_IP>`，筆電連過去，兩人同房開戰、互相看得到。
+- [LOG] `session-20260920-152820.jsonl` 07:32:36：**反方向**，筆電當房主，`Ready_Host_SN` 帶 `<LAPTOP_VPN_IP>`，桌機連過去；07:32:45 兩邊都收到 `BeginRound_SN`。[OBS] 兩邊都能正常操控。
 - 結論：**遠端玩家透過 VPN 連線（含 P2P 戰鬥）在兩個方向都成立。**
 
 ## 過程中修掉的問題
