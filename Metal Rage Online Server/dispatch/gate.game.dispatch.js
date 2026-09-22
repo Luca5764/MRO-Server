@@ -272,6 +272,21 @@ const ROOM_STATE_RETRY_SCHEDULE = [
 // R3b verified: the 6-byte zero success header prevents the client error.
 // Evidence: docs/journal/2026-09-18-10-map-change-one-sa.md.
 const MAP_CHANGE_SA_ECHO_MODE = 'enabled'; // 'disabled' | 'enabled'
+// ROOM-MAPROUND (docs/journal/2026-09-22-2230-pvp-2p-first.md "b5 沒被存起
+// 來"的機制段): triggered by the player clicking a map/difficulty tile in
+// the room's map picker (Room_Map_Change_One_CQ 0x00220221). The MapTime/
+// MapRound/MapKill/Goal fields that CQ carries (w2/b5/w6/w8) used to only be
+// adopted into client.playRound_/mapChangeOneTime_/etc. (and mirrored into
+// the shared Room) when the CQ's map id (w1) also fell in the PvE campaign
+// cache-key range 9001-9012 -- a PvP room's map ids (e.g. 1031) never
+// satisfy that, so its Map_Change_One_SA echo (buildMapChangeOneSaFields
+// below) kept whatever stale playRound_ CQ_CREATE had left there instead of
+// the value the player just picked. 'enabled' adopts those four fields on
+// every Map_Change_One_CQ regardless of map id; campaignMapCacheKey_ itself
+// stays PvE-range-gated (adopting a PvP map id there would be wrong -- it
+// feeds the PvE map-cache lookup, a separate concern). Default 'disabled':
+// byte-identical to the old range-gated-only behavior.
+const MAP_CHANGE_ONE_ROUND_PERSIST_MODE = 'disabled'; // 'disabled' | 'enabled'
 const MAP_CHANGE_ONE_SA_EXPERIMENT = {
     mode: 'manual',  // SA에 현재 선택된 맵 캐시키를 반환 (returns the currently selected map cache key in the SA)
     manual: {
@@ -2276,8 +2291,15 @@ class ZGateGameDispatch
                 // Map_Change_One_CQ (ZDispatchRoom 0x107eec30): w1 = MapIndex,
                 // b5 = MapRound. Take the difficulty/map the player switched to,
                 // before the SA and the room map resend read campaignMapCacheKey_.
-                if (incomingFields.w1 >= 9001 && incomingFields.w1 <= 9012) {
+                const inPveMapRange = incomingFields.w1 >= 9001 && incomingFields.w1 <= 9012;
+                if (inPveMapRange) {
                     client.campaignMapCacheKey_ = incomingFields.w1;
+                }
+                // ROOM-MAPROUND: old behavior only ran this block when
+                // inPveMapRange (see MAP_CHANGE_ONE_ROUND_PERSIST_MODE's
+                // comment above) -- keep that exact gating while the switch
+                // is off; 'enabled' additionally persists a PvP room's pick.
+                if (inPveMapRange || MAP_CHANGE_ONE_ROUND_PERSIST_MODE === 'enabled') {
                     client.playRound_ = incomingFields.b5;
                     // Preserve the settings accepted with Map_Change_One_CQ
                     // for the following SN_MAP_CHANGE_ONE resend.
