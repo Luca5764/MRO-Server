@@ -533,17 +533,24 @@ function sendRoomGameWaitSn(client, tag)
 // (called from addMember()/removeMember() on every join *and* leave, so a
 // departure re-balances whoever is left instead of leaving a stale
 // assignment) is the only place it gets computed. While
-// rooms.isRoomMemberTeamEnabled() is true, this function just reads that
-// value back instead of keeping its own separate join-order copy -- the old
-// copy (computed once per battle attempt, cached on room.battleStartGen)
-// could disagree with the room screen's own display once someone left and
-// rejoined between the room screen being drawn and battle start. When the
-// switch is off, this falls through to the original PVP_TEAM_ASSIGN_MODE-
-// gated cache below, byte-identical to before this change -- that switch's
-// own gating is untouched.
+// rooms.isRoomMemberTeamEnabled() is true *and* PVP_TEAM_ASSIGN_MODE is
+// 'enabled', this function just reads that value back instead of keeping
+// its own separate join-order copy -- the old copy (computed once per
+// battle attempt, cached on room.battleStartGen) could disagree with the
+// room screen's own display once someone left and rejoined between the
+// room screen being drawn and battle start. Requiring PVP_TEAM_ASSIGN_MODE
+// too (not just ROOM_MEMBER_TEAM_MODE) keeps the two switches' scopes
+// separate, per contract "一次只改一個變數": ROOM_MEMBER_TEAM_MODE alone
+// only changes the room-screen display (member.team, written by
+// recomputeMemberTeams -- see its own "no-op while disabled" gate for why
+// that alone cannot change what Game_User_SN sends), never
+// resolvePvpTeamIndex()'s battle-start output. When either switch is off,
+// this falls through to the original PVP_TEAM_ASSIGN_MODE-gated cache
+// below, byte-identical to before this change -- that switch's own gating
+// is untouched.
 function resolvePvpTeamIndex(room, accountId)
 {
-    if (rooms.isRoomMemberTeamEnabled()) {
+    if (rooms.isRoomMemberTeamEnabled() && PVP_TEAM_ASSIGN_MODE === 'enabled') {
         const member = room && room.members.get(accountId);
         return member ? member.team : 0;
     }
