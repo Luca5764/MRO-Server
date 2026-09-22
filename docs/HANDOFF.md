@@ -5,73 +5,95 @@
 
 ---
 
-## ▶️ 現況快照（2026-09-22 22:45 收工）
+## ▶️ 現況快照（2026-09-23 收工，Claude 高階執行者）
 
-**主線已從投射物轉到 PvP（roadmap 2026-09-22 改：P1 PvP TDM → P2 PvP 其餘模式 → P3 朋友 VPN）。**
-今天 PvP 從「開不了戰」推進到「**兩人分隊、互打、擊殺不崩潰**」。
+**今天一整天是「把 Sol 的跨公司審查結論收掉」＋「PvP 往 T2 推進」。全部已推到 `reverse-work`（`71b9a03`）。**
+工作方式在 PM 指正後改成全程派工：高階只寫契約、審 diff、做裁決與合併，實作與大量讀取交 worker／explorer／verifier。
 
-### 今天完成（全部已 commit 在 `reverse-work`）
+### 一、Sol 跨公司審查的後續（全部處理完）
 
-| 項目 | 結果 |
+審查結論原文：`research/2026-09-22-sol-review/verdict.md`。
+
+| 他判什麼 | 我們怎麼改 |
 |---|---|
-| 投射物發包 | ✅ **netspeed 30000 ＋ budget**（人手連按 34/34），client-kit 已帶修補與雜湊驗證 |
-| **D2-1 PvP 開戰** | ✅ PM 判定。根因只有兩個：沒送 PvP 地圖 id、地圖預設值寫死 PvE |
-| **T1 分隊** | ✅ 房主紅、加入者藍；**擊殺送給加入者不會崩潰**（premises P5 在 PvP 成立） |
-| 自動化認得 PvP 畫面 | ✅ `battle_hud_state_pvp()`，畫面與封包矛盾時會印 WARN |
-| 設計稿 | ✅ `design/d2-pvp-tdm.md` v2，PM 審查通過 |
-| Frida | 階段 1、2 過；**但掛鉤砍半 FPS、收窄無效、中段掛點會 GPF** → 不能當主要量測 |
-| PresentMon | ✅ 可用（帳號已加 Performance Log Users），認得提升權限的 `MetalRage.exe` |
+| **「30000 單獨讓遺失歸零」❌** | 自動化 36/36 成立，但人手連按只有 33/35（5.7%）。`state.md` 候選 1b 那列改寫，**發包值定為 30000＋budget**，範圍註明兩人同機 PvE。`journal/2026-09-22-1345-netspeed-min.md` 追加更正 |
+| 加入者收四包戰鬥封包 ✅ | `state.md:161-164` 拿掉「未經跨公司審查」，改註 Sol 審過。`Event_Call` 消費者 ⬜ 保留，`+0x648` **沒有**順手標成 GRI |
+| budget patch | `state.md` 新增一列：**靜態機制 ✅／實驗歸因 🟡**。函式身分定案 `?Tick@UNetConnection@@UAEXXZ`（匯出表 `0x1042dda0`），`high-tier-review.md` 的 ⬜ 已收掉 |
+| `threshold-tally.txt:78` 統計敘述錯 | 加 A4 後 p≈0.0192，已更正（但 B 只有三輪、A4 是看過結果才追加，結論仍 🟡） |
+| `verify-p1p2.md:28-29` | Engine 原版 `EndGame()` 沒有 `GotoState('MatchOver')`，已追加更正 |
+| **TDM 設計稿降 🟡，四處矛盾** | 改成 **v3**，逐條收斂，見 §10 |
 
-日誌：`docs/journal/2026-09-22-*.md`（今天很多篇），索引 `docs/journal/INDEX.md` 末段。
+**發包前兩件也做了**：24 份原始 `run-*.log`（IP 已遮蔽）收進 `research/*/raw-logs/`（`.gitignore` 的 `logs/` 會吃掉 `logs/` 這個名字，**所以目錄名是 `raw-logs`**）；`client-kit/README.md` 補上 `Engine.dll.patched` 的重建指令，實跑驗證 hash＝`f4b253a3…`，與 `setup-client.ps1:62` 寫死的值相同。
 
-### ⚠️ 重開機後一定要做（今晚踩過）
+### 二、今天新完成（依序）
 
-**MySQL 不會自己啟動**，而伺服器連不到資料庫時**不會報錯**，會默默用預設空帳號頂上
-（登入後變成「Player／訓練兵」並跳新手任務彈窗）。
-- 啟動（擇一）：WSL 終端機 `sudo service mysql start`，或 Windows PowerShell `wsl -u root service mysql start`
-  （注意 Claude 對話框裡的 `!` 前綴沒有終端機，**sudo 問不到密碼**，要在自己的終端機跑）
-- **`service mysql status` 會誤報「停著」**（pid 檔名是 `Lucas.pid`），要用 `pgrep mysqld` 或測 3306
-- 啟動後要**重啟遊戲伺服器**，讓它重新連
+| 項目 | 結果 | 開關 |
+|---|---|---|
+| **DB 連不上大聲失敗** | 啟動期試連一次，失敗印 host/port/db＋mysql2 code＋`sudo service mysql start` 後 `exit(1)`。end-to-end 我自己重啟測試伺服器驗過 | 無（預設行為） |
+| **DB 中途掛掉不偽裝成功** | PM 裁決 (c) 窄版：ERROR log＋`client.disconnect()`。兩份複製貼上的空帳號分支先合併（純重構、逐 byte 不變）再改行為，**兩個 commit 分開**。淨少 160 行 | 無 |
+| **`Death_CN 0x00230123` 欄位** | ✅ attacker `+0x00` u16 LE、victim `+0x02` u16 LE。DLL（`0x107d9a1b`／`0x107d9a05`，body 起點 buf+0x10）與實測封包兩邊對上 | — |
+| **T2 隊伍擊殺計分** | 只記憶體記帳＋寫 log，**不送任何封包**。規則照客戶端原始碼 | `PVP_KILL_TRACKING_MODE` |
+| **房間分隊顯示＋MapRound** | 房間不再兩人都紅；玩家選的回合數不再被舊值蓋掉 | `ROOM_MEMBER_TEAM_MODE`／`MAP_CHANGE_ONE_ROUND_PERSIST_MODE` |
+| **T2.5 前置調查＋設計** | `research/2026-09-23-team-scoreboard/candidates.md`、設計稿 §7.3 | 見下 |
 
-### 機器狀態
-- ⚠️ **2026-09-22 改寫過 `reverse-work` 未推的歷史**（遮蔽兩份原始 log 裡的 VPN 位址，PM 裁決）。
-  `test-server` 分支裡是**改寫前**的舊 commit → 下次 `git merge reverse-work` 進測試樹時，
-  `docs/research/2026-09-22-netspeed-budget/manual-30000-*.log` 兩檔會衝突，**一律取 `reverse-work` 版本**（有佔位字那份）。
-  本機另有備份分支 `backup/pre-ip-scrub`（含真實位址，**不要推**，確認無用後可刪）。
-- **pre-commit 已啟用**：commit 時會擋下 `docs/` 裡的真實 IP（`tools/git-hooks/pre-commit`，所有 worktree 共用）。
+### 三、⚠️ 進行中：T2.5a 動態驗證（**操作者已同意跑，卡在工具沒做完**）
 
-- 測試伺服器：tmux `server`，跑在 `~/mro-wt/test`（分支 `test-server`，`dirty=false`）。
-  `PVP_START_FLOW_MODE`、`PVP_TEAM_ASSIGN_MODE`、`MATCH_STATS_MODE`、`roomPlayingStateMode` 四個開關
-  **commit 在 `test-server` 分支，不合回 `reverse-work`**（那邊預設都是 disabled）。
-- 副本 2（`C:\Games\MetalRage Online 2`）`Engine.dll` 目前是 **`b0a3d9dd…`＝15000、沒有 budget**
-  （最後動它的是 15000 A/B 的 A4 輪，不是 30000）。**下一次 PvP 實跑前要先換成發包設定**：
-  `patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --value 30000 --budget --apply`，
-  套完 sha256 應為 `f4b253a3…`。還原原廠用 `--restore`
-- 副本 3（`C:\Games\MetalRage Online 3`）帶 proxy `VERSION.dll`＋gadget，**gadget 目前改名停用**（`.dll.off`）。整個副本可刪。
-- 主安裝未動。
+**這是接手後的第一件事。**
 
-### 下一步（照順序，PM 2026-09-22 22:5x 裁決）
+- **目的**：比賽中送一包 `Timeout_SN 0x00230112`，兩隊分數填 **7 和 3**，截圖看畫面上方隊伍總分會不會變成 7:3。
+- **一包同時回答三件事**：是不是這一包、那個欄位是不是畫面讀的、**加入者收了會不會崩**。
+- **狀態**：worker 正在做 `/pvpscore <roomId> <red> <blue> [target]` 這個伺服器 console 指令，worktree `~/mro-wt/pvpscore` 分支 `pvpscore`。**接手時先確認它有沒有交回來**（若 session 已換，去那個 worktree 看有沒有 commit）。
+- **測試分支已經備妥**：`~/mro-wt/test` 在 `186a49c`，已合併今天全部內容並開啟三個開關。**還沒重啟伺服器套用**（目前跑的是舊的 `7af0546`）。
+- **跑的順序（PM 指定，不要改）**：
+  1. 跑 `tools/pico/runner.py run tools/pico/experiments/pvp-2p-handover.json`，把兩個客戶端弄進戰場
+  2. **在房間階段先截圖**，確認兩人顏色不同、地圖設定欄有東西（這是 `ROOM_MEMBER_TEAM_MODE`／`MAP_CHANGE_ONE_ROUND_PERSIST_MODE` 的驗收，跟送包無關，**先看完再往下**）
+  3. `/pvpscore <room> 7 3 joiner` → **等 5 秒**，確認加入者行程還在、心跳還在 → 截圖
+  4. 沒問題才 `/pvpscore <room> 7 3 host` → 截圖
+- **為什麼先送加入者**：「加入者安全」目前**只有消極證據**（全函式掃過沒有 `Game_Host_Check` `0x1071a560`／thunk `0x10707630`，也沒有 `Level->`／`GameInfo->` 解參考，走的是 class default object）。**沒找到閘門 ≠ 安全**，跟 §5 那四包有實跑佐證不同。
+- **PM 已授權**：T2.5a 成立就**直接做 T2.5b**（`PVP_TEAM_SCORE_SYNC_MODE`，把 T2 的 `room.pvpTeamKills` 用同一格式送全房），不用再問。收工回報一次結果即可（哪一包、畫面是否 7:3、加入者是否存活）。
 
-0. **明早第一件事：DB 連不到要大聲失敗**。伺服器啟動時連不到 MySQL 就**直接退出並印原因**，不要降級成空帳號（PM：這是大聲失敗規則的直接違反，比房間問題優先）。預期一行等級的改動。
-1. **修 PvP 房設定欄全空** —— 根因已找到：`room/room-map.sender.js:139-141` 的 `isTrueCampaign` 閘門
-   讓 PvP 房不送 `Map_Change_One_SN`。**另開旗標**（不要改 `isTrueCampaign` 語意），
-   詳見 `journal/2026-09-22-2230-pvp-2p-first.md` 末段。
-2. **修地圖選不了** —— **只修「不要蓋掉玩家選的 MapRound」**；「客戶端因此退回選擇」維持 🟡、**不追**（PM）。
-   另：**房間畫面兩人都紅隊**要跟 T1 分隊**一起修**——以 `member.team` 一處為準，`SN_USER_DEFAULT` 從它讀，**不要兩處各寫**（PM）。
-3. **T2 隊伍擊殺計數** —— 實測確定必要：個人分數會跳，**隊伍計分板不會**。
-   開工前提：`Death_CN` 的 attacker 欄位 offset 要先 ✅ [DLL]（設計稿 §7）。
-4. `GOLDEN-ENV-GUARD`（PM 同意）：golden 腳本自己檢查 `MetalRage` 連結，**缺就報 `ENV`，不要報 FAIL**。
-5. `KIT-PS1-SMOKE`：client-kit 的 `.ps1` 從沒用真 PowerShell 跑過，發包前要實跑。
+**T2.5a 若失敗，下一個查 `EndRound_SN`／`EndQuater_SN`／`EndGame_SN`**（`0x107d7a50`／`0x107d7c90`／`0x107d7ed0`）——它們跟 `Timeout_SN` 緊挨著排、explorer 的固定指令數視窗溢出無法歸屬，**沒有被排除**。要用 function-boundary-aware 的方式（`tools/ghidra/decompile.sh`），不要用 `disasm.py at`。
 
-### 今天學到、下一個人會再踩的
+### 四、機器狀態
 
-1. **引用舊日誌的診斷前，先確認那條路現在還走不走得到。** PvP 契約整份建在一篇已過時的日誌上
-   （它說的四個閘門早就是死碼）。
-2. **查「為什麼不通」之前，先 grep 現成的東西有沒有接上。** 8 個 TDM 地圖 id 在程式裡躺了七天沒被呼叫。
-3. **畫面判定跨到沒校準過的場景就會說謊**（PvP 那次 runner 判 FAIL，實際成功）。**直接截圖看**。
-4. **FPS 一定要標「哪一台、什麼狀態」**。今天因為分母拿錯連續更正兩次（待機當實戰、加入者當房主）。
-5. **契約不要寫矛盾條款**（「唯讀」又要寫檔）；**worktree 一定要連 `MetalRage` 與 `node_modules`**。
-6. `enter_battle` 會留下開著的 GAME MENU，清理時**不要無條件再送 ESC**（會關掉選單、點擊變成開火）。
+| 東西 | 狀態 |
+|---|---|
+| 伺服器 | tmux session `server`，跑在 `~/mro-wt/test`，目前是 `7af0546`（**比分支落後一個 commit，要重啟才會套用三個開關**） |
+| 主目錄 `/home/lucas/mro-reverse` | 乾淨，停在 `reverse-work@71b9a03`，已推 |
+| 測試分支 `~/mro-wt/test` | `186a49c`，非預設開關：`PVP_START_FLOW_MODE`、`PVP_TEAM_ASSIGN_MODE`、`MATCH_STATS_MODE`、`roomPlayingStateMode`、`ROOM_MEMBER_TEAM_MODE`、`MAP_CHANGE_ONE_ROUND_PERSIST_MODE`、`PVP_KILL_TRACKING_MODE`。**這個分支不合併回 `reverse-work`** |
+| 剩下的 worktree | `pvpscore`（進行中）、`bridge-stage0`／`dualpico`／`trace-task`（舊的 flash-wip，沒清） |
+| **副本 2 的 `Engine.dll`** | **`b0a3d9dd…`＝15000、沒有 budget**（15000 A/B 的 A4 輪留下的）。**PvP 實跑前要先套回發包設定**：`patch_netspeed_host.py --target "/mnt/c/Games/MetalRage Online 2" --value 30000 --budget --apply`，套完應為 `f4b253a3…` |
+| MySQL | **重開機不會自動起來**。用操作者自己的終端機 `sudo service mysql start`（`!` 前綴給不了 sudo 一個 TTY）。`service mysql status` 會誤報，因為 pid 檔名是 `Lucas.pid` |
+
+### 五、下一步（T2.5 之後）
+
+1. **T2.5b**（PM 已授權，a 成立就做）：`PVP_TEAM_SCORE_SYNC_MODE`，擊殺變動時同步隊伍分給全房。
+2. **T3**：`Timeout_CN` handler，比擊殺數決定勝方 → **先送 `User_Score_SN`、後送 `EndGame_SN`**（順序不可對調，設計稿 §3）。
+3. **T4**：照設計稿 §7.2 的單一資料流，`room.mapKill` 是唯一真值。
+4. **空白 PvP 房間設定**：診斷在 `room-map.sender.js:139-141` 的閘門，退出戰鬥回房後才會填上。還沒派。
+5. `GOLDEN-ENV-GUARD`：golden 缺 `MetalRage` 連結時要報 `ENV` 不要報 `FAIL`（契約在 `backlog.md`）。
+6. `KIT-PS1-SMOKE`。
+7. **`DB-FAIL-PERREQ` 還沒全做完**：(b)「回真正的登入失敗封包」要先查客戶端顯示什麼；30907 那條照 PM 例外只改了 log、沒斷線。**backlog 條目還沒搬去 `backlog-done.md`**，因為 (b) 沒做。
+
+### 六、要操作者自己貼進 `AGENTS.md` 陷阱表的兩行
+
+`AGENTS.md` 不在專案 repo，由 `mro-config` 管（改完 `mro-config commit -am "..."`）。
+
+```
+| **原始客戶端 log 必定帶房主 VPN 位址**（`GameStart`／`Browse:`／`Close TcpipConnection` 行），複製進 `docs/` 前要換成 `<HOST_VPN_IP>`；commit 時 pre-commit 會擋下真實 IP | `tools/git-hooks/pre-commit` |
+| **同一個 opcode 數字在不同場景是不同訊息**，例如 `0x00230112` 在大廳是空 body 的通知、在戰鬥中才是 `Timeout_SN`。查封包一律連場景一起確認，不要只比對數字 | `research/2026-09-23-team-scoreboard/candidates.md` |
+```
+
+第一行 2026-09-22 就該貼了，**還沒貼**。
+
+### 七、今天犯的錯（留著避免重蹈）
+
+1. **派工契約把 `0x00230124` 寫成雙向共用**，實際 C→S 是 `0x00230123`。verifier 沒照抄、自己查出來並回報。**PM 定了規矩：往後契約裡引用 opcode 一律從 `docs/client-dispatch-map.md` 貼，不手打。**
+2. **契約又寫了自相矛盾的要求**（同時禁止動 `resolvePvpTeamIndex` 又要求兩邊合併成一份）。這是 2026-09-22 就犯過的同一類錯。
+3. **我給的分隊方案本身是錯的**：說「對戰中不要重算」，但那個「對戰中」的訊號要靠第三個開關（預設關）才會寫入，照做會得到一個**看起來有保護、實際不生效**的東西。worker 撞上去、停下來問，才讓我看見。**最後改成「只分配新成員、永遠不動既有成員」，相依整個消失。**
+4. **PM 說 T2.5a「不用等操作者、時段內自己跑」——我沒照做。** 用 Pico 操作遊戲前要確認操作者沒在用電腦，那是 `AGENTS.md` 的硬規則，**PM 不能代操作者同意**。我先做完準備、問過操作者才動。這個判斷維持。
+
+---
 
 ## 🌙 夜間報告（2026-09-20 23:00–23:5x，Claude 執行者）
 
